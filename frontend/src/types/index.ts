@@ -81,3 +81,154 @@ export interface Asset {
   file_size: number
   created_at: string
 }
+
+// ── Studio types ──────────────────────────────────────────────────────────────
+
+export type Platform =
+  | 'instagram_post'
+  | 'instagram_reel'
+  | 'instagram_story'
+  | 'tiktok'
+  | 'youtube_short'
+  | 'youtube_16_9'
+  | 'facebook_post'
+  | 'facebook_reel'
+  | 'linkedin_post'
+  | 'pinterest'
+  | 'twitter_x'
+
+export interface PlatformSpec {
+  label: string
+  width: number
+  height: number
+  aspectRatio: string
+  safeZoneTop: number
+  safeZoneBottom: number
+}
+
+export type ContentType = 'video' | 'image' | 'carousel' | 'audio' | 'blog' | 'newsletter'
+
+export interface VideoClip {
+  id: string
+  assetId?: number
+  url: string
+  name: string
+  duration: number
+  startTime: number
+  endTime: number
+  trimIn: number
+  trimOut: number
+  colorGrade: 'none' | 'warm' | 'cool' | 'cinematic' | 'bw' | 'high_contrast' | 'desaturated'
+  speed: 0.25 | 0.5 | 1 | 2
+  brightness: number
+  contrast: number
+  saturation: number
+  transition: 'cut' | 'dissolve' | 'whip_pan' | 'fade_black' | 'zoom_punch'
+}
+
+export interface TextOverlay {
+  id: string
+  text: string
+  x: number
+  y: number
+  width: number
+  startTime: number
+  endTime: number
+  fontFamily: string
+  fontSize: number
+  bold: boolean
+  italic: boolean
+  color: string
+  bgColor: string
+  bgOpacity: number
+  animation: 'none' | 'fade_in' | 'slide_left' | 'slide_right' | 'slide_top' | 'slide_bottom' | 'typewriter' | 'pop'
+}
+
+export interface MediaOverlay {
+  id: string
+  url: string
+  x: number
+  y: number
+  width: number
+  height: number
+  opacity: number
+  startTime: number
+  endTime: number
+}
+
+export interface AudioTrack {
+  id: string
+  assetId?: number
+  url: string
+  name: string
+  volume: number
+  startAt: number
+  pauseAt?: number
+  resumeAt?: number
+  fadeIn: number
+  fadeOut: number
+  duck: boolean
+}
+
+export interface ImageSlide {
+  id: string
+  assetId?: number
+  url: string
+  name: string
+  filter: 'none' | 'bw' | 'warm' | 'cool' | 'vintage' | 'high_contrast' | 'vivid' | 'cinematic'
+  animation: 'none' | 'ken_burns_in' | 'ken_burns_out' | 'pan_left' | 'pan_right' | 'float' | 'pulse'
+  duration: number
+  transition: 'dissolve' | 'wipe' | 'fade' | 'zoom_punch'
+}
+
+export type ApprovalGateStatus = 'waiting' | 'approved' | 'rejected' | 'none'
+
+export interface ApprovalGate {
+  id: string
+  message: string
+  status: ApprovalGateStatus
+  timestamp: string
+}
+
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  timestamp: string
+  approvalGate?: ApprovalGate
+}
+
+export interface SEOPackage {
+  instagramCaption?: string
+  instagramHashtags?: string
+  instagramGeotag?: string
+  youtubeTitle?: string
+  youtubeDescription?: string
+  youtubeTags?: string
+  youtubeChapters?: string
+  tiktokCaption?: string
+  tiktokTrendingSound?: string
+  gmbPost?: string
+}
+
+export interface LowerThird {
+  id: string
+  name: string
+  title: string
+  animation: 'slide_left' | 'fade_in' | 'pop_up'
+  duration: number
+  positionY: number
+  showLogo: boolean
+  startTime: number
+}
+
+export interface IntroOutro {
+  type: 'intro' | 'outro'
+  templateId?: string
+  duration: number
+  logoUrl?: string
+  tagline?: string
+  ctaText?: string
+  socialHandles?: string
+  animation: string
+}

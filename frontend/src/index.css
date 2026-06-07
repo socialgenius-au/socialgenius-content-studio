@@ -1,35 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 *, *::before, *::after {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --green: #1E3D2A;
+  --gold: #C89A2E;
+  --cream: #F5F0E8;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
 }
 
 body {
-  margin: 0;
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background: #F5F0E8;
   color: #1a1a1a;
 }
 
-a {
-  color: inherit;
-}
+a { color: inherit; }
 
-input, textarea, button, select {
-  font-family: inherit;
-}
+input, textarea, button, select { font-family: inherit; }
 
 :focus-visible {
   outline: 2px solid #C89A2E;
   outline-offset: 2px;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
+/* Scrollbars */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.35); }
+
+/* Range inputs */
+input[type="range"] { accent-color: #1E3D2A; }
+
+/* Chat typing bounce */
+@keyframes bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-5px); opacity: 1; }
 }
-::-webkit-scrollbar-track {
-  background: #F5F0E8;
-}
-::-webkit-scrollbar-thumb {
-  background: #C89A2E;
-  border-radius: 3px;
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

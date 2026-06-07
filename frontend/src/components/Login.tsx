@@ -16,7 +16,7 @@ export default function Login() {
     setLoading(true)
     try {
       await login(username, password)
-      navigate('/dashboard')
+      navigate('/studio')
     } catch {
       setError('Invalid username or password')
     } finally {

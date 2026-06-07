@@ -10,6 +10,7 @@ import BrandForm from './components/BrandForm'
 import AssetLibrary from './components/AssetLibrary'
 import Templates from './components/Templates'
 import Layout from './components/Layout'
+import StudioPage from './components/studio/StudioPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
@@ -25,7 +26,19 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+      <Route path="/login" element={user ? <Navigate to="/studio" replace /> : <Login />} />
+
+      {/* Studio — the main production page */}
+      <Route
+        path="/studio"
+        element={
+          <RequireAuth>
+            <StudioPage />
+          </RequireAuth>
+        }
+      />
+
+      {/* Legacy routes kept for backwards compatibility */}
       <Route
         path="/dashboard"
         element={
@@ -106,7 +119,7 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
-      <Route path="/" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
+      <Route path="/" element={<Navigate to={user ? '/studio' : '/login'} replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
