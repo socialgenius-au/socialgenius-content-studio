@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
 from app.deps import current_user
+from app.limiter import limiter
 from app.models.brand import Brand
 from app.models.job import Job
 from app.models.user import User
@@ -21,7 +22,9 @@ class PlanRequest(BaseModel):
 
 
 @router.post("/", response_model=JobResponse)
+@limiter.limit("20/minute")
 async def create_plan(
+    request: Request,
     body: PlanRequest,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(current_user),

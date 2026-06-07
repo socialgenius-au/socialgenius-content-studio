@@ -4,13 +4,31 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy import text
 
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
+from app.limiter import limiter
 from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws
 
 # Import all models so Base.metadata is fully populated before create_all
 from app.models import User, Brand, Job, Asset, Transcript  # noqa: F401
+
+# ── Sentry ────────────────────────────────────────────────────────────────────
+if settings.SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        integrations=[FastApiIntegration(), SqlalchemyIntegration()],
+        traces_sample_rate=0.05,
+        environment="production",
+    )
 
 
 @asynccontextmanager
@@ -19,6 +37,9 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     await _seed_users()
     yield
+    if settings.REDIS_URL:
+        from app.services.queue import close_pool
+        await close_pool()
 
 
 async def _seed_users() -> None:
@@ -45,9 +66,14 @@ async def _seed_users() -> None:
 
 app = FastAPI(
     title="SocialGenius Content Studio",
-    version="1.0.0",
+    version="4.0.0",
     lifespan=lifespan,
 )
+
+# ── Rate limiting ─────────────────────────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -77,4 +103,46 @@ app.include_router(ws.router,         prefix="/ws",         tags=["websocket"])
 
 @app.get("/health", tags=["health"])
 async def health():
-    return {"status": "ok", "service": "SocialGenius Content Studio"}
+    return {"status": "ok", "service": "SocialGenius Content Studio", "version": "4.0.0"}
+
+
+@app.get("/health/live", tags=["health"])
+async def health_live():
+    """Liveness probe — returns 200 as long as the process is up."""
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", tags=["health"])
+async def health_ready():
+    """Readiness probe — checks DB and (optionally) Redis connectivity."""
+    checks: dict[str, str] = {}
+
+    # Database
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        checks["db"] = "ok"
+    except Exception:
+        checks["db"] = "error"
+
+    # Redis (optional — only checked when REDIS_URL is set)
+    if settings.REDIS_URL:
+        try:
+            import redis.asyncio as aioredis
+            r = aioredis.from_url(settings.REDIS_URL, socket_connect_timeout=2)
+            await r.ping()
+            await r.aclose()
+            checks["redis"] = "ok"
+        except Exception:
+            checks["redis"] = "error"
+    else:
+        checks["redis"] = "not_configured"
+
+    all_ok = all(v in ("ok", "not_configured") for v in checks.values())
+    status_code = 200 if all_ok else 503
+
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content={"status": "ok" if all_ok else "degraded", **checks},
+        status_code=status_code,
+    )

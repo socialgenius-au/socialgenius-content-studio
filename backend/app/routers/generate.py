@@ -1,12 +1,13 @@
 import copy
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
 from app.deps import current_user
+from app.limiter import limiter
 from app.models.brand import Brand
 from app.models.job import Job
 from app.models.user import User
@@ -37,7 +38,9 @@ class GenerateResponse(BaseModel):
 
 
 @router.post("/", response_model=GenerateResponse)
+@limiter.limit("30/minute")
 async def generate(
+    request: Request,
     body: GenerateRequest,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(current_user),

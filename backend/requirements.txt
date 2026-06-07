@@ -13,3 +13,8 @@ python-multipart>=0.0.20
 aiofiles>=24.1.0
 httpx>=0.28.0
 Pillow>=11.0.0
+# Production hardening
+slowapi>=0.1.9
+sentry-sdk[fastapi]>=2.0.0
+arq>=0.26.0
+redis>=5.0.0

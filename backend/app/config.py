@@ -37,6 +37,10 @@ class Settings(BaseSettings):
 
     PIXABAY_API_KEY: str = ""
 
+    # ── Production infrastructure ─────────────────────────────────────────────
+    SENTRY_DSN: str = ""
+    REDIS_URL: str | None = None   # e.g. redis://default:password@hostname:6379
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def fix_db_url(cls, v: str) -> str:

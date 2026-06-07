@@ -1,12 +1,21 @@
-import { useState, type FormEvent, type CSSProperties, type DragEvent } from 'react'
+import { useState, useEffect, type FormEvent, type CSSProperties, type DragEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Job, JobPlan } from '../types'
-import { planApi, uploadApi } from '../api/client'
+import { planApi, uploadApi, brandsApi } from '../api/client'
+
+interface Brand {
+  id: number
+  name: string
+  colors: { primary?: string; secondary?: string; accent?: string } | null
+  tone_of_voice: string | null
+}
 
 export default function JobPlanner() {
   const navigate = useNavigate()
   const [prompt, setPrompt]           = useState('')
   const [title, setTitle]             = useState('')
+  const [brandId, setBrandId]         = useState<number | ''>('')
+  const [brands, setBrands]           = useState<Brand[]>([])
   const [loading, setLoading]         = useState(false)
   const [uploading, setUploading]     = useState(false)
   const [result, setResult]           = useState<Job | null>(null)
@@ -15,6 +24,12 @@ export default function JobPlanner() {
   const [dragOver, setDragOver]       = useState(false)
 
   const plan: JobPlan | null = result?.plan_json ?? null
+
+  useEffect(() => {
+    brandsApi.list()
+      .then(({ data }) => setBrands(data as Brand[]))
+      .catch(() => {/* brands are optional — silently ignore */})
+  }, [])
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -29,7 +44,7 @@ export default function JobPlanner() {
     setError('')
     setLoading(true)
     try {
-      const { data } = await planApi.create(prompt, title || undefined)
+      const { data } = await planApi.create(prompt, title || undefined, brandId !== '' ? brandId : undefined)
       const job = data as Job
       setResult(job)
 
@@ -47,6 +62,7 @@ export default function JobPlanner() {
     }
   }
 
+  const selectedBrand = brands.find((b) => b.id === brandId)
   const btnLabel = uploading ? 'Uploading file…' : loading ? 'Generating plan…' : 'Generate Content Plan'
 
   return (
@@ -68,6 +84,44 @@ export default function JobPlanner() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
+
+            {/* ── Brand selector ── */}
+            {brands.length > 0 && (
+              <>
+                <label style={s.label}>Brand (optional)</label>
+                <div style={s.brandSelector}>
+                  <select
+                    style={s.select}
+                    value={brandId}
+                    onChange={(e) => setBrandId(e.target.value === '' ? '' : Number(e.target.value))}
+                  >
+                    <option value="">No brand — use default tone</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                  {selectedBrand?.colors && (
+                    <div style={s.colorPips}>
+                      {Object.values(selectedBrand.colors)
+                        .filter(Boolean)
+                        .map((color, i) => (
+                          <span
+                            key={i}
+                            title={color}
+                            style={{ ...s.colorPip, background: color }}
+                          />
+                        ))}
+                    </div>
+                  )}
+                </div>
+                {selectedBrand && (
+                  <p style={s.brandHint}>
+                    Claude will tailor this plan to <strong>{selectedBrand.name}</strong>
+                    {selectedBrand.tone_of_voice ? ` · ${selectedBrand.tone_of_voice} tone` : ''}
+                  </p>
+                )}
+              </>
+            )}
 
             <label style={s.label}>Content brief *</label>
             <textarea
@@ -120,6 +174,14 @@ export default function JobPlanner() {
             ) : (
               <>
                 <div style={s.planHeader}>
+                  {result?.brand_id && selectedBrand && (
+                    <div style={s.brandBadge}>
+                      {selectedBrand.colors?.primary && (
+                        <span style={{ ...s.colorPip, background: selectedBrand.colors.primary }} />
+                      )}
+                      {selectedBrand.name}
+                    </div>
+                  )}
                   <h3 style={s.planTitle}>{plan.title}</h3>
                   <p style={s.planSummary}>{plan.summary}</p>
                   <div style={s.metaRow}>
@@ -171,7 +233,13 @@ const s: Record<string, CSSProperties> = {
   form:     { display: 'flex', flexDirection: 'column', gap: 16 },
   label:    { fontSize: 13, fontWeight: 700, color: '#1E3D2A', marginBottom: -8 },
   input:    { padding: '12px 14px', border: '2px solid #e8e3d8', borderRadius: 8, fontSize: 15, outline: 'none', color: '#1a1a1a', background: '#faf9f5' },
+  select:   { flex: 1, padding: '11px 14px', border: '2px solid #e8e3d8', borderRadius: 8, fontSize: 14, outline: 'none', color: '#1a1a1a', background: '#faf9f5', cursor: 'pointer', appearance: 'auto' },
   textarea: { padding: '12px 14px', border: '2px solid #e8e3d8', borderRadius: 8, fontSize: 14, outline: 'none', resize: 'vertical', lineHeight: 1.65, color: '#1a1a1a', background: '#faf9f5', fontFamily: 'inherit' },
+  brandSelector: { display: 'flex', gap: 8, alignItems: 'center' },
+  brandHint: { margin: '-4px 0 0', fontSize: 12, color: '#888', fontStyle: 'italic' },
+  brandBadge: { display: 'inline-flex', alignItems: 'center', gap: 6, background: '#F5F0E8', border: '1px solid #e0d9cc', borderRadius: 6, padding: '4px 10px', fontSize: 12, fontWeight: 700, color: '#1E3D2A', marginBottom: 10 },
+  colorPips: { display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0 },
+  colorPip:  { display: 'inline-block', width: 14, height: 14, borderRadius: '50%', border: '1.5px solid rgba(0,0,0,0.12)' },
   dropzone: {
     border: '2px dashed #d5cfc0',
     borderRadius: 8,

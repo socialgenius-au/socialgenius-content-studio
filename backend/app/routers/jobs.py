@@ -2,6 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.config import settings
 from app.database import get_db
 from app.deps import current_user
 from app.models.asset import Asset
@@ -70,8 +71,14 @@ async def execute_job(
     if job.status == "running":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Job is already running")
 
-    background_tasks.add_task(job_runner.execute_job, job_id, user.id)
-    return {"message": "Execution started", "job_id": job_id, "status": "running"}
+    if settings.REDIS_URL:
+        from app.services.queue import enqueue_execute_job
+        await enqueue_execute_job(job_id, user.id)
+    else:
+        # Fallback to in-process background task when Redis is not configured
+        background_tasks.add_task(job_runner.execute_job, job_id, user.id)
+
+    return {"message": "Execution started", "job_id": job_id, "status": "running", "queue": "arq" if settings.REDIS_URL else "local"}
 
 
 @router.get("/{job_id}/assets", response_model=list[AssetResponse])

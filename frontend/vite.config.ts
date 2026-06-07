@@ -18,6 +18,7 @@ export default defineConfig({
       '/pixabay':    { target: 'http://localhost:8000', changeOrigin: true },
       '/brands':     { target: 'http://localhost:8000', changeOrigin: true },
       '/generate':   { target: 'http://localhost:8000', changeOrigin: true },
+      '/health':     { target: 'http://localhost:8000', changeOrigin: true },
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,
