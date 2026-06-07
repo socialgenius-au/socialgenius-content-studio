@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
-from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay
+from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws
 
 # Import all models so Base.metadata is fully populated before create_all
 from app.models import User, Brand, Job, Asset, Transcript  # noqa: F401
@@ -70,6 +70,9 @@ app.include_router(publish.router,    prefix="/publish",    tags=["publish"])
 app.include_router(canva.router,      prefix="/canva",      tags=["canva"])
 app.include_router(scrape.router,     prefix="/scrape",     tags=["scrape"])
 app.include_router(pixabay.router,    prefix="/pixabay",    tags=["pixabay"])
+app.include_router(brands.router,     prefix="/brands",     tags=["brands"])
+app.include_router(generate.router,   prefix="/generate",   tags=["generate"])
+app.include_router(ws.router,         prefix="/ws",         tags=["websocket"])
 
 
 @app.get("/health", tags=["health"])

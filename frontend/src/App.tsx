@@ -5,6 +5,8 @@ import Login from './components/Login'
 import Dashboard from './components/Dashboard'
 import JobPlanner from './components/JobPlanner'
 import JobDetail from './components/JobDetail'
+import BrandList from './components/BrandList'
+import BrandForm from './components/BrandForm'
 import Layout from './components/Layout'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -48,6 +50,36 @@ function AppRoutes() {
           <RequireAuth>
             <Layout>
               <JobDetail />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/brands"
+        element={
+          <RequireAuth>
+            <Layout>
+              <BrandList />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/brands/new"
+        element={
+          <RequireAuth>
+            <Layout>
+              <BrandForm />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/brands/:brandId"
+        element={
+          <RequireAuth>
+            <Layout>
+              <BrandForm />
             </Layout>
           </RequireAuth>
         }

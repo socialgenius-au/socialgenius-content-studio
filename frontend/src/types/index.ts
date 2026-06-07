@@ -46,6 +46,18 @@ export interface Job {
   updated_at: string
 }
 
+export interface Brand {
+  id: number
+  user_id: number
+  name: string
+  colors: Record<string, string>
+  fonts: Record<string, string>
+  logo_url: string | null
+  tone_of_voice: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Asset {
   id: number
   job_id: number | null

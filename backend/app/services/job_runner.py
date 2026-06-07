@@ -16,6 +16,7 @@ from app.database import AsyncSessionLocal
 from app.models.asset import Asset
 from app.models.job import Job
 from app.config import settings
+from app.services.ws_manager import manager as ws_manager
 
 
 def _now() -> str:
@@ -44,6 +45,7 @@ async def execute_job(job_id: int, user_id: int) -> None:
         job.status = "running"
         job.plan_json = plan
         await db.commit()
+        await ws_manager.broadcast(job_id, {"type": "status", "status": "running", "plan_json": plan})
 
         any_failed = False
 
@@ -53,6 +55,7 @@ async def execute_job(job_id: int, user_id: int) -> None:
             step["started_at"] = _now()
             job.plan_json = plan
             await db.commit()
+            await ws_manager.broadcast(job_id, {"type": "step_update", "step": step, "plan_json": plan})
 
             try:
                 await _run_step(db, step, tool, job_id, user_id, plan)
@@ -65,9 +68,11 @@ async def execute_job(job_id: int, user_id: int) -> None:
             step["finished_at"] = _now()
             job.plan_json = plan
             await db.commit()
+            await ws_manager.broadcast(job_id, {"type": "step_update", "step": step, "plan_json": plan})
 
         job.status = "failed" if any_failed else "done"
         await db.commit()
+        await ws_manager.broadcast(job_id, {"type": "status", "status": job.status, "plan_json": plan})
 
 
 async def _run_step(db: Any, step: dict, tool: str, job_id: int, user_id: int, plan: dict) -> None:  # noqa: ARG001

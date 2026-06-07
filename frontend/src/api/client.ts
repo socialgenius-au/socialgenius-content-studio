@@ -75,6 +75,18 @@ export const pixabayApi = {
     api.get('/pixabay/search/videos', { params: { q, per_page: perPage } }),
 }
 
+export const brandsApi = {
+  list:   ()                                              => api.get('/brands/'),
+  get:    (id: number)                                    => api.get(`/brands/${id}`),
+  create: (body: Record<string, unknown>)                 => api.post('/brands/', body),
+  update: (id: number, body: Record<string, unknown>)     => api.put(`/brands/${id}`, body),
+  delete: (id: number)                                    => api.delete(`/brands/${id}`),
+}
+
+export const generateApi = {
+  generate: (body: Record<string, unknown>) => api.post('/generate/', body),
+}
+
 export const uploadApi = {
   upload: (file: File, job_id?: number) => {
     const form = new FormData()

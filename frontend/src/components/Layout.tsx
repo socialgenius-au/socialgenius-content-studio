@@ -26,6 +26,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           {([
             { to: '/dashboard', label: 'Dashboard' },
             { to: '/planner',   label: 'New Plan' },
+            { to: '/brands',    label: 'Brands' },
           ]).map(({ to, label }) => (
             <Link key={to} to={to} style={{ ...s.navLink, ...(isActive(to) ? s.navLinkActive : {}) }}>
               {label}
