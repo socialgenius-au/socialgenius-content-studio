@@ -40,7 +40,8 @@ export default function Dashboard() {
       ) : (
         <div style={s.grid}>
           {jobs.map((job) => (
-            <div key={job.id} style={s.card}>
+            <Link key={job.id} to={`/jobs/${job.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div style={{ ...s.card, cursor: 'pointer' }}>
               <div style={s.cardTop}>
                 <span style={{ ...s.status, background: STATUS_COLOR[job.status] ?? '#999' }}>
                   {job.status}
@@ -61,6 +62,7 @@ export default function Dashboard() {
                 {job.plan_json?.estimated_total_time ? ` · ${job.plan_json.estimated_total_time}` : ''}
               </p>
             </div>
+            </Link>
           ))}
         </div>
       )}

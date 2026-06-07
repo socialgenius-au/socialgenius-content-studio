@@ -7,10 +7,10 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
-from app.routers import auth, upload, plan, jobs
+from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay
 
 # Import all models so Base.metadata is fully populated before create_all
-from app.models import User, Brand, Job, Asset  # noqa: F401
+from app.models import User, Brand, Job, Asset, Transcript  # noqa: F401
 
 
 @asynccontextmanager
@@ -60,10 +60,16 @@ app.add_middleware(
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
-app.include_router(auth.router,   prefix="/auth",   tags=["auth"])
-app.include_router(upload.router, prefix="/upload", tags=["upload"])
-app.include_router(plan.router,   prefix="/plan",   tags=["plan"])
-app.include_router(jobs.router,   prefix="/jobs",   tags=["jobs"])
+app.include_router(auth.router,       prefix="/auth",       tags=["auth"])
+app.include_router(upload.router,     prefix="/upload",     tags=["upload"])
+app.include_router(plan.router,       prefix="/plan",       tags=["plan"])
+app.include_router(jobs.router,       prefix="/jobs",       tags=["jobs"])
+app.include_router(transcribe.router, prefix="/transcribe", tags=["transcribe"])
+app.include_router(process.router,    prefix="/process",    tags=["process"])
+app.include_router(publish.router,    prefix="/publish",    tags=["publish"])
+app.include_router(canva.router,      prefix="/canva",      tags=["canva"])
+app.include_router(scrape.router,     prefix="/scrape",     tags=["scrape"])
+app.include_router(pixabay.router,    prefix="/pixabay",    tags=["pixabay"])
 
 
 @app.get("/health", tags=["health"])

@@ -36,10 +36,43 @@ export const planApi = {
 }
 
 export const jobsApi = {
-  list: () => api.get('/jobs/'),
-  get: (id: number) => api.get(`/jobs/${id}`),
-  updateStatus: (id: number, status: string) =>
-    api.patch(`/jobs/${id}/status`, { status }),
+  list:         ()                          => api.get('/jobs/'),
+  get:          (id: number)                => api.get(`/jobs/${id}`),
+  getAssets:    (id: number)                => api.get(`/jobs/${id}/assets`),
+  execute:      (id: number)                => api.post(`/jobs/${id}/execute`),
+  updateStatus: (id: number, s: string)     => api.patch(`/jobs/${id}/status`, { status: s }),
+}
+
+export const transcribeApi = {
+  transcribe: (assetId: number, language?: string) =>
+    api.post(`/transcribe/${assetId}`, null, { params: language ? { language } : {} }),
+  list: (assetId: number) => api.get(`/transcribe/asset/${assetId}`),
+}
+
+export const processApi = {
+  process: (body: Record<string, unknown>) => api.post('/process/', body),
+}
+
+export const publishApi = {
+  beehiiv: (body: Record<string, unknown>) => api.post('/publish/beehiiv', body),
+  gmb:     (body: Record<string, unknown>) => api.post('/publish/gmb', body),
+}
+
+export const canvaApi = {
+  createDesign:   (body: Record<string, unknown>)          => api.post('/canva/design', body),
+  listTemplates:  (query?: string)                          => api.get('/canva/templates', { params: { query } }),
+  exportDesign:   (designId: string, fmt = 'png')           => api.post(`/canva/export/${designId}`, null, { params: { fmt } }),
+}
+
+export const scrapeApi = {
+  run: (body: Record<string, unknown>) => api.post('/scrape/', body),
+}
+
+export const pixabayApi = {
+  searchImages: (q: string, imageType?: string, perPage = 20) =>
+    api.get('/pixabay/search', { params: { q, image_type: imageType, per_page: perPage } }),
+  searchVideos: (q: string, perPage = 20) =>
+    api.get('/pixabay/search/videos', { params: { q, per_page: perPage } }),
 }
 
 export const uploadApi = {

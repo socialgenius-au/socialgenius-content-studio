@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Login from './components/Login'
 import Dashboard from './components/Dashboard'
 import JobPlanner from './components/JobPlanner'
+import JobDetail from './components/JobDetail'
 import Layout from './components/Layout'
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -37,6 +38,16 @@ function AppRoutes() {
           <RequireAuth>
             <Layout>
               <JobPlanner />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/jobs/:jobId"
+        element={
+          <RequireAuth>
+            <Layout>
+              <JobDetail />
             </Layout>
           </RequireAuth>
         }

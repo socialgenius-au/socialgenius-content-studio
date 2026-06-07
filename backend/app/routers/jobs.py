@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -9,6 +9,7 @@ from app.models.job import Job
 from app.models.user import User
 from app.schemas.asset import AssetResponse
 from app.schemas.job import JobResponse, StatusUpdate
+from app.services import job_runner
 
 router = APIRouter()
 
@@ -51,6 +52,26 @@ async def update_status(
     await db.commit()
     await db.refresh(job)
     return job
+
+
+@router.post("/{job_id}/execute")
+async def execute_job(
+    job_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == user.id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if not job.plan_json:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Job has no plan yet — run /plan first")
+    if job.status == "running":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Job is already running")
+
+    background_tasks.add_task(job_runner.execute_job, job_id, user.id)
+    return {"message": "Execution started", "job_id": job_id, "status": "running"}
 
 
 @router.get("/{job_id}/assets", response_model=list[AssetResponse])

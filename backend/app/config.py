@@ -20,8 +20,22 @@ class Settings(BaseSettings):
         "mp4", "mov", "avi", "mkv", "webm",
         "mp3", "wav", "m4a", "aac",
         "jpg", "jpeg", "png", "gif", "webp",
-        "pdf",
+        "pdf", "srt",
     ]
+
+    # ── Third-party integrations ──────────────────────────────────────────────
+    BEEHIIV_API_KEY: str = ""
+    BEEHIIV_PUBLICATION_ID: str = ""
+
+    GMB_ACCESS_TOKEN: str = ""
+    GMB_LOCATION_NAME: str = ""  # e.g. accounts/123/locations/456
+
+    CANVA_CLIENT_ID: str = ""
+    CANVA_CLIENT_SECRET: str = ""
+
+    APIFY_API_TOKEN: str = ""
+
+    PIXABAY_API_KEY: str = ""
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
