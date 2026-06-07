@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
-import type { Job } from '../types'
-import { jobsApi } from '../api/client'
+import type { Job, Asset } from '../types'
+import { jobsApi, assetsApi } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -13,11 +13,31 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function Dashboard() {
   const { user } = useAuth()
-  const [jobs, setJobs] = useState<Job[]>([])
-  const [loading, setLoading] = useState(true)
+  const [jobs, setJobs]             = useState<Job[]>([])
+  const [thumbnails, setThumbnails] = useState<Record<number, string>>({})
+  const [loading, setLoading]       = useState(true)
 
   useEffect(() => {
-    jobsApi.list().then((r) => setJobs(r.data as Job[])).finally(() => setLoading(false))
+    Promise.all([
+      jobsApi.list(),
+      assetsApi.list({ file_type: 'thumbnail' }),
+    ]).then(([jr, tr]) => {
+      const jobList = jr.data as Job[]
+      setJobs(jobList)
+
+      // Build job_id → thumbnail URL map
+      const thumbMap: Record<number, string> = {}
+      for (const a of tr.data as Asset[]) {
+        if (a.job_id && !thumbMap[a.job_id]) {
+          // Derive public URL from file_path — file is served via StaticFiles at /uploads
+          const parts = a.file_path.split(/[/\\]uploads[/\\]/)
+          if (parts[1]) {
+            thumbMap[a.job_id] = `${import.meta.env.VITE_API_URL ?? ''}/uploads/${parts[1]}`
+          }
+        }
+      }
+      setThumbnails(thumbMap)
+    }).finally(() => setLoading(false))
   }, [])
 
   return (
@@ -39,31 +59,49 @@ export default function Dashboard() {
         </div>
       ) : (
         <div style={s.grid}>
-          {jobs.map((job) => (
-            <Link key={job.id} to={`/jobs/${job.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-            <div style={{ ...s.card, cursor: 'pointer' }}>
-              <div style={s.cardTop}>
-                <span style={{ ...s.status, background: STATUS_COLOR[job.status] ?? '#999' }}>
-                  {job.status}
-                </span>
-                <span style={s.date}>{new Date(job.created_at).toLocaleDateString('en-AU')}</span>
-              </div>
-              <h3 style={s.cardTitle}>{job.title}</h3>
-              <p style={s.cardPrompt}>
-                {job.prompt.length > 120 ? `${job.prompt.slice(0, 120)}…` : job.prompt}
-              </p>
-              {job.plan_json?.platforms && (
-                <div style={s.tags}>
-                  {job.plan_json.platforms.map((p) => <span key={p} style={s.tag}>{p}</span>)}
+          {jobs.map((job) => {
+            const thumbUrl = thumbnails[job.id]
+            return (
+              <Link key={job.id} to={`/jobs/${job.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                <div style={{ ...s.card, cursor: 'pointer' }}>
+                  {/* ── Thumbnail banner ── */}
+                  {thumbUrl && (
+                    <div style={s.thumbBanner}>
+                      <img
+                        src={thumbUrl}
+                        alt=""
+                        style={s.thumbImg}
+                        onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none' }}
+                      />
+                      <div style={s.thumbOverlay} />
+                    </div>
+                  )}
+
+                  <div style={s.cardContent}>
+                    <div style={s.cardTop}>
+                      <span style={{ ...s.status, background: STATUS_COLOR[job.status] ?? '#999' }}>
+                        {job.status}
+                      </span>
+                      <span style={s.date}>{new Date(job.created_at).toLocaleDateString('en-AU')}</span>
+                    </div>
+                    <h3 style={s.cardTitle}>{job.title}</h3>
+                    <p style={s.cardPrompt}>
+                      {job.prompt.length > 120 ? `${job.prompt.slice(0, 120)}…` : job.prompt}
+                    </p>
+                    {job.plan_json?.platforms && (
+                      <div style={s.tags}>
+                        {job.plan_json.platforms.map((p) => <span key={p} style={s.tag}>{p}</span>)}
+                      </div>
+                    )}
+                    <p style={s.meta}>
+                      {job.plan_json?.steps?.length ?? 0} steps
+                      {job.plan_json?.estimated_total_time ? ` · ${job.plan_json.estimated_total_time}` : ''}
+                    </p>
+                  </div>
                 </div>
-              )}
-              <p style={s.meta}>
-                {job.plan_json?.steps?.length ?? 0} steps
-                {job.plan_json?.estimated_total_time ? ` · ${job.plan_json.estimated_total_time}` : ''}
-              </p>
-            </div>
-            </Link>
-          ))}
+              </Link>
+            )
+          })}
         </div>
       )}
     </div>
@@ -90,11 +128,15 @@ const s: Record<string, CSSProperties> = {
   card: {
     background: '#fff',
     borderRadius: 12,
-    padding: 24,
     boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
     border: '1px solid #ede9e0',
     transition: 'box-shadow 0.15s',
+    overflow: 'hidden',
   },
+  thumbBanner:  { position: 'relative', height: 120, overflow: 'hidden', background: '#1a2e1e' },
+  thumbImg:     { width: '100%', height: '100%', objectFit: 'cover', opacity: 0.85 },
+  thumbOverlay: { position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.35))' },
+  cardContent:  { padding: 24 },
   cardTop:   { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   status:    { color: '#fff', padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5 },
   date:      { color: '#aaa', fontSize: 12 },

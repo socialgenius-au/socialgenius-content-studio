@@ -12,10 +12,10 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.limiter import limiter
-from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws
+from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates
 
 # Import all models so Base.metadata is fully populated before create_all
-from app.models import User, Brand, Job, Asset, Transcript  # noqa: F401
+from app.models import User, Brand, Job, Asset, Transcript, Template  # noqa: F401
 
 # ── Sentry ────────────────────────────────────────────────────────────────────
 if settings.SENTRY_DSN:
@@ -98,6 +98,8 @@ app.include_router(scrape.router,     prefix="/scrape",     tags=["scrape"])
 app.include_router(pixabay.router,    prefix="/pixabay",    tags=["pixabay"])
 app.include_router(brands.router,     prefix="/brands",     tags=["brands"])
 app.include_router(generate.router,   prefix="/generate",   tags=["generate"])
+app.include_router(assets.router,     prefix="/assets",     tags=["assets"])
+app.include_router(templates.router,  prefix="/templates",  tags=["templates"])
 app.include_router(ws.router,         prefix="/ws",         tags=["websocket"])
 
 

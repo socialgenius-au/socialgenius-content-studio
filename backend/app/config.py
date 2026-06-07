@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     SENTRY_DSN: str = ""
     REDIS_URL: str | None = None   # e.g. redis://default:password@hostname:6379
 
+    # ── Email notifications (Resend) ──────────────────────────────────────────
+    RESEND_API_KEY: str = ""
+    NOTIFY_FROM_EMAIL: str = "SocialGenius <notifications@socialgenius.au>"
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def fix_db_url(cls, v: str) -> str:

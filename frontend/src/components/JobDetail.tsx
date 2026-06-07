@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ChangeEvent } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import type { Job, JobPlan, Asset } from '../types'
-import { jobsApi, uploadApi, generateApi } from '../api/client'
+import { jobsApi, uploadApi, generateApi, templatesApi } from '../api/client'
 import { useJobSocket } from '../hooks/useJobSocket'
 
 const EXEC_COLOR: Record<string, string> = {
@@ -54,6 +54,9 @@ export default function JobDetail() {
   const [loading, setLoading] = useState(true)
   const [executing, setExecuting] = useState(false)
   // per-step generate UI state
+  const [savingTpl, setSavingTpl]       = useState(false)
+  const [tplSaved, setTplSaved]         = useState(false)
+  // per-step generate UI state
   const [genPlatform, setGenPlatform]   = useState<Record<number, string>>({})
   const [genLoading, setGenLoading]     = useState<Record<number, boolean>>({})
   const [genTone, setGenTone]           = useState<Record<number, string>>({})
@@ -95,6 +98,18 @@ export default function JobDetail() {
       await load()
     } finally {
       setExecuting(false)
+    }
+  }
+
+  const handleSaveTemplate = async () => {
+    if (!job) return
+    setSavingTpl(true)
+    try {
+      await templatesApi.create({ name: job.title, prompt: job.prompt, job_id: job.id })
+      setTplSaved(true)
+      setTimeout(() => setTplSaved(false), 3000)
+    } finally {
+      setSavingTpl(false)
     }
   }
 
@@ -148,6 +163,13 @@ export default function JobDetail() {
               {executing ? 'Starting…' : '▶ Execute Plan'}
             </button>
           )}
+          <button
+            style={{ ...s.tplBtn, opacity: savingTpl ? 0.65 : 1, ...(tplSaved ? s.tplBtnSaved : {}) }}
+            onClick={handleSaveTemplate}
+            disabled={savingTpl}
+          >
+            {tplSaved ? '✓ Saved!' : savingTpl ? 'Saving…' : '📋 Save as Template'}
+          </button>
         </div>
       </div>
 
@@ -323,6 +345,8 @@ const s: Record<string, CSSProperties> = {
   headerRight: { display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 },
   statusBadge: { color: '#fff', padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 800, textTransform: 'uppercase' },
   btn:         { padding: '10px 22px', background: '#1E3D2A', color: '#F5F0E8', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer' },
+  tplBtn:      { padding: '10px 16px', background: 'transparent', color: '#888', border: '1px solid #ddd', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  tplBtnSaved: { color: '#27ae60', borderColor: '#27ae60' },
   layout:      { display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, alignItems: 'start' },
   panel:       { background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 2px 10px rgba(0,0,0,0.06)', border: '1px solid #ede9e0' },
   sectionTitle:{ margin: '0 0 16px', fontSize: 13, fontWeight: 800, color: '#1E3D2A', textTransform: 'uppercase', letterSpacing: 0.8 },

@@ -87,6 +87,23 @@ export const generateApi = {
   generate: (body: Record<string, unknown>) => api.post('/generate/', body),
 }
 
+export const assetsApi = {
+  list:     (params?: { file_type?: string; job_id?: number }) => api.get('/assets/', { params }),
+  download: (id: number)                  => api.get(`/assets/${id}/download`, { responseType: 'blob' }),
+  delete:   (id: number)                  => api.delete(`/assets/${id}`),
+  zip:      (asset_ids: number[])          => api.post('/assets/zip', { asset_ids }, { responseType: 'blob' }),
+  downloadUrl: (id: number)               => `${import.meta.env.VITE_API_URL ?? ''}/assets/${id}/download`,
+}
+
+export const templatesApi = {
+  list:   ()                                                  => api.get('/templates/'),
+  get:    (id: number)                                        => api.get(`/templates/${id}`),
+  create: (body: { name: string; description?: string; prompt: string; job_id?: number; plan_json?: unknown }) =>
+    api.post('/templates/', body),
+  update: (id: number, body: Record<string, unknown>)         => api.put(`/templates/${id}`, body),
+  delete: (id: number)                                        => api.delete(`/templates/${id}`),
+}
+
 export const uploadApi = {
   upload: (file: File, job_id?: number) => {
     const form = new FormData()

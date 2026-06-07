@@ -1,7 +1,7 @@
 import { useState, useEffect, type FormEvent, type CSSProperties, type DragEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import type { Job, JobPlan } from '../types'
-import { planApi, uploadApi, brandsApi } from '../api/client'
+import { useNavigate, useLocation } from 'react-router-dom'
+import type { Job, JobPlan, Template } from '../types'
+import { planApi, uploadApi, brandsApi, templatesApi } from '../api/client'
 
 interface Brand {
   id: number
@@ -11,11 +11,15 @@ interface Brand {
 }
 
 export default function JobPlanner() {
-  const navigate = useNavigate()
-  const [prompt, setPrompt]           = useState('')
-  const [title, setTitle]             = useState('')
+  const navigate   = useNavigate()
+  const location   = useLocation()
+  const locState   = location.state as { prompt?: string; title?: string } | null
+
+  const [prompt, setPrompt]           = useState(locState?.prompt ?? '')
+  const [title, setTitle]             = useState(locState?.title ?? '')
   const [brandId, setBrandId]         = useState<number | ''>('')
   const [brands, setBrands]           = useState<Brand[]>([])
+  const [templates, setTemplates]     = useState<Template[]>([])
   const [loading, setLoading]         = useState(false)
   const [uploading, setUploading]     = useState(false)
   const [result, setResult]           = useState<Job | null>(null)
@@ -29,6 +33,9 @@ export default function JobPlanner() {
     brandsApi.list()
       .then(({ data }) => setBrands(data as Brand[]))
       .catch(() => {/* brands are optional — silently ignore */})
+    templatesApi.list()
+      .then(({ data }) => setTemplates(data as Template[]))
+      .catch(() => {/* templates are optional — silently ignore */})
   }, [])
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -76,6 +83,29 @@ export default function JobPlanner() {
         {/* ── Input form ── */}
         <div style={s.panel}>
           <form onSubmit={handleSubmit} style={s.form}>
+            {/* ── Template selector ── */}
+            {templates.length > 0 && (
+              <>
+                <label style={s.label}>Start from template (optional)</label>
+                <select
+                  style={s.select}
+                  value=""
+                  onChange={(e) => {
+                    const tpl = templates.find((t) => String(t.id) === e.target.value)
+                    if (tpl) {
+                      setPrompt(tpl.prompt)
+                      setTitle((prev) => prev || tpl.name)
+                    }
+                  }}
+                >
+                  <option value="">— Select a template —</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </>
+            )}
+
             <label style={s.label}>Job title (optional)</label>
             <input
               style={s.input}

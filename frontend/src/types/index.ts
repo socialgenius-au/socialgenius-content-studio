@@ -58,6 +58,17 @@ export interface Brand {
   updated_at: string
 }
 
+export interface Template {
+  id: number
+  user_id: number
+  name: string
+  description: string | null
+  prompt: string
+  plan_json: JobPlan | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Asset {
   id: number
   job_id: number | null

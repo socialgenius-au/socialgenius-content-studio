@@ -67,3 +67,17 @@ async def convert(input_path: str, output_format: str, user_id: int) -> Path:
     out = _out(user_id, output_format.lstrip("."))
     await _run(["ffmpeg", "-y", "-i", input_path, str(out)])
     return out
+
+
+async def extract_thumbnail(input_path: str, user_id: int, timestamp: float = 3.0) -> Path:
+    """Extract a single JPEG frame from a video at `timestamp` seconds."""
+    out = _out(user_id, "jpg")
+    await _run([
+        "ffmpeg", "-y",
+        "-ss", str(timestamp),
+        "-i", input_path,
+        "-frames:v", "1",
+        "-q:v", "3",
+        str(out),
+    ])
+    return out

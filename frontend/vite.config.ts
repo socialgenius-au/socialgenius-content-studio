@@ -19,6 +19,8 @@ export default defineConfig({
       '/brands':     { target: 'http://localhost:8000', changeOrigin: true },
       '/generate':   { target: 'http://localhost:8000', changeOrigin: true },
       '/health':     { target: 'http://localhost:8000', changeOrigin: true },
+      '/assets':     { target: 'http://localhost:8000', changeOrigin: true },
+      '/templates':  { target: 'http://localhost:8000', changeOrigin: true },
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,

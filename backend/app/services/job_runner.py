@@ -74,6 +74,20 @@ async def execute_job(job_id: int, user_id: int) -> None:
         await db.commit()
         await ws_manager.broadcast(job_id, {"type": "status", "status": job.status, "plan_json": plan})
 
+        # ── Email notification ────────────────────────────────────────────────
+        if settings.RESEND_API_KEY:
+            from app.models.user import User as UserModel
+            from app.services import email as email_svc
+            user_result = await db.execute(select(UserModel).where(UserModel.id == user_id))
+            notify_user = user_result.scalar_one_or_none()
+            if notify_user and notify_user.email:
+                await email_svc.send_job_notification(
+                    to_email=notify_user.email,
+                    job_title=job.title,
+                    status=job.status,
+                    job_id=job_id,
+                )
+
 
 async def _run_step(db: Any, step: dict, tool: str, job_id: int, user_id: int, plan: dict) -> None:  # noqa: ARG001
     if tool == "manual":
