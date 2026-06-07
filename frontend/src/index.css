@@ -1,0 +1,35 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #F5F0E8;
+  color: #1a1a1a;
+}
+
+a {
+  color: inherit;
+}
+
+input, textarea, button, select {
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid #C89A2E;
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F5F0E8;
+}
+::-webkit-scrollbar-thumb {
+  background: #C89A2E;
+  border-radius: 3px;
+}
