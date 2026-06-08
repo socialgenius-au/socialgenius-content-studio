@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Pre-download Whisper base model into the image layer
 # This avoids a cold-start delay on first transcription request
-RUN python -c "import whisper; whisper.load_model('base')" 2>/dev/null || true
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
 
 COPY . .
 
