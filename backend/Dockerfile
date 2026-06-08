@@ -1,6 +1,8 @@
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ARG CACHE_BUST=2
+
+RUN apt-get update...
     ffmpeg \
     git \
     curl \
