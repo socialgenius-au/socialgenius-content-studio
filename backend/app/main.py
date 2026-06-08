@@ -35,7 +35,8 @@ if settings.SENTRY_DSN:
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         if os.environ.get("RESET_DB") == "true":
-            await conn.run_sync(Base.metadata.drop_all)
+            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
         await conn.run_sync(Base.metadata.create_all)
     await _seed_users()
     yield
