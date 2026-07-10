@@ -30,7 +30,7 @@ export default function PreviewCanvas() {
     const update = () => {
       if (!containerRef.current) return
       const { width, height } = containerRef.current.getBoundingClientRect()
-      const size = getCanvasSize(platform, width - 32, height - 160)
+      const size = getCanvasSize(platform, width - 32, height - 100)
       setCanvasSize(size)
     }
     update()
@@ -326,7 +326,7 @@ export default function PreviewCanvas() {
 
 const s: Record<string, CSSProperties> = {
   root: {
-    width: '40vw', display: 'flex', flexDirection: 'column', alignItems: 'center',
+    width: '60vw', display: 'flex', flexDirection: 'column', alignItems: 'center',
     background: '#111', overflow: 'hidden', position: 'relative', minWidth: 0,
   },
   platformLabel: {

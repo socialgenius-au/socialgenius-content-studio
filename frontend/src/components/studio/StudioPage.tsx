@@ -36,9 +36,9 @@ function StudioLayout() {
 
       {/* Main 3-column layout */}
       <div style={s.workspace}>
-        <LeftPanel />
-        <PreviewCanvas />
         <RightPanel />
+        <PreviewCanvas />
+        <LeftPanel />
       </div>
 
       {/* Chat bar at bottom */}

@@ -174,7 +174,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 const s: Record<string, CSSProperties> = {
   panel: {
-    width: '25vw', minWidth: '25vw', background: '#fff', borderRight: '1px solid #e8e3d8',
+    width: '15vw', minWidth: '15vw', background: '#fff', borderRight: '1px solid #e8e3d8',
     display: 'flex', flexDirection: 'column', overflow: 'hidden',
   },
   collapsed: {
