@@ -10,7 +10,7 @@ from app.database import get_db
 from app.deps import current_user
 from app.models.asset import Asset
 from app.models.user import User
-from app.schemas.process import FFmpegOp, ProcessRequest, ProcessResponse
+from app.schemas.process import FFmpegOp, ProcessRequest, ProcessResponse, MergeRequest, MergeResponse
 from app.schemas.asset import AssetResponse
 from app.services import ffmpeg_svc
 
@@ -95,5 +95,57 @@ async def process_asset(
     return ProcessResponse(
         asset=AssetResponse.model_validate(new_asset),
         operation=body.operation.value,
+        duration_seconds=round(time.perf_counter() - t0, 2),
+    )
+
+
+@router.post("/merge", response_model=MergeResponse)
+async def merge_assets(
+    body: MergeRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    if len(body.asset_ids) < 2:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Need at least 2 assets to merge")
+
+    assets = []
+    for aid in body.asset_ids:
+        result = await db.execute(select(Asset).where(Asset.id == aid, Asset.user_id == user.id))
+        asset = result.scalar_one_or_none()
+        if not asset:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Asset {aid} not found")
+        assets.append(asset)
+
+    t0 = time.perf_counter()
+
+    try:
+        out_path = await ffmpeg_svc.merge_with_transitions(
+            [a.file_path for a in assets],
+            body.transition,
+            body.transition_duration,
+            user.id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    size = out_path.stat().st_size
+    mime = mimetypes.guess_type(str(out_path))[0] or "video/mp4"
+
+    new_asset = Asset(
+        job_id=body.job_id or assets[0].job_id,
+        user_id=user.id,
+        original_filename=f"merged_{assets[0].original_filename}",
+        stored_filename=out_path.name,
+        file_path=str(out_path),
+        file_type="video",
+        mime_type=mime,
+        file_size=size,
+    )
+    db.add(new_asset)
+    await db.commit()
+    await db.refresh(new_asset)
+
+    return MergeResponse(
+        asset=AssetResponse.model_validate(new_asset),
         duration_seconds=round(time.perf_counter() - t0, 2),
     )

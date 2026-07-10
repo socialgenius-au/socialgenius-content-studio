@@ -33,3 +33,15 @@ class ProcessResponse(BaseModel):
     asset: AssetResponse
     operation: str
     duration_seconds: float
+
+
+class MergeRequest(BaseModel):
+    asset_ids: list[int]        # in order: before, after, outro
+    transition: str = "dissolve"  # cut | dissolve | whip_pan | fade_to_black | zoom_punch
+    transition_duration: float = 0.5
+    job_id: int | None = None
+
+
+class MergeResponse(BaseModel):
+    asset: AssetResponse
+    duration_seconds: float

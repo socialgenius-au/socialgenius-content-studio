@@ -81,3 +81,80 @@ async def extract_thumbnail(input_path: str, user_id: int, timestamp: float = 3.
         str(out),
     ])
     return out
+
+
+TRANSITION_MAP = {
+    "cut": None,
+    "dissolve": "dissolve",
+    "whip_pan": "wiperight",
+    "fade_to_black": "fadeblack",
+    "zoom_punch": "zoomin",
+}
+
+
+async def _get_duration(path: str) -> float:
+    proc = await asyncio.create_subprocess_exec(
+        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1", path,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    out, _ = await proc.communicate()
+    return float(out.decode().strip())
+
+
+async def merge_with_transitions(
+    clip_paths: list[str],
+    transition: str,
+    transition_duration: float,
+    user_id: int,
+) -> Path:
+    """Merge 2+ clips end-to-end with a transition between each pair."""
+    if len(clip_paths) < 2:
+        raise RuntimeError("merge requires at least 2 clips")
+
+    xfade_name = TRANSITION_MAP.get(transition, "fade")
+    out = _out(user_id, "mp4")
+
+    if xfade_name is None:
+        list_file = _out(user_id, "txt")
+        list_file.write_text("\n".join(f"file '{p}'" for p in clip_paths))
+        await _run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(list_file), "-c", "copy", str(out),
+        ])
+        return out
+
+    durations = [await _get_duration(p) for p in clip_paths]
+    inputs: list[str] = []
+    for p in clip_paths:
+        inputs += ["-i", p]
+
+    filter_parts = []
+    running = durations[0]
+    v_label = "0:v"
+    a_label = "0:a"
+
+    for i in range(1, len(clip_paths)):
+        offset = running - transition_duration
+        next_v = f"v{i}"
+        next_a = f"a{i}"
+        filter_parts.append(
+            f"[{v_label}][{i}:v]xfade=transition={xfade_name}:"
+            f"duration={transition_duration}:offset={offset}[{next_v}]"
+        )
+        filter_parts.append(
+            f"[{a_label}][{i}:a]acrossfade=d={transition_duration}[{next_a}]"
+        )
+        v_label, a_label = next_v, next_a
+        running = running + durations[i] - transition_duration
+
+    filter_complex = ";".join(filter_parts)
+
+    await _run([
+        "ffmpeg", "-y", *inputs,
+        "-filter_complex", filter_complex,
+        "-map", f"[{v_label}]", "-map", f"[{a_label}]",
+        "-c:v", "libx264", "-c:a", "aac",
+        str(out),
+    ])
+    return out
