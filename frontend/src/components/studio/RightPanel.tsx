@@ -86,7 +86,7 @@ export default function RightPanel() {
 
 const s: Record<string, CSSProperties> = {
   panel: {
-    width: 300, minWidth: 300, background: '#fff', borderLeft: '1px solid #e8e3d8',
+    width: '35vw', minWidth: '35vw', background: '#fff', borderLeft: '1px solid #e8e3d8',
     display: 'flex', flexDirection: 'column', overflow: 'hidden',
   },
   mainTabs: {

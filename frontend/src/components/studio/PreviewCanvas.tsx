@@ -326,7 +326,7 @@ export default function PreviewCanvas() {
 
 const s: Record<string, CSSProperties> = {
   root: {
-    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+    width: '40vw', display: 'flex', flexDirection: 'column', alignItems: 'center',
     background: '#111', overflow: 'hidden', position: 'relative', minWidth: 0,
   },
   platformLabel: {
