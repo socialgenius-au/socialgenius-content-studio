@@ -51,6 +51,8 @@ export const transcribeApi = {
 
 export const processApi = {
   process: (body: Record<string, unknown>) => api.post('/process/', body),
+  merge:   (body: Record<string, unknown>) => api.post('/process/merge', body),
+  export:  (body: Record<string, unknown>) => api.post('/process/export', body),
 }
 
 export const publishApi = {

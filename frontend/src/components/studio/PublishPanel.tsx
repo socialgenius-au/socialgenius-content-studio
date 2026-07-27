@@ -12,8 +12,17 @@ interface PublishLog {
   message: string
 }
 
+// Frontend transition names don't all match the backend/ffmpeg vocabulary (e.g. fade_black vs fade_to_black).
+const TRANSITION_MAP: Record<string, string> = {
+  cut: 'cut',
+  dissolve: 'dissolve',
+  whip_pan: 'whip_pan',
+  fade_black: 'fade_to_black',
+  zoom_punch: 'zoom_punch',
+}
+
 export default function PublishPanel() {
-  const { activeBrand, videoClips, imageSlides, seoPackage, platform, activeJob } = useStudio()
+  const { activeBrand, videoClips, imageSlides, textOverlays, audioTracks, seoPackage, activeJob } = useStudio()
   const [logs, setLogs] = useState<PublishLog[]>([])
   const [publishing, setPublishing] = useState<string | null>(null)
 
@@ -75,24 +84,35 @@ export default function PublishPanel() {
       alert('No active job. Start a job first.')
       return
     }
+    const assetIds = videoClips.map(c => c.assetId).filter((id): id is number => id != null)
+    if (assetIds.length < 2) {
+      alert('Need at least 2 uploaded/processed clips to export.')
+      return
+    }
+    const audioTrack = audioTracks.find(t => t.assetId != null)
+
     setPublishing('render')
     try {
-      await processApi.process({
+      await processApi.export({
         job_id: activeJob.id,
-        brand_id: activeBrand?.id,
-        clips: videoClips.map(c => ({
-          url: c.url,
-          trim_in: c.trimIn,
-          trim_out: c.trimOut,
-          speed: c.speed,
-          color_grade: c.colorGrade,
-          brightness: c.brightness,
-          contrast: c.contrast,
-          saturation: c.saturation,
+        asset_ids: assetIds,
+        transition: TRANSITION_MAP[videoClips[0].transition] ?? 'dissolve',
+        transition_duration: 0.5,
+        text_overlays: textOverlays.map(o => ({
+          text: o.text,
+          start: o.startTime,
+          end: o.endTime,
+          x: o.x,
+          y: o.y,
+          font_size: o.fontSize,
+          font_color: o.color,
         })),
-        platform,
+        audio_asset_id: audioTrack?.assetId,
+        audio_mode: audioTrack?.duck ? 'mix' : 'replace',
+        audio_original_volume: audioTrack?.duck ? 0.2 : 0,
+        audio_volume: audioTrack?.volume ?? 1,
       })
-      addLog('Render', 'success', 'Final render started — check job status')
+      addLog('Render', 'success', 'Final export started — check job status')
     } catch (err) {
       addLog('Render', 'error', err instanceof Error ? err.message : 'Render failed')
     } finally {
