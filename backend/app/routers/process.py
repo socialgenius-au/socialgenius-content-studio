@@ -10,7 +10,15 @@ from app.database import get_db
 from app.deps import current_user
 from app.models.asset import Asset
 from app.models.user import User
-from app.schemas.process import FFmpegOp, ProcessRequest, ProcessResponse, MergeRequest, MergeResponse
+from app.schemas.process import (
+    FFmpegOp,
+    ProcessRequest,
+    ProcessResponse,
+    MergeRequest,
+    MergeResponse,
+    ExportRequest,
+    ExportResponse,
+)
 from app.schemas.asset import AssetResponse
 from app.services import ffmpeg_svc
 
@@ -148,4 +156,83 @@ async def merge_assets(
     return MergeResponse(
         asset=AssetResponse.model_validate(new_asset),
         duration_seconds=round(time.perf_counter() - t0, 2),
+    )
+
+
+async def _get_owned_asset(db: AsyncSession, asset_id: int, user_id: int) -> Asset:
+    result = await db.execute(select(Asset).where(Asset.id == asset_id, Asset.user_id == user_id))
+    asset = result.scalar_one_or_none()
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Asset {asset_id} not found")
+    return asset
+
+
+@router.post("/export", response_model=ExportResponse)
+async def export_asset(
+    body: ExportRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Chain merge -> text overlay burn-in -> audio track into a single final export."""
+    if len(body.asset_ids) < 2:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Need at least 2 assets to merge")
+
+    clip_assets = [await _get_owned_asset(db, aid, user.id) for aid in body.asset_ids]
+    audio_asset = await _get_owned_asset(db, body.audio_asset_id, user.id) if body.audio_asset_id else None
+
+    t0 = time.perf_counter()
+    steps: list[str] = []
+
+    try:
+        current_path = await ffmpeg_svc.merge_with_transitions(
+            [a.file_path for a in clip_assets],
+            body.transition,
+            body.transition_duration,
+            user.id,
+        )
+        steps.append("merge")
+
+        if body.text_overlays:
+            current_path = await ffmpeg_svc.add_text_overlays(
+                str(current_path),
+                [ov.model_dump() for ov in body.text_overlays],
+                user.id,
+            )
+            steps.append("text_overlays")
+
+        if audio_asset:
+            current_path = await ffmpeg_svc.add_audio_track(
+                str(current_path),
+                audio_asset.file_path,
+                user.id,
+                mode=body.audio_mode,
+                original_volume=body.audio_original_volume,
+                audio_volume=body.audio_volume,
+            )
+            steps.append("audio_track")
+
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    size = current_path.stat().st_size
+    mime = mimetypes.guess_type(str(current_path))[0] or "video/mp4"
+
+    new_asset = Asset(
+        job_id=body.job_id or clip_assets[0].job_id,
+        user_id=user.id,
+        original_filename=f"export_{clip_assets[0].original_filename}",
+        stored_filename=current_path.name,
+        file_path=str(current_path),
+        file_type="video",
+        mime_type=mime,
+        file_size=size,
+    )
+    db.add(new_asset)
+    await db.commit()
+    await db.refresh(new_asset)
+
+    return ExportResponse(
+        asset=AssetResponse.model_validate(new_asset),
+        duration_seconds=round(time.perf_counter() - t0, 2),
+        steps=steps,
     )

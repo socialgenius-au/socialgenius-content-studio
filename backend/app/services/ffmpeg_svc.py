@@ -158,3 +158,100 @@ async def merge_with_transitions(
         str(out),
     ])
     return out
+
+
+def _escape_drawtext(text: str) -> str:
+    """Escape characters that are special inside an ffmpeg drawtext argument."""
+    return (
+        text.replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+        .replace(",", "\\,")
+    )
+
+
+async def add_text_overlays(
+    input_path: str,
+    overlays: list[dict],
+    user_id: int,
+) -> Path:
+    """Burn one or more timed text overlays into a video.
+
+    Each overlay dict: {text, start, end, x?, y?, font_size?, font_color?}
+    x/y default to horizontal-centered near the bottom of the frame.
+    """
+    if not overlays:
+        raise RuntimeError("add_text_overlays requires at least one overlay")
+
+    out = _out(user_id, "mp4")
+    drawtext_filters = []
+    for ov in overlays:
+        text = _escape_drawtext(str(ov["text"]))
+        start = ov["start"]
+        end = ov["end"]
+        x = ov.get("x", "(w-text_w)/2")
+        y = ov.get("y", "h-th-40")
+        font_size = ov.get("font_size", 42)
+        font_color = ov.get("font_color", "white")
+        drawtext_filters.append(
+            f"drawtext=text='{text}':x={x}:y={y}:fontsize={font_size}:fontcolor={font_color}:"
+            f"box=1:boxcolor=black@0.5:boxborderw=8:"
+            f"enable='between(t,{start},{end})'"
+        )
+    vf = ",".join(drawtext_filters)
+
+    await _run([
+        "ffmpeg", "-y", "-i", input_path,
+        "-vf", vf,
+        "-c:a", "copy",
+        str(out),
+    ])
+    return out
+
+
+async def add_audio_track(
+    input_path: str,
+    audio_path: str,
+    user_id: int,
+    mode: str = "replace",
+    original_volume: float = 0.0,
+    audio_volume: float = 1.0,
+) -> Path:
+    """Attach a separate audio track to a video.
+
+    mode="replace": drop the video's original audio, use only `audio_path`.
+    mode="mix": mix the original audio with `audio_path` at the given volumes.
+    Output duration is capped to the (shorter) video stream length.
+    """
+    out = _out(user_id, "mp4")
+
+    if mode == "replace":
+        await _run([
+            "ffmpeg", "-y",
+            "-i", input_path,
+            "-i", audio_path,
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "copy", "-c:a", "aac",
+            "-shortest",
+            str(out),
+        ])
+    elif mode == "mix":
+        filter_complex = (
+            f"[0:a]volume={original_volume}[a0];"
+            f"[1:a]volume={audio_volume}[a1];"
+            f"[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[aout]"
+        )
+        await _run([
+            "ffmpeg", "-y",
+            "-i", input_path,
+            "-i", audio_path,
+            "-filter_complex", filter_complex,
+            "-map", "0:v", "-map", "[aout]",
+            "-c:v", "copy", "-c:a", "aac",
+            "-shortest",
+            str(out),
+        ])
+    else:
+        raise RuntimeError(f"unknown audio mode: {mode}")
+
+    return out
