@@ -37,6 +37,45 @@ class GenerateResponse(BaseModel):
     saved_to_step: bool
 
 
+class ChatRequest(BaseModel):
+    prompt: str
+    brand_id: int | None = None
+    job_id: int | None = None
+    context: dict = {}
+
+
+class ChatResponse(BaseModel):
+    content: str
+
+
+@router.post("/chat", response_model=ChatResponse)
+@limiter.limit("30/minute")
+async def chat(
+    request: Request,
+    body: ChatRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    brand_context = None
+    if body.brand_id:
+        br = await db.execute(select(Brand).where(Brand.id == body.brand_id, Brand.user_id == user.id))
+        brand = br.scalar_one_or_none()
+        if brand:
+            brand_context = {
+                "name": brand.name,
+                "colors": brand.colors,
+                "fonts": brand.fonts,
+                "tone_of_voice": brand.tone_of_voice,
+            }
+
+    reply = await generate_svc.chat_reply(
+        prompt=body.prompt,
+        brand_context=brand_context,
+        context=body.context,
+    )
+    return ChatResponse(content=reply)
+
+
 @router.post("/", response_model=GenerateResponse)
 @limiter.limit("30/minute")
 async def generate(

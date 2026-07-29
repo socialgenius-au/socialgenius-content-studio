@@ -87,6 +87,7 @@ export const brandsApi = {
 
 export const generateApi = {
   generate: (body: Record<string, unknown>) => api.post('/generate/', body),
+  chat: (body: Record<string, unknown>) => api.post('/generate/chat', body),
 }
 
 export const assetsApi = {
@@ -111,6 +112,6 @@ export const uploadApi = {
     const form = new FormData()
     form.append('file', file)
     const url = job_id ? `/upload/?job_id=${job_id}` : '/upload/'
-    return api.post(url, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    return api.post(url, form)
   },
 }

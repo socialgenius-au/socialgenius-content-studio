@@ -65,3 +65,22 @@ async def generate_content(
             "cta": "",
             "notes": "Raw response — JSON parse failed",
         }
+
+
+CHAT_SYSTEM = """You are SocialGenius, the AI assistant embedded in a social media content studio.
+Help the creator plan, write, and refine content conversationally — be concise and actionable.
+If brand context is provided, follow its tone of voice. Reference the current editor context
+(platform, content type, clip count, playhead position) when it's relevant to the question."""
+
+
+async def chat_reply(prompt: str, brand_context: dict | None, context: dict) -> str:
+    brand_block = f"\nBrand: {json.dumps(brand_context)}" if brand_context else ""
+    ctx_block = f"\nCurrent editor context: {json.dumps(context)}" if context else ""
+
+    message = await get_client().messages.create(
+        model=settings.CLAUDE_MODEL,
+        max_tokens=1024,
+        system=CHAT_SYSTEM,
+        messages=[{"role": "user", "content": f"{prompt}{brand_block}{ctx_block}"}],
+    )
+    return message.content[0].text.strip()

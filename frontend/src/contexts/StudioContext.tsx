@@ -235,7 +235,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setChatLoading(true)
 
     try {
-      const { data } = await generateApi.generate({
+      const { data } = await generateApi.chat({
         prompt: text,
         brand_id: activeBrand?.id,
         job_id: activeJob?.id,
