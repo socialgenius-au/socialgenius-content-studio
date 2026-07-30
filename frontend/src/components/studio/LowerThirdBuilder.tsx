@@ -19,7 +19,7 @@ export default function LowerThirdBuilder() {
   const handleAdd = () => {
     if (!form.name.trim()) return
     const lt: LowerThird = {
-      id: String(Date.now()),
+      id: crypto.randomUUID(),
       name: form.name.trim(),
       title: form.title.trim(),
       animation: form.animation,

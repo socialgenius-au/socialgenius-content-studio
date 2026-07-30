@@ -12,7 +12,7 @@ export default function AudioTrackControls() {
       const asset = await uploadAsset(file, activeJob?.id)
       const url = assetsApi.previewUrl(asset.file_path)
       const track: AudioTrack = {
-        id: String(Date.now()),
+        id: crypto.randomUUID(),
         assetId: asset.id,
         url,
         name: file.name.replace(/\.[^.]+$/, ''),

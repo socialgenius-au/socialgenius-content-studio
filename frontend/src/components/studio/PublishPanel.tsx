@@ -28,7 +28,7 @@ export default function PublishPanel() {
 
   const addLog = (platform: string, status: 'success' | 'error', message: string) => {
     setLogs(prev => [{
-      id: String(Date.now()),
+      id: crypto.randomUUID(),
       timestamp: new Date().toLocaleTimeString(),
       platform, status, message,
     }, ...prev].slice(0, 20))

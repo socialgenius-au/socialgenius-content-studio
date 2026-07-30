@@ -80,7 +80,7 @@ export default function PreviewCanvas() {
         const url = assetsApi.previewUrl(asset.file_path)
         if (file.type.startsWith('video/')) {
           const clip: VideoClip = {
-            id: String(Date.now()),
+            id: crypto.randomUUID(),
             assetId: asset.id,
             url,
             name: file.name,
@@ -95,7 +95,7 @@ export default function PreviewCanvas() {
           addVideoClip(clip)
         } else if (file.type.startsWith('image/')) {
           const slide: ImageSlide = {
-            id: String(Date.now()),
+            id: crypto.randomUUID(),
             assetId: asset.id,
             url,
             name: file.name,

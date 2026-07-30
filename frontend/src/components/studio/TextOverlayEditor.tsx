@@ -16,7 +16,7 @@ export default function TextOverlayEditor() {
   const handleAdd = () => {
     if (!newText.trim()) return
     const overlay: TextOverlay = {
-      id: String(Date.now()),
+      id: crypto.randomUUID(),
       text: newText.trim(),
       x: 5, y: 80,
       width: 90,

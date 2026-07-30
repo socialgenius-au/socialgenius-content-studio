@@ -13,7 +13,7 @@ export default function MediaOverlayEditor() {
       const asset = await uploadAsset(file, activeJob?.id)
       const url = assetsApi.previewUrl(asset.file_path)
       const overlay: MediaOverlay = {
-        id: String(Date.now()),
+        id: crypto.randomUUID(),
         url,
         x: 10,
         y: 10,
