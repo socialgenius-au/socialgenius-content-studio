@@ -112,6 +112,8 @@ export const uploadApi = {
     const form = new FormData()
     form.append('file', file)
     const url = job_id ? `/upload/?job_id=${job_id}` : '/upload/'
-    return api.post(url, form)
+    // Instance default forces Content-Type: application/json — clearing it here lets the
+    // browser set multipart/form-data with the correct boundary for FormData bodies.
+    return api.post(url, form, { headers: { 'Content-Type': undefined } })
   },
 }

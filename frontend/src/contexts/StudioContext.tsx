@@ -300,6 +300,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       return data as Asset
     } catch (err) {
       setUploadProgress(null)
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      const errMsg: ChatMessage = {
+        id: nextId(),
+        role: 'system',
+        content: `Upload failed: ${typeof detail === 'string' ? detail : (err instanceof Error ? err.message : 'unknown error')}`,
+        timestamp: new Date().toISOString(),
+      }
+      setChatMessages(p => [...p, errMsg])
       throw err
     }
   }, [])

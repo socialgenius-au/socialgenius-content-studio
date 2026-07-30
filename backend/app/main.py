@@ -1,13 +1,17 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
+
+logger = logging.getLogger("app")
 
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
@@ -85,6 +89,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Catching Exception here (inside the CORS/ExceptionMiddleware stack) instead of letting it
+# fall through to Starlette's outer ServerErrorMiddleware means CORS headers still get attached
+# to the resulting error response — otherwise the browser reports a same-origin-looking 500 as
+# an opaque CORS failure, hiding the real error from the frontend.
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
