@@ -10,7 +10,7 @@ export default function AudioTrackControls() {
   const handleUpload = async (file: File) => {
     try {
       const asset = await uploadAsset(file, activeJob?.id)
-      const url = assetsApi.downloadUrl(asset.id)
+      const url = assetsApi.previewUrl(asset.file_path)
       const track: AudioTrack = {
         id: String(Date.now()),
         assetId: asset.id,

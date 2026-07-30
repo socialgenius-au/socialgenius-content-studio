@@ -11,7 +11,7 @@ export default function MediaOverlayEditor() {
   const handleUpload = async (file: File) => {
     try {
       const asset = await uploadAsset(file, activeJob?.id)
-      const url = assetsApi.downloadUrl(asset.id)
+      const url = assetsApi.previewUrl(asset.file_path)
       const overlay: MediaOverlay = {
         id: String(Date.now()),
         url,

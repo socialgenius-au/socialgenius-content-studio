@@ -77,7 +77,7 @@ export default function PreviewCanvas() {
     for (const file of files) {
       try {
         const asset = await uploadAsset(file, activeJob?.id)
-        const url = assetsApi.downloadUrl(asset.id)
+        const url = assetsApi.previewUrl(asset.file_path)
         if (file.type.startsWith('video/')) {
           const clip: VideoClip = {
             id: String(Date.now()),

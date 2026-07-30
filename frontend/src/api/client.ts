@@ -95,7 +95,10 @@ export const assetsApi = {
   download: (id: number)                  => api.get(`/assets/${id}/download`, { responseType: 'blob' }),
   delete:   (id: number)                  => api.delete(`/assets/${id}`),
   zip:      (asset_ids: number[])          => api.post('/assets/zip', { asset_ids }, { responseType: 'blob' }),
-  downloadUrl: (id: number)               => `${import.meta.env.VITE_API_URL ?? ''}/assets/${id}/download`,
+  // Unauthenticated static path for <video>/<img>/<audio> src — the /assets/:id/download
+  // route requires a Bearer header that browser-native media/anchor loads never send.
+  // file_path from the backend is relative (e.g. "uploads/1/x.mp4"), no leading slash.
+  previewUrl: (filePath: string)           => `${import.meta.env.VITE_API_URL ?? ''}/uploads/${filePath.replace(/^\/?uploads\//, '')}`,
 }
 
 export const templatesApi = {

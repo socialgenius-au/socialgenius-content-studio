@@ -55,11 +55,14 @@ export default function AssetLibrary() {
     }
   }
 
-  const handleDownload = (asset: Asset) => {
+  const handleDownload = async (asset: Asset) => {
+    const { data } = await assetsApi.download(asset.id)
+    const url = URL.createObjectURL(data as Blob)
     const link = document.createElement('a')
-    link.href = assetsApi.downloadUrl(asset.id)
+    link.href = url
     link.download = asset.original_filename
     link.click()
+    URL.revokeObjectURL(url)
   }
 
   const handleZip = async () => {
@@ -152,7 +155,7 @@ export default function AssetLibrary() {
             {assets.map((asset) => {
               const isThumb = asset.file_type === 'thumbnail'
               const isImg   = asset.file_type === 'image' || isThumb
-              const imgSrc  = isImg ? `${import.meta.env.VITE_API_URL ?? ''}/uploads/${asset.file_path.split('/uploads/')[1] ?? ''}` : null
+              const imgSrc  = isImg ? assetsApi.previewUrl(asset.file_path) : null
 
               return (
                 <div
