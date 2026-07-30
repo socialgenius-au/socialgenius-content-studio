@@ -68,6 +68,11 @@ async def execute_job(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     if not job.plan_json:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Job has no plan yet — run /plan first")
+    if job.plan_json.get("error") or not job.plan_json.get("steps"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Job's plan failed to generate (unparseable Claude response) — re-run /plan before executing",
+        )
     if job.status == "running":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Job is already running")
 
