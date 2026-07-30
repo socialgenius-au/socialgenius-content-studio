@@ -155,10 +155,10 @@ const s: Record<string, CSSProperties> = {
   root: {},
   tabs: { display: 'flex', gap: 4, marginBottom: 10 },
   tab: {
-    flex: 1, padding: '6px', border: '1px solid #ddd', borderRadius: 6,
-    fontSize: 12, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#555',
+    flex: 1, padding: '6px', border: '1px solid var(--border)', borderRadius: 6,
+    fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'var(--input-bg)', color: 'var(--text-secondary)',
   },
-  tabActive: { background: '#1E3D2A', color: '#F5F0E8', borderColor: '#1E3D2A' },
+  tabActive: { background: 'var(--brand-header)', color: 'var(--brand-header-text)', borderColor: 'var(--brand-header)' },
 
   savedBanner: {
     display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
@@ -170,22 +170,22 @@ const s: Record<string, CSSProperties> = {
     color: '#e74c3c', fontSize: 11, cursor: 'pointer', fontWeight: 700,
   },
 
-  form: { background: '#fafaf8', border: '1px solid #e8e3d8', borderRadius: 8, padding: 12 },
+  form: { background: 'var(--panel-surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 },
   field: { marginBottom: 10 },
-  label: { display: 'block', fontSize: 11, fontWeight: 600, color: '#555', marginBottom: 4 },
+  label: { display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 },
   input: {
-    width: '100%', padding: '6px 8px', border: '1px solid #ddd', borderRadius: 5,
-    fontSize: 12, boxSizing: 'border-box',
+    width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 5,
+    fontSize: 12, boxSizing: 'border-box', background: 'var(--input-bg)', color: 'var(--text-primary)',
   },
   durationBtns: { display: 'flex', gap: 6 },
   durBtn: {
-    flex: 1, padding: '6px', border: '1px solid #ddd', borderRadius: 5,
-    fontSize: 12, cursor: 'pointer', background: '#fff',
+    flex: 1, padding: '6px', border: '1px solid var(--border)', borderRadius: 5,
+    fontSize: 12, cursor: 'pointer', background: 'var(--input-bg)', color: 'var(--text-primary)',
   },
-  durBtnActive: { background: '#1E3D2A', color: '#F5F0E8', borderColor: '#1E3D2A' },
+  durBtnActive: { background: 'var(--brand-header)', color: 'var(--brand-header-text)', borderColor: 'var(--brand-header)' },
   chipRow: { display: 'flex', flexWrap: 'wrap', gap: 4 },
-  chip: { padding: '3px 8px', border: '1px solid #ddd', borderRadius: 10, fontSize: 11, cursor: 'pointer', background: '#fff', color: '#555' },
-  chipActive: { background: '#1E3D2A', color: '#F5F0E8', borderColor: '#1E3D2A' },
+  chip: { padding: '3px 8px', border: '1px solid var(--border)', borderRadius: 10, fontSize: 11, cursor: 'pointer', background: 'var(--input-bg)', color: 'var(--text-secondary)' },
+  chipActive: { background: 'var(--brand-header)', color: 'var(--brand-header-text)', borderColor: 'var(--brand-header)' },
 
   preview: { marginBottom: 10 },
   previewScreen: {
@@ -205,11 +205,11 @@ const s: Record<string, CSSProperties> = {
 
   actions: { display: 'flex', gap: 8 },
   saveBtn: {
-    flex: 1, padding: '8px', background: '#1E3D2A', color: '#F5F0E8',
+    flex: 1, padding: '8px', background: 'var(--brand-header)', color: 'var(--brand-header-text)',
     border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
   },
   applyBtn: {
-    flex: 1, padding: '8px', background: '#C89A2E', color: '#1E3D2A',
+    flex: 1, padding: '8px', background: 'var(--brand-accent)', color: 'var(--brand-accent-text)',
     border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer',
   },
 }

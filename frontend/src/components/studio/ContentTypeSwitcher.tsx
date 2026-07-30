@@ -33,16 +33,16 @@ export default function ContentTypeSwitcher() {
 const s: Record<string, CSSProperties> = {
   root: {
     display: 'flex', alignItems: 'center', gap: 2,
-    background: '#1a1a1a', padding: '4px 12px',
-    borderBottom: '1px solid #2a2a2a', flexShrink: 0,
+    background: 'var(--panel-bg)', padding: '4px 12px',
+    borderBottom: '1px solid var(--border)', flexShrink: 0,
   },
   btn: {
     display: 'flex', alignItems: 'center', gap: 6,
     padding: '5px 12px', border: 'none', background: 'transparent',
-    borderRadius: 6, cursor: 'pointer', color: '#888', fontSize: 13,
+    borderRadius: 6, cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 13,
     transition: 'all 0.15s',
   },
-  btnActive: { background: '#1E3D2A', color: '#F5F0E8' },
+  btnActive: { background: 'var(--brand-header)', color: 'var(--brand-header-text)' },
   icon: { fontSize: 14 },
   label: { fontWeight: 600 },
 }
