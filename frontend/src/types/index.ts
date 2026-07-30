@@ -124,6 +124,7 @@ export interface VideoClip {
   contrast: number
   saturation: number
   transition: 'cut' | 'dissolve' | 'whip_pan' | 'fade_black' | 'zoom_punch'
+  transitionDuration: number
 }
 
 export interface TextOverlay {
@@ -162,7 +163,10 @@ export interface AudioTrack {
   url: string
   name: string
   volume: number
-  startAt: number
+  startTime: number
+  endTime: number
+  trimIn: number
+  trimOut: number
   pauseAt?: number
   resumeAt?: number
   fadeIn: number

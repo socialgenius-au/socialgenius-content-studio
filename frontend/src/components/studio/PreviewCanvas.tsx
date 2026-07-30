@@ -90,7 +90,7 @@ export default function PreviewCanvas() {
             trimIn: 0, trimOut: 0,
             colorGrade: 'none', speed: 1,
             brightness: 0, contrast: 0, saturation: 0,
-            transition: 'cut',
+            transition: 'cut', transitionDuration: 0.5,
           }
           addVideoClip(clip)
         } else if (file.type.startsWith('image/')) {

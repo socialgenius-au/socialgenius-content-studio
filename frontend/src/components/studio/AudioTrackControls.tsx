@@ -17,7 +17,9 @@ export default function AudioTrackControls() {
         url,
         name: file.name.replace(/\.[^.]+$/, ''),
         volume: 1,
-        startAt: 0,
+        startTime: audioTracks.reduce((a, t) => Math.max(a, t.endTime), 0),
+        endTime: audioTracks.reduce((a, t) => Math.max(a, t.endTime), 0) + 15,
+        trimIn: 0, trimOut: 0,
         fadeIn: 0,
         fadeOut: 0,
         duck: false,
@@ -93,12 +95,35 @@ function TrackEditor({ track, onUpdate, onRemove }: {
             <span style={s.val}>{Math.round(track.volume * 100)}%</span>
           </Row>
 
-          {/* Start at */}
+          {/* Start / end on the timeline */}
           <Row label="Start at (s)">
             <input
               style={s.numInput} type="number" min={0} step={0.1}
-              value={track.startAt}
-              onChange={e => onUpdate({ startAt: parseFloat(e.target.value) || 0 })}
+              value={track.startTime}
+              onChange={e => onUpdate({ startTime: parseFloat(e.target.value) || 0 })}
+            />
+          </Row>
+          <Row label="End at (s)">
+            <input
+              style={s.numInput} type="number" min={0} step={0.1}
+              value={track.endTime}
+              onChange={e => onUpdate({ endTime: parseFloat(e.target.value) || 0 })}
+            />
+          </Row>
+
+          {/* Trim (same semantics as video clip trim: how much of the source is skipped) */}
+          <Row label="Trim In (s)">
+            <input
+              style={s.numInput} type="number" min={0} step={0.1}
+              value={track.trimIn}
+              onChange={e => onUpdate({ trimIn: parseFloat(e.target.value) || 0 })}
+            />
+          </Row>
+          <Row label="Trim Out (s)">
+            <input
+              style={s.numInput} type="number" min={0} step={0.1}
+              value={track.trimOut}
+              onChange={e => onUpdate({ trimOut: parseFloat(e.target.value) || 0 })}
             />
           </Row>
 

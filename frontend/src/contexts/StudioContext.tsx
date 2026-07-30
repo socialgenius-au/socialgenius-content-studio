@@ -20,12 +20,13 @@ interface TimelineState {
 
 export type RailTool =
   | 'history' | 'templates'
-  | 'video' | 'image' | 'text' | 'audio' | 'media' | 'lower' | 'intro' | 'platform'
+  | 'video' | 'image' | 'text' | 'audio' | 'media' | 'effects' | 'lower' | 'intro' | 'platform'
   | 'seo' | 'publish'
 
 export type SelectedElement =
-  | { type: 'clip'; id: string }
+  | { type: 'clip'; lane: 'video' | 'additional'; id: string }
   | { type: 'text'; id: string }
+  | { type: 'audio'; id: string }
   | null
 
 interface StudioState {
@@ -39,6 +40,9 @@ interface StudioState {
   contentType: ContentType
   platform: Platform
   videoClips: VideoClip[]
+  // Secondary video track — the Timeline's "Additional video" lane (intro/outro/transition
+  // inserts layered alongside the main Video lane). Same shape as a main clip.
+  additionalVideoClips: VideoClip[]
   imageSlides: ImageSlide[]
   textOverlays: TextOverlay[]
   mediaOverlays: MediaOverlay[]
@@ -96,6 +100,11 @@ interface StudioState {
   updateVideoClip: (id: string, upd: Partial<VideoClip>) => void
   removeVideoClip: (id: string) => void
 
+  // Additional video track (2nd lane)
+  addAdditionalVideoClip: (clip: VideoClip) => void
+  updateAdditionalVideoClip: (id: string, upd: Partial<VideoClip>) => void
+  removeAdditionalVideoClip: (id: string) => void
+
   // Image editing
   addImageSlide: (slide: ImageSlide) => void
   updateImageSlide: (id: string, upd: Partial<ImageSlide>) => void
@@ -143,6 +152,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [platform, setPlatform] = useState<Platform>('instagram_reel')
 
   const [videoClips, setVideoClips] = useState<VideoClip[]>([])
+  const [additionalVideoClips, setAdditionalVideoClips] = useState<VideoClip[]>([])
   const [imageSlides, setImageSlides] = useState<ImageSlide[]>([])
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([])
   const [mediaOverlays, _setMediaOverlays] = useState<MediaOverlay[]>([])
@@ -188,6 +198,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setVideoClips(p => p.map(c => c.id === id ? { ...c, ...upd } : c)), [])
   const removeVideoClip = useCallback((id: string) =>
     setVideoClips(p => p.filter(c => c.id !== id)), [])
+
+  // Additional video track (2nd lane) actions
+  const addAdditionalVideoClip = useCallback((clip: VideoClip) => setAdditionalVideoClips(p => [...p, clip]), [])
+  const updateAdditionalVideoClip = useCallback((id: string, upd: Partial<VideoClip>) =>
+    setAdditionalVideoClips(p => p.map(c => c.id === id ? { ...c, ...upd } : c)), [])
+  const removeAdditionalVideoClip = useCallback((id: string) =>
+    setAdditionalVideoClips(p => p.filter(c => c.id !== id)), [])
 
   // Image slide actions
   const addImageSlide = useCallback((slide: ImageSlide) => setImageSlides(p => [...p, slide]), [])
@@ -326,7 +343,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const value: StudioState = {
     activeBrand, activeJob, brands, recentJobs,
     contentType, platform,
-    videoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, lowerThirds, intro, outro,
+    videoClips, additionalVideoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, lowerThirds, intro, outro,
     previewUrl, previewHtml, previewText,
     timeline,
     chatMessages, chatLoading,
@@ -342,6 +359,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setPreviewUrl, setPreviewHtml,
 
     addVideoClip, updateVideoClip, removeVideoClip,
+    addAdditionalVideoClip, updateAdditionalVideoClip, removeAdditionalVideoClip,
     addImageSlide, updateImageSlide, removeImageSlide,
     addTextOverlay, updateTextOverlay, removeTextOverlay,
     addAudioTrack, updateAudioTrack, removeAudioTrack,

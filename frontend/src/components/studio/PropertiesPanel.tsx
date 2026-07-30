@@ -6,6 +6,8 @@ export default function PropertiesPanel() {
     selectedElement, setSelectedElement,
     textOverlays, updateTextOverlay, removeTextOverlay,
     videoClips, updateVideoClip, removeVideoClip,
+    additionalVideoClips, updateAdditionalVideoClip, removeAdditionalVideoClip,
+    audioTracks, updateAudioTrack, removeAudioTrack,
   } = useStudio()
 
   if (!selectedElement) return null
@@ -15,16 +17,22 @@ export default function PropertiesPanel() {
   const overlay = selectedElement.type === 'text'
     ? textOverlays.find(o => o.id === selectedElement.id)
     : undefined
+  const clipList = selectedElement.type === 'clip' && selectedElement.lane === 'additional' ? additionalVideoClips : videoClips
   const clip = selectedElement.type === 'clip'
-    ? videoClips.find(c => c.id === selectedElement.id)
+    ? clipList.find(c => c.id === selectedElement.id)
+    : undefined
+  const updateClip = selectedElement.type === 'clip' && selectedElement.lane === 'additional' ? updateAdditionalVideoClip : updateVideoClip
+  const removeClip = selectedElement.type === 'clip' && selectedElement.lane === 'additional' ? removeAdditionalVideoClip : removeVideoClip
+  const audio = selectedElement.type === 'audio'
+    ? audioTracks.find(t => t.id === selectedElement.id)
     : undefined
 
-  if (!overlay && !clip) return null
+  if (!overlay && !clip && !audio) return null
 
   return (
     <aside style={s.panel}>
       <div style={s.header}>
-        <span style={s.title}>{overlay ? 'Text properties' : 'Clip properties'}</span>
+        <span style={s.title}>{overlay ? 'Text properties' : audio ? 'Audio properties' : 'Clip properties'}</span>
         <button style={s.closeBtn} onClick={close} title="Deselect" aria-label="Deselect">✕</button>
       </div>
 
@@ -87,14 +95,14 @@ export default function PropertiesPanel() {
                 <input
                   style={s.numInput} type="number" min={0} step={0.01}
                   value={clip.trimIn}
-                  onChange={e => updateVideoClip(clip.id, { trimIn: parseFloat(e.target.value) || 0 })}
+                  onChange={e => updateClip(clip.id, { trimIn: parseFloat(e.target.value) || 0 })}
                 />
               </Field>
               <Field label="Trim out (s)">
                 <input
                   style={s.numInput} type="number" min={0} step={0.01}
                   value={clip.trimOut}
-                  onChange={e => updateVideoClip(clip.id, { trimOut: parseFloat(e.target.value) || 0 })}
+                  onChange={e => updateClip(clip.id, { trimOut: parseFloat(e.target.value) || 0 })}
                 />
               </Field>
             </Row>
@@ -104,15 +112,78 @@ export default function PropertiesPanel() {
                   <button
                     key={sp}
                     style={{ ...s.chip, ...(clip.speed === sp ? s.chipActive : {}) }}
-                    onClick={() => updateVideoClip(clip.id, { speed: sp })}
+                    onClick={() => updateClip(clip.id, { speed: sp })}
                   >
                     {sp}x
                   </button>
                 ))}
               </div>
             </Field>
-            <button style={s.removeBtn} onClick={() => { removeVideoClip(clip.id); close() }}>
+            <button style={s.removeBtn} onClick={() => { removeClip(clip.id); close() }}>
               Remove clip
+            </button>
+          </>
+        )}
+
+        {audio && (
+          <>
+            <Field label="Name">
+              <span style={s.staticVal}>{audio.name || 'Untitled track'}</span>
+            </Field>
+            <Field label="Volume">
+              <div style={s.sliderRow}>
+                <input
+                  type="range" min={0} max={2} step={0.05} style={s.slider}
+                  value={audio.volume}
+                  onChange={e => updateAudioTrack(audio.id, { volume: parseFloat(e.target.value) })}
+                />
+                <span style={s.sliderVal}>{Math.round(audio.volume * 100)}%</span>
+              </div>
+            </Field>
+            <Row>
+              <Field label="Trim in (s)">
+                <input
+                  style={s.numInput} type="number" min={0} step={0.01}
+                  value={audio.trimIn}
+                  onChange={e => updateAudioTrack(audio.id, { trimIn: parseFloat(e.target.value) || 0 })}
+                />
+              </Field>
+              <Field label="Trim out (s)">
+                <input
+                  style={s.numInput} type="number" min={0} step={0.01}
+                  value={audio.trimOut}
+                  onChange={e => updateAudioTrack(audio.id, { trimOut: parseFloat(e.target.value) || 0 })}
+                />
+              </Field>
+            </Row>
+            <Row>
+              <Field label="Fade in (s)">
+                <input
+                  style={s.numInput} type="number" min={0} max={10} step={0.1}
+                  value={audio.fadeIn}
+                  onChange={e => updateAudioTrack(audio.id, { fadeIn: parseFloat(e.target.value) || 0 })}
+                />
+              </Field>
+              <Field label="Fade out (s)">
+                <input
+                  style={s.numInput} type="number" min={0} max={10} step={0.1}
+                  value={audio.fadeOut}
+                  onChange={e => updateAudioTrack(audio.id, { fadeOut: parseFloat(e.target.value) || 0 })}
+                />
+              </Field>
+            </Row>
+            <Field label="Auto-duck">
+              <label style={s.toggle}>
+                <input
+                  type="checkbox"
+                  checked={audio.duck}
+                  onChange={e => updateAudioTrack(audio.id, { duck: e.target.checked })}
+                />
+                <span style={s.staticVal}>{audio.duck ? 'On — ducks under voice' : 'Off'}</span>
+              </label>
+            </Field>
+            <button style={s.removeBtn} onClick={() => { removeAudioTrack(audio.id); close() }}>
+              Remove track
             </button>
           </>
         )}
@@ -172,6 +243,11 @@ const s: Record<string, CSSProperties> = {
     fontSize: 11, cursor: 'pointer', background: 'var(--input-bg)', color: 'var(--text-secondary)',
   },
   chipActive: { background: 'var(--brand-header)', color: 'var(--brand-header-text)', borderColor: 'var(--brand-header)' },
+
+  sliderRow: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)' },
+  slider: { flex: 1, accentColor: 'var(--brand-header)' },
+  sliderVal: { fontSize: 11, color: 'var(--text-primary)', width: 36, textAlign: 'right', fontWeight: 600 },
+  toggle: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer' },
 
   removeBtn: {
     padding: 'var(--space-2) var(--space-3)', background: 'transparent', border: '1px solid var(--danger)',

@@ -22,6 +22,7 @@ const GROUPS: RailGroup[] = [
     { key: 'text', icon: '🔤', label: 'Text' },
     { key: 'audio', icon: '🎵', label: 'Audio' },
     { key: 'media', icon: '⊕', label: 'Overlay' },
+    { key: 'effects', icon: '✨', label: 'Effects' },
     { key: 'lower', icon: '🏷️', label: 'Lower Third' },
     { key: 'intro', icon: '⏮', label: 'Intro/Outro' },
     { key: 'platform', icon: '📱', label: 'Platform' },

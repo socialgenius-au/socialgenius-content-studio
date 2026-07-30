@@ -7,6 +7,7 @@ import ImageControls from './ImageControls'
 import TextOverlayEditor from './TextOverlayEditor'
 import AudioTrackControls from './AudioTrackControls'
 import MediaOverlayEditor from './MediaOverlayEditor'
+import EffectsPanel from './EffectsPanel'
 import LowerThirdBuilder from './LowerThirdBuilder'
 import IntroOutroBuilder from './IntroOutroBuilder'
 import PlatformSwitcher from './PlatformSwitcher'
@@ -16,7 +17,7 @@ import PublishPanel from './PublishPanel'
 const TITLES: Record<string, string> = {
   history: 'History', templates: 'Templates',
   video: 'Video', image: 'Image', text: 'Text Overlays', audio: 'Audio Tracks',
-  media: 'Media Overlay', lower: 'Lower Thirds', intro: 'Intro / Outro', platform: 'Platform',
+  media: 'Media Overlay', effects: 'Effects', lower: 'Lower Thirds', intro: 'Intro / Outro', platform: 'Platform',
   seo: 'SEO', publish: 'Publish',
 }
 
@@ -45,6 +46,7 @@ export default function ToolPanel() {
         {activeRailTool === 'text' && <TextOverlayEditor />}
         {activeRailTool === 'audio' && <AudioTrackControls />}
         {activeRailTool === 'media' && <MediaOverlayEditor />}
+        {activeRailTool === 'effects' && <EffectsPanel />}
         {activeRailTool === 'lower' && <LowerThirdBuilder />}
         {activeRailTool === 'intro' && <IntroOutroBuilder />}
         {activeRailTool === 'platform' && <PlatformSwitcher />}
