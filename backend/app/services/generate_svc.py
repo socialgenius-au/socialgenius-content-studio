@@ -70,10 +70,37 @@ async def generate_content(
 CHAT_SYSTEM = """You are SocialGenius, the AI assistant embedded in a social media content studio.
 Help the creator plan, write, and refine content conversationally — be concise and actionable.
 If brand context is provided, follow its tone of voice. Reference the current editor context
-(platform, content type, clip count, playhead position) when it's relevant to the question."""
+(platform, content type, clip count, playhead position) when it's relevant to the question.
+
+If the user's request would take a real, hard-to-reverse action — publishing/sending to an
+external platform, deleting content, or running a costly job — call the request_approval tool
+instead of just describing it in prose. The editor surfaces that as an explicit approve/reject
+step before anything happens. Don't call it for ordinary conversation, suggestions, or in-editor
+edits (trims, colors, text, filters) — those apply immediately without approval."""
+
+APPROVAL_TOOL = {
+    "name": "request_approval",
+    "description": (
+        "Call this when — and only when — carrying out the user's request would take a real, "
+        "hard-to-reverse action: publishing/sending to an external platform (Beehiiv, GMB), "
+        "deleting content, or executing a job that costs real time or API credits. Do not call "
+        "it for ordinary conversation, suggestions, or editing instructions that only change "
+        "local in-editor state — those apply immediately without approval."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "One-sentence, user-facing summary of the action awaiting approval.",
+            },
+        },
+        "required": ["summary"],
+    },
+}
 
 
-async def chat_reply(prompt: str, brand_context: dict | None, context: dict) -> str:
+async def chat_reply(prompt: str, brand_context: dict | None, context: dict) -> dict:
     brand_block = f"\nBrand: {json.dumps(brand_context)}" if brand_context else ""
     ctx_block = f"\nCurrent editor context: {json.dumps(context)}" if context else ""
 
@@ -81,6 +108,25 @@ async def chat_reply(prompt: str, brand_context: dict | None, context: dict) -> 
         model=settings.CLAUDE_MODEL,
         max_tokens=1024,
         system=CHAT_SYSTEM,
+        tools=[APPROVAL_TOOL],
         messages=[{"role": "user", "content": f"{prompt}{brand_block}{ctx_block}"}],
     )
-    return message.content[0].text.strip()
+
+    text_parts: list[str] = []
+    approval_summary: str | None = None
+
+    for block in message.content:
+        if block.type == "text":
+            text_parts.append(block.text)
+        elif block.type == "tool_use" and block.name == "request_approval":
+            approval_summary = str(block.input.get("summary", "")).strip()
+
+    content = "\n".join(p.strip() for p in text_parts if p.strip())
+    if not content:
+        content = approval_summary or ""
+
+    return {
+        "content": content,
+        "needs_approval": approval_summary is not None,
+        "approval_summary": approval_summary,
+    }

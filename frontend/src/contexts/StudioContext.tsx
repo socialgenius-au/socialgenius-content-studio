@@ -255,18 +255,21 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         },
       })
 
-      const reply = (data as { content?: string; text?: string }).content
-        ?? (data as { content?: string; text?: string }).text
-        ?? JSON.stringify(data)
+      const chatData = data as {
+        content?: string
+        needs_approval?: boolean
+        approval_summary?: string | null
+      }
+      const reply = chatData.content || JSON.stringify(data)
 
-      // Check if response includes approval gate
-      const needsApproval = reply.toLowerCase().includes('approve') || reply.toLowerCase().includes('confirm')
+      // The backend signals approval explicitly via a tool call (request_approval),
+      // not by guessing from words like "approve"/"confirm" in the reply text.
       let gate: ApprovalGate | undefined
 
-      if (needsApproval) {
+      if (chatData.needs_approval) {
         gate = {
           id: nextId(),
-          message: reply,
+          message: chatData.approval_summary || reply,
           status: 'waiting',
           timestamp: new Date().toISOString(),
         }

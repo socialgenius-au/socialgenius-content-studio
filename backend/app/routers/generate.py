@@ -46,6 +46,8 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     content: str
+    needs_approval: bool = False
+    approval_summary: str | None = None
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -73,7 +75,7 @@ async def chat(
         brand_context=brand_context,
         context=body.context,
     )
-    return ChatResponse(content=reply)
+    return ChatResponse(**reply)
 
 
 @router.post("/", response_model=GenerateResponse)
