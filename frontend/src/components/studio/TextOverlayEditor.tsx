@@ -80,7 +80,7 @@ function OverlayEditor({ overlay, onUpdate, onRemove, maxTime }: {
       <div style={s.cardHeader} onClick={() => setOpen(v => !v)}>
         <span style={s.previewText}>{overlay.text.slice(0, 30)}</span>
         <button style={s.removeBtn} onClick={e => { e.stopPropagation(); onRemove() }}>×</button>
-        <span style={{ color: '#aaa', fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+        <span style={{ color: 'var(--text-tertiary)', fontSize: 10 }}>{open ? '▲' : '▼'}</span>
       </div>
 
       {open && (
@@ -208,48 +208,48 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 const s: Record<string, CSSProperties> = {
   root: {},
-  addRow: { display: 'flex', gap: 6, marginBottom: 10 },
+  addRow: { display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' },
   textInput: {
-    flex: 1, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 6,
-    fontSize: 13, outline: 'none',
+    flex: 1, padding: 'var(--space-2) var(--space-3)', border: '1px solid var(--border)', borderRadius: 6,
+    fontSize: 13, outline: 'none', background: 'var(--input-bg)', color: 'var(--text-primary)',
   },
   addBtn: {
-    background: '#1E3D2A', color: '#F5F0E8', border: 'none',
-    borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+    background: 'var(--brand-header)', color: 'var(--brand-header-text)', border: 'none',
+    borderRadius: 6, padding: 'var(--space-2) var(--space-3)', fontSize: 12, fontWeight: 700, cursor: 'pointer',
   },
-  empty: { color: '#aaa', fontSize: 12, textAlign: 'center', padding: '12px 0' },
-  list: { display: 'flex', flexDirection: 'column', gap: 8 },
+  empty: { color: 'var(--text-tertiary)', fontSize: 12, textAlign: 'center', padding: 'var(--space-3) 0' },
+  list: { display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' },
 
-  card: { border: '1px solid #e8e3d8', borderRadius: 8, overflow: 'hidden', background: '#fafaf8' },
+  card: { border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'var(--panel-surface)' },
   cardHeader: {
-    display: 'flex', alignItems: 'center', padding: '8px 10px',
-    cursor: 'pointer', background: '#fff', borderBottom: '1px solid #e8e3d8', gap: 6,
+    display: 'flex', alignItems: 'center', padding: 'var(--space-2) var(--space-3)',
+    cursor: 'pointer', background: 'var(--panel-bg)', borderBottom: '1px solid var(--border)', gap: 'var(--space-2)',
   },
-  previewText: { flex: 1, fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  removeBtn: { background: 'none', border: 'none', color: '#e74c3c', fontSize: 16, cursor: 'pointer' },
-  cardBody: { padding: '10px 12px' },
+  previewText: { flex: 1, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  removeBtn: { background: 'none', border: 'none', color: 'var(--danger)', fontSize: 16, cursor: 'pointer' },
+  cardBody: { padding: 'var(--space-3) var(--space-3)' },
   textarea: {
-    width: '100%', padding: '6px 8px', border: '1px solid #ddd', borderRadius: 5,
+    width: '100%', padding: 'var(--space-2) var(--space-2)', border: '1px solid var(--border)', borderRadius: 5,
     fontSize: 12, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box',
-    marginBottom: 8,
+    marginBottom: 'var(--space-2)', background: 'var(--input-bg)', color: 'var(--text-primary)',
   },
 
-  sectionTitle: { fontSize: 10, fontWeight: 800, color: '#C89A2E', textTransform: 'uppercase', letterSpacing: 0.8, margin: '8px 0 4px' },
-  row: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 },
-  rowLabel: { fontSize: 11, color: '#666', width: 70, flexShrink: 0 },
-  select: { flex: 1, padding: '4px 6px', border: '1px solid #ddd', borderRadius: 4, fontSize: 12 },
-  numInput: { width: 60, padding: '3px 6px', border: '1px solid #ddd', borderRadius: 4, fontSize: 12 },
+  sectionTitle: { fontSize: 10, fontWeight: 800, color: 'var(--brand-accent)', textTransform: 'uppercase', letterSpacing: 0.8, margin: 'var(--space-2) 0 var(--space-1)' },
+  row: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' },
+  rowLabel: { fontSize: 11, color: 'var(--text-secondary)', width: 70, flexShrink: 0 },
+  select: { flex: 1, padding: 'var(--space-1) var(--space-2)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, background: 'var(--input-bg)', color: 'var(--text-primary)' },
+  numInput: { width: 60, padding: '3px var(--space-2)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, background: 'var(--input-bg)', color: 'var(--text-primary)' },
   toggleRow: { display: 'flex', gap: 3 },
   fmtBtn: {
-    width: 26, height: 26, border: '1px solid #ddd', borderRadius: 4,
-    background: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+    width: 26, height: 26, border: '1px solid var(--border)', borderRadius: 4,
+    background: 'var(--input-bg)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12, fontWeight: 700,
   },
-  fmtBtnActive: { background: '#1E3D2A', color: '#fff', borderColor: '#1E3D2A' },
-  colorPicker: { width: 30, height: 24, border: '1px solid #ddd', borderRadius: 3, padding: 1, cursor: 'pointer' },
-  colorHex: { fontSize: 11, color: '#888', fontFamily: 'monospace' },
-  slider: { flex: 1, accentColor: '#1E3D2A' },
+  fmtBtnActive: { background: 'var(--brand-header)', color: 'var(--brand-header-text)', borderColor: 'var(--brand-header)' },
+  colorPicker: { width: 30, height: 24, border: '1px solid var(--border)', borderRadius: 3, padding: 1, cursor: 'pointer' },
+  colorHex: { fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'monospace' },
+  slider: { flex: 1, accentColor: 'var(--brand-header)' },
 
-  chipRow: { display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 },
-  chip: { padding: '3px 7px', border: '1px solid #ddd', borderRadius: 10, fontSize: 10, cursor: 'pointer', background: '#fff', color: '#555' },
-  chipActive: { background: '#1E3D2A', color: '#F5F0E8', borderColor: '#1E3D2A' },
+  chipRow: { display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)', marginBottom: 'var(--space-1)' },
+  chip: { padding: '3px var(--space-2)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 10, cursor: 'pointer', background: 'var(--input-bg)', color: 'var(--text-secondary)' },
+  chipActive: { background: 'var(--brand-header)', color: 'var(--brand-header-text)', borderColor: 'var(--brand-header)' },
 }

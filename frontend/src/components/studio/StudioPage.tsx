@@ -1,9 +1,11 @@
 import { useEffect, type CSSProperties } from 'react'
 import { StudioProvider } from '../../contexts/StudioContext'
+import { ThemeProvider } from '../../contexts/ThemeContext'
 import TopBar from './TopBar'
-import LeftPanel from './LeftPanel'
+import IconRail from './IconRail'
+import ToolPanel from './ToolPanel'
 import PreviewCanvas from './PreviewCanvas'
-import RightPanel from './RightPanel'
+import PropertiesPanel from './PropertiesPanel'
 import ChatBar from './ChatBar'
 import ContentTypeSwitcher from './ContentTypeSwitcher'
 
@@ -34,14 +36,15 @@ function StudioLayout() {
       {/* Content type switcher */}
       <ContentTypeSwitcher />
 
-      {/* Main 3-column layout */}
+      {/* Icon-rail + expandable tool panel + canvas + contextual properties panel */}
       <div style={s.workspace}>
-        <RightPanel />
+        <IconRail />
+        <ToolPanel />
         <PreviewCanvas />
-        <LeftPanel />
+        <PropertiesPanel />
       </div>
 
-      {/* Chat bar at bottom */}
+      {/* Chat bar at bottom — unchanged, core product differentiator */}
       <ChatBar />
     </div>
   )
@@ -49,9 +52,11 @@ function StudioLayout() {
 
 export default function StudioPage() {
   return (
-    <StudioProvider>
-      <StudioLayout />
-    </StudioProvider>
+    <ThemeProvider>
+      <StudioProvider>
+        <StudioLayout />
+      </StudioProvider>
+    </ThemeProvider>
   )
 }
 
@@ -60,7 +65,7 @@ const s: Record<string, CSSProperties> = {
     height: '100vh',
     display: 'flex',
     flexDirection: 'column',
-    background: '#111',
+    background: 'var(--canvas-bg)',
     overflow: 'hidden',
     fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
   },

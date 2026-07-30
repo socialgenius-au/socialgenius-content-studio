@@ -16,6 +16,7 @@ export default function PreviewCanvas() {
     addVideoClip, addImageSlide,
     uploadAsset, activeJob,
     activeBrand,
+    selectedElement, setSelectedElement,
   } = useStudio()
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -156,11 +157,12 @@ export default function PreviewCanvas() {
           ...s.canvasWrap,
           width: canvasSize.w,
           height: canvasSize.h,
-          outline: draggingOver ? '3px dashed #C89A2E' : '2px solid #333',
+          outline: draggingOver ? '3px dashed var(--brand-accent)' : '2px solid var(--canvas-surface)',
         }}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        onClick={() => setSelectedElement(null)}
       >
         {/* Safe zone overlay */}
         {safeZone && (
@@ -253,31 +255,37 @@ export default function PreviewCanvas() {
         )}
 
         {/* Text overlays */}
-        {textOverlays.map(o => (
-          <div
-            key={o.id}
-            style={{
-              position: 'absolute',
-              left: `${o.x}%`, top: `${o.y}%`,
-              width: `${o.width}%`,
-              fontFamily: o.fontFamily,
-              fontSize: o.fontSize * (canvasSize.w / 1080),
-              fontWeight: o.bold ? 700 : 400,
-              fontStyle: o.italic ? 'italic' : 'normal',
-              color: o.color,
-              background: o.bgColor !== 'transparent'
-                ? `${o.bgColor}${Math.round(o.bgOpacity * 255).toString(16).padStart(2, '0')}`
-                : 'transparent',
-              padding: '2px 6px',
-              borderRadius: 3,
-              cursor: 'move',
-              userSelect: 'none',
-              pointerEvents: 'all',
-            }}
-          >
-            {o.text}
-          </div>
-        ))}
+        {textOverlays.map(o => {
+          const isSelected = selectedElement?.type === 'text' && selectedElement.id === o.id
+          return (
+            <div
+              key={o.id}
+              onClick={e => { e.stopPropagation(); setSelectedElement({ type: 'text', id: o.id }) }}
+              style={{
+                position: 'absolute',
+                left: `${o.x}%`, top: `${o.y}%`,
+                width: `${o.width}%`,
+                fontFamily: o.fontFamily,
+                fontSize: o.fontSize * (canvasSize.w / 1080),
+                fontWeight: o.bold ? 700 : 400,
+                fontStyle: o.italic ? 'italic' : 'normal',
+                color: o.color,
+                background: o.bgColor !== 'transparent'
+                  ? `${o.bgColor}${Math.round(o.bgOpacity * 255).toString(16).padStart(2, '0')}`
+                  : 'transparent',
+                padding: '2px 6px',
+                borderRadius: 3,
+                cursor: 'move',
+                userSelect: 'none',
+                pointerEvents: 'all',
+                outline: isSelected ? '2px solid var(--brand-accent)' : 'none',
+                outlineOffset: 2,
+              }}
+            >
+              {o.text}
+            </div>
+          )
+        })}
 
         {/* Play button overlay for video */}
         {contentType === 'video' && currentVideoUrl && (
@@ -326,11 +334,11 @@ export default function PreviewCanvas() {
 
 const s: Record<string, CSSProperties> = {
   root: {
-    width: '60vw', display: 'flex', flexDirection: 'column', alignItems: 'center',
-    background: '#111', overflow: 'hidden', position: 'relative', minWidth: 0,
+    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+    background: 'var(--canvas-bg)', overflow: 'hidden', position: 'relative', minWidth: 0,
   },
   platformLabel: {
-    color: '#888', fontSize: 11, fontWeight: 600, padding: '6px 0 4px',
+    color: 'var(--text-secondary)', fontSize: 11, fontWeight: 600, padding: 'var(--space-2) 0 var(--space-1)',
     letterSpacing: 0.5, textTransform: 'uppercase',
   },
   canvasWrap: {
@@ -343,7 +351,7 @@ const s: Record<string, CSSProperties> = {
     alignItems: 'center', justifyContent: 'center', gap: 12,
   },
   dropIcon: { fontSize: 40, lineHeight: 1 },
-  dropText: { color: '#666', fontSize: 13, textAlign: 'center', maxWidth: 200, margin: 0 },
+  dropText: { color: 'var(--text-secondary)', fontSize: 13, textAlign: 'center', maxWidth: 200, margin: 0 },
 
   safeZone: { position: 'absolute', left: 0, right: 0, zIndex: 10, pointerEvents: 'none' },
 
@@ -357,15 +365,15 @@ const s: Record<string, CSSProperties> = {
     zIndex: 20,
   },
 
-  slideNav: { display: 'flex', gap: 6, padding: '6px 0' },
+  slideNav: { display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-2) 0' },
   slideDot: { width: 8, height: 8, borderRadius: '50%', border: 'none', cursor: 'pointer' },
 
-  canvasToolbar: { display: 'flex', gap: 8, padding: '6px 0' },
+  canvasToolbar: { display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-2) 0' },
   toolbarBtn: {
-    background: '#333', border: '1px solid #555', color: '#ccc',
-    padding: '3px 10px', borderRadius: 4, fontSize: 11, cursor: 'pointer',
+    background: 'var(--canvas-surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+    padding: '3px var(--space-3)', borderRadius: 4, fontSize: 11, cursor: 'pointer',
   },
-  toolbarBtnActive: { background: '#1E3D2A', color: '#C89A2E', borderColor: '#C89A2E' },
+  toolbarBtnActive: { background: 'var(--brand-header)', color: 'var(--brand-accent)', borderColor: 'var(--brand-accent)' },
 
   blogPreview: {
     width: '100%', height: '100%', overflowY: 'auto',

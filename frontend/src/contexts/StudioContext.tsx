@@ -18,6 +18,16 @@ interface TimelineState {
   markOut: number | null
 }
 
+export type RailTool =
+  | 'history' | 'templates'
+  | 'video' | 'image' | 'text' | 'audio' | 'media' | 'lower' | 'intro' | 'platform'
+  | 'seo' | 'publish'
+
+export type SelectedElement =
+  | { type: 'clip'; id: string }
+  | { type: 'text'; id: string }
+  | null
+
 interface StudioState {
   // Brand / Job
   activeBrand: Brand | null
@@ -52,13 +62,13 @@ interface StudioState {
   // SEO
   seoPackage: SEOPackage | null
 
-  // Left panel
-  leftPanelOpen: boolean
-  leftPanelTab: 'templates' | 'history'
   templates: Template[]
 
-  // Right panel tab
-  rightPanelTab: 'editing' | 'seo' | 'publish'
+  // Icon-rail: which tool panel is expanded (null = collapsed, canvas gets full width)
+  activeRailTool: RailTool | null
+
+  // Contextual properties panel: which canvas/timeline element is selected
+  selectedElement: SelectedElement
 
   // Upload progress
   uploadProgress: number | null
@@ -72,9 +82,8 @@ interface StudioState {
   setPlatform: (p: Platform) => void
   setContentType: (t: ContentType) => void
   setTimeline: (upd: Partial<TimelineState>) => void
-  setLeftPanelOpen: (v: boolean) => void
-  setLeftPanelTab: (t: 'templates' | 'history') => void
-  setRightPanelTab: (t: 'editing' | 'seo' | 'publish') => void
+  setActiveRailTool: (t: RailTool | null) => void
+  setSelectedElement: (e: SelectedElement) => void
   setBrands: (b: Brand[]) => void
   setRecentJobs: (j: Job[]) => void
   setTemplates: (t: Template[]) => void
@@ -161,9 +170,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [chatLoading, setChatLoading] = useState(false)
   const [seoPackage, setSeoPackage] = useState<SEOPackage | null>(null)
 
-  const [leftPanelOpen, setLeftPanelOpen] = useState(true)
-  const [leftPanelTab, setLeftPanelTab] = useState<'templates' | 'history'>('history')
-  const [rightPanelTab, setRightPanelTab] = useState<'editing' | 'seo' | 'publish'>('editing')
+  const [activeRailTool, setActiveRailTool] = useState<RailTool | null>('video')
+  const [selectedElement, setSelectedElement] = useState<SelectedElement>(null)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [pendingApproval, setPendingApproval] = useState<ApprovalGate | null>(null)
 
@@ -320,13 +328,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     timeline,
     chatMessages, chatLoading,
     seoPackage,
-    leftPanelOpen, leftPanelTab, templates,
-    rightPanelTab,
+    templates,
+    activeRailTool, selectedElement,
     uploadProgress,
     pendingApproval,
 
     setActiveBrand, setActiveJob, setPlatform, setContentType,
-    setTimeline, setLeftPanelOpen, setLeftPanelTab, setRightPanelTab,
+    setTimeline, setActiveRailTool, setSelectedElement,
     setBrands, setRecentJobs, setTemplates, setSeoPackage,
     setPreviewUrl, setPreviewHtml,
 

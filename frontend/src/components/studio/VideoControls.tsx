@@ -175,40 +175,40 @@ const GRADE_LABELS: Record<string, string> = {
 }
 
 const s: Record<string, CSSProperties> = {
-  root: { display: 'flex', flexDirection: 'column', gap: 8 },
-  empty: { color: '#aaa', fontSize: 12, textAlign: 'center', padding: '24px 8px', lineHeight: 1.8 },
+  root: { display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' },
+  empty: { color: 'var(--text-tertiary)', fontSize: 12, textAlign: 'center', padding: 'var(--space-6) var(--space-2)', lineHeight: 1.8 },
 
-  clipCard: { border: '1px solid #e8e3d8', borderRadius: 8, overflow: 'hidden', background: '#fafaf8' },
+  clipCard: { border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'var(--panel-surface)' },
   clipHeader: {
-    display: 'flex', alignItems: 'center', padding: '8px 10px', cursor: 'pointer',
-    gap: 6, background: '#fff', borderBottom: '1px solid #e8e3d8',
+    display: 'flex', alignItems: 'center', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer',
+    gap: 'var(--space-2)', background: 'var(--panel-bg)', borderBottom: '1px solid var(--border)',
   },
   clipNum: {
-    width: 20, height: 20, borderRadius: '50%', background: '#1E3D2A',
-    color: '#fff', fontSize: 10, fontWeight: 800, display: 'flex',
+    width: 20, height: 20, borderRadius: '50%', background: 'var(--brand-header)',
+    color: 'var(--brand-header-text)', fontSize: 10, fontWeight: 800, display: 'flex',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  clipName: { flex: 1, fontSize: 12, fontWeight: 700, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  removeBtn: { background: 'none', border: 'none', color: '#e74c3c', fontSize: 16, cursor: 'pointer', padding: '0 4px' },
-  chevron: { color: '#aaa', fontSize: 10 },
+  clipName: { flex: 1, fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  removeBtn: { background: 'none', border: 'none', color: 'var(--danger)', fontSize: 16, cursor: 'pointer', padding: '0 var(--space-1)' },
+  chevron: { color: 'var(--text-tertiary)', fontSize: 10 },
 
-  clipBody: { padding: '10px 12px' },
+  clipBody: { padding: 'var(--space-3) var(--space-3)' },
 
-  sectionTitle: { fontSize: 10, fontWeight: 800, color: '#C89A2E', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
-  row: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 },
-  rowLabel: { fontSize: 11, color: '#666', flex: 1 },
-  numInput: { width: 70, padding: '3px 6px', border: '1px solid #ddd', borderRadius: 4, fontSize: 12 },
-  select: { width: '100%', padding: '5px 8px', border: '1px solid #ddd', borderRadius: 5, fontSize: 12 },
+  sectionTitle: { fontSize: 10, fontWeight: 800, color: 'var(--brand-accent)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 'var(--space-2)' },
+  row: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-1)' },
+  rowLabel: { fontSize: 11, color: 'var(--text-secondary)', flex: 1 },
+  numInput: { width: 70, padding: '3px var(--space-2)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, background: 'var(--input-bg)', color: 'var(--text-primary)' },
+  select: { width: '100%', padding: 'var(--space-1) var(--space-2)', border: '1px solid var(--border)', borderRadius: 5, fontSize: 12, background: 'var(--input-bg)', color: 'var(--text-primary)' },
 
-  chipRow: { display: 'flex', flexWrap: 'wrap', gap: 4 },
+  chipRow: { display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' },
   chip: {
-    padding: '3px 8px', border: '1px solid #ddd', borderRadius: 10,
-    fontSize: 11, cursor: 'pointer', background: '#fff', color: '#555',
+    padding: '3px var(--space-2)', border: '1px solid var(--border)', borderRadius: 10,
+    fontSize: 11, cursor: 'pointer', background: 'var(--input-bg)', color: 'var(--text-secondary)',
   },
-  chipActive: { background: '#1E3D2A', color: '#F5F0E8', borderColor: '#1E3D2A' },
+  chipActive: { background: 'var(--brand-header)', color: 'var(--brand-header-text)', borderColor: 'var(--brand-header)' },
 
-  sliderRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 },
-  sliderLabel: { fontSize: 11, color: '#666', width: 70 },
-  slider: { flex: 1, accentColor: '#1E3D2A' },
-  sliderVal: { fontSize: 11, color: '#333', width: 32, textAlign: 'right' },
+  sliderRow: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-1)' },
+  sliderLabel: { fontSize: 11, color: 'var(--text-secondary)', width: 70 },
+  slider: { flex: 1, accentColor: 'var(--brand-header)' },
+  sliderVal: { fontSize: 11, color: 'var(--text-primary)', width: 32, textAlign: 'right' },
 }

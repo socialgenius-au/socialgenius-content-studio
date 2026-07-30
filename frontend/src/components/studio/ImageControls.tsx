@@ -58,7 +58,7 @@ function SlideEditor({ slide, idx, onUpdate, onRemove }: {
         <span style={s.num}>{idx + 1}</span>
         <span style={s.name}>{slide.name || `Slide ${idx + 1}`}</span>
         <button style={s.removeBtn} onClick={e => { e.stopPropagation(); onRemove() }}>×</button>
-        <span style={{ color: '#aaa', fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+        <span style={{ color: 'var(--text-tertiary)', fontSize: 10 }}>{open ? '▲' : '▼'}</span>
       </div>
 
       {open && (
@@ -125,26 +125,26 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 const s: Record<string, CSSProperties> = {
-  root: { display: 'flex', flexDirection: 'column', gap: 8 },
-  empty: { color: '#aaa', fontSize: 12, textAlign: 'center', padding: '24px 0' },
-  card: { border: '1px solid #e8e3d8', borderRadius: 8, overflow: 'hidden', background: '#fafaf8' },
+  root: { display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' },
+  empty: { color: 'var(--text-tertiary)', fontSize: 12, textAlign: 'center', padding: 'var(--space-6) 0' },
+  card: { border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'var(--panel-surface)' },
   cardHeader: {
-    display: 'flex', alignItems: 'center', padding: '8px 10px',
-    cursor: 'pointer', background: '#fff', borderBottom: '1px solid #e8e3d8', gap: 6,
+    display: 'flex', alignItems: 'center', padding: 'var(--space-2) var(--space-3)',
+    cursor: 'pointer', background: 'var(--panel-bg)', borderBottom: '1px solid var(--border)', gap: 'var(--space-2)',
   },
   num: {
-    width: 20, height: 20, borderRadius: '50%', background: '#C89A2E',
-    color: '#1E3D2A', fontSize: 10, fontWeight: 800, display: 'flex',
+    width: 20, height: 20, borderRadius: '50%', background: 'var(--brand-accent)',
+    color: 'var(--brand-accent-text)', fontSize: 10, fontWeight: 800, display: 'flex',
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  name: { flex: 1, fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  removeBtn: { background: 'none', border: 'none', color: '#e74c3c', fontSize: 16, cursor: 'pointer' },
-  cardBody: { padding: '10px 12px' },
-  sectionTitle: { fontSize: 10, fontWeight: 800, color: '#C89A2E', textTransform: 'uppercase', letterSpacing: 0.8, margin: '8px 0 5px' },
-  chipRow: { display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 },
-  chip: { padding: '3px 7px', border: '1px solid #ddd', borderRadius: 10, fontSize: 10, cursor: 'pointer', background: '#fff', color: '#555' },
-  chipActive: { background: '#1E3D2A', color: '#F5F0E8', borderColor: '#1E3D2A' },
-  row: { display: 'flex', alignItems: 'center', gap: 8 },
-  rowLabel: { fontSize: 11, color: '#666', flex: 1 },
-  numInput: { width: 60, padding: '3px 6px', border: '1px solid #ddd', borderRadius: 4, fontSize: 12 },
+  name: { flex: 1, fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  removeBtn: { background: 'none', border: 'none', color: 'var(--danger)', fontSize: 16, cursor: 'pointer' },
+  cardBody: { padding: 'var(--space-3) var(--space-3)' },
+  sectionTitle: { fontSize: 10, fontWeight: 800, color: 'var(--brand-accent)', textTransform: 'uppercase', letterSpacing: 0.8, margin: 'var(--space-2) 0 var(--space-1)' },
+  chipRow: { display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)', marginBottom: 'var(--space-2)' },
+  chip: { padding: '3px var(--space-2)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 10, cursor: 'pointer', background: 'var(--input-bg)', color: 'var(--text-secondary)' },
+  chipActive: { background: 'var(--brand-header)', color: 'var(--brand-header-text)', borderColor: 'var(--brand-header)' },
+  row: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)' },
+  rowLabel: { fontSize: 11, color: 'var(--text-secondary)', flex: 1 },
+  numInput: { width: 60, padding: '3px var(--space-2)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, background: 'var(--input-bg)', color: 'var(--text-primary)' },
 }

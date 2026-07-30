@@ -82,7 +82,7 @@ function OverlayCard({ overlay, onUpdate, onRemove }: {
         <span style={s.icon}>{isVideo ? '🎬' : '🖼️'}</span>
         <span style={s.name}>{isVideo ? 'Video overlay' : 'Image overlay'}</span>
         <button style={s.removeBtn} onClick={e => { e.stopPropagation(); onRemove() }}>×</button>
-        <span style={{ color: '#aaa', fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+        <span style={{ color: 'var(--text-tertiary)', fontSize: 10 }}>{open ? '▲' : '▼'}</span>
       </div>
 
       {open && (
@@ -132,8 +132,8 @@ function OverlayCard({ overlay, onUpdate, onRemove }: {
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-      <span style={{ fontSize: 11, color: '#666', width: 70, flexShrink: 0 }}>{label}</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+      <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: 70, flexShrink: 0 }}>{label}</span>
       {children}
     </div>
   )
@@ -142,28 +142,28 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 const s: Record<string, CSSProperties> = {
   root: {},
   uploadBtn: {
-    width: '100%', padding: '8px', background: '#1E3D2A', color: '#F5F0E8',
+    width: '100%', padding: 'var(--space-2)', background: 'var(--brand-header)', color: 'var(--brand-header-text)',
     border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-    marginBottom: 6,
+    marginBottom: 'var(--space-2)',
   },
-  hint: { fontSize: 11, color: '#888', marginBottom: 10, lineHeight: 1.5 },
-  empty: { color: '#aaa', fontSize: 12, textAlign: 'center', padding: '12px 0' },
-  list: { display: 'flex', flexDirection: 'column', gap: 8 },
+  hint: { fontSize: 11, color: 'var(--text-secondary)', marginBottom: 'var(--space-3)', lineHeight: 1.5 },
+  empty: { color: 'var(--text-tertiary)', fontSize: 12, textAlign: 'center', padding: 'var(--space-3) 0' },
+  list: { display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' },
 
-  card: { border: '1px solid #e8e3d8', borderRadius: 8, overflow: 'hidden', background: '#fafaf8' },
+  card: { border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', background: 'var(--panel-surface)' },
   cardHeader: {
-    display: 'flex', alignItems: 'center', padding: '8px 10px',
-    cursor: 'pointer', background: '#fff', borderBottom: '1px solid #e8e3d8', gap: 6,
+    display: 'flex', alignItems: 'center', padding: 'var(--space-2) var(--space-3)',
+    cursor: 'pointer', background: 'var(--panel-bg)', borderBottom: '1px solid var(--border)', gap: 'var(--space-2)',
   },
   icon: { fontSize: 14 },
-  name: { flex: 1, fontSize: 12, fontWeight: 700 },
-  removeBtn: { background: 'none', border: 'none', color: '#e74c3c', fontSize: 16, cursor: 'pointer' },
-  cardBody: { padding: '10px 12px' },
-  thumb: { width: '100%', borderRadius: 4, marginBottom: 8, maxHeight: 80, objectFit: 'cover' },
+  name: { flex: 1, fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' },
+  removeBtn: { background: 'none', border: 'none', color: 'var(--danger)', fontSize: 16, cursor: 'pointer' },
+  cardBody: { padding: 'var(--space-3) var(--space-3)' },
+  thumb: { width: '100%', borderRadius: 4, marginBottom: 'var(--space-2)', maxHeight: 80, objectFit: 'cover' },
 
-  sliderRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 },
-  sliderLabel: { fontSize: 11, color: '#666', width: 70 },
-  slider: { flex: 1, accentColor: '#1E3D2A' },
-  sliderVal: { fontSize: 11, color: '#333', width: 36, textAlign: 'right' },
-  num: { width: 70, padding: '3px 6px', border: '1px solid #ddd', borderRadius: 4, fontSize: 12 },
+  sliderRow: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' },
+  sliderLabel: { fontSize: 11, color: 'var(--text-secondary)', width: 70 },
+  slider: { flex: 1, accentColor: 'var(--brand-header)' },
+  sliderVal: { fontSize: 11, color: 'var(--text-primary)', width: 36, textAlign: 'right' },
+  num: { width: 70, padding: '3px var(--space-2)', border: '1px solid var(--border)', borderRadius: 4, fontSize: 12, background: 'var(--input-bg)', color: 'var(--text-primary)' },
 }

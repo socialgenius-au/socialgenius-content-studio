@@ -7,7 +7,10 @@ interface Props {
 }
 
 export default function Timeline({ videoRef }: Props) {
-  const { timeline, setTimeline, videoClips, textOverlays, audioTracks } = useStudio()
+  const {
+    timeline, setTimeline, videoClips, textOverlays, audioTracks,
+    selectedElement, setSelectedElement,
+  } = useStudio()
   const trackRef = useRef<HTMLDivElement>(null)
 
   const seek = useCallback((e: MouseEvent<HTMLDivElement>) => {
@@ -97,13 +100,21 @@ export default function Timeline({ videoRef }: Props) {
           {videoClips.map((clip, i) => {
             const startPct = timeline.duration > 0 ? (clip.startTime / timeline.duration) * 100 : 0
             const durPct = timeline.duration > 0 ? ((clip.endTime - clip.startTime) / timeline.duration) * 100 : (100 / Math.max(videoClips.length, 1))
+            const isSelected = selectedElement?.type === 'clip' && selectedElement.id === clip.id
             return (
-              <div key={clip.id} style={{
-                ...s.clipBlock,
-                left: `${startPct}%`,
-                width: `${durPct}%`,
-                background: CLIP_COLORS[i % CLIP_COLORS.length],
-              }}>
+              <div
+                key={clip.id}
+                onClick={e => { e.stopPropagation(); setSelectedElement({ type: 'clip', id: clip.id }) }}
+                style={{
+                  ...s.clipBlock,
+                  left: `${startPct}%`,
+                  width: `${durPct}%`,
+                  background: CLIP_COLORS[i % CLIP_COLORS.length],
+                  cursor: 'pointer',
+                  outline: isSelected ? '2px solid var(--brand-accent)' : 'none',
+                  outlineOffset: -2,
+                }}
+              >
                 <span style={s.clipLabel}>{clip.name || `Clip ${i + 1}`}</span>
               </div>
             )
@@ -162,26 +173,26 @@ const CLIP_COLORS = ['#1E3D2A88', '#2980b988', '#8e44ad88', '#e67e2288', '#16a08
 
 const s: Record<string, CSSProperties> = {
   root: {
-    background: '#1a1a1a', padding: '8px 12px',
-    display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0,
+    background: 'var(--canvas-bg)', padding: 'var(--space-2) var(--space-3)',
+    display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', flexShrink: 0,
   },
-  controls: { display: 'flex', alignItems: 'center', gap: 10 },
-  timeDisplay: { color: '#fff', fontFamily: 'monospace', fontSize: 12, minWidth: 70 },
-  durationDisplay: { color: '#888', fontFamily: 'monospace', fontSize: 12, marginLeft: 'auto' },
-  markButtons: { display: 'flex', alignItems: 'center', gap: 6, flex: 1 },
+  controls: { display: 'flex', alignItems: 'center', gap: 'var(--space-3)' },
+  timeDisplay: { color: 'var(--text-primary)', fontFamily: 'monospace', fontSize: 12, minWidth: 70 },
+  durationDisplay: { color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: 12, marginLeft: 'auto' },
+  markButtons: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flex: 1 },
   markBtn: {
-    background: '#333', border: '1px solid #555', color: '#ddd',
-    padding: '3px 8px', borderRadius: 4, fontSize: 11, cursor: 'pointer',
+    background: 'var(--canvas-surface)', border: '1px solid var(--border)', color: 'var(--text-primary)',
+    padding: '3px var(--space-2)', borderRadius: 4, fontSize: 11, cursor: 'pointer',
   },
-  markTime: { color: '#C89A2E', fontSize: 11, fontFamily: 'monospace' },
+  markTime: { color: 'var(--brand-accent)', fontSize: 11, fontFamily: 'monospace' },
   clearBtn: {
-    background: '#8B0000', border: 'none', color: '#fff',
-    padding: '3px 8px', borderRadius: 4, fontSize: 11, cursor: 'pointer',
+    background: 'var(--danger)', border: 'none', color: '#fff',
+    padding: '3px var(--space-2)', borderRadius: 4, fontSize: 11, cursor: 'pointer',
   },
 
-  trackWrap: { cursor: 'crosshair', padding: '4px 0' },
+  trackWrap: { cursor: 'crosshair', padding: 'var(--space-1) 0' },
   track: {
-    position: 'relative', height: 24, background: '#333', borderRadius: 4,
+    position: 'relative', height: 24, background: 'var(--canvas-surface)', borderRadius: 4,
     overflow: 'hidden',
   },
   played: {
@@ -196,20 +207,20 @@ const s: Record<string, CSSProperties> = {
     position: 'absolute', top: 0, height: '100%', width: 2,
     pointerEvents: 'none',
   },
-  markPinIn: { background: '#2ecc71' },
-  markPinOut: { background: '#e74c3c' },
+  markPinIn: { background: 'var(--success)' },
+  markPinOut: { background: 'var(--danger)' },
   markLabel: {
     position: 'absolute', top: 2, left: 4, fontSize: 9, fontWeight: 700,
-    color: '#fff', whiteSpace: 'nowrap',
+    color: 'var(--text-primary)', whiteSpace: 'nowrap',
   },
   playhead: {
     position: 'absolute', top: 0, height: '100%', width: 2,
-    background: '#fff', transform: 'translateX(-1px)', pointerEvents: 'none',
+    background: 'var(--text-primary)', transform: 'translateX(-1px)', pointerEvents: 'none',
   },
 
-  laneRow: { display: 'flex', alignItems: 'center', gap: 6 },
-  laneLabel: { color: '#888', fontSize: 10, width: 36, flexShrink: 0, textAlign: 'right' },
-  lane: { position: 'relative', flex: 1, height: 18, background: '#2a2a2a', borderRadius: 3 },
+  laneRow: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)' },
+  laneLabel: { color: 'var(--text-secondary)', fontSize: 10, width: 36, flexShrink: 0, textAlign: 'right' },
+  lane: { position: 'relative', flex: 1, height: 18, background: 'var(--canvas-surface)', borderRadius: 3 },
   clipBlock: {
     position: 'absolute', top: 1, height: 16, borderRadius: 3,
     overflow: 'hidden', display: 'flex', alignItems: 'center', minWidth: 4,

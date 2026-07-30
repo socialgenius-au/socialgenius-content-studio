@@ -7,9 +7,50 @@
 }
 
 :root {
+  /* Brand identity — constant across themes, never overridden */
   --green: #1E3D2A;
   --gold: #C89A2E;
   --cream: #F5F0E8;
+  --brand-header: var(--green);
+  --brand-header-text: var(--cream);
+  --brand-accent: var(--gold);
+  --brand-accent-text: var(--green);
+  --danger: #E74C3C;
+  --success: #2ecc71;
+
+  /* Spacing scale — 4px base */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+}
+
+/* Light theme (default) — light canvas/panels, dark text */
+:root[data-theme='light'] {
+  --canvas-bg: #E9E4D8;
+  --canvas-surface: #D9D2C0;
+  --panel-bg: #FFFFFF;
+  --panel-surface: #FAFAF8;
+  --input-bg: #FFFFFF;
+  --border: #E8E3D8;
+  --text-primary: #1A1A1A;
+  --text-secondary: #666666;
+  --text-tertiary: #999999;
+}
+
+/* Dark theme — dark canvas/panels, light text */
+:root[data-theme='dark'] {
+  --canvas-bg: #101010;
+  --canvas-surface: #262626;
+  --panel-bg: #1C1C1E;
+  --panel-surface: #242426;
+  --input-bg: #2A2A2C;
+  --border: #3A3A3C;
+  --text-primary: #F0EDE6;
+  --text-secondary: #ADADB0;
+  --text-tertiary: #79797C;
 }
 
 html, body, #root {
@@ -21,8 +62,9 @@ body {
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #F5F0E8;
-  color: #1a1a1a;
+  background: var(--canvas-bg, #F5F0E8);
+  color: var(--text-primary, #1a1a1a);
+  transition: background 0.15s, color 0.15s;
 }
 
 a { color: inherit; }
