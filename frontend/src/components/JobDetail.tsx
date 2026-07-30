@@ -53,6 +53,7 @@ export default function JobDetail() {
   const [assets, setAssets]   = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
   const [executing, setExecuting] = useState(false)
+  const [executeError, setExecuteError] = useState<string | null>(null)
   // per-step generate UI state
   const [savingTpl, setSavingTpl]       = useState(false)
   const [tplSaved, setTplSaved]         = useState(false)
@@ -93,9 +94,13 @@ export default function JobDetail() {
   const handleExecute = async () => {
     if (!jobId) return
     setExecuting(true)
+    setExecuteError(null)
     try {
       await jobsApi.execute(Number(jobId))
       await load()
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      setExecuteError(typeof detail === 'string' ? detail : 'Failed to start execution.')
     } finally {
       setExecuting(false)
     }
@@ -172,6 +177,8 @@ export default function JobDetail() {
           </button>
         </div>
       </div>
+
+      {executeError && <p style={s.executeError}>{executeError}</p>}
 
       <div style={s.layout}>
         {/* ── Plan steps ── */}
@@ -347,6 +354,7 @@ const s: Record<string, CSSProperties> = {
   btn:         { padding: '10px 22px', background: '#1E3D2A', color: '#F5F0E8', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer' },
   tplBtn:      { padding: '10px 16px', background: 'transparent', color: '#888', border: '1px solid #ddd', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' },
   tplBtnSaved: { color: '#27ae60', borderColor: '#27ae60' },
+  executeError: { margin: '-16px 0 20px', color: '#c0392b', fontSize: 13, fontWeight: 600 },
   layout:      { display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, alignItems: 'start' },
   panel:       { background: '#fff', borderRadius: 12, padding: 24, boxShadow: '0 2px 10px rgba(0,0,0,0.06)', border: '1px solid #ede9e0' },
   sectionTitle:{ margin: '0 0 16px', fontSize: 13, fontWeight: 800, color: '#1E3D2A', textTransform: 'uppercase', letterSpacing: 0.8 },
