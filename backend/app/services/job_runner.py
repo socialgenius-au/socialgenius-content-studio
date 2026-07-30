@@ -95,11 +95,6 @@ async def _run_step(db: Any, step: dict, tool: str, job_id: int, user_id: int, p
         step["exec_note"] = "This step requires manual action."
 
     elif tool == "whisper":
-        if not _has("ANTHROPIC_API_KEY"):  # proxy: if whisper is installed
-            step["exec_status"] = "awaiting_manual"
-            step["exec_note"] = "Whisper is available. Use POST /transcribe/{asset_id} with an uploaded audio/video asset."
-            return
-
         asset_result = await db.execute(
             select(Asset)
             .where(Asset.job_id == job_id, Asset.file_type.in_(["audio", "video"]))
