@@ -1,5 +1,5 @@
 import {
-  createContext, useContext, useEffect, useState, type ReactNode,
+  createContext, useContext, useEffect, useLayoutEffect, useState, type ReactNode,
 } from 'react'
 
 export type ThemeMode = 'light' | 'dark' | 'auto'
@@ -35,7 +35,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const resolvedTheme: ResolvedTheme = mode === 'auto' ? systemTheme : mode
 
-  useEffect(() => {
+  // useLayoutEffect (not useEffect) so data-theme lands before the browser paints the first
+  // frame — every Studio component reads --panel-bg/--border/--text-* with no CSS fallback,
+  // so a post-paint update would flash unstyled/wrong-theme panels for a frame on every load.
+  useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', resolvedTheme)
   }, [resolvedTheme])
 

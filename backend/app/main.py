@@ -10,6 +10,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
+from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger("app")
 
@@ -82,6 +83,24 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
+
+class UnhandledExceptionMiddleware(BaseHTTPMiddleware):
+    # Starlette's add_middleware() inserts each new middleware at the *front* of the stack, so
+    # the middleware added last ends up outermost. This must be added before CORSMiddleware
+    # below so that CORSMiddleware wraps it, not the other way round — otherwise the response
+    # built here never passes back out through CORSMiddleware and never gets CORS headers,
+    # leaving the browser to report a same-origin-looking 500 as an opaque CORS failure instead
+    # of surfacing the real error.
+    async def dispatch(self, request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception:
+            logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+            return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
+app.add_middleware(UnhandledExceptionMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://content-studio-frontend-production-84fe.up.railway.app"],
@@ -89,15 +108,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Catching Exception here (inside the CORS/ExceptionMiddleware stack) instead of letting it
-# fall through to Starlette's outer ServerErrorMiddleware means CORS headers still get attached
-# to the resulting error response — otherwise the browser reports a same-origin-looking 500 as
-# an opaque CORS failure, hiding the real error from the frontend.
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
