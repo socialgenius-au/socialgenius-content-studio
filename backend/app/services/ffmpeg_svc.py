@@ -117,7 +117,9 @@ async def merge_with_transitions(
 
     if xfade_name is None:
         list_file = _out(user_id, "txt")
-        list_file.write_text("\n".join(f"file '{p}'" for p in clip_paths))
+        # The concat demuxer resolves relative paths against the list file's own
+        # directory, not the process cwd — write absolute paths to avoid that.
+        list_file.write_text("\n".join(f"file '{Path(p).resolve()}'" for p in clip_paths))
         await _run([
             "ffmpeg", "-y", "-f", "concat", "-safe", "0",
             "-i", str(list_file), "-c", "copy", str(out),

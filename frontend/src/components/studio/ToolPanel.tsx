@@ -130,7 +130,7 @@ function TemplatesContent() {
 }
 
 function HistoryContent() {
-  const { recentJobs, setRecentJobs } = useStudio()
+  const { recentJobs, setRecentJobs, activeJob, setActiveJob } = useStudio()
   const [jobAssets, setJobAssets] = useState<Record<number, Asset[]>>({})
 
   useEffect(() => {
@@ -153,9 +153,14 @@ function HistoryContent() {
       {recentJobs.length === 0 ? (
         <p style={s.empty}>No jobs yet.</p>
       ) : recentJobs.map(job => (
-        <div key={job.id} style={s.jobCard} onClick={() => loadJobAssets(job.id)}>
+        <div
+          key={job.id}
+          style={{ ...s.jobCard, ...(activeJob?.id === job.id ? s.jobCardActive : {}) }}
+          onClick={() => { setActiveJob(job); loadJobAssets(job.id) }}
+        >
           <div style={s.jobHeader}>
             <span style={s.jobTitle}>{job.title}</span>
+            {activeJob?.id === job.id && <span style={s.activeBadge}>Active</span>}
             <span style={{ ...s.jobStatus, background: STATUS_COLOR[job.status] }}>{job.status}</span>
           </div>
           <span style={s.jobDate}>{new Date(job.created_at).toLocaleDateString()}</span>
@@ -223,6 +228,11 @@ const s: Record<string, CSSProperties> = {
     background: 'var(--panel-surface)', border: '1px solid var(--border)', borderRadius: 8,
     padding: 'var(--space-2) var(--space-3)', marginBottom: 'var(--space-2)', cursor: 'pointer',
     transition: 'background 0.15s',
+  },
+  jobCardActive: { borderColor: 'var(--brand-accent)', boxShadow: '0 0 0 1px var(--brand-accent)' },
+  activeBadge: {
+    fontSize: 9, fontWeight: 700, color: 'var(--brand-accent)', textTransform: 'uppercase',
+    letterSpacing: 0.4, flexShrink: 0,
   },
   jobHeader: { display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 3 },
   jobTitle: { fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
