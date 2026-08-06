@@ -115,6 +115,11 @@ interface StudioState {
   updateTextOverlay: (id: string, upd: Partial<TextOverlay>) => void
   removeTextOverlay: (id: string) => void
 
+  // Media overlays
+  addMediaOverlay: (o: MediaOverlay) => void
+  updateMediaOverlay: (id: string, upd: Partial<MediaOverlay>) => void
+  removeMediaOverlay: (id: string) => void
+
   // Audio
   addAudioTrack: (t: AudioTrack) => void
   updateAudioTrack: (id: string, upd: Partial<AudioTrack>) => void
@@ -155,7 +160,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [additionalVideoClips, setAdditionalVideoClips] = useState<VideoClip[]>([])
   const [imageSlides, setImageSlides] = useState<ImageSlide[]>([])
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([])
-  const [mediaOverlays, _setMediaOverlays] = useState<MediaOverlay[]>([])
+  const [mediaOverlays, setMediaOverlays] = useState<MediaOverlay[]>([])
   const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([])
   const [lowerThirds, setLowerThirds] = useState<LowerThird[]>([])
   const [intro, setIntro] = useState<IntroOutro | null>(null)
@@ -219,6 +224,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setTextOverlays(p => p.map(o => o.id === id ? { ...o, ...upd } : o)), [])
   const removeTextOverlay = useCallback((id: string) =>
     setTextOverlays(p => p.filter(o => o.id !== id)), [])
+
+  // Media overlay actions
+  const addMediaOverlay = useCallback((o: MediaOverlay) => setMediaOverlays(p => [...p, o]), [])
+  const updateMediaOverlay = useCallback((id: string, upd: Partial<MediaOverlay>) =>
+    setMediaOverlays(p => p.map(o => o.id === id ? { ...o, ...upd } : o)), [])
+  const removeMediaOverlay = useCallback((id: string) =>
+    setMediaOverlays(p => p.filter(o => o.id !== id)), [])
 
   // Audio actions
   const addAudioTrack = useCallback((t: AudioTrack) => setAudioTracks(p => [...p, t]), [])
@@ -362,6 +374,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     addAdditionalVideoClip, updateAdditionalVideoClip, removeAdditionalVideoClip,
     addImageSlide, updateImageSlide, removeImageSlide,
     addTextOverlay, updateTextOverlay, removeTextOverlay,
+    addMediaOverlay, updateMediaOverlay, removeMediaOverlay,
     addAudioTrack, updateAudioTrack, removeAudioTrack,
     addLowerThird, updateLowerThird, removeLowerThird,
     setIntro, setOutro,

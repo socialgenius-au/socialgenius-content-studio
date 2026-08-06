@@ -11,7 +11,7 @@ import type { Asset, VideoClip, ImageSlide } from '../../types'
 export default function PreviewCanvas() {
   const {
     platform, contentType, previewUrl, previewHtml, previewText,
-    videoClips, imageSlides, textOverlays,
+    videoClips, imageSlides, textOverlays, mediaOverlays,
     timeline, setTimeline,
     addVideoClip, addImageSlide,
     uploadAsset, activeJob,
@@ -284,6 +284,24 @@ export default function PreviewCanvas() {
             >
               {o.text}
             </div>
+          )
+        })}
+
+        {/* Media overlays (uploaded image/video layered on top of the base content) */}
+        {mediaOverlays.map(o => {
+          const isVideo = /\.(mp4|webm|mov)$/i.test(o.url)
+          const style: CSSProperties = {
+            position: 'absolute',
+            left: `${o.x}%`, top: `${o.y}%`,
+            width: `${o.width}%`, height: `${o.height}%`,
+            opacity: o.opacity,
+            objectFit: 'cover',
+            pointerEvents: 'none',
+          }
+          return isVideo ? (
+            <video key={o.id} src={o.url} style={style} autoPlay loop muted playsInline />
+          ) : (
+            <img key={o.id} src={o.url} alt="" style={style} />
           )
         })}
 

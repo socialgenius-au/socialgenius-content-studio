@@ -148,6 +148,7 @@ export interface TextOverlay {
 export interface MediaOverlay {
   id: string
   url: string
+  assetId: number
   x: number
   y: number
   width: number

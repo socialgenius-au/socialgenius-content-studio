@@ -200,6 +200,29 @@ async def export_asset(
             )
             steps.append("text_overlays")
 
+        if body.media_overlays:
+            overlay_assets = [await _get_owned_asset(db, mo.asset_id, user.id) for mo in body.media_overlays]
+            overlay_dicts = [
+                {
+                    "path": asset.file_path,
+                    "is_image": asset.file_type == "image",
+                    "start": mo.start,
+                    "end": mo.end,
+                    "x": mo.x,
+                    "y": mo.y,
+                    "width": mo.width,
+                    "height": mo.height,
+                    "opacity": mo.opacity,
+                }
+                for mo, asset in zip(body.media_overlays, overlay_assets)
+            ]
+            current_path = await ffmpeg_svc.add_media_overlays(
+                str(current_path),
+                overlay_dicts,
+                user.id,
+            )
+            steps.append("media_overlays")
+
         if audio_asset:
             current_path = await ffmpeg_svc.add_audio_track(
                 str(current_path),

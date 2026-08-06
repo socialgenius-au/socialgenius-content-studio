@@ -209,6 +209,77 @@ async def add_text_overlays(
     return out
 
 
+async def _get_video_dimensions(path: str) -> tuple[int, int]:
+    proc = await asyncio.create_subprocess_exec(
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height",
+        "-of", "csv=s=x:p=0", path,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    out, _ = await proc.communicate()
+    width, height = out.decode().strip().split("x")
+    return int(width), int(height)
+
+
+async def add_media_overlays(
+    input_path: str,
+    overlays: list[dict],
+    user_id: int,
+) -> Path:
+    """Composite one or more timed image/video overlays onto a base video.
+
+    Each overlay dict: {path, is_image, start, end, x, y, width, height, opacity}.
+    x/y/width/height are percentages (0-100) of the base video's frame, matching
+    the editor's percentage-based positioning.
+    """
+    if not overlays:
+        raise RuntimeError("add_media_overlays requires at least one overlay")
+
+    base_w, base_h = await _get_video_dimensions(input_path)
+    out = _out(user_id, "mp4")
+
+    inputs: list[str] = ["-i", input_path]
+    for ov in overlays:
+        # Images have no intrinsic duration — loop them so they persist through
+        # their enable window. -loop without -t never reaches EOF, which stalls
+        # the encoder forever even though the base video is finite, so bound it
+        # to the overlay's own end time (the enable gate hides it after that).
+        if ov.get("is_image"):
+            inputs += ["-loop", "1", "-t", str(max(ov["end"], 0.1)), "-i", ov["path"]]
+        else:
+            inputs += ["-i", ov["path"]]
+
+    filter_parts = []
+    base_label = "0:v"
+    for i, ov in enumerate(overlays, start=1):
+        w = max(2, round(base_w * ov.get("width", 30) / 100 / 2) * 2)
+        h = max(2, round(base_h * ov.get("height", 30) / 100 / 2) * 2)
+        x = round(base_w * ov.get("x", 0) / 100)
+        y = round(base_h * ov.get("y", 0) / 100)
+        opacity = max(0.0, min(1.0, ov.get("opacity", 1.0)))
+        start, end = ov["start"], ov["end"]
+
+        scaled, faded, merged = f"ov{i}s", f"ov{i}a", f"merged{i}"
+        filter_parts.append(f"[{i}:v]scale={w}:{h}[{scaled}]")
+        filter_parts.append(f"[{scaled}]format=rgba,colorchannelmixer=aa={opacity}[{faded}]")
+        filter_parts.append(
+            f"[{base_label}][{faded}]overlay=x={x}:y={y}:enable='between(t,{start},{end})'[{merged}]"
+        )
+        base_label = merged
+
+    filter_complex = ";".join(filter_parts)
+
+    await _run([
+        "ffmpeg", "-y", *inputs,
+        "-filter_complex", filter_complex,
+        "-map", f"[{base_label}]", "-map", "0:a?",
+        "-c:v", "libx264", "-c:a", "aac",
+        "-shortest",
+        str(out),
+    ])
+    return out
+
+
 async def add_audio_track(
     input_path: str,
     audio_path: str,

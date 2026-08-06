@@ -4,8 +4,10 @@ import type { MediaOverlay } from '../../types'
 import { assetsApi } from '../../api/client'
 
 export default function MediaOverlayEditor() {
-  const { uploadAsset, activeJob, timeline } = useStudio()
-  const [overlays, setOverlays] = useState<MediaOverlay[]>([])
+  const {
+    uploadAsset, activeJob, timeline,
+    mediaOverlays: overlays, addMediaOverlay, updateMediaOverlay, removeMediaOverlay,
+  } = useStudio()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = async (file: File) => {
@@ -15,6 +17,7 @@ export default function MediaOverlayEditor() {
       const overlay: MediaOverlay = {
         id: crypto.randomUUID(),
         url,
+        assetId: asset.id,
         x: 10,
         y: 10,
         width: 30,
@@ -23,19 +26,14 @@ export default function MediaOverlayEditor() {
         startTime: timeline.currentTime,
         endTime: Math.min(timeline.currentTime + 5, timeline.duration || timeline.currentTime + 5),
       }
-      setOverlays(p => [...p, overlay])
+      addMediaOverlay(overlay)
     } catch {
       alert('Upload failed')
     }
   }
 
-  const updateOverlay = (id: string, upd: Partial<MediaOverlay>) => {
-    setOverlays(p => p.map(o => o.id === id ? { ...o, ...upd } : o))
-  }
-
-  const removeOverlay = (id: string) => {
-    setOverlays(p => p.filter(o => o.id !== id))
-  }
+  const updateOverlay = updateMediaOverlay
+  const removeOverlay = removeMediaOverlay
 
   return (
     <div style={s.root}>

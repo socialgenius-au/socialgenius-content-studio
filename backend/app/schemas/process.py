@@ -57,11 +57,23 @@ class TextOverlay(BaseModel):
     font_color: str = "white"
 
 
+class MediaOverlay(BaseModel):
+    asset_id: int
+    start: float
+    end: float
+    x: float = 0        # percent of base frame width
+    y: float = 0        # percent of base frame height
+    width: float = 30   # percent of base frame width
+    height: float = 30  # percent of base frame height
+    opacity: float = 1.0
+
+
 class ExportRequest(BaseModel):
     asset_ids: list[int]                 # clips to merge, in order
     transition: str = "dissolve"          # cut | dissolve | whip_pan | fade_to_black | zoom_punch
     transition_duration: float = 0.5
     text_overlays: list[TextOverlay] = []
+    media_overlays: list[MediaOverlay] = []
     audio_asset_id: int | None = None     # separate custom audio track
     audio_mode: str = "replace"           # replace | mix
     audio_original_volume: float = 0.0    # only used when audio_mode == "mix"

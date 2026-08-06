@@ -22,7 +22,7 @@ const TRANSITION_MAP: Record<string, string> = {
 }
 
 export default function PublishPanel() {
-  const { activeBrand, videoClips, imageSlides, textOverlays, audioTracks, seoPackage, activeJob } = useStudio()
+  const { activeBrand, videoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, seoPackage, activeJob } = useStudio()
   const [logs, setLogs] = useState<PublishLog[]>([])
   const [publishing, setPublishing] = useState<string | null>(null)
 
@@ -106,6 +106,16 @@ export default function PublishPanel() {
           y: o.y,
           font_size: o.fontSize,
           font_color: o.color,
+        })),
+        media_overlays: mediaOverlays.map(o => ({
+          asset_id: o.assetId,
+          start: o.startTime,
+          end: o.endTime,
+          x: o.x,
+          y: o.y,
+          width: o.width,
+          height: o.height,
+          opacity: o.opacity,
         })),
         audio_asset_id: audioTrack?.assetId,
         audio_mode: audioTrack?.duck ? 'mix' : 'replace',
