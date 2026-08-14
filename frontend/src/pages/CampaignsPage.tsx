@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Megaphone, Users2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Megaphone, Users2, ListChecks } from 'lucide-react'
 import { useClient } from '@/contexts/ClientContext'
 import { useAICompanionContext } from '@/contexts/AICompanionContext'
 import { campaignService } from '@/services/campaignService'
-import type { Campaign, ContentAssetType } from '@/types/domain'
+import { strategyService } from '@/services/strategyService'
+import type { Campaign, CampaignAsset, ContentAssetType, StrategicInitiative } from '@/types/domain'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -12,24 +13,34 @@ import { StatusBadge } from '@/components/common/StatusBadge'
 import { MetricCard } from '@/components/common/MetricCard'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 const ASSET_TYPE_LABEL: Record<ContentAssetType, string> = {
   video: 'Video', reel: 'Reels', post: 'Posts', carousel: 'Carousels', blog: 'Blog',
   pr: 'Press Release', email: 'Email', whatsapp: 'WhatsApp', gbp: 'Google Business Profile',
   ad: 'Ads', landing_page: 'Landing Pages',
 }
+const ASSET_STATUS_OPTIONS: CampaignAsset['status'][] = ['draft', 'review', 'approved', 'scheduled', 'published']
+const READY_STATUSES: CampaignAsset['status'][] = ['approved', 'scheduled', 'published']
+
+function readyCount(assets: CampaignAsset[]) {
+  return assets.filter(a => READY_STATUSES.includes(a.status)).length
+}
 
 export default function CampaignsPage() {
   const { clientId, campaignId } = useParams<{ clientId: string; campaignId?: string }>()
   const { client } = useClient()
+  const navigate = useNavigate()
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null)
   const [detail, setDetail] = useState<Campaign | null | undefined>(undefined)
+  const [initiatives, setInitiatives] = useState<StrategicInitiative[]>([])
 
   useAICompanionContext(`Campaigns${client ? ` • ${client.name}` : ''}`)
 
   useEffect(() => {
     if (!clientId) return
     campaignService.list(clientId).then(setCampaigns)
+    strategyService.list(clientId).then(setInitiatives)
   }, [clientId])
 
   useEffect(() => {
@@ -40,6 +51,15 @@ export default function CampaignsPage() {
     setDetail(undefined)
     campaignService.get(clientId, campaignId).then(c => setDetail(c ?? null))
   }, [clientId, campaignId])
+
+  const linkedInitiative = useMemo(
+    () => initiatives.find(i => i.id === detail?.strategicInitiativeId),
+    [initiatives, detail?.strategicInitiativeId]
+  )
+
+  const updateAssetStatus = (assetId: string, status: CampaignAsset['status']) => {
+    setDetail(prev => (prev ? { ...prev, assets: prev.assets.map(a => (a.id === assetId ? { ...a, status } : a)) } : prev))
+  }
 
   if (!clientId) return null
 
@@ -52,6 +72,7 @@ export default function CampaignsPage() {
       ;(acc[a.type] ??= []).push(a)
       return acc
     }, {})
+    const ready = readyCount(detail.assets)
 
     return (
       <div className="flex flex-col gap-5">
@@ -65,6 +86,12 @@ export default function CampaignsPage() {
           actions={<StatusBadge status={detail.status} />}
         />
 
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <MetricCard label="Leads generated" value={detail.leadsGenerated} icon={Users2} tone="accent" />
+          <MetricCard label="Assets ready" value={`${ready}/${detail.assets.length}`} icon={ListChecks} hint="approved, scheduled or published" />
+          <MetricCard label="Duration" value={detail.duration} />
+        </div>
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader><CardTitle>Strategy</CardTitle></CardHeader>
@@ -75,6 +102,19 @@ export default function CampaignsPage() {
               <Field label="Customer problem" value={detail.customerProblem} />
               <Field label="Desired outcome" value={detail.desiredOutcome} />
               <Field label="Success measure" value={detail.successMeasure} />
+              <div>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Strategic initiative</p>
+                {linkedInitiative ? (
+                  <button
+                    onClick={() => navigate(`/clients/${clientId}/strategy`)}
+                    className="rounded-md bg-sg-lime/10 px-2 py-1 text-left text-sm text-foreground hover:bg-sg-lime/20"
+                  >
+                    {linkedInitiative.objective}
+                  </button>
+                ) : (
+                  <p className="text-sm italic text-muted-foreground">Not linked to a strategic initiative.</p>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -84,7 +124,6 @@ export default function CampaignsPage() {
               <Field label="Proof" value={detail.proof} />
               <Field label="Offer" value={detail.offer} />
               <Field label="CTA" value={detail.cta} />
-              <Field label="Duration" value={detail.duration} />
               <div>
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Platforms</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -94,8 +133,6 @@ export default function CampaignsPage() {
             </CardContent>
           </Card>
         </div>
-
-        <MetricCard label="Leads generated" value={detail.leadsGenerated} icon={Users2} tone="accent" />
 
         <Card>
           <CardHeader><CardTitle>Related assets</CardTitle></CardHeader>
@@ -113,7 +150,18 @@ export default function CampaignsPage() {
                       {assets.map(a => (
                         <div key={a.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
                           <span>{a.title}</span>
-                          <StatusBadge status={a.status} />
+                          <Select value={a.status} onValueChange={v => updateAssetStatus(a.id, v as CampaignAsset['status'])}>
+                            <SelectTrigger className="h-6 w-auto gap-1 border-none bg-transparent p-0 shadow-none [&>svg]:h-3 [&>svg]:w-3">
+                              <SelectValue>
+                                <StatusBadge status={a.status} className="cursor-pointer" />
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ASSET_STATUS_OPTIONS.map(s => (
+                                <SelectItem key={s} value={s}>{s}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       ))}
                     </div>
@@ -154,6 +202,7 @@ export default function CampaignsPage() {
                   </div>
                   <div className="flex items-center justify-between border-t border-border pt-2 text-xs text-muted-foreground">
                     <span>{c.duration}</span>
+                    <span>{readyCount(c.assets)}/{c.assets.length} assets ready</span>
                     <span className="font-semibold text-foreground">{c.leadsGenerated} leads</span>
                   </div>
                 </CardContent>
