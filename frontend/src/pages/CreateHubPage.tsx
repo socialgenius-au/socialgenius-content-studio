@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Sparkles, Eye, Radio, ShieldCheck, GraduationCap, Diff, MessageSquare, CalendarCheck,
-  DollarSign, Tag, HeartHandshake, Star, Share2, ChevronRight, ChevronLeft, Check, Plus, Wand2, PenLine,
+  DollarSign, Tag, HeartHandshake, Star, Share2, ChevronRight, ChevronLeft, Check, Plus, Wand2, PenLine, Lock,
 } from 'lucide-react'
 import { useClient } from '@/contexts/ClientContext'
 import { useAICompanionContext } from '@/contexts/AICompanionContext'
+import { useEntitlements } from '@/contexts/EntitlementContext'
 import { contentService } from '@/services/contentService'
 import { campaignService } from '@/services/campaignService'
 import type { Campaign, CreativeOption, CreativeOutcome, PositioningGateCheck } from '@/types/domain'
@@ -42,6 +43,24 @@ const OUTCOMES: { id: CreativeOutcome; icon: typeof Eye }[] = [
 
 const STEPS = ['Outcome', 'Angle', 'Structure', 'CTA', 'Positioning Gate', 'Done'] as const
 
+// entitlementKey ties a content type to the client's Service Configurator
+// plan (spec §21 content types x §55 capability checks) — types without a
+// mapped key are always available since not every content type is a billed
+// entitlement (e.g. long-form video ships with every plan).
+const CONTENT_TYPES: { id: string; label: string; entitlementKey?: string }[] = [
+  { id: 'reel', label: 'Reel / Short', entitlementKey: 'content.reels' },
+  { id: 'video', label: 'Long-form video' },
+  { id: 'post', label: 'Social post', entitlementKey: 'content.posts' },
+  { id: 'carousel', label: 'Carousel', entitlementKey: 'content.carousels' },
+  { id: 'blog', label: 'Blog', entitlementKey: 'content.blog' },
+  { id: 'pr', label: 'Press release', entitlementKey: 'content.press_release' },
+  { id: 'email', label: 'Email / Newsletter' },
+  { id: 'whatsapp', label: 'WhatsApp', entitlementKey: 'leads.whatsapp' },
+  { id: 'gbp', label: 'Google Business Profile' },
+  { id: 'landing_page', label: 'Landing page copy' },
+  { id: 'ad', label: 'Ad copy' },
+]
+
 const emptyCustomAngle = (): CreativeOption => ({
   id: `custom-${crypto.randomUUID()}`,
   label: 'Custom angle',
@@ -59,10 +78,12 @@ const emptyCustomAngle = (): CreativeOption => ({
 export default function CreateHubPage() {
   const { client } = useClient()
   const navigate = useNavigate()
+  const { can } = useEntitlements()
   useAICompanionContext(`Create Hub${client ? ` • ${client.name}` : ''}`)
 
   const [step, setStep] = useState(0)
   const [outcome, setOutcome] = useState<CreativeOutcome>('Enquiry')
+  const [contentType, setContentType] = useState('reel')
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [campaignId, setCampaignId] = useState<string | undefined>(undefined)
@@ -222,6 +243,38 @@ export default function CreateHubPage() {
                     {o.id}
                   </button>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>What are you creating?</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {CONTENT_TYPES.map(t => {
+                  const allowed = t.entitlementKey ? can(t.entitlementKey) : true
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => allowed && setContentType(t.id)}
+                      disabled={!allowed}
+                      title={allowed ? undefined : "Not included in this client's plan — enable it in Service Configurator"}
+                      className={cn(
+                        'flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors',
+                        !allowed
+                          ? 'cursor-not-allowed border-border text-muted-foreground/50'
+                          : contentType === t.id
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border hover:bg-muted'
+                      )}
+                    >
+                      {t.label}
+                      {!allowed && <Lock className="h-3 w-3 shrink-0" />}
+                    </button>
+                  )
+                })}
               </div>
             </CardContent>
           </Card>
@@ -400,6 +453,7 @@ export default function CreateHubPage() {
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <Field label="Outcome" value={outcome} />
+            <Field label="Content type" value={CONTENT_TYPES.find(t => t.id === contentType)?.label ?? contentType} />
             <Field label="Campaign" value={selectedCampaign?.name ?? 'Standalone — no campaign selected'} />
             <Field label="Angle" value={selectedAngle ? `${selectedAngle.label} — ${selectedAngle.pitch}` : '—'} />
             <Field label="Structure" value={selectedStructure?.label ?? '—'} />

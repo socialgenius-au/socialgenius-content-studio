@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
-import { SlidersHorizontal } from 'lucide-react'
+import { SlidersHorizontal, ListChecks, Eye } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
+import { MetricCard } from '@/components/common/MetricCard'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useClient } from '@/contexts/ClientContext'
 import { useAICompanionContext } from '@/contexts/AICompanionContext'
-import { servicePlanService } from '@/services/servicePlanService'
+import { useEntitlements } from '@/contexts/EntitlementContext'
 import type { ServiceEntitlement, ServiceFrequency } from '@/types/domain'
 import { cn } from '@/lib/utils'
 
@@ -24,12 +24,8 @@ function levelLabel(l: ServiceEntitlement['serviceLevel']) {
   return l === 'white_glove' ? 'White Glove' : l.charAt(0).toUpperCase() + l.slice(1)
 }
 
-function EntitlementRow({ entitlement }: { entitlement: ServiceEntitlement }) {
-  const [enabled, setEnabled] = useState(entitlement.enabled)
-  const [quantity, setQuantity] = useState(entitlement.quantity)
-  const [frequency, setFrequency] = useState<ServiceFrequency>(entitlement.frequency)
-  const [serviceLevel, setServiceLevel] = useState(entitlement.serviceLevel)
-  const [clientFacing, setClientFacing] = useState(entitlement.clientFacing)
+function EntitlementRow({ entitlement, onChange }: { entitlement: ServiceEntitlement; onChange: (patch: Partial<ServiceEntitlement>) => void }) {
+  const { enabled, quantity, frequency, serviceLevel, clientFacing } = entitlement
 
   return (
     <Card className={cn('shadow-none transition-opacity', !enabled && 'opacity-50')}>
@@ -43,7 +39,7 @@ function EntitlementRow({ entitlement }: { entitlement: ServiceEntitlement }) {
                 : `${entitlement.label} — Disabled`}
             </span>
           </div>
-          <Switch checked={enabled} onCheckedChange={setEnabled} />
+          <Switch checked={enabled} onCheckedChange={v => onChange({ enabled: v })} />
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -54,13 +50,13 @@ function EntitlementRow({ entitlement }: { entitlement: ServiceEntitlement }) {
               min={0}
               value={quantity}
               disabled={!enabled}
-              onChange={e => setQuantity(Number(e.target.value))}
+              onChange={e => onChange({ quantity: Number(e.target.value) })}
               className="h-8"
             />
           </div>
           <div className="flex flex-col gap-1">
             <Label>Frequency</Label>
-            <Select value={frequency} onValueChange={v => setFrequency(v as ServiceFrequency)} disabled={!enabled}>
+            <Select value={frequency} onValueChange={v => onChange({ frequency: v as ServiceFrequency })} disabled={!enabled}>
               <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {FREQUENCIES.map(f => (
@@ -71,7 +67,7 @@ function EntitlementRow({ entitlement }: { entitlement: ServiceEntitlement }) {
           </div>
           <div className="flex flex-col gap-1">
             <Label>Service level</Label>
-            <Select value={serviceLevel} onValueChange={v => setServiceLevel(v as ServiceEntitlement['serviceLevel'])} disabled={!enabled}>
+            <Select value={serviceLevel} onValueChange={v => onChange({ serviceLevel: v as ServiceEntitlement['serviceLevel'] })} disabled={!enabled}>
               <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {SERVICE_LEVELS.map(l => (
@@ -83,7 +79,7 @@ function EntitlementRow({ entitlement }: { entitlement: ServiceEntitlement }) {
           <div className="flex flex-col gap-1">
             <Label>Client-facing</Label>
             <div className="flex h-8 items-center">
-              <Switch checked={clientFacing} onCheckedChange={setClientFacing} disabled={!enabled} />
+              <Switch checked={clientFacing} onCheckedChange={v => onChange({ clientFacing: v })} disabled={!enabled} />
             </div>
           </div>
         </div>
@@ -98,42 +94,38 @@ function EntitlementRow({ entitlement }: { entitlement: ServiceEntitlement }) {
 
 export default function ServiceConfiguratorPage() {
   const { client, loading: clientLoading } = useClient()
-  const [entitlements, setEntitlements] = useState<ServiceEntitlement[] | null>(null)
-  const [planName, setPlanName] = useState('')
-  const [loading, setLoading] = useState(true)
+  const { entitlements, planName, loading, updateEntitlement } = useEntitlements()
 
   useAICompanionContext(client ? `Service Configurator • ${client.name}` : 'Service Configurator')
 
-  useEffect(() => {
-    if (!client) return
-    setLoading(true)
-    servicePlanService.get(client.servicePlanId).then(plan => {
-      setEntitlements(plan?.entitlements ?? null)
-      setPlanName(plan?.name ?? '')
-      setLoading(false)
-    })
-  }, [client])
+  if (clientLoading || !client || loading) return <LoadingState rows={3} />
 
-  if (clientLoading || !client) return <LoadingState rows={3} />
+  const enabledCount = entitlements.filter(e => e.enabled).length
+  const clientFacingCount = entitlements.filter(e => e.enabled && e.clientFacing).length
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
         title="Service Configurator"
-        description={`Plan → entitlements → quantity → frequency → service level for ${client.name}. Nothing here is a fixed package — every row below is configured individually.`}
+        description={`Plan → entitlements → quantity → frequency → service level for ${client.name}. Nothing here is a fixed package — every row below is configured individually, and changes apply live across the workspace (see Create Hub's content-type picker).`}
       />
 
-      {loading ? (
-        <LoadingState rows={4} />
-      ) : !entitlements || entitlements.length === 0 ? (
+      {entitlements.length === 0 ? (
         <EmptyState icon={SlidersHorizontal} title="No service plan configured" description="This client doesn't have a service plan set up yet." />
       ) : (
-        <div className="flex flex-col gap-3">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{planName}</span>
-          {entitlements.map(e => (
-            <EntitlementRow key={e.key} entitlement={e} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <MetricCard label="Services enabled" value={`${enabledCount}/${entitlements.length}`} icon={ListChecks} />
+            <MetricCard label="Client-facing" value={clientFacingCount} icon={Eye} />
+            <MetricCard label="Plan" value={planName || '—'} />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {entitlements.map(e => (
+              <EntitlementRow key={e.key} entitlement={e} onChange={patch => updateEntitlement(e.key, patch)} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
