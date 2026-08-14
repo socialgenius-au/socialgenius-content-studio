@@ -131,14 +131,18 @@ export interface IntelligenceFinding {
 export interface AuditDimension {
   id: string
   name: string
-  currentScore: number // 0-100
+  currentScore: number // 0-100 — "current reality"
+  targetScore: number // 0-100 — "required position" for this dimension
   strategicImportance: 'low' | 'medium' | 'high'
   gap: string
   evidence: string
   recommendedAction: string
+  actionStatus: 'not_started' | 'in_progress' | 'done'
   impact: 'low' | 'medium' | 'high'
   owner: string
   timeline: string
+  relatedIntelligenceIds: string[]
+  positioningLink: string | null
 }
 
 // ── Strategy & Roadmap ──────────────────────────────────────────────────────
