@@ -345,6 +345,65 @@ export interface AnalyticsSnapshot {
   business: { clicks: number; enquiries: number; qualifiedLeads: number; appointments: number; sales: number; revenue: number | null }
 }
 
+// ── Brand Kit ─────────────────────────────────────────────────────────
+
+export interface BrandColor {
+  label: string
+  hex: string
+}
+
+export interface BrandKit {
+  clientId: string
+  visual: {
+    colors: BrandColor[]
+    fonts: string
+    logoStyle: string
+    imageStyle: string
+    videoStyle: string
+    thumbnailStyle: string
+    intro: string
+    outro: string
+    lowerThird: string
+    watermark: string
+    hasLogoAsset: boolean
+  }
+  voice: {
+    tone: string
+    formality: string
+    humour: string
+    wordsToUse: string[]
+    wordsToAvoid: string[]
+    ctaStyle: string
+    sentenceStyle: string
+    personality: string
+  }
+  commercial: {
+    services: string[]
+    offers: string[]
+    targetAudiences: string[]
+    locations: string[]
+    differentiators: string[]
+    proof: string[]
+    certifications: string[]
+    testimonials: string[]
+    guarantees: string[]
+  }
+  content: {
+    hashtags: string[]
+    ctaPatterns: string[]
+    handles: string[]
+    links: string[]
+    disclaimers: string[]
+    mandatoryInclusions: string[]
+  }
+}
+
+export const CHANNEL_APPLICATIONS = [
+  'Letterhead', 'Email', 'WhatsApp', 'WhatsApp Status', 'Social posts', 'Reels', 'Stories',
+  'Thumbnails', 'Blogs', 'Reports', 'Presentations', 'Proposals', 'Business cards', 'Exhibition materials',
+] as const
+export type ChannelApplication = (typeof CHANNEL_APPLICATIONS)[number]
+
 // ── Entitlements (capability checks) ────────────────────────────────────
 
 export type EntitlementKey = string // e.g. 'content.reels', 'intelligence.macro', 'leads.whatsapp', 'publish.linkedin'
