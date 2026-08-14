@@ -41,6 +41,36 @@ export const MOCK_ANGLE_OPTIONS: CreativeOption[] = [
   },
 ]
 
+// Additional angles surfaced when staff ask the AI for more alternatives —
+// kept separate from MOCK_ANGLE_OPTIONS so the initial 3-option set stays
+// stable/reproducible for the section 74 demo walkthrough.
+export const MOCK_MORE_ANGLE_OPTIONS: CreativeOption[] = [
+  {
+    id: 'angle-d',
+    label: 'D — Local Trust',
+    pitch: '"Brisbane families have trusted us with their next car since day one — here\'s why."',
+    attentionScore: 66,
+    positioningScore: 84,
+    outcomeScore: 69,
+    why: 'Local-identity hooks build long-term brand affinity, though they open slower than a direct-response hook.',
+    perceptionCreated: 'ABC Motors is a known, established part of the local community, not a transient seller.',
+    proofRequired: 'Needs a local landmark or years-in-business reference to avoid feeling generic.',
+    risk: 'Weakest of the available angles on raw attention — best paired with retargeting, not cold audiences.',
+  },
+  {
+    id: 'angle-e',
+    label: 'E — Side-by-Side Proof',
+    pitch: '"We put our inspection report next to theirs. You decide."',
+    attentionScore: 80,
+    positioningScore: 82,
+    outcomeScore: 78,
+    why: 'Direct-comparison formats perform well for skeptical, research-heavy buyers in this category.',
+    perceptionCreated: 'ABC Motors is confident enough in its process to invite scrutiny.',
+    proofRequired: 'Needs a real (or realistic, anonymised) comparison — cannot name competitors without legal review.',
+    risk: 'Could read as combative if the tone isn\'t kept factual and even-handed.',
+  },
+]
+
 export interface StructureOption { id: string; label: string; description: string }
 export interface CtaOption { id: string; label: string; description: string }
 

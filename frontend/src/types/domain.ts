@@ -210,6 +210,7 @@ export interface CreativeOption {
   perceptionCreated: string
   proofRequired: string
   risk: string
+  isCustom?: boolean
 }
 
 export type GateResult = 'green' | 'amber' | 'red'
