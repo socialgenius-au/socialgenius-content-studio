@@ -1,4 +1,4 @@
-import type { PositioningFramework, PositioningProfile, CapabilityMapItem, ExperienceStage } from '@/types/domain'
+import type { PositioningFramework, PositioningProfile, CapabilityMapItem, ExperienceStage, FrameworkComparison } from '@/types/domain'
 
 export const MOCK_FRAMEWORKS: PositioningFramework[] = [
   { id: 'fw-local-service-v1', name: 'Local Service v1', version: '1.2', status: 'active', createdAt: '2026-03-01', changeSummary: 'Added proof-point weighting to differentiation score.', applicableIndustries: ['Used Cars', 'Trades', 'Local Retail'] },
@@ -38,7 +38,53 @@ export const MOCK_POSITIONING: Record<string, PositioningProfile> = {
       { date: '2026-07-02', actor: 'Strategist (Amelia R.)', action: 'Drafted positioning from Social Audit findings' },
       { date: '2026-07-18', actor: 'Dave Ranford (Client)', action: 'Reviewed', note: 'Loves the warranty angle, wants to double check claim numbers before sign-off.' },
     ],
+    frameworkChangeLog: [
+      { date: '2026-06-15', from: 'SME General v1', to: 'Local Service v1', reason: 'Local Service v1 weights proof points more heavily, which fits the warranty/inspection angle better than the generic SME model.' },
+    ],
   },
+}
+
+// Deterministic pseudo-scoring so re-running a comparison always returns the
+// same result (this is a decision-support mock, not a live model — it should
+// feel stable, not random, across repeated views).
+function seededDelta(seedA: string, seedB: string, salt: string): number {
+  const str = `${seedA}:${seedB}:${salt}`
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0
+  }
+  return (Math.abs(hash) % 17) - 8 // range: -8..+8
+}
+
+export function buildFrameworkComparison(profile: PositioningProfile, frameworkA: PositioningFramework, frameworkB: PositioningFramework): FrameworkComparison {
+  const scoreDeltas = {
+    desirability: seededDelta(frameworkA.id, frameworkB.id, 'desirability'),
+    differentiation: seededDelta(frameworkA.id, frameworkB.id, 'differentiation'),
+    deliverability: seededDelta(frameworkA.id, frameworkB.id, 'deliverability'),
+    sustainability: seededDelta(frameworkA.id, frameworkB.id, 'sustainability'),
+  }
+  const netDelta = Object.values(scoreDeltas).reduce((a, b) => a + b, 0)
+  return {
+    frameworkA: { id: frameworkA.id, name: frameworkA.name, version: frameworkA.version },
+    frameworkB: { id: frameworkB.id, name: frameworkB.name, version: frameworkB.version },
+    agreements: [
+      `Both frameworks keep the same target customer definition: "${profile.targetCustomer.split('.')[0]}."`,
+      'Both treat proof points as central to the positioning statement rather than optional supporting detail.',
+    ],
+    disagreements: [
+      frameworkB.applicableIndustries.includes('General SME')
+        ? `${frameworkB.name} weights differentiation more generically — it wouldn't privilege "${profile.differentiators[0]}" as strongly as ${frameworkA.name} does.`
+        : `${frameworkB.name} would re-rank proof points differently, likely surfacing "${profile.proofPoints[Math.abs(netDelta) % profile.proofPoints.length]}" ahead of the current top proof point.`,
+      'Category-expectation weighting differs slightly, which shifts how "table stakes" vs. "differentiator" claims get classified.',
+    ],
+    scoreDeltas,
+    recommendation:
+      netDelta > 4
+        ? `${frameworkB.name} scores directionally higher on this business's profile — worth a deliberate trial before switching the live positioning.`
+        : netDelta < -4
+        ? `${frameworkA.name} (current) still scores better here — no strong case to switch.`
+        : 'The two frameworks land close together for this business — switching is a matter of team preference, not a scoring-driven decision.',
+  }
 }
 
 export const MOCK_CAPABILITY_MAP: Record<string, CapabilityMapItem[]> = {

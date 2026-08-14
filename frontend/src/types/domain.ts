@@ -78,6 +78,16 @@ export interface PositioningProfile {
   scores: DDDSScore
   approvalStatus: 'draft' | 'pending_approval' | 'approved_with_conditions' | 'approved' | 'changes_requested'
   approvalHistory: { date: string; actor: string; action: string; note?: string }[]
+  frameworkChangeLog: { date: string; from: string; to: string; reason: string }[]
+}
+
+export interface FrameworkComparison {
+  frameworkA: { id: string; name: string; version: string }
+  frameworkB: { id: string; name: string; version: string }
+  agreements: string[]
+  disagreements: string[]
+  scoreDeltas: { desirability: number; differentiation: number; deliverability: number; sustainability: number }
+  recommendation: string
 }
 
 export interface CapabilityMapItem {

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, ShieldCheck } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowRight, ShieldCheck, GitCompareArrows, Clock } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -11,10 +11,17 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
+} from '@/components/ui/dialog'
 import { useClient } from '@/contexts/ClientContext'
 import { useAICompanionContext } from '@/contexts/AICompanionContext'
 import { positioningService } from '@/services/positioningService'
-import type { PositioningProfile, PositioningFramework, CapabilityMapItem, ExperienceStage } from '@/types/domain'
+import type {
+  PositioningProfile, PositioningFramework, CapabilityMapItem, ExperienceStage, FrameworkComparison,
+} from '@/types/domain'
 
 const GAP_VARIANT: Record<ExperienceStage['gap'], 'success' | 'warning' | 'destructive'> = {
   none: 'success',
@@ -27,6 +34,8 @@ const GAP_LABEL: Record<ExperienceStage['gap'], string> = {
   major: 'Major gap',
 }
 
+const today = () => new Date().toISOString().slice(0, 10)
+
 function ScoreBar({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex flex-col gap-1">
@@ -35,6 +44,17 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
         <span className="tabular-nums text-muted-foreground">{value}/100</span>
       </div>
       <Progress value={value} />
+    </div>
+  )
+}
+
+function DeltaRow({ label, value }: { label: string; value: number }) {
+  const sign = value > 0 ? '+' : ''
+  const tone = value > 2 ? 'text-success' : value < -2 ? 'text-destructive' : 'text-muted-foreground'
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-foreground">{label}</span>
+      <span className={`font-semibold tabular-nums ${tone}`}>{sign}{value}</span>
     </div>
   )
 }
@@ -52,6 +72,13 @@ function LabeledList({ label, items }: { label: string; items: string[] }) {
   )
 }
 
+type ApprovalAction = 'approved' | 'approved_with_conditions' | 'changes_requested'
+const APPROVAL_ACTION_LABEL: Record<ApprovalAction, string> = {
+  approved: 'Approved',
+  approved_with_conditions: 'Approved with conditions',
+  changes_requested: 'Changes requested',
+}
+
 export default function PositioningPage() {
   const { client } = useClient()
   useAICompanionContext(client ? `Positioning • ${client.name}` : 'Positioning')
@@ -60,7 +87,14 @@ export default function PositioningPage() {
   const [frameworks, setFrameworks] = useState<PositioningFramework[]>([])
   const [capabilityMap, setCapabilityMap] = useState<CapabilityMapItem[]>([])
   const [experienceMap, setExperienceMap] = useState<ExperienceStage[]>([])
-  const [frameworkChoice, setFrameworkChoice] = useState<string | undefined>(undefined)
+
+  const [compareOpen, setCompareOpen] = useState(false)
+  const [compareTargetId, setCompareTargetId] = useState<string | undefined>(undefined)
+  const [comparison, setComparison] = useState<FrameworkComparison | null | undefined>(undefined)
+  const [switchReason, setSwitchReason] = useState('')
+
+  const [approvalDialog, setApprovalDialog] = useState<ApprovalAction | null>(null)
+  const [approvalNote, setApprovalNote] = useState('')
 
   useEffect(() => {
     if (!client) return
@@ -75,9 +109,59 @@ export default function PositioningPage() {
       setFrameworks(fw)
       setCapabilityMap(cm)
       setExperienceMap(em)
-      setFrameworkChoice(p?.frameworkId)
     })
   }, [client])
+
+  const currentFramework = useMemo(
+    () => frameworks.find(f => f.id === profile?.frameworkId),
+    [frameworks, profile?.frameworkId]
+  )
+  const otherFrameworks = useMemo(
+    () => frameworks.filter(f => f.id !== profile?.frameworkId),
+    [frameworks, profile?.frameworkId]
+  )
+
+  const runComparison = (frameworkBId: string) => {
+    if (!client) return
+    setCompareTargetId(frameworkBId)
+    setComparison(undefined)
+    positioningService.compareFrameworks(client.id, frameworkBId).then(c => setComparison(c ?? null))
+  }
+
+  const openCompareDialog = () => {
+    setSwitchReason('')
+    setComparison(undefined)
+    setCompareTargetId(undefined)
+    setCompareOpen(true)
+  }
+
+  const confirmSwitch = () => {
+    if (!profile || !comparison || !switchReason.trim()) return
+    const from = currentFramework?.name ?? profile.frameworkId
+    setProfile({
+      ...profile,
+      frameworkId: comparison.frameworkB.id,
+      frameworkChangeLog: [
+        { date: today(), from, to: comparison.frameworkB.name, reason: switchReason.trim() },
+        ...profile.frameworkChangeLog,
+      ],
+    })
+    setCompareOpen(false)
+  }
+
+  const applyApprovalAction = (action: ApprovalAction, note: string) => {
+    if (!profile) return
+    setProfile({
+      ...profile,
+      approvalStatus: action,
+      approvalHistory: [
+        { date: today(), actor: 'You (Staff)', action: APPROVAL_ACTION_LABEL[action], ...(note.trim() ? { note: note.trim() } : {}) },
+        ...profile.approvalHistory,
+      ],
+    })
+    setApprovalDialog(null)
+    setApprovalNote('')
+  }
 
   if (!client || profile === undefined) {
     return (
@@ -103,8 +187,6 @@ export default function PositioningPage() {
     )
   }
 
-  const currentFramework = frameworks.find(f => f.id === frameworkChoice)
-
   return (
     <div className="flex flex-col gap-5">
       <PageHeader
@@ -126,22 +208,32 @@ export default function PositioningPage() {
         <TabsContent value="overview" className="flex flex-col gap-4">
           <Card>
             <CardContent className="flex flex-col gap-4 p-5">
-              <div className="flex flex-col gap-1">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Framework</span>
-                <Select value={frameworkChoice} onValueChange={setFrameworkChoice}>
-                  <SelectTrigger className="w-72">
-                    <SelectValue placeholder="Select a positioning framework" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {frameworks.map(fw => (
-                      <SelectItem key={fw.id} value={fw.id}>
-                        {fw.name} · v{fw.version} ({fw.status})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {currentFramework && <span className="text-xs text-muted-foreground">{currentFramework.changeSummary}</span>}
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Framework in use</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">{currentFramework?.name ?? profile.frameworkId}</span>
+                    {currentFramework && <Badge variant="outline">v{currentFramework.version}</Badge>}
+                    {currentFramework && <Badge variant={currentFramework.status === 'active' ? 'success' : 'secondary'}>{currentFramework.status}</Badge>}
+                  </div>
+                  {currentFramework && <span className="text-xs text-muted-foreground">{currentFramework.changeSummary}</span>}
+                </div>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={openCompareDialog} disabled={otherFrameworks.length === 0}>
+                  <GitCompareArrows className="h-3.5 w-3.5" />
+                  Compare / switch framework
+                </Button>
               </div>
+
+              {profile.frameworkChangeLog.length > 0 && (
+                <div className="flex flex-col gap-1 rounded-md bg-muted/40 px-3 py-2">
+                  {profile.frameworkChangeLog.slice(0, 2).map((h, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                      <Clock className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span><span className="font-medium text-foreground">{h.date}</span> — switched {h.from} → {h.to}: {h.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 items-center gap-3 md:grid-cols-[1fr_auto_1fr]">
                 <div className="rounded-lg border border-border bg-muted/40 p-3">
@@ -345,11 +437,13 @@ export default function PositioningPage() {
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="flex flex-wrap gap-2">
-                <Button size="sm">Approve</Button>
-                <Button size="sm" variant="outline">
+                <Button size="sm" onClick={() => applyApprovalAction('approved', '')}>
+                  Approve
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setApprovalDialog('approved_with_conditions')}>
                   Approve with Conditions
                 </Button>
-                <Button size="sm" variant="outline">
+                <Button size="sm" variant="outline" onClick={() => setApprovalDialog('changes_requested')}>
                   Request Changes
                 </Button>
               </div>
@@ -371,6 +465,119 @@ export default function PositioningPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Approve with conditions / Request changes — requires a note */}
+      <Dialog open={approvalDialog !== null} onOpenChange={o => !o && setApprovalDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{approvalDialog && APPROVAL_ACTION_LABEL[approvalDialog]}</DialogTitle>
+            <DialogDescription>
+              {approvalDialog === 'approved_with_conditions'
+                ? 'What conditions apply before this is fully approved?'
+                : 'What needs to change before this can be approved?'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="approval-note">Note (required)</Label>
+            <Textarea id="approval-note" value={approvalNote} onChange={e => setApprovalNote(e.target.value)} rows={4} autoFocus />
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">Cancel</Button>
+            </DialogClose>
+            <Button
+              size="sm"
+              disabled={!approvalNote.trim()}
+              onClick={() => approvalDialog && applyApprovalAction(approvalDialog, approvalNote)}
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Compare / switch framework */}
+      <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Compare positioning frameworks</DialogTitle>
+            <DialogDescription>
+              Currently using <span className="font-medium text-foreground">{currentFramework?.name}</span>. Switching never happens silently — a reason is logged.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Compare against</Label>
+            <Select value={compareTargetId} onValueChange={runComparison}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a framework to compare" />
+              </SelectTrigger>
+              <SelectContent>
+                {otherFrameworks.map(fw => (
+                  <SelectItem key={fw.id} value={fw.id}>
+                    {fw.name} · v{fw.version} ({fw.status})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {compareTargetId && comparison === undefined && <LoadingState rows={2} />}
+
+          {comparison && (
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-md bg-muted/40 p-3">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Agreements</span>
+                  <ul className="mt-1 flex flex-col gap-1 text-xs text-foreground">
+                    {comparison.agreements.map((a, i) => <li key={i}>• {a}</li>)}
+                  </ul>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Disagreements</span>
+                  <ul className="mt-1 flex flex-col gap-1 text-xs text-foreground">
+                    {comparison.disagreements.map((a, i) => <li key={i}>• {a}</li>)}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-border p-3">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Score delta ({comparison.frameworkB.name} vs. current)
+                </span>
+                <div className="mt-2 flex flex-col gap-1.5">
+                  <DeltaRow label="Desirability" value={comparison.scoreDeltas.desirability} />
+                  <DeltaRow label="Differentiation" value={comparison.scoreDeltas.differentiation} />
+                  <DeltaRow label="Deliverability" value={comparison.scoreDeltas.deliverability} />
+                  <DeltaRow label="Sustainability" value={comparison.scoreDeltas.sustainability} />
+                </div>
+              </div>
+
+              <p className="rounded-md bg-sg-lime/10 px-3 py-2 text-xs text-foreground">{comparison.recommendation}</p>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="switch-reason">Reason to switch (required to confirm)</Label>
+                <Textarea
+                  id="switch-reason"
+                  value={switchReason}
+                  onChange={e => setSwitchReason(e.target.value)}
+                  placeholder="Why switch frameworks now, for the record…"
+                  rows={2}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">Keep current framework</Button>
+            </DialogClose>
+            <Button size="sm" disabled={!comparison || !switchReason.trim()} onClick={confirmSwitch}>
+              Switch to {comparison?.frameworkB.name ?? 'selected framework'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
