@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import { useStudio } from '../../contexts/StudioContext'
-import { publishApi, processApi } from '../../api/client'
-import type { Platform } from '../../types'
+import { publishApi, processApi, assetsApi } from '../../api/client'
+import type { Asset, Platform } from '../../types'
 import { PLATFORMS } from '../../utils/platforms'
 
 interface PublishLog {
@@ -25,6 +25,7 @@ export default function PublishPanel() {
   const { activeBrand, videoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, seoPackage, activeJob } = useStudio()
   const [logs, setLogs] = useState<PublishLog[]>([])
   const [publishing, setPublishing] = useState<string | null>(null)
+  const [exportedAsset, setExportedAsset] = useState<Asset | null>(null)
 
   const addLog = (platform: string, status: 'success' | 'error', message: string) => {
     setLogs(prev => [{
@@ -66,17 +67,34 @@ export default function PublishPanel() {
     }
   }
 
-  const download = (format: string) => {
-    const url = videoClips[0]?.url ?? imageSlides[0]?.url
-    if (!url) {
-      alert('No content to download. Add a video or image first.')
+  const download = async (format: string, width: number, height: number) => {
+    if (!exportedAsset) {
+      alert('Render Final first to produce a master video, then download a formatted version.')
       return
     }
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `export-${format}.mp4`
-    a.click()
-    addLog(format, 'success', `Downloaded as ${format}`)
+    setPublishing(format)
+    try {
+      const { data } = await processApi.process({
+        asset_id: exportedAsset.id,
+        operation: 'resize',
+        width,
+        height,
+        job_id: activeJob?.id,
+      })
+      const resized = data.asset as Asset
+      const { data: blob } = await assetsApi.download(resized.id)
+      const url = URL.createObjectURL(blob as Blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `export-${format}.mp4`
+      a.click()
+      URL.revokeObjectURL(url)
+      addLog(format, 'success', `Downloaded as ${format}`)
+    } catch (err) {
+      addLog(format, 'error', err instanceof Error ? err.message : 'Download failed')
+    } finally {
+      setPublishing(null)
+    }
   }
 
   const renderFinal = async () => {
@@ -93,7 +111,7 @@ export default function PublishPanel() {
 
     setPublishing('render')
     try {
-      await processApi.export({
+      const { data } = await processApi.export({
         job_id: activeJob.id,
         asset_ids: assetIds,
         transition: TRANSITION_MAP[videoClips[0].transition] ?? 'dissolve',
@@ -122,7 +140,8 @@ export default function PublishPanel() {
         audio_original_volume: audioTrack?.duck ? 0.2 : 0,
         audio_volume: audioTrack?.volume ?? 1,
       })
-      addLog('Render', 'success', 'Final export started — check job status')
+      setExportedAsset(data.asset as Asset)
+      addLog('Render', 'success', 'Final export complete — ready to download')
     } catch (err) {
       addLog('Render', 'error', err instanceof Error ? err.message : 'Render failed')
     } finally {
@@ -130,10 +149,10 @@ export default function PublishPanel() {
     }
   }
 
-  const FORMATS: { label: string; value: string; icon: string }[] = [
-    { label: '9:16 (Reel/TikTok)', value: '9_16', icon: '📱' },
-    { label: '1:1 (Post)', value: '1_1', icon: '📸' },
-    { label: '16:9 (YouTube)', value: '16_9', icon: '📺' },
+  const FORMATS: { label: string; value: string; icon: string; width: number; height: number }[] = [
+    { label: '9:16 (Reel/TikTok)', value: '9_16', icon: '📱', width: 1080, height: 1920 },
+    { label: '1:1 (Post)', value: '1_1', icon: '📸', width: 1080, height: 1080 },
+    { label: '16:9 (YouTube)', value: '16_9', icon: '📺', width: 1920, height: 1080 },
   ]
 
   return (
@@ -172,11 +191,14 @@ export default function PublishPanel() {
           {FORMATS.map(f => (
             <button
               key={f.value}
-              style={s.downloadBtn}
-              onClick={() => download(f.value)}
+              style={{ ...s.downloadBtn, ...(publishing !== null ? s.disabled : {}) }}
+              onClick={() => download(f.value, f.width, f.height)}
+              disabled={publishing !== null}
             >
               <span>{f.icon}</span>
-              <span style={s.downloadLabel}>{f.label}</span>
+              <span style={s.downloadLabel}>
+                {publishing === f.value ? 'Resizing…' : f.label}
+              </span>
             </button>
           ))}
         </div>
