@@ -1,4 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -25,6 +28,30 @@
   --space-4: 16px;
   --space-6: 24px;
   --space-8: 32px;
+
+  /* shadcn/ui tokens — HSL triplets, Social Genius palette (light) */
+  --background: 42 32% 95%;        /* ivory/cream */
+  --foreground: 150 4% 15%;        /* near-charcoal */
+  --card: 0 0% 100%;
+  --card-foreground: 150 4% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 150 4% 15%;
+  --primary: 152 34% 17%;          /* forest green */
+  --primary-foreground: 42 32% 95%;
+  --secondary: 42 20% 90%;
+  --secondary-foreground: 152 34% 17%;
+  --muted: 42 20% 91%;
+  --muted-foreground: 150 5% 40%;
+  --accent: 83 62% 55%;            /* lime */
+  --accent-foreground: 152 34% 12%;
+  --destructive: 6 78% 57%;
+  --destructive-foreground: 42 32% 97%;
+  --success: 152 55% 38%;
+  --warning: 38 90% 51%;
+  --border: 40 20% 87%;
+  --input: 40 20% 87%;
+  --ring: 152 34% 17%;
+  --radius: 10px;
 }
 
 /* Light theme (default) — light canvas/panels, dark text */
@@ -51,6 +78,29 @@
   --text-primary: #F0EDE6;
   --text-secondary: #ADADB0;
   --text-tertiary: #79797C;
+
+  /* shadcn/ui tokens (dark) */
+  --background: 150 8% 8%;
+  --foreground: 42 20% 93%;
+  --card: 150 6% 11%;
+  --card-foreground: 42 20% 93%;
+  --popover: 150 6% 11%;
+  --popover-foreground: 42 20% 93%;
+  --primary: 83 62% 55%;           /* lime pops on dark */
+  --primary-foreground: 152 34% 10%;
+  --secondary: 150 6% 16%;
+  --secondary-foreground: 42 20% 93%;
+  --muted: 150 6% 15%;
+  --muted-foreground: 150 5% 62%;
+  --accent: 152 34% 30%;
+  --accent-foreground: 42 20% 95%;
+  --destructive: 6 70% 55%;
+  --destructive-foreground: 42 20% 95%;
+  --success: 152 50% 45%;
+  --warning: 38 90% 55%;
+  --border: 150 6% 20%;
+  --input: 150 6% 20%;
+  --ring: 83 62% 55%;
 }
 
 html, body, #root {

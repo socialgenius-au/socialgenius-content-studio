@@ -1,6 +1,5 @@
 import { useEffect, type CSSProperties } from 'react'
 import { StudioProvider } from '../../contexts/StudioContext'
-import { ThemeProvider } from '../../contexts/ThemeContext'
 import TopBar from './TopBar'
 import IconRail from './IconRail'
 import ToolPanel from './ToolPanel'
@@ -52,11 +51,9 @@ function StudioLayout() {
 
 export default function StudioPage() {
   return (
-    <ThemeProvider>
-      <StudioProvider>
-        <StudioLayout />
-      </StudioProvider>
-    </ThemeProvider>
+    <StudioProvider>
+      <StudioLayout />
+    </StudioProvider>
   )
 }
 
