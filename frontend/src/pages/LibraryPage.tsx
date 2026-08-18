@@ -13,14 +13,14 @@ import { useAICompanionContext } from '@/contexts/AICompanionContext'
 import { knowledgeService } from '@/services/knowledgeService'
 import type { KnowledgeItem, KnowledgeScope } from '@/types/domain'
 
-function KnowledgeTab({ scope }: { scope: KnowledgeScope }) {
+function KnowledgeTab({ scope, clientId }: { scope: KnowledgeScope; clientId: string }) {
   const [items, setItems] = useState<KnowledgeItem[] | null>(null)
   const [search, setSearch] = useState('')
 
   useEffect(() => {
     setItems(null)
-    knowledgeService.list(scope).then(setItems)
-  }, [scope])
+    knowledgeService.list(scope, clientId).then(setItems)
+  }, [scope, clientId])
 
   const filtered = useMemo(() => {
     if (!items) return []
@@ -86,9 +86,9 @@ export default function LibraryPage() {
           <TabsTrigger value="assets">Asset Library</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="client"><KnowledgeTab scope="client" /></TabsContent>
-        <TabsContent value="industry"><KnowledgeTab scope="industry" /></TabsContent>
-        <TabsContent value="global"><KnowledgeTab scope="global" /></TabsContent>
+        <TabsContent value="client"><KnowledgeTab scope="client" clientId={client.id} /></TabsContent>
+        <TabsContent value="industry"><KnowledgeTab scope="industry" clientId={client.id} /></TabsContent>
+        <TabsContent value="global"><KnowledgeTab scope="global" clientId={client.id} /></TabsContent>
         <TabsContent value="assets">
           <EmptyState
             icon={FolderOpen}

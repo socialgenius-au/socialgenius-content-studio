@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { UploadCloud, Scissors, Play, Check, X, Pencil, Film } from 'lucide-react'
+import { UploadCloud, Scissors, Play, Check, X, Pencil, Film, CheckCircle2 } from 'lucide-react'
 import { useClient } from '@/contexts/ClientContext'
 import { useAICompanionContext } from '@/contexts/AICompanionContext'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
 interface CandidateClip {
@@ -38,15 +40,25 @@ export default function RepurposePage() {
   const { client } = useClient()
   useAICompanionContext(`Repurpose${client ? ` • ${client.name}` : ''}`)
 
+  const [clips, setClips] = useState<CandidateClip[]>(CANDIDATE_CLIPS)
   const [decisions, setDecisions] = useState<Record<string, ClipDecision>>({})
+  const [created, setCreated] = useState<Record<string, string[]>>({})
+  const [editingRange, setEditingRange] = useState<string | null>(null)
+  const [previewClip, setPreviewClip] = useState<CandidateClip | null>(null)
   const [treatment, setTreatment] = useState<Record<string, boolean>>(
     Object.fromEntries(TREATMENT_CHECKLIST.map(t => [t, true]))
   )
 
-  const sorted = [...CANDIDATE_CLIPS].sort((a, b) => b.score - a.score)
+  const sorted = [...clips].sort((a, b) => b.score - a.score)
+  const activeTreatments = TREATMENT_CHECKLIST.filter(t => treatment[t])
 
   const setDecision = (id: string, decision: ClipDecision) =>
     setDecisions(prev => ({ ...prev, [id]: prev[id] === decision ? null : decision }))
+
+  const updateRange = (id: string, range: string) =>
+    setClips(prev => prev.map(c => (c.id === id ? { ...c, range } : c)))
+
+  const createShort = (id: string) => setCreated(prev => ({ ...prev, [id]: activeTreatments as string[] }))
 
   return (
     <div className="flex flex-col gap-5">
@@ -66,14 +78,30 @@ export default function RepurposePage() {
       <div className="flex flex-col gap-3">
         {sorted.map(clip => {
           const decision = decisions[clip.id] ?? null
+          const appliedTreatments = created[clip.id]
+          const isCreated = appliedTreatments !== undefined
           return (
-            <Card key={clip.id} className={cn(decision === 'rejected' && 'opacity-50', decision === 'selected' && 'border-primary ring-1 ring-primary')}>
+            <Card key={clip.id} className={cn(decision === 'rejected' && !isCreated && 'opacity-50', decision === 'selected' && 'border-primary ring-1 ring-primary')}>
               <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-start md:justify-between">
                 <div className="flex flex-1 flex-col gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline" className="font-mono">{clip.range}</Badge>
+                    {editingRange === clip.id ? (
+                      <Input
+                        autoFocus
+                        defaultValue={clip.range}
+                        className="h-6 w-28 font-mono text-[11px]"
+                        onBlur={e => { updateRange(clip.id, e.target.value); setEditingRange(null) }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { updateRange(clip.id, e.currentTarget.value); setEditingRange(null) }
+                          if (e.key === 'Escape') setEditingRange(null)
+                        }}
+                      />
+                    ) : (
+                      <Badge variant="outline" className="font-mono">{clip.range}</Badge>
+                    )}
                     <span className="text-sm font-semibold text-foreground">{clip.title}</span>
                     <Badge variant="accent">{clip.businessObjective}</Badge>
+                    {isCreated && <Badge variant="success" className="gap-1"><CheckCircle2 className="h-3 w-3" /> Short created</Badge>}
                   </div>
                   <p className="text-sm italic text-foreground/90">"{clip.hook}"</p>
                   <p className="text-xs text-muted-foreground">{clip.whySelected}</p>
@@ -83,19 +111,31 @@ export default function RepurposePage() {
                     <Metric label="Positioning alignment" value={clip.positioningAlignment} />
                     <Metric label="Overall score" value={clip.score} emphasis />
                   </div>
+                  {isCreated && (
+                    <p className="text-[11px] text-muted-foreground">
+                      {appliedTreatments.length > 0 ? `Applied: ${appliedTreatments.join(', ')}` : 'No treatment options were enabled — created as a raw clip.'}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex shrink-0 flex-wrap gap-1.5 md:flex-col">
-                  <Button size="sm" variant="outline" className="gap-1"><Play className="h-3.5 w-3.5" /> Preview</Button>
-                  <Button size="sm" variant={decision === 'selected' ? 'default' : 'outline'} className="gap-1" onClick={() => setDecision(clip.id, 'selected')}>
+                  <Button size="sm" variant="outline" className="gap-1" onClick={() => setPreviewClip(clip)}><Play className="h-3.5 w-3.5" /> Preview</Button>
+                  <Button size="sm" variant={decision === 'selected' ? 'default' : 'outline'} className="gap-1" disabled={isCreated} onClick={() => setDecision(clip.id, 'selected')}>
                     <Check className="h-3.5 w-3.5" /> Select
                   </Button>
-                  <Button size="sm" variant={decision === 'rejected' ? 'destructive' : 'outline'} className="gap-1" onClick={() => setDecision(clip.id, 'rejected')}>
+                  <Button size="sm" variant={decision === 'rejected' ? 'destructive' : 'outline'} className="gap-1" disabled={isCreated} onClick={() => setDecision(clip.id, 'rejected')}>
                     <X className="h-3.5 w-3.5" /> Reject
                   </Button>
-                  <Button size="sm" variant="outline" className="gap-1"><Pencil className="h-3.5 w-3.5" /> Modify boundaries</Button>
-                  <Button size="sm" className="gap-1 bg-sg-forest text-sg-ivory hover:bg-sg-forest/90" disabled={decision !== 'selected'}>
-                    <Scissors className="h-3.5 w-3.5" /> Create Short
+                  <Button size="sm" variant="outline" className="gap-1" disabled={isCreated} onClick={() => setEditingRange(clip.id)}>
+                    <Pencil className="h-3.5 w-3.5" /> Modify boundaries
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="gap-1 bg-sg-forest text-sg-ivory hover:bg-sg-forest/90"
+                    disabled={decision !== 'selected' || isCreated}
+                    onClick={() => createShort(clip.id)}
+                  >
+                    <Scissors className="h-3.5 w-3.5" /> {isCreated ? 'Created' : 'Create Short'}
                   </Button>
                 </div>
               </CardContent>
@@ -117,6 +157,24 @@ export default function RepurposePage() {
           ))}
         </CardContent>
       </Card>
+
+      <Dialog open={previewClip !== null} onOpenChange={open => !open && setPreviewClip(null)}>
+        <DialogContent>
+          {previewClip && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{previewClip.title}</DialogTitle>
+                <DialogDescription>{previewClip.range} · {previewClip.businessObjective}</DialogDescription>
+              </DialogHeader>
+              <div className="flex aspect-[9/16] max-h-72 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <Play className="h-8 w-8" />
+              </div>
+              <p className="text-sm italic text-foreground/90">"{previewClip.hook}"</p>
+              <p className="text-xs text-muted-foreground">{previewClip.whySelected}</p>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -327,6 +327,7 @@ export type KnowledgeType = 'pain_point' | 'expectation' | 'hook' | 'objection' 
 export interface KnowledgeItem {
   id: string
   scope: KnowledgeScope
+  clientId: string | null
   type: KnowledgeType
   title: string
   detail: string
