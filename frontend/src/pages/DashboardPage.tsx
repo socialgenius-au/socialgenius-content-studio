@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { useClient } from '@/contexts/ClientContext'
+import { cn } from '@/lib/utils'
 import { opsService } from '@/services/opsService'
 import { leadService } from '@/services/leadService'
 import { campaignService } from '@/services/campaignService'
@@ -17,10 +18,8 @@ import { intelligenceService } from '@/services/intelligenceService'
 import type { OpsTask, Lead, Campaign, IntelligenceFinding } from '@/types/domain'
 
 export default function DashboardPage() {
-  const { clients, loading: clientsLoading } = useClient()
+  const { client: focusClient, clients, loading: clientsLoading } = useClient()
   const navigate = useNavigate()
-
-  const focusClient = clients[0]
 
   const [tasks, setTasks] = useState<OpsTask[]>([])
   const [leads, setLeads] = useState<Lead[]>([])
@@ -94,7 +93,10 @@ export default function DashboardPage() {
           return (
             <Card
               key={c.id}
-              className="cursor-pointer transition-colors hover:border-primary/50"
+              className={cn(
+                'cursor-pointer transition-colors hover:border-primary/50',
+                c.id === focusClient?.id && 'border-primary/60 ring-1 ring-primary/20'
+              )}
               onClick={() => navigate(`/clients/${c.id}/overview`)}
             >
               <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
@@ -110,7 +112,10 @@ export default function DashboardPage() {
                     <span className="text-[11px] text-muted-foreground">{c.industry}</span>
                   </div>
                 </div>
-                {c.positioningStatus !== 'not_started' && <StatusBadge status={c.positioningStatus} />}
+                <div className="flex items-center gap-1.5">
+                  {c.id === focusClient?.id && <Badge variant="accent">Focused</Badge>}
+                  {c.positioningStatus !== 'not_started' && <StatusBadge status={c.positioningStatus} />}
+                </div>
               </CardHeader>
               <CardContent className="flex flex-col gap-2 pt-0">
                 <div className="flex flex-col gap-1">

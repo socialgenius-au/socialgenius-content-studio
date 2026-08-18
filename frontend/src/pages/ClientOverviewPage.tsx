@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Sparkles, Mail, Phone, MapPin } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -11,21 +10,15 @@ import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { useClient } from '@/contexts/ClientContext'
 import { useAICompanion, useAICompanionContext } from '@/contexts/AICompanionContext'
-import { servicePlanService } from '@/services/servicePlanService'
+import { useEntitlements } from '@/contexts/EntitlementContext'
 import { NAV_GROUPS, resolveNavPath } from '@/config/navigation'
-import type { ServicePlan } from '@/types/domain'
 
 export default function ClientOverviewPage() {
   const { client, loading } = useClient()
   const { open } = useAICompanion()
   useAICompanionContext(`Overview • ${client?.name ?? ''}`)
 
-  const [plan, setPlan] = useState<ServicePlan | undefined>()
-
-  useEffect(() => {
-    if (!client) return
-    servicePlanService.get(client.servicePlanId).then(setPlan)
-  }, [client])
+  const { entitlements, planName, loading: entitlementsLoading } = useEntitlements()
 
   if (loading || !client) {
     return (
@@ -136,17 +129,22 @@ export default function ClientOverviewPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Service plan</CardTitle>
-          <CardDescription>{plan?.name ?? 'Loading…'}</CardDescription>
+        <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+          <div>
+            <CardTitle>Service plan</CardTitle>
+            <CardDescription>{entitlementsLoading ? 'Loading…' : planName || '—'}</CardDescription>
+          </div>
+          <Button asChild size="sm" variant="outline">
+            <Link to={`/clients/${client.id}/service-config`}>Configure services</Link>
+          </Button>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-1.5">
-          {plan?.entitlements.filter(e => e.enabled).map(e => (
+          {entitlements.filter(e => e.enabled).map(e => (
             <Badge key={e.key} variant="accent">
               {e.label} — {e.quantity}/{e.frequency}
             </Badge>
           ))}
-          {plan && plan.entitlements.filter(e => e.enabled).length === 0 && (
+          {!entitlementsLoading && entitlements.filter(e => e.enabled).length === 0 && (
             <span className="text-xs text-muted-foreground">No services enabled yet — configure this client's plan in Service Configurator.</span>
           )}
         </CardContent>
