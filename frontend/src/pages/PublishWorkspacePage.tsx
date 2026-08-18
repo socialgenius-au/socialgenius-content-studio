@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, Lock, Unlock, Send } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowRight, Lock, Unlock, Send, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageHeader } from '@/components/common/PageHeader'
 import { LoadingState } from '@/components/common/LoadingState'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -34,12 +35,24 @@ function PlatformVersionCard({ version, onChange }: { version: PlatformVersion; 
   const toggleLock = (field: string) => {
     onChange({ ...version, locked: { ...version.locked, [field]: !version.locked[field] } })
   }
+  const isApproved = version.status === 'approved' || version.status === 'scheduled' || version.status === 'published'
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-2 space-y-0 pb-2">
         <CardTitle>{version.platform}</CardTitle>
-        <StatusBadge status={version.status} />
+        <div className="flex items-center gap-1.5">
+          <StatusBadge status={version.status} />
+          <Button
+            size="sm"
+            variant={isApproved ? 'outline' : 'default'}
+            className="h-7 gap-1 text-[11px]"
+            disabled={isApproved}
+            onClick={() => onChange({ ...version, status: 'approved' })}
+          >
+            <CheckCircle2 className="h-3 w-3" /> {isApproved ? 'Approved' : 'Approve'}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 pt-0">
         <div>
@@ -81,32 +94,62 @@ export default function PublishWorkspacePage() {
   useAICompanionContext(`Publish • ${client?.name ?? '…'}`)
 
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null)
-  const [asset, setAsset] = useState<CampaignAsset | null>(null)
+  const [assetId, setAssetId] = useState<string | null>(null)
   const [versions, setVersions] = useState<PlatformVersion[] | null>(null)
+  const [justSent, setJustSent] = useState(false)
 
   useEffect(() => {
     if (!client) return
     campaignService.list(client.id).then(setCampaigns)
   }, [client])
 
+  const assets: CampaignAsset[] = useMemo(() => campaigns?.flatMap(c => c.assets) ?? [], [campaigns])
+
   useEffect(() => {
     if (!campaigns) return
-    const firstAsset = campaigns.flatMap(c => c.assets)[0] ?? null
-    setAsset(firstAsset)
-    if (firstAsset) {
-      connectionService.platformVersions(firstAsset.id).then(setVersions)
-    } else {
+    setAssetId(prev => prev ?? assets[0]?.id ?? null)
+  }, [campaigns, assets])
+
+  useEffect(() => {
+    setJustSent(false)
+    if (!assetId) {
       setVersions([])
+      return
     }
-  }, [campaigns])
+    let cancelled = false
+    setVersions(null)
+    connectionService.platformVersions(assetId).then(v => {
+      if (!cancelled) setVersions(v)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [assetId])
 
   const updateVersion = (updated: PlatformVersion) => {
     setVersions(prev => (prev ? prev.map(v => (v.id === updated.id ? updated : v)) : prev))
   }
 
+  const approvedUnscheduled = (versions ?? []).filter(v => v.status === 'approved' && !v.scheduledFor)
+  const approvedCount = (versions ?? []).filter(v => v.status === 'approved' || v.status === 'scheduled').length
+
+  const sendToCalendar = () => {
+    const sendAt = new Date()
+    sendAt.setDate(sendAt.getDate() + 1)
+    sendAt.setHours(9, 0, 0, 0)
+    setVersions(prev =>
+      prev
+        ? prev.map(v => (v.status === 'approved' && !v.scheduledFor ? { ...v, status: 'scheduled', scheduledFor: sendAt.toISOString() } : v))
+        : prev
+    )
+    setJustSent(true)
+  }
+
+  const asset = assets.find(a => a.id === assetId) ?? null
+
   if (loading || !client || campaigns === null) return <LoadingState rows={4} />
 
-  if (!asset || versions === null) {
+  if (assets.length === 0) {
     return (
       <div className="flex flex-col gap-5">
         <PageHeader title="Publish" description="Prepare one master project into platform-specific versions." />
@@ -115,29 +158,45 @@ export default function PublishWorkspacePage() {
     )
   }
 
-  if (versions.length === 0) {
-    return (
-      <div className="flex flex-col gap-5">
-        <PageHeader title="Publish" description={`Master content project: "${asset.title}"`} />
-        <EmptyState icon={Send} title="No platform versions yet for this asset" description="Platform-specific versions will appear here once generated for this master project." />
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Publish" description={`Master content project: "${asset.title}"`} />
-      <MasterFlow platforms={versions.map(v => v.platform)} />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-        {versions.map(v => (
-          <PlatformVersionCard key={v.id} version={v} onChange={updateVersion} />
-        ))}
-      </div>
-      <div className="flex justify-end">
-        <Button className="gap-1.5">
-          <Send className="h-3.5 w-3.5" /> Send approved versions to Calendar
-        </Button>
-      </div>
+      <PageHeader
+        title="Publish"
+        description={asset ? `Master content project: "${asset.title}"` : 'Prepare one master project into platform-specific versions.'}
+        actions={
+          <Select value={assetId ?? undefined} onValueChange={setAssetId}>
+            <SelectTrigger className="h-9 w-64"><SelectValue placeholder="Choose a master project" /></SelectTrigger>
+            <SelectContent>
+              {assets.map(a => (
+                <SelectItem key={a.id} value={a.id}>{a.title} — {a.status}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+      />
+
+      {versions === null ? (
+        <LoadingState rows={3} />
+      ) : versions.length === 0 ? (
+        <EmptyState icon={Send} title="No platform versions yet for this asset" description="Platform-specific versions will appear here once generated for this master project." />
+      ) : (
+        <>
+          <MasterFlow platforms={versions.map(v => v.platform)} />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {versions.map(v => (
+              <PlatformVersionCard key={v.id} version={v} onChange={updateVersion} />
+            ))}
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            {justSent && approvedUnscheduled.length === 0 && (
+              <span className="text-[11px] text-muted-foreground">Sent to Calendar — scheduled for tomorrow 9:00am.</span>
+            )}
+            <Button className="gap-1.5" disabled={approvedCount === 0 || approvedUnscheduled.length === 0} onClick={sendToCalendar}>
+              <Send className="h-3.5 w-3.5" /> Send approved versions to Calendar
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

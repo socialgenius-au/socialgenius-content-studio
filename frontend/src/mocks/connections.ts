@@ -24,4 +24,13 @@ export const MOCK_PLATFORM_VERSIONS: Record<string, PlatformVersion[]> = {
     { id: 'pv-2', platform: 'TikTok', title: 'The cheapest SUV could cost you the most', caption: 'Three things to check before you buy 👀 #UsedCars #CarTok', hashtags: '#UsedCars #CarTok #BrisbaneCars', cta: 'Get your free inspection report', locked: { title: true, caption: false }, status: 'draft', scheduledFor: null },
     { id: 'pv-3', platform: 'Facebook', title: 'The cheapest SUV could cost you the most', caption: 'Before you buy on price alone, check these three things first. We\'ll send you a free inspection report — no obligation.', hashtags: '', cta: 'Get your free inspection report', locked: { title: true, caption: true }, status: 'approved', scheduledFor: '2026-08-16T09:00:00' },
   ],
+  'ast-2': [
+    { id: 'pv-4', platform: 'Instagram Reel', title: 'Angle B — Family Confidence hook', caption: 'Buying your first family car? Here\'s what actually matters (hint: it\'s not the price tag). 👨‍👩‍👧', hashtags: '#FamilyCars #UsedCars #Brisbane', cta: 'Get your free inspection report', locked: { title: false, caption: false }, status: 'review', scheduledFor: null },
+  ],
+  'ast-3': [
+    { id: 'pv-5', platform: 'Facebook', title: 'Warranty explainer carousel', caption: 'Every car we sell comes with a 3-month warranty. Swipe to see exactly what\'s covered.', hashtags: '#UsedCars #Warranty', cta: 'View our current stock', locked: { title: false, caption: false }, status: 'draft', scheduledFor: null },
+  ],
+  'ast-4': [
+    { id: 'pv-6', platform: 'Google Business Profile', title: 'GBP proof-point post', caption: '212 reviews, 4.8★. Every car gets a 3-point inspection before it hits the yard.', hashtags: '', cta: 'Read our reviews', locked: { title: true, caption: true }, status: 'approved', scheduledFor: '2026-08-20T10:00:00' },
+  ],
 }
