@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Play, CalendarClock, Pause, Copy, Inbox } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Play, CalendarClock, Pause, Copy, Inbox, AlertTriangle } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,7 +14,8 @@ import { useClient } from '@/contexts/ClientContext'
 import { useAICompanionContext } from '@/contexts/AICompanionContext'
 import { campaignService } from '@/services/campaignService'
 import { connectionService } from '@/services/connectionService'
-import type { PlatformVersion } from '@/types/domain'
+import { findConnection, isPlatformLive } from '@/lib/platformConnection'
+import type { PlatformConnection, PlatformVersion } from '@/types/domain'
 
 interface CalendarItem extends PlatformVersion {
   assetTitle: string
@@ -41,6 +43,7 @@ export default function CalendarPage() {
   useAICompanionContext(`Content Calendar • ${client?.name ?? '…'}`)
 
   const [items, setItems] = useState<CalendarItem[] | null>(null)
+  const [connections, setConnections] = useState<PlatformConnection[]>([])
   const [platformFilter, setPlatformFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
@@ -48,6 +51,7 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!client) return
     setItems(null)
+    connectionService.list(client.id).then(setConnections)
     campaignService.list(client.id).then(async campaigns => {
       const assets = campaigns.flatMap(c => c.assets)
       const versionLists = await Promise.all(
@@ -168,22 +172,33 @@ export default function CalendarPage() {
                 <Inbox className="h-3.5 w-3.5" /> Awaiting schedule
               </h2>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {awaitingSchedule.map(item => (
-                  <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5">
-                    <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-foreground">{item.title}</span>
-                      <span className="text-[11px] text-muted-foreground">{item.platform} · {item.status}</span>
+                {awaitingSchedule.map(item => {
+                  const live = isPlatformLive(findConnection(item.platform, connections))
+                  return (
+                    <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold text-foreground">{item.title}</span>
+                        <span className="text-[11px] text-muted-foreground">{item.platform} · {item.status}</span>
+                        {!live && (
+                          <span className="mt-0.5 flex items-center gap-1 text-[10px] text-warning">
+                            <AlertTriangle className="h-2.5 w-2.5" /> Not connected —{' '}
+                            <Link to={`/clients/${client.id}/connections`} className="underline">connect it</Link>
+                          </span>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 text-[11px]"
+                        disabled={!live}
+                        title={live ? undefined : `${item.platform} isn't connected for this client`}
+                        onClick={() => updateItem(item.id, { scheduledFor: new Date().toISOString(), status: 'scheduled' })}
+                      >
+                        <CalendarClock className="h-3 w-3" /> Schedule today
+                      </Button>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 gap-1 text-[11px]"
-                      onClick={() => updateItem(item.id, { scheduledFor: new Date().toISOString(), status: 'scheduled' })}
-                    >
-                      <CalendarClock className="h-3 w-3" /> Schedule today
-                    </Button>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}

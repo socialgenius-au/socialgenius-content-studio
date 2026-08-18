@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Lock, Unlock, Send, CheckCircle2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, Lock, Unlock, Send, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,7 +16,8 @@ import { useClient } from '@/contexts/ClientContext'
 import { useAICompanionContext } from '@/contexts/AICompanionContext'
 import { campaignService } from '@/services/campaignService'
 import { connectionService } from '@/services/connectionService'
-import type { Campaign, CampaignAsset, PlatformVersion } from '@/types/domain'
+import { findConnection, isPlatformLive } from '@/lib/platformConnection'
+import type { Campaign, CampaignAsset, PlatformConnection, PlatformVersion } from '@/types/domain'
 
 function MasterFlow({ platforms }: { platforms: string[] }) {
   return (
@@ -31,11 +33,22 @@ function MasterFlow({ platforms }: { platforms: string[] }) {
   )
 }
 
-function PlatformVersionCard({ version, onChange }: { version: PlatformVersion; onChange: (v: PlatformVersion) => void }) {
+function PlatformVersionCard({
+  version,
+  connection,
+  clientId,
+  onChange,
+}: {
+  version: PlatformVersion
+  connection: PlatformConnection | undefined
+  clientId: string
+  onChange: (v: PlatformVersion) => void
+}) {
   const toggleLock = (field: string) => {
     onChange({ ...version, locked: { ...version.locked, [field]: !version.locked[field] } })
   }
   const isApproved = version.status === 'approved' || version.status === 'scheduled' || version.status === 'published'
+  const isConnected = isPlatformLive(connection)
 
   return (
     <Card>
@@ -54,6 +67,15 @@ function PlatformVersionCard({ version, onChange }: { version: PlatformVersion; 
           </Button>
         </div>
       </CardHeader>
+      {!isConnected && (
+        <div className="mx-4 mb-1 flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] text-warning">
+          <AlertTriangle className="h-3 w-3 shrink-0" />
+          <span>
+            {connection ? connection.platform : version.platform.split(' ')[0]} isn't connected for this client — content can be approved but won't be schedulable until it's{' '}
+            <Link to={`/clients/${clientId}/connections`} className="underline">connected</Link>.
+          </span>
+        </div>
+      )}
       <CardContent className="flex flex-col gap-3 pt-0">
         <div>
           <div className="mb-1 flex items-center justify-between">
@@ -94,13 +116,15 @@ export default function PublishWorkspacePage() {
   useAICompanionContext(`Publish • ${client?.name ?? '…'}`)
 
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null)
+  const [connections, setConnections] = useState<PlatformConnection[]>([])
   const [assetId, setAssetId] = useState<string | null>(null)
   const [versions, setVersions] = useState<PlatformVersion[] | null>(null)
-  const [justSent, setJustSent] = useState(false)
+  const [justSent, setJustSent] = useState<{ scheduled: number; skipped: string[] } | null>(null)
 
   useEffect(() => {
     if (!client) return
     campaignService.list(client.id).then(setCampaigns)
+    connectionService.list(client.id).then(setConnections)
   }, [client])
 
   const assets: CampaignAsset[] = useMemo(() => campaigns?.flatMap(c => c.assets) ?? [], [campaigns])
@@ -111,7 +135,7 @@ export default function PublishWorkspacePage() {
   }, [campaigns, assets])
 
   useEffect(() => {
-    setJustSent(false)
+    setJustSent(null)
     if (!assetId) {
       setVersions([])
       return
@@ -132,17 +156,23 @@ export default function PublishWorkspacePage() {
 
   const approvedUnscheduled = (versions ?? []).filter(v => v.status === 'approved' && !v.scheduledFor)
   const approvedCount = (versions ?? []).filter(v => v.status === 'approved' || v.status === 'scheduled').length
+  const sendableCount = approvedUnscheduled.filter(v => isPlatformLive(findConnection(v.platform, connections))).length
 
   const sendToCalendar = () => {
+    if (!versions) return
     const sendAt = new Date()
     sendAt.setDate(sendAt.getDate() + 1)
     sendAt.setHours(9, 0, 0, 0)
+
+    const eligible = versions.filter(v => v.status === 'approved' && !v.scheduledFor)
+    const toSchedule = eligible.filter(v => isPlatformLive(findConnection(v.platform, connections)))
+    const skipped = eligible.filter(v => !isPlatformLive(findConnection(v.platform, connections))).map(v => v.platform)
+    const scheduleIds = new Set(toSchedule.map(v => v.id))
+
     setVersions(prev =>
-      prev
-        ? prev.map(v => (v.status === 'approved' && !v.scheduledFor ? { ...v, status: 'scheduled', scheduledFor: sendAt.toISOString() } : v))
-        : prev
+      prev ? prev.map(v => (scheduleIds.has(v.id) ? { ...v, status: 'scheduled', scheduledFor: sendAt.toISOString() } : v)) : prev
     )
-    setJustSent(true)
+    setJustSent({ scheduled: toSchedule.length, skipped })
   }
 
   const asset = assets.find(a => a.id === assetId) ?? null
@@ -184,14 +214,23 @@ export default function PublishWorkspacePage() {
           <MasterFlow platforms={versions.map(v => v.platform)} />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
             {versions.map(v => (
-              <PlatformVersionCard key={v.id} version={v} onChange={updateVersion} />
+              <PlatformVersionCard
+                key={v.id}
+                version={v}
+                connection={findConnection(v.platform, connections)}
+                clientId={client.id}
+                onChange={updateVersion}
+              />
             ))}
           </div>
           <div className="flex items-center justify-end gap-2">
-            {justSent && approvedUnscheduled.length === 0 && (
-              <span className="text-[11px] text-muted-foreground">Sent to Calendar — scheduled for tomorrow 9:00am.</span>
+            {justSent && (
+              <span className="text-[11px] text-muted-foreground">
+                {justSent.scheduled > 0 && `${justSent.scheduled} version${justSent.scheduled === 1 ? '' : 's'} scheduled for tomorrow 9:00am.`}
+                {justSent.skipped.length > 0 && ` ${justSent.skipped.join(', ')} skipped — not connected.`}
+              </span>
             )}
-            <Button className="gap-1.5" disabled={approvedCount === 0 || approvedUnscheduled.length === 0} onClick={sendToCalendar}>
+            <Button className="gap-1.5" disabled={approvedCount === 0 || sendableCount === 0} onClick={sendToCalendar}>
               <Send className="h-3.5 w-3.5" /> Send approved versions to Calendar
             </Button>
           </div>
