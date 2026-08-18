@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users } from 'lucide-react'
+import { AlertTriangle, UserPlus, Users } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { FilterBar } from '@/components/common/FilterBar'
 import { EmptyState } from '@/components/common/EmptyState'
@@ -9,11 +9,35 @@ import { StatusBadge } from '@/components/common/StatusBadge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useClient } from '@/contexts/ClientContext'
+import { opsService } from '@/services/opsService'
+import { leadService } from '@/services/leadService'
+
+interface Attention {
+  overdueTasks: number
+  newLeads: number
+}
 
 export default function ClientsPage() {
   const { clients, loading } = useClient()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
+  const [attention, setAttention] = useState<Record<string, Attention>>({})
+
+  useEffect(() => {
+    if (clients.length === 0) return
+    let cancelled = false
+    Promise.all(
+      clients.map(async c => {
+        const [tasks, leads] = await Promise.all([opsService.list(c.id), leadService.list(c.id)])
+        return [c.id, { overdueTasks: tasks.filter(t => t.overdue).length, newLeads: leads.filter(l => l.stage === 'new').length }] as const
+      })
+    ).then(pairs => {
+      if (!cancelled) setAttention(Object.fromEntries(pairs))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [clients])
 
   const filtered = useMemo(
     () => clients.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.industry.toLowerCase().includes(search.toLowerCase())),
@@ -64,6 +88,20 @@ export default function ClientsPage() {
                     <Badge key={g} variant="outline" className="font-normal">{g}</Badge>
                   ))}
                 </div>
+                {(attention[c.id]?.overdueTasks ?? 0) > 0 || (attention[c.id]?.newLeads ?? 0) > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {(attention[c.id]?.overdueTasks ?? 0) > 0 && (
+                      <Badge variant="destructive" className="gap-1 font-normal">
+                        <AlertTriangle className="h-3 w-3" /> {attention[c.id].overdueTasks} overdue
+                      </Badge>
+                    )}
+                    {(attention[c.id]?.newLeads ?? 0) > 0 && (
+                      <Badge variant="accent" className="gap-1 font-normal">
+                        <UserPlus className="h-3 w-3" /> {attention[c.id].newLeads} new lead{attention[c.id].newLeads === 1 ? '' : 's'}
+                      </Badge>
+                    )}
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ))}
