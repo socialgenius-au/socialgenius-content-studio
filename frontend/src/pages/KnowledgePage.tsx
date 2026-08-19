@@ -1,16 +1,42 @@
 import { useEffect, useState } from 'react'
-import { Info, BookOpen } from 'lucide-react'
+import { Info, BookOpen, ArrowUpCircle, Globe2 } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { useClient } from '@/contexts/ClientContext'
 import { useAICompanionContext } from '@/contexts/AICompanionContext'
 import { knowledgeService } from '@/services/knowledgeService'
 import type { KnowledgeItem, KnowledgeScope, KnowledgeType, Confidence } from '@/types/domain'
+
+const KNOWLEDGE_STATUSES: { id: KnowledgeItem['status']; label: string }[] = [
+  { id: 'proposed', label: 'Proposed' },
+  { id: 'validated', label: 'Validated' },
+  { id: 'retired', label: 'Retired' },
+]
+
+function StatusSelect({ item, onChange }: { item: KnowledgeItem; onChange: (status: KnowledgeItem['status']) => void }) {
+  return (
+    <Select value={item.status} onValueChange={v => onChange(v as KnowledgeItem['status'])}>
+      <SelectTrigger className="h-6 w-auto gap-1 border-none bg-transparent p-0 shadow-none [&>svg]:h-3 [&>svg]:w-3">
+        <SelectValue>
+          <Badge variant={item.status === 'validated' ? 'success' : item.status === 'retired' ? 'secondary' : 'warning'}>
+            {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
+          </Badge>
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {KNOWLEDGE_STATUSES.map(s => (
+          <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
 
 const SCOPES: { id: KnowledgeScope; label: string }[] = [
   { id: 'global', label: 'Global' },
@@ -50,6 +76,12 @@ export default function KnowledgePage() {
     })
   }, [])
 
+  const setItemStatus = (id: string, status: KnowledgeItem['status']) =>
+    setItems(prev => prev.map(k => (k.id === id ? { ...k, status } : k)))
+
+  const promote = (id: string, target: 'industry' | 'global') =>
+    setItems(prev => prev.map(k => (k.id === id ? { ...k, scope: target, clientId: null, industry: target === 'global' ? null : k.industry } : k)))
+
   const renderList = (scope: KnowledgeScope) => {
     const filtered = items.filter(k => k.scope === scope && (typeFilter === 'all' || k.type === typeFilter))
     if (filtered.length === 0) {
@@ -79,10 +111,18 @@ export default function KnowledgePage() {
               {item.performanceEvidence && (
                 <p className="text-[11px] font-medium text-sg-forest dark:text-sg-lime">Performance evidence: {item.performanceEvidence}</p>
               )}
-              <div>
-                <Badge variant={item.status === 'validated' ? 'success' : item.status === 'retired' ? 'secondary' : 'warning'}>
-                  {toTitle(item.status)}
-                </Badge>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
+                <StatusSelect item={item} onChange={status => setItemStatus(item.id, status)} />
+                {item.scope === 'client' && item.status === 'validated' && (
+                  <div className="flex gap-1.5">
+                    <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={() => promote(item.id, 'industry')}>
+                      <ArrowUpCircle className="h-3 w-3" /> Promote to Industry
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]" onClick={() => promote(item.id, 'global')}>
+                      <Globe2 className="h-3 w-3" /> Promote to Global
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
