@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Sun, Moon, Monitor, ShieldCheck, GitBranch, KeyRound } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -8,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme, type ThemeMode } from '@/contexts/ThemeContext'
+import { useClient } from '@/contexts/ClientContext'
 import { useAICompanionContext } from '@/contexts/AICompanionContext'
 import { positioningService } from '@/services/positioningService'
 import { NAV_GROUPS } from '@/config/navigation'
@@ -38,6 +40,7 @@ const FRAMEWORK_STATUS_VARIANT: Record<PositioningFramework['status'], 'success'
 export default function SettingsPage() {
   const { user } = useAuth()
   const { mode, setMode } = useTheme()
+  const { client } = useClient()
   useAICompanionContext('Settings')
 
   const [frameworks, setFrameworks] = useState<PositioningFramework[]>([])
@@ -187,9 +190,17 @@ export default function SettingsPage() {
                 workspace, not just show a locked state — see <code>EntitlementLocked</code> for the fallback the UI
                 uses when a page needs to explain why a feature is missing.
               </p>
-              <Button variant="outline" size="sm" className="w-fit" disabled>
-                Manage in Service Configurator (per client)
-              </Button>
+              {client ? (
+                <Button asChild variant="outline" size="sm" className="w-fit">
+                  <Link to={`/clients/${client.id}/service-config`}>
+                    Manage {client.name}&apos;s entitlements in Service Configurator
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" className="w-fit" disabled title="Select a client first">
+                  Manage in Service Configurator (per client)
+                </Button>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
