@@ -282,6 +282,7 @@ export interface Conversation {
   lastResponseAt: string
   slaMinutesRemaining: number
   responsibleStaff: string
+  status: 'open' | 'resolved'
 }
 
 // ── Tasks & Delivery (OpsGenius surface) ────────────────────────────────
