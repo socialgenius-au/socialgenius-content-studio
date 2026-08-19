@@ -349,6 +349,17 @@ export interface AnalyticsSnapshot {
   attention: { views: number; watchTime: string; retention: number; completion: number; engagementRate: number }
   positioning: { alignmentScore: number; drift: string; sentiment: 'positive' | 'neutral' | 'negative'; dominantCustomerLanguage: string[] }
   business: { clicks: number; enquiries: number; qualifiedLeads: number; appointments: number; sales: number; revenue: number | null }
+  previousPeriod: {
+    views: number
+    retention: number
+    engagementRate: number
+    alignmentScore: number
+    clicks: number
+    enquiries: number
+    qualifiedLeads: number
+    appointments: number
+    sales: number
+  } | null
 }
 
 // ── Brand Kit ─────────────────────────────────────────────────────────

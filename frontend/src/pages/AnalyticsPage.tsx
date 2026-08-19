@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Eye, Target, LineChart, AlertTriangle, Sparkles } from 'lucide-react'
+import { Eye, Target, LineChart, AlertTriangle, Sparkles, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -14,6 +14,13 @@ import { knowledgeService } from '@/services/knowledgeService'
 import type { AnalyticsSnapshot, KnowledgeItem } from '@/types/domain'
 
 const SENTIMENT_VARIANT = { positive: 'success', neutral: 'secondary', negative: 'destructive' } as const
+
+function trendFor(current: number, previous: number | undefined): { value: string; direction: 'up' | 'down' | 'flat' } | undefined {
+  if (previous === undefined || previous === 0) return undefined
+  const pct = Math.round(((current - previous) / previous) * 100)
+  if (pct === 0) return { value: 'flat vs last period', direction: 'flat' }
+  return { value: `${pct > 0 ? '+' : ''}${pct}% vs last period`, direction: pct > 0 ? 'up' : 'down' }
+}
 
 export default function AnalyticsPage() {
   const { client, loading: clientLoading } = useClient()
@@ -66,8 +73,9 @@ export default function AnalyticsPage() {
     )
   }
 
-  const { attention, positioning, business } = snapshot
+  const { attention, positioning, business, previousPeriod } = snapshot
   const driftIsConcerning = positioning.alignmentScore > 0 && positioning.alignmentScore < 70
+  const alignmentTrend = trendFor(positioning.alignmentScore, previousPeriod?.alignmentScore)
 
   return (
     <div className="flex flex-col gap-6">
@@ -76,11 +84,11 @@ export default function AnalyticsPage() {
       <section className="flex flex-col gap-2">
         <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground"><Eye className="h-3.5 w-3.5" /> Attention</h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          <MetricCard label="Views" value={attention.views.toLocaleString()} />
+          <MetricCard label="Views" value={attention.views.toLocaleString()} trend={trendFor(attention.views, previousPeriod?.views)} />
           <MetricCard label="Watch time" value={attention.watchTime} />
-          <MetricCard label="Retention" value={`${attention.retention}%`} />
+          <MetricCard label="Retention" value={`${attention.retention}%`} trend={trendFor(attention.retention, previousPeriod?.retention)} />
           <MetricCard label="Completion" value={`${attention.completion}%`} />
-          <MetricCard label="Engagement rate" value={`${attention.engagementRate}%`} />
+          <MetricCard label="Engagement rate" value={`${attention.engagementRate}%`} trend={trendFor(attention.engagementRate, previousPeriod?.engagementRate)} />
         </div>
       </section>
 
@@ -90,9 +98,18 @@ export default function AnalyticsPage() {
           <CardContent className="flex flex-col gap-4 p-4">
             <div className="flex flex-wrap items-center gap-6">
               <div className="flex min-w-[160px] flex-col gap-1.5">
-                <div className="flex items-baseline justify-between">
+                <div className="flex items-baseline justify-between gap-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Alignment score (est.)</span>
-                  <span className="text-xl font-bold tabular-nums text-foreground">{positioning.alignmentScore}%</span>
+                  <span className="flex items-center gap-1">
+                    <span className="text-xl font-bold tabular-nums text-foreground">{positioning.alignmentScore}%</span>
+                    {alignmentTrend && (
+                      <span className={`inline-flex items-center gap-0.5 text-[11px] font-medium ${alignmentTrend.direction === 'up' ? 'text-success' : alignmentTrend.direction === 'down' ? 'text-destructive' : 'text-muted-foreground'}`}>
+                        {alignmentTrend.direction === 'up' && <ArrowUpRight className="h-3 w-3" />}
+                        {alignmentTrend.direction === 'down' && <ArrowDownRight className="h-3 w-3" />}
+                        {alignmentTrend.value}
+                      </span>
+                    )}
+                  </span>
                 </div>
                 <Progress value={positioning.alignmentScore} className="h-1.5" indicatorClassName={driftIsConcerning ? 'bg-warning' : 'bg-sg-lime'} />
               </div>
@@ -123,11 +140,11 @@ export default function AnalyticsPage() {
       <section className="flex flex-col gap-2">
         <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground"><LineChart className="h-3.5 w-3.5" /> Business</h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-          <MetricCard label="Clicks" value={business.clicks.toLocaleString()} />
-          <MetricCard label="Enquiries" value={business.enquiries} />
-          <MetricCard label="Qualified leads" value={business.qualifiedLeads} tone="accent" />
-          <MetricCard label="Appointments" value={business.appointments} />
-          <MetricCard label="Sales" value={business.sales} tone="accent" />
+          <MetricCard label="Clicks" value={business.clicks.toLocaleString()} trend={trendFor(business.clicks, previousPeriod?.clicks)} />
+          <MetricCard label="Enquiries" value={business.enquiries} trend={trendFor(business.enquiries, previousPeriod?.enquiries)} />
+          <MetricCard label="Qualified leads" value={business.qualifiedLeads} tone="accent" trend={trendFor(business.qualifiedLeads, previousPeriod?.qualifiedLeads)} />
+          <MetricCard label="Appointments" value={business.appointments} trend={trendFor(business.appointments, previousPeriod?.appointments)} />
+          <MetricCard label="Sales" value={business.sales} tone="accent" trend={trendFor(business.sales, previousPeriod?.sales)} />
         </div>
         <p className="text-[11px] text-muted-foreground">
           Revenue: {business.revenue != null ? `$${business.revenue.toLocaleString()}` : 'Not yet available'}
