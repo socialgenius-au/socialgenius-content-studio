@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useClient } from '@/contexts/ClientContext'
 import { useAICompanionContext } from '@/contexts/AICompanionContext'
 import { opsService } from '@/services/opsService'
@@ -14,6 +15,29 @@ import type { OpsTask } from '@/types/domain'
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10)
+}
+
+const STATUSES: { id: OpsTask['status']; label: string }[] = [
+  { id: 'todo', label: 'To do' },
+  { id: 'in_progress', label: 'In progress' },
+  { id: 'blocked', label: 'Blocked' },
+  { id: 'awaiting_approval', label: 'Awaiting approval' },
+  { id: 'done', label: 'Done' },
+]
+
+function TaskStatusSelect({ task, onChange }: { task: OpsTask; onChange: (status: OpsTask['status']) => void }) {
+  return (
+    <Select value={task.status} onValueChange={v => onChange(v as OpsTask['status'])}>
+      <SelectTrigger className="h-6 w-auto shrink-0 gap-1 border-none bg-transparent p-0 text-[11px] shadow-none [&>svg]:h-3 [&>svg]:w-3">
+        <SelectValue><StatusBadge status={task.status} /></SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {STATUSES.map(s => (
+          <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
 }
 
 export default function TasksPage() {
@@ -34,6 +58,9 @@ export default function TasksPage() {
       setLoading(false)
     })
   }, [client])
+
+  const setTaskStatus = (id: string, status: OpsTask['status']) =>
+    setTasks(prev => prev.map(t => (t.id === id ? { ...t, status, overdue: status === 'done' ? false : t.overdue } : t)))
 
   const assignees = useMemo(() => Array.from(new Set(tasks.map(t => t.assignee))), [tasks])
   const statuses = useMemo(() => Array.from(new Set(tasks.map(t => t.status))), [tasks])
@@ -116,7 +143,7 @@ export default function TasksPage() {
                   <span className={`w-24 shrink-0 ${task.overdue ? 'font-semibold text-destructive' : 'text-muted-foreground'}`}>
                     {new Date(task.dueDate).toLocaleDateString('en-AU')}
                   </span>
-                  <StatusBadge status={task.status} className="shrink-0" />
+                  <TaskStatusSelect task={task} onChange={status => setTaskStatus(task.id, status)} />
                 </div>
               ))}
             </div>
