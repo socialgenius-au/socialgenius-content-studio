@@ -8,6 +8,7 @@ import { LoadingState } from '@/components/common/LoadingState'
 import { StatusBadge } from '@/components/common/StatusBadge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { useClient } from '@/contexts/ClientContext'
 import { opsService } from '@/services/opsService'
 import { leadService } from '@/services/leadService'
@@ -46,7 +47,15 @@ export default function ClientsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title="Clients" description="Every client workspace Social Genius manages." />
+      <PageHeader
+        title="Clients"
+        description="Every client workspace Social Genius manages."
+        actions={
+          <Button size="sm" className="gap-1.5 bg-sg-forest text-sg-ivory hover:bg-sg-forest/90" onClick={() => navigate('/clients/new')}>
+            <UserPlus className="h-3.5 w-3.5" /> New Client
+          </Button>
+        }
+      />
 
       <FilterBar searchValue={search} onSearchChange={setSearch} searchPlaceholder="Search clients or industry…" />
 

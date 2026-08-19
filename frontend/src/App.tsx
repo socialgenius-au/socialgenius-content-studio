@@ -18,6 +18,7 @@ import { LoadingState } from './components/common/LoadingState'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const ClientsPage = lazy(() => import('./pages/ClientsPage'))
+const NewClientPage = lazy(() => import('./pages/NewClientPage'))
 const ClientOverviewPage = lazy(() => import('./pages/ClientOverviewPage'))
 const IntelligencePage = lazy(() => import('./pages/IntelligencePage'))
 const PositioningPage = lazy(() => import('./pages/PositioningPage'))
@@ -100,6 +101,10 @@ function AppRoutes() {
         <Route
           path="/clients"
           element={<Suspense fallback={<PageFallback />}><ClientsPage /></Suspense>}
+        />
+        <Route
+          path="/clients/new"
+          element={<Suspense fallback={<PageFallback />}><NewClientPage /></Suspense>}
         />
         <Route path="/clients/:clientId/overview" element={<Suspense fallback={<PageFallback />}><ClientOverviewPage /></Suspense>} />
         <Route path="/clients/:clientId/intelligence" element={<Suspense fallback={<PageFallback />}><IntelligencePage /></Suspense>} />

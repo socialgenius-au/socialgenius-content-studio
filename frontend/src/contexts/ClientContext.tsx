@@ -1,13 +1,14 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import { useNavigate, useLocation, matchPath } from 'react-router-dom'
 import type { Client } from '@/types/domain'
-import { clientService } from '@/services/clientService'
+import { clientService, type NewClientInput } from '@/services/clientService'
 
 interface ClientState {
   client: Client | null
   clients: Client[]
   loading: boolean
   switchClient: (clientId: string) => void
+  createClient: (input: NewClientInput) => Promise<Client>
 }
 
 const ClientContext = createContext<ClientState | null>(null)
@@ -71,8 +72,14 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     [routeClientId, location.pathname, navigate]
   )
 
+  const createClient = useCallback(async (input: NewClientInput) => {
+    const created = await clientService.create(input)
+    setClients(prev => [...prev, created])
+    return created
+  }, [])
+
   return (
-    <ClientContext.Provider value={{ client, clients, loading, switchClient }}>
+    <ClientContext.Provider value={{ client, clients, loading, switchClient, createClient }}>
       {children}
     </ClientContext.Provider>
   )
