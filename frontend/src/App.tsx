@@ -39,6 +39,8 @@ const ServiceConfiguratorPage = lazy(() => import('./pages/ServiceConfiguratorPa
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
 const KnowledgePage = lazy(() => import('./pages/KnowledgePage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const PostCreatorV2 = lazy(() => import('./pages/post-creator-v2/PostCreatorV2'))
+const VideoStudioV2 = lazy(() => import('./pages/video-studio-v2/VideoStudioV2'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
@@ -80,6 +82,32 @@ function AppRoutes() {
             <ClientProvider>
               <StudioPage />
             </ClientProvider>
+          </RequireAuth>
+        }
+      />
+
+      {/* Post Creator V2 — tabbed workflow built from the approved visual reference, parallel to the existing Post Creator. Own full-screen chrome, not the AppShell. */}
+      <Route
+        path="/post-creator-v2"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<PageFallback />}>
+              <PostCreatorV2 />
+            </Suspense>
+          </RequireAuth>
+        }
+      />
+
+      {/* Video Studio V2 — six-stage workflow (Brief/Intelligence/Creative Lab/Create-Edit/Review/Learn)
+          built from the approved visual reference, parallel to the existing Video Studio. Own
+          full-screen chrome, not the AppShell. */}
+      <Route
+        path="/video-studio-v2"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<PageFallback />}>
+              <VideoStudioV2 />
+            </Suspense>
           </RequireAuth>
         }
       />

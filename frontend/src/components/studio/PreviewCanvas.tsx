@@ -2,15 +2,29 @@ import {
   useRef, useEffect, useState, useCallback,
   type CSSProperties, type DragEvent,
 } from 'react'
+import { Square, RectangleVertical, RectangleHorizontal, Film, Play, Pause } from 'lucide-react'
 import { useStudio } from '../../contexts/StudioContext'
 import { getCanvasSize, PLATFORMS } from '../../utils/platforms'
-import Timeline from './Timeline'
 import { uploadApi, assetsApi } from '../../api/client'
-import type { Asset, VideoClip, ImageSlide } from '../../types'
+import type { Asset, VideoClip, ImageSlide, Platform } from '../../types'
 
-export default function PreviewCanvas() {
+interface Props {
+  videoRef: React.RefObject<HTMLVideoElement>
+}
+
+// Aspect-ratio quick-select (spec section 10). Maps onto the closest existing platform preset
+// rather than inventing new ones — 4:5 has no exact match in utils/platforms.ts so it stays
+// disabled rather than silently picking a wrong ratio.
+const RATIO_PRESETS: { key: string; label: string; icon: typeof Square; platform: Platform | null }[] = [
+  { key: '9:16', label: '9:16', icon: RectangleVertical, platform: 'instagram_reel' },
+  { key: '16:9', label: '16:9', icon: RectangleHorizontal, platform: 'youtube_16_9' },
+  { key: '1:1', label: '1:1', icon: Square, platform: 'instagram_post' },
+  { key: '4:5', label: '4:5', icon: RectangleVertical, platform: null },
+]
+
+export default function PreviewCanvas({ videoRef }: Props) {
   const {
-    platform, contentType, previewUrl, previewHtml, previewText,
+    platform, setPlatform, contentType, previewUrl, previewHtml, previewText,
     videoClips, imageSlides, textOverlays, mediaOverlays,
     timeline, setTimeline,
     addVideoClip, addImageSlide,
@@ -20,7 +34,6 @@ export default function PreviewCanvas() {
   } = useStudio()
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
   const [canvasSize, setCanvasSize] = useState({ w: 360, h: 640 })
   const [draggingOver, setDraggingOver] = useState(false)
   const [activeSlide, setActiveSlide] = useState(0)
@@ -31,7 +44,9 @@ export default function PreviewCanvas() {
     const update = () => {
       if (!containerRef.current) return
       const { width, height } = containerRef.current.getBoundingClientRect()
-      const size = getCanvasSize(platform, width - 32, height - 100)
+      // Timeline now docks outside this component (see StudioPage.tsx), so the only
+      // vertical space to reserve here is the platform label + safe-zone toolbar rows.
+      const size = getCanvasSize(platform, width - 32, height - 60)
       setCanvasSize(size)
     }
     update()
@@ -147,35 +162,63 @@ export default function PreviewCanvas() {
   }
 
   return (
-    <div ref={containerRef} style={s.root}>
-      {/* Platform label */}
-      <div style={s.platformLabel}>{spec.label} · {spec.width}×{spec.height}</div>
+    <div style={s.outer}>
+      {/* Aspect toolbar (spec section 10) */}
+      <div style={s.aspectToolbar}>
+        <span style={s.aspectSectionLabel}>Ratio</span>
+        {RATIO_PRESETS.map(r => {
+          const Icon = r.icon
+          const active = r.platform === platform
+          return (
+            <button
+              key={r.key}
+              style={{ ...s.aspectBtn, ...(active ? s.aspectBtnActive : {}) }}
+              disabled={!r.platform}
+              onClick={() => r.platform && setPlatform(r.platform)}
+              title={r.platform ? r.label : `${r.label} — no matching preset yet`}
+            >
+              <Icon size={16} />
+              <span style={s.aspectBtnLabel}>{r.label}</span>
+            </button>
+          )
+        })}
+        <div style={s.aspectDivider} />
+        <span style={s.aspectSectionLabel}>Safe Zones</span>
+        <button
+          role="switch"
+          aria-checked={safeZone}
+          style={{ ...s.safeToggle, ...(safeZone ? s.safeToggleActive : {}) }}
+          onClick={() => setSafeZone(v => !v)}
+          title="Toggle safe zones"
+        >
+          <span style={{ ...s.safeToggleKnob, ...(safeZone ? s.safeToggleKnobActive : {}) }} />
+        </button>
+      </div>
 
-      {/* Canvas area */}
-      <div
-        style={{
-          ...s.canvasWrap,
-          width: canvasSize.w,
-          height: canvasSize.h,
-          outline: draggingOver ? '3px dashed var(--brand-accent)' : '2px solid var(--canvas-surface)',
-        }}
+      <div ref={containerRef} style={s.root}>
+        {/* Platform label */}
+        <div style={s.platformLabel}>{spec.label} · {spec.width}×{spec.height}</div>
+
+        {/* Canvas area */}
+        <div
+          style={{
+            ...s.canvasWrap,
+            width: canvasSize.w,
+            height: canvasSize.h,
+            outline: draggingOver ? '3px dashed var(--sg-green)' : '1px solid var(--sg-preview-border)',
+          }}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onClick={() => setSelectedElement(null)}
       >
-        {/* Safe zone overlay */}
+        {/* Safe zone overlay — a dashed inset guide box between the top/bottom safe margins */}
         {safeZone && (
-          <>
-            <div style={{
-              ...s.safeZone, top: 0, height: `${spec.safeZoneTop * 100}%`,
-              background: 'rgba(255,0,0,0.1)', borderBottom: '1px dashed rgba(255,0,0,0.5)',
-            }} />
-            <div style={{
-              ...s.safeZone, bottom: 0, height: `${spec.safeZoneBottom * 100}%`,
-              background: 'rgba(255,0,0,0.1)', borderTop: '1px dashed rgba(255,0,0,0.5)',
-            }} />
-          </>
+          <div style={{
+            position: 'absolute', left: 0, right: 0, zIndex: 10, pointerEvents: 'none',
+            top: `${spec.safeZoneTop * 100}%`, bottom: `${spec.safeZoneBottom * 100}%`,
+            border: '1px dashed rgba(255,255,255,0.35)',
+          }} />
         )}
 
         {/* VIDEO */}
@@ -189,11 +232,16 @@ export default function PreviewCanvas() {
           />
         )}
 
-        {/* Empty video state */}
+        {/* Empty video state — a loaded demo clip with no playable source yet shows its
+            name; a truly empty timeline shows the drop prompt. */}
         {contentType === 'video' && !currentVideoUrl && (
           <div style={s.dropZone}>
-            <span style={s.dropIcon}>🎬</span>
-            <p style={s.dropText}>Drop a video file here or use the chat below</p>
+            <Film size={40} color="var(--sg-text-muted)" />
+            {videoClips.length > 0 ? (
+              <p style={s.dropText}>{videoClips[0].name || 'Clip'}</p>
+            ) : (
+              <p style={s.dropText}>Drop a video file to start editing</p>
+            )}
           </div>
         )}
 
@@ -314,7 +362,7 @@ export default function PreviewCanvas() {
             }}
             onClick={togglePlay}
           >
-            {timeline.playing ? '⏸' : '▶'}
+            {timeline.playing ? <Pause size={22} fill="#fff" /> : <Play size={22} fill="#fff" />}
           </button>
         )}
       </div>
@@ -332,28 +380,48 @@ export default function PreviewCanvas() {
         </div>
       )}
 
-      {/* Safe zone toggle */}
-      <div style={s.canvasToolbar}>
-        <button
-          style={{ ...s.toolbarBtn, ...(safeZone ? s.toolbarBtnActive : {}) }}
-          onClick={() => setSafeZone(v => !v)}
-        >
-          Safe Zones
-        </button>
       </div>
-
-      {/* Timeline */}
-      {(contentType === 'video' || contentType === 'audio') && (
-        <Timeline videoRef={videoRef} />
-      )}
     </div>
   )
 }
 
 const s: Record<string, CSSProperties> = {
+  outer: {
+    flex: 1, display: 'flex', flexDirection: 'row', minWidth: 0, minHeight: 0,
+    background: 'var(--sg-canvas-surround)', padding: '16px 24px 12px',
+  },
+  aspectToolbar: {
+    width: 64, flexShrink: 0, display: 'flex', flexDirection: 'column',
+    alignItems: 'center', paddingTop: 4,
+  },
+  aspectSectionLabel: {
+    fontSize: 10, fontWeight: 600, color: 'var(--sg-text-muted)', textTransform: 'uppercase',
+    letterSpacing: 0.4, marginBottom: 8,
+  },
+  aspectBtn: {
+    width: 48, height: 42, marginBottom: 8, borderRadius: 7, border: '1px solid transparent',
+    background: 'transparent', color: 'var(--sg-text-secondary)', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+  },
+  aspectBtnLabel: { fontSize: 9, fontWeight: 600 },
+  aspectBtnActive: { background: 'var(--sg-green-soft)', border: '1px solid #247A46', color: 'var(--sg-green)' },
+  aspectDivider: { width: 28, height: 1, background: 'var(--sg-border)', margin: '4px 0 12px' },
+
+  safeToggle: {
+    width: 36, height: 20, borderRadius: 10, border: '1px solid var(--sg-border-strong)',
+    background: 'var(--sg-bg-3)', cursor: 'pointer', position: 'relative', padding: 0,
+    transition: 'background 120ms ease, border-color 120ms ease',
+  },
+  safeToggleActive: { background: 'var(--sg-green)', border: '1px solid var(--sg-green)' },
+  safeToggleKnob: {
+    position: 'absolute', top: 2, left: 2, width: 14, height: 14, borderRadius: '50%',
+    background: '#fff', transition: 'transform 120ms ease',
+  },
+  safeToggleKnobActive: { transform: 'translateX(16px)' },
+
   root: {
-    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-    background: 'var(--canvas-bg)', overflow: 'hidden', position: 'relative', minWidth: 0,
+    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden', position: 'relative', minWidth: 0, minHeight: 0,
   },
   platformLabel: {
     color: 'var(--text-secondary)', fontSize: 11, fontWeight: 600, padding: 'var(--space-2) 0 var(--space-1)',
@@ -361,7 +429,8 @@ const s: Record<string, CSSProperties> = {
   },
   canvasWrap: {
     position: 'relative', background: '#000', overflow: 'hidden',
-    borderRadius: 4, flexShrink: 0, cursor: 'crosshair',
+    borderRadius: 6, flexShrink: 0, cursor: 'crosshair',
+    boxShadow: '0 8px 28px rgba(0,0,0,0.28)',
   },
   media: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
   dropZone: {
@@ -370,8 +439,6 @@ const s: Record<string, CSSProperties> = {
   },
   dropIcon: { fontSize: 40, lineHeight: 1 },
   dropText: { color: 'var(--text-secondary)', fontSize: 13, textAlign: 'center', maxWidth: 200, margin: 0 },
-
-  safeZone: { position: 'absolute', left: 0, right: 0, zIndex: 10, pointerEvents: 'none' },
 
   playBtn: {
     position: 'absolute', top: '50%', left: '50%',
@@ -385,13 +452,6 @@ const s: Record<string, CSSProperties> = {
 
   slideNav: { display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-2) 0' },
   slideDot: { width: 8, height: 8, borderRadius: '50%', border: 'none', cursor: 'pointer' },
-
-  canvasToolbar: { display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-2) 0' },
-  toolbarBtn: {
-    background: 'var(--canvas-surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
-    padding: '3px var(--space-3)', borderRadius: 4, fontSize: 11, cursor: 'pointer',
-  },
-  toolbarBtnActive: { background: 'var(--brand-header)', color: 'var(--brand-accent)', borderColor: 'var(--brand-accent)' },
 
   blogPreview: {
     width: '100%', height: '100%', overflowY: 'auto',
