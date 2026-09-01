@@ -27,6 +27,8 @@ export default defineConfig({
       '/health':     { target: 'http://localhost:8000', changeOrigin: true },
       '/assets':     { target: 'http://localhost:8000', changeOrigin: true },
       '/templates':  { target: 'http://localhost:8000', changeOrigin: true },
+      '/video-studio-drafts': { target: 'http://localhost:8000', changeOrigin: true },
+      '/video-export': { target: 'http://localhost:8000', changeOrigin: true },
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,

@@ -17,10 +17,10 @@ logger = logging.getLogger("app")
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.limiter import limiter
-from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates
+from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export
 
 # Import all models so Base.metadata is fully populated before create_all
-from app.models import User, Brand, Job, Asset, Transcript, Template  # noqa: F401
+from app.models import User, Brand, Job, Asset, Transcript, Template, VideoStudioDraft  # noqa: F401
 
 # ── Sentry ────────────────────────────────────────────────────────────────────
 if settings.SENTRY_DSN:
@@ -131,6 +131,8 @@ app.include_router(brands.router,     prefix="/brands",     tags=["brands"])
 app.include_router(generate.router,   prefix="/generate",   tags=["generate"])
 app.include_router(assets.router,     prefix="/assets",     tags=["assets"])
 app.include_router(templates.router,  prefix="/templates",  tags=["templates"])
+app.include_router(video_studio_drafts.router, prefix="/video-studio-drafts", tags=["video-studio-drafts"])
+app.include_router(video_export.router, prefix="/video-export", tags=["video-export"])
 app.include_router(ws.router,         prefix="/ws",         tags=["websocket"])
 
 

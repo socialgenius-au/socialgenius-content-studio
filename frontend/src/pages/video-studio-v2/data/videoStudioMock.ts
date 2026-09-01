@@ -12,12 +12,16 @@ export const workflow = [
 ];
 
 export const hookIdeas = [
-  { text: "People see your shop. So why aren’t they walking in?", score: 86 },
-  { text: "Why does your showroom look good but footfall stay low?", score: 82 },
-  { text: "You’re visible. So why aren’t the right builders choosing you?", score: 80 },
-  { text: "What is your showroom telling builders about you?", score: 78 },
-  { text: "The problem isn’t your tiles. It’s your positioning.", score: 76 },
-  { text: "Most tile shops make this same costly mistake.", score: 74 },
+  { text: "People see your shop. So why aren’t they walking in?", score: 86, type: "Question", goal: "Awareness", tone: "Direct" },
+  { text: "Why does your showroom look good but footfall stay low?", score: 82, type: "Question", goal: "Awareness", tone: "Direct" },
+  { text: "You’re visible. So why aren’t the right builders choosing you?", score: 80, type: "Question", goal: "Traffic", tone: "Direct" },
+  { text: "What is your showroom telling builders about you?", score: 78, type: "Question", goal: "Awareness", tone: "Curious" },
+  { text: "The problem isn’t your tiles. It’s your positioning.", score: 76, type: "Statement", goal: "Leads", tone: "Bold" },
+  { text: "Most tile shops make this same costly mistake.", score: 74, type: "Statement", goal: "Awareness", tone: "Bold" },
+  { text: "Imagine your ideal builder walks into your showroom...", score: 72, type: "Scenario", goal: "Leads", tone: "Curious" },
+  { text: "Builders don't need more choice. They need more certainty.", score: 70, type: "Statement", goal: "Traffic", tone: "Direct" },
+  { text: "Your stock is ready. Is your positioning?", score: 68, type: "Question", goal: "Awareness", tone: "Curious" },
+  { text: "Stop competing on price. Start competing on reliability.", score: 66, type: "Statement", goal: "Leads", tone: "Bold" },
 ];
 
 export const mediaItems = [

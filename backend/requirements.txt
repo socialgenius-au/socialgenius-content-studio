@@ -12,6 +12,11 @@ python-jose[cryptography]>=3.3.0
 anthropic>=0.44.0
 openai-whisper
 ffmpeg-python>=0.2.0
+# STEP 7.15F: ffmpeg-python only builds argument lists — it never installs the actual ffmpeg
+# binary, and this environment has none on PATH. imageio-ffmpeg bundles a real static ffmpeg
+# binary as pip package data (see app/services/ffmpeg_svc.py's FFMPEG_BIN), so Video Studio
+# V2's real export/render and every other ffmpeg_svc.py operation actually run.
+imageio-ffmpeg>=0.6.0
 python-multipart>=0.0.20
 aiofiles>=24.1.0
 httpx>=0.28.0

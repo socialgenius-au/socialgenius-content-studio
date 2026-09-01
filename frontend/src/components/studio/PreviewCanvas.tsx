@@ -7,6 +7,7 @@ import { useStudio } from '../../contexts/StudioContext'
 import { getCanvasSize, PLATFORMS } from '../../utils/platforms'
 import { uploadApi, assetsApi } from '../../api/client'
 import type { Asset, VideoClip, ImageSlide, Platform } from '../../types'
+import { findActiveClip } from './videoPreviewUtils'
 
 interface Props {
   videoRef: React.RefObject<HTMLVideoElement>
@@ -39,6 +40,13 @@ export default function PreviewCanvas({ videoRef }: Props) {
   const [activeSlide, setActiveSlide] = useState(0)
   const [safeZone, setSafeZone] = useState(false)
 
+  // A src swap's loadedmetadata can fire well after the render that scheduled it — reading
+  // `timeline` directly there would act on whatever play/pause/scrub state was current at
+  // that render, not whatever it actually is by the time the callback runs (e.g. the user
+  // paused, or scrubbed again, while the new clip was still loading).
+  const timelineRef = useRef(timeline)
+  useEffect(() => { timelineRef.current = timeline }, [timeline])
+
   // Calculate canvas size from container
   useEffect(() => {
     const update = () => {
@@ -55,10 +63,68 @@ export default function PreviewCanvas({ videoRef }: Props) {
     return () => ro.disconnect()
   }, [platform])
 
-  // Sync video time to timeline
+  // Which V1 clip the playhead is currently over — this, not always clips[0], is what the
+  // preview should actually show. previewUrl (an AI-rendered composite of the whole timeline)
+  // still takes priority when present, exactly as before.
+  const activeVideoClip = findActiveClip(videoClips, timeline.currentTime)
+  // Real per-clip source (has an actual uploaded file behind it) vs. a demo placeholder clip
+  // (url: '') or no clip at all — only the former is ever actually loaded into <video>.
+  const isClipPlayback = !previewUrl && !!activeVideoClip?.url
+  const activeClipId = activeVideoClip?.id ?? null
+
+  // Kept current on every render (not gated by a dependency array) purely so async/deferred
+  // callbacks below — a rAF tick, a delayed 'loadedmetadata', an 'ended' handler — can read
+  // the latest clip/list/timeline instead of whatever was captured when they were set up.
+  const activeVideoClipRef = useRef(activeVideoClip)
+  activeVideoClipRef.current = activeVideoClip
+  const videoClipsRef = useRef(videoClips)
+  videoClipsRef.current = videoClips
+
+  const seekVideoTo = (vid: HTMLVideoElement, time: number) => { vid.currentTime = time }
+
+  // Mirrors the video's local playback position into the timeline's global currentTime while
+  // it's the active per-clip source. This polls via rAF instead of the video's own
+  // 'timeupdate', and is keyed only on the stable isClipPlayback/playing booleans — not on
+  // which clip is active — so it never has to tear down and re-subscribe per clip switch.
+  // (An earlier version subscribed 'timeupdate' per clip; at a clip boundary, briefly having
+  // both the outgoing and incoming clip's listeners attached to the same <video> element sent
+  // conflicting times to setTimeline and the two clips fought over which was "active" forever.)
+  useEffect(() => {
+    if (!isClipPlayback || !timeline.playing) return
+    const vid = videoRef.current
+    if (!vid) return
+    let rafId: number
+    const tick = () => {
+      const clip = activeVideoClipRef.current
+      if (clip) setTimeline({ currentTime: clip.startTime + vid.currentTime })
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafId)
+  }, [isClipPlayback, timeline.playing, setTimeline])
+
+  // Duration/ended handling. For per-clip playback this is one persistent listener for the
+  // whole isClipPlayback session (not re-attached per clip, for the same reason as above);
+  // for the composite preview (previewUrl) it's unchanged from before.
   useEffect(() => {
     const vid = videoRef.current
     if (!vid) return
+
+    if (isClipPlayback) {
+      const onEnded = () => {
+        const clip = activeVideoClipRef.current
+        if (!clip) return
+        // Hand off to whichever clip picks up right where this one ends, if any, instead of
+        // always stopping — that's what makes multi-clip playback continue across clip 7.
+        const next = videoClipsRef.current.find(c => Math.abs(c.startTime - clip.endTime) < 0.05)
+        if (next) setTimeline({ currentTime: next.startTime })
+        else setTimeline({ playing: false })
+      }
+      vid.addEventListener('ended', onEnded)
+      return () => vid.removeEventListener('ended', onEnded)
+    }
+
+    // Single composite preview (previewUrl) — the video IS the whole timeline, as before.
     const onTime = () => setTimeline({ currentTime: vid.currentTime })
     const onDuration = () => setTimeline({ duration: vid.duration || 0 })
     const onEnded = () => setTimeline({ playing: false })
@@ -70,7 +136,50 @@ export default function PreviewCanvas({ videoRef }: Props) {
       vid.removeEventListener('loadedmetadata', onDuration)
       vid.removeEventListener('ended', onEnded)
     }
-  }, [setTimeline])
+  }, [isClipPlayback, setTimeline])
+
+  // When the active clip changes — a new drop, crossing into the next clip, or a scrub that
+  // lands in a different clip — the <video src> swaps, which resets the element to time 0 and
+  // pauses it. Once its metadata is ready, seek to the matching local offset and resume
+  // playback if we were already playing.
+  useEffect(() => {
+    const vid = videoRef.current
+    if (!vid || !isClipPlayback || !activeVideoClip) return
+    const clip = activeVideoClip
+
+    const applyOffset = () => {
+      const t = timelineRef.current
+      const offset = Math.max(0, t.currentTime - clip.startTime)
+      if (Math.abs(vid.currentTime - offset) > 0.05) seekVideoTo(vid, offset)
+      if (t.playing) vid.play().catch(() => {})
+    }
+    if (vid.readyState >= 1) applyOffset()
+    else vid.addEventListener('loadedmetadata', applyOffset, { once: true })
+    return () => vid.removeEventListener('loadedmetadata', applyOffset)
+    // Intentionally keyed on clip identity, not on every currentTime tick — this effect's job
+    // is "we just switched source," handled separately from continuous scrub sync below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeClipId, isClipPlayback])
+
+  // Scrub sync: if the playhead jumps while the same clip stays active (ruler click, drag),
+  // snap the video to match. Small diffs are normal playback drift from the rAF sync above and
+  // must not trigger a re-seek — that would stutter/fight ordinary playback.
+  useEffect(() => {
+    const vid = videoRef.current
+    if (!vid || !isClipPlayback || !activeVideoClip) return
+    const clipStart = activeVideoClip.startTime
+    const targetLocal = Math.max(0, timeline.currentTime - clipStart)
+    if (Math.abs(vid.currentTime - targetLocal) <= 0.35) return
+    // Setting currentTime before the browser has loaded metadata for a just-swapped source
+    // gets silently dropped once loading actually completes — wait for it instead of racing it.
+    // Recomputed from the live ref at fire time, not the value captured when this listener
+    // was registered, in case the playhead moved again while metadata was still loading.
+    if (vid.readyState >= 1) seekVideoTo(vid, targetLocal)
+    else vid.addEventListener('loadedmetadata', () => {
+      seekVideoTo(vid, Math.max(0, timelineRef.current.currentTime - clipStart))
+    }, { once: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeline.currentTime, isClipPlayback, activeClipId])
 
   // Play/pause
   useEffect(() => {
@@ -125,12 +234,12 @@ export default function PreviewCanvas({ videoRef }: Props) {
   }, [uploadAsset, activeJob, videoClips, addVideoClip, addImageSlide])
 
   const spec = PLATFORMS[platform]
-  const currentVideoUrl = previewUrl ?? (videoClips[0]?.url ?? null)
+  const currentVideoUrl = previewUrl ?? (activeVideoClip?.url ?? null)
   const currentImageUrl = imageSlides[activeSlide]?.url ?? null
 
-  // Apply CSS filter for colour grade
+  // Apply CSS filter for colour grade — the clip actually showing, not always the first one.
   const getVideoFilter = () => {
-    const clip = videoClips[0]
+    const clip = activeVideoClip
     if (!clip) return ''
     const filters: string[] = []
     if (clip.brightness) filters.push(`brightness(${1 + clip.brightness / 100})`)
@@ -237,8 +346,8 @@ export default function PreviewCanvas({ videoRef }: Props) {
         {contentType === 'video' && !currentVideoUrl && (
           <div style={s.dropZone}>
             <Film size={40} color="var(--sg-text-muted)" />
-            {videoClips.length > 0 ? (
-              <p style={s.dropText}>{videoClips[0].name || 'Clip'}</p>
+            {activeVideoClip ? (
+              <p style={s.dropText}>{activeVideoClip.name || 'Clip'}</p>
             ) : (
               <p style={s.dropText}>Drop a video file to start editing</p>
             )}

@@ -16,23 +16,23 @@ import pytest
 from PIL import Image
 
 from app.services import ffmpeg_svc
+# STEP 7.15F: no ffmpeg/ffprobe on PATH in this environment — see ffmpeg_svc.py's own header
+# comment. These test-only helpers now use the same bundled binary the app itself uses
+# (ffmpeg_svc.FFMPEG_BIN), and get duration via ffmpeg_svc's own ffprobe-free _get_duration
+# instead of shelling out to a nonexistent ffprobe.
+from app.services.ffmpeg_svc import FFMPEG_BIN
 
 USER_ID = 999
 
 
-def _ffprobe_duration(path: str) -> float:
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=noprint_wrappers=1:nokey=1", path],
-        capture_output=True, text=True, check=True,
-    )
-    return float(out.stdout.strip())
+async def _ffprobe_duration(path: str) -> float:
+    return await ffmpeg_svc._get_duration(path)
 
 
 def _decode_error_count(path: str) -> int:
     """Fully decode the file; a clean file produces no stderr lines."""
     result = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", path, "-f", "null", "-"],
+        [FFMPEG_BIN, "-v", "error", "-i", path, "-f", "null", "-"],
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
@@ -42,7 +42,7 @@ def _decode_error_count(path: str) -> int:
 def _frame_pixel(path: str, t: float, x: int, y: int, tmp_path: Path):
     frame_path = tmp_path / f"frame_{t}.png"
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-ss", str(t), "-i", path, "-frames:v", "1", str(frame_path)],
+        [FFMPEG_BIN, "-y", "-v", "error", "-ss", str(t), "-i", path, "-frames:v", "1", str(frame_path)],
         capture_output=True, text=True, check=True,
     )
     return Image.open(frame_path).convert("RGB").getpixel((x, y))
@@ -51,7 +51,7 @@ def _frame_pixel(path: str, t: float, x: int, y: int, tmp_path: Path):
 def _extract_audio_wav(path: str, tmp_path: Path, sr: int = 8000) -> Path:
     wav_path = tmp_path / "extracted_audio.wav"
     subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-i", path, "-f", "wav", "-ar", str(sr), "-ac", "1", str(wav_path)],
+        [FFMPEG_BIN, "-y", "-v", "error", "-i", path, "-f", "wav", "-ar", str(sr), "-ac", "1", str(wav_path)],
         capture_output=True, text=True, check=True,
     )
     return wav_path
@@ -81,7 +81,7 @@ async def test_merge_with_transitions_duration_and_integrity(clips, tmp_path):
     assert out.exists()
     assert _decode_error_count(str(out)) == 0
     # 3 clips x 3s, minus 2 overlapping 0.5s transitions
-    assert _ffprobe_duration(str(out)) == pytest.approx(8.0, abs=0.1)
+    assert await _ffprobe_duration(str(out)) == pytest.approx(8.0, abs=0.1)
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +176,7 @@ async def test_full_export_chain_mix_mode(clips, custom_audio, tmp_path):
     )
 
     assert _decode_error_count(str(final)) == 0
-    assert _ffprobe_duration(str(final)) == pytest.approx(8.0, abs=0.2)
+    assert await _ffprobe_duration(str(final)) == pytest.approx(8.0, abs=0.2)
 
     # text still burned in
     r, g, b = _frame_pixel(str(final), 0.8, 30, 30, tmp_path)

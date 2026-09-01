@@ -97,8 +97,11 @@ export const assetsApi = {
   zip:      (asset_ids: number[])          => api.post('/assets/zip', { asset_ids }, { responseType: 'blob' }),
   // Unauthenticated static path for <video>/<img>/<audio> src — the /assets/:id/download
   // route requires a Bearer header that browser-native media/anchor loads never send.
-  // file_path from the backend is relative (e.g. "uploads/1/x.mp4"), no leading slash.
-  previewUrl: (filePath: string)           => `${import.meta.env.VITE_API_URL ?? ''}/uploads/${filePath.replace(/^\/?uploads\//, '')}`,
+  // file_path from the backend is relative (e.g. "uploads/1/x.mp4" on Linux/macOS, but
+  // "uploads\1\x.mp4" on Windows — Path(...).__str__ uses the OS separator). Normalize to
+  // forward slashes first so the "uploads/" strip matches on every platform; otherwise on
+  // Windows it never matches and the URL doubles up into "/uploads/uploads\1\x.mp4".
+  previewUrl: (filePath: string)           => `${import.meta.env.VITE_API_URL ?? ''}/uploads/${filePath.replace(/\\/g, '/').replace(/^\/?uploads\//, '')}`,
 }
 
 export const templatesApi = {
@@ -108,6 +111,25 @@ export const templatesApi = {
     api.post('/templates/', body),
   update: (id: number, body: Record<string, unknown>)         => api.put(`/templates/${id}`, body),
   delete: (id: number)                                        => api.delete(`/templates/${id}`),
+}
+
+// Step 7.9: durable "Save Draft" / "My Drafts" storage for Video Studio V2 — a project_json
+// blob (opaque to the backend, shaped entirely by the frontend) plus a name/timestamps.
+export const videoStudioDraftsApi = {
+  list:   ()                                                    => api.get('/video-studio-drafts/'),
+  get:    (id: number)                                          => api.get(`/video-studio-drafts/${id}`),
+  create: (body: { name: string; project_json: unknown })       => api.post('/video-studio-drafts/', body),
+  update: (id: number, body: { name: string; project_json: unknown }) => api.put(`/video-studio-drafts/${id}`, body),
+  delete: (id: number)                                          => api.delete(`/video-studio-drafts/${id}`),
+}
+
+// STEP 7.15F: real Video Studio V2 export/render — POSTs the current project (see
+// ReviewTab.tsx's buildExportRequest) and gets the actual rendered MP4 back as a blob, the
+// exact same responseType: 'blob' pattern assetsApi.download/zip already use for real
+// downloads elsewhere in this app.
+export const videoExportApi = {
+  exportProject: (body: Record<string, unknown>) =>
+    api.post('/video-export/export', body, { responseType: 'blob' }),
 }
 
 export const uploadApi = {

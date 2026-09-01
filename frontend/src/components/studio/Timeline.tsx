@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
+import { useRef, useCallback, useState, type CSSProperties, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import {
   SkipBack, Play, Pause, SkipForward, ChevronsRight, Maximize, ZoomIn, ZoomOut,
   Scissors, Copy, Trash2, Undo2, Redo2, LogIn, LogOut, Eye, EyeOff, Lock, Unlock,
@@ -8,6 +8,8 @@ import { useStudio } from '../../contexts/StudioContext'
 import { formatTime } from '../../utils/platforms'
 import { assetsApi } from '../../api/client'
 import type { VideoClip } from '../../types'
+import { MEDIA_ASSET_DRAG_TYPE, type MediaAssetDragPayload } from './dragTypes'
+import { probeVideoDuration } from './videoPreviewUtils'
 
 interface Props {
   videoRef: React.RefObject<HTMLVideoElement | null>
@@ -25,6 +27,7 @@ const WAVEFORM_BARS = Array.from({ length: 40 }).map((_, i) => (
 
 // Subtle repeating texture standing in for real filmstrip/frame thumbnails on video clips.
 const FILMSTRIP_PATTERN = 'repeating-linear-gradient(90deg, rgba(255,255,255,0.08) 0px, rgba(255,255,255,0.08) 1px, transparent 1px, transparent 14px)'
+
 
 // Playback bar (spec section 10, reference-locked) — Previous / Play / Next / End, time
 // readout, Fit dropdown, Fullscreen. Mark In/Out moved to the timeline toolbar below — the
@@ -125,7 +128,7 @@ export function TimelineToolbar({ zoom, onZoomChange }: { zoom: number; onZoomCh
 export function TimelineTracks({ videoRef, zoom }: Props & { zoom: number }) {
   const {
     timeline, setTimeline,
-    videoClips, updateVideoClip,
+    videoClips, addVideoClip, updateVideoClip,
     additionalVideoClips, addAdditionalVideoClip, updateAdditionalVideoClip,
     textOverlays, updateTextOverlay,
     audioTracks, updateAudioTrack,
@@ -143,6 +146,51 @@ export function TimelineTracks({ videoRef, zoom }: Props & { zoom: number }) {
   const toggleHidden = (k: TrackKey) => setHidden(p => ({ ...p, [k]: !p[k] }))
   const toggleLocked = (k: TrackKey) => setLocked(p => ({ ...p, [k]: !p[k] }))
 
+  // Media Library → V1 drag-and-drop: highlight the lane while a compatible drag is over it,
+  // and turn a drop into a real clip built from the dragged asset.
+  const [videoDropActive, setVideoDropActive] = useState(false)
+
+  const handleVideoDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes(MEDIA_ASSET_DRAG_TYPE) || locked.video) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setVideoDropActive(true)
+  }
+
+  const handleVideoDragLeave = () => setVideoDropActive(false)
+
+  const handleVideoDrop = async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setVideoDropActive(false)
+    if (locked.video) return
+    const raw = e.dataTransfer.getData(MEDIA_ASSET_DRAG_TYPE)
+    if (!raw) return
+
+    let payload: MediaAssetDragPayload
+    try {
+      payload = JSON.parse(raw)
+    } catch {
+      return
+    }
+
+    const duration = await probeVideoDuration(payload.url)
+    const start = videoClips.reduce((a, c) => Math.max(a, c.endTime), 0)
+    const clip: VideoClip = {
+      id: crypto.randomUUID(),
+      assetId: payload.assetId,
+      url: payload.url,
+      name: payload.name,
+      duration,
+      startTime: start,
+      endTime: start + duration,
+      trimIn: 0, trimOut: 0,
+      colorGrade: 'none', speed: 1,
+      brightness: 0, contrast: 0, saturation: 0,
+      transition: 'cut', transitionDuration: 0.5,
+    }
+    addVideoClip(clip)
+  }
+
   const authoredEnds = [
     ...videoClips.map(c => c.endTime),
     ...additionalVideoClips.map(c => c.endTime),
@@ -150,8 +198,12 @@ export function TimelineTracks({ videoRef, zoom }: Props & { zoom: number }) {
     ...audioTracks.map(t => t.endTime),
     ...mediaOverlays.map(o => o.endTime),
   ]
+  // A known timeline.duration (e.g. the demo seed's fixed 18s) still wins as the baseline, but
+  // must not clip off real clips authored past it — e.g. a video dropped onto V1 after the
+  // existing content, which previously landed beyond the ruler's scale and was unreachable by
+  // scrubbing/clicking. Only when nothing is authored yet does the 60s fallback apply.
   const effectiveDuration = timeline.duration > 0
-    ? timeline.duration
+    ? Math.max(timeline.duration, ...authoredEnds, 0)
     : Math.max(60, ...authoredEnds, 0)
 
   const seek = useCallback((e: MouseEvent<HTMLDivElement>) => {
@@ -231,7 +283,11 @@ export function TimelineTracks({ videoRef, zoom }: Props & { zoom: number }) {
           </div>
 
           {/* V1 */}
-          <TrackRow height={64} onClick={seek} dimmed={hidden.video}>
+          <TrackRow
+            height={64} onClick={seek} dimmed={hidden.video}
+            onDragOver={handleVideoDragOver} onDragLeave={handleVideoDragLeave} onDrop={handleVideoDrop}
+            dropActive={videoDropActive}
+          >
             {videoClips.map((clip, i) => (
               <ClipBlock
                 key={clip.id}
@@ -361,11 +417,23 @@ function TrackBadge({ code, label, color, border, height, action, hidden, locked
   )
 }
 
-function TrackRow({ height, children, onClick, dimmed }: {
+function TrackRow({ height, children, onClick, dimmed, onDragOver, onDragLeave, onDrop, dropActive }: {
   height: number; children: ReactNode; onClick: (e: MouseEvent<HTMLDivElement>) => void; dimmed?: boolean
+  // Optional — only the V1 lane currently accepts drops from the Media Library.
+  onDragOver?: (e: DragEvent<HTMLDivElement>) => void
+  onDragLeave?: (e: DragEvent<HTMLDivElement>) => void
+  onDrop?: (e: DragEvent<HTMLDivElement>) => void
+  dropActive?: boolean
 }) {
   return (
-    <div style={{ ...s.trackRow, height, opacity: dimmed ? 0.35 : 1 }} onClick={onClick} data-lane="true">
+    <div
+      style={{ ...s.trackRow, height, opacity: dimmed ? 0.35 : 1, ...(dropActive ? s.trackRowDropActive : null) }}
+      onClick={onClick}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      data-lane="true"
+    >
       {children}
     </div>
   )
@@ -569,6 +637,11 @@ const s: Record<string, CSSProperties> = {
 
   trackRow: {
     position: 'relative', background: 'var(--sg-bg-3)', borderRadius: 4, cursor: 'crosshair', flexShrink: 0,
+  },
+  // Shown on V1 only, while a draggable media-library video is over it — a clear, valid-drop
+  // affordance that doesn't touch any other track's styling.
+  trackRowDropActive: {
+    outline: '2px dashed var(--sg-green)', outlineOffset: -2, background: 'rgba(46, 204, 113, 0.12)',
   },
 
   playhead: {

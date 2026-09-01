@@ -1,29 +1,247 @@
 
 :root{
-  --v-bg:#f8fbf9;--v-panel:#ffffff;--v-panel-2:#f7fbf8;--v-text:#101715;--v-muted:#65746c;
-  --v-line:#dbe5df;--v-accent:#087a3e;--v-accent-2:#11a658;--v-soft:#eaf6ee;--v-shadow:0 7px 24px rgba(24,74,47,.06);
+  --v-bg:#f8faf9;--v-panel:#ffffff;--v-panel-2:#f7fbf8;--v-text:#14201a;--v-muted:#697b71;
+  --v-line:#e0e7e2;--v-accent:#0e7a3f;--v-accent-2:#12a656;--v-soft:#e9f6ee;--v-shadow:0 7px 24px rgba(24,74,47,.06);
   --v-sidebar:#ffffff;--v-chip:#eef7f1;--v-blue:#2478b8;--v-purple:#7550b8;--v-pink:#d28bc1;--v-aqua:#6fd8cb;
+  /* Text that sits on a solid --v-accent fill (title pill, primary buttons, filled stepper dot). */
+  --v-on-accent:#ffffff;
 }
+/* Dark mode is a deliberately distinct identity — black + aqua — not a color inversion of
+   light mode. Aqua replaces green as the single primary accent everywhere green plays that
+   role in light mode: active stage, selected tabs, primary buttons, active controls. */
 .vsv2--dark{
-  --v-bg:#03090a;--v-panel:#071214;--v-panel-2:#09191c;--v-text:#effeff;--v-muted:#8da4a7;
-  --v-line:#164b53;--v-accent:#16e1e7;--v-accent-2:#3df1f2;--v-soft:#082c31;--v-shadow:0 10px 28px rgba(0,0,0,.35);
-  --v-sidebar:#030a0c;--v-chip:#0b272b;--v-blue:#1b6ba8;--v-purple:#6747a9;--v-pink:#a95197;--v-aqua:#3fbeb7;
+  --v-bg:#05090a;--v-panel:#0b1517;--v-panel-2:#0e1c1f;--v-text:#eaf6f6;--v-muted:#7f9a9c;
+  --v-line:#173238;--v-accent:#2fe0e0;--v-accent-2:#5ff2ef;--v-soft:#0f2b2c;--v-shadow:0 10px 30px rgba(0,0,0,.45);
+  --v-sidebar:#050b0c;--v-chip:#0d2426;--v-blue:#3d9fd6;--v-purple:#9b7fd6;--v-pink:#d68fc2;--v-aqua:#2fe0e0;
+  --v-on-accent:#04191a;
 }
 *{box-sizing:border-box}.vsv2{min-height:100vh;background:var(--v-bg);color:var(--v-text);display:grid;grid-template-columns:240px 1fr;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 .vsv2 button,.vsv2 input,.vsv2 textarea,.vsv2 select{font:inherit}.vsv2 button{cursor:pointer}
-.vsv2-sidebar{background:var(--v-sidebar);border-right:1px solid var(--v-line);padding:20px 12px;display:flex;flex-direction:column;min-height:100vh}
-.vsv2-brand{display:flex;gap:12px;align-items:center;padding:0 10px 24px}.vsv2-brandmark{width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,var(--v-accent),var(--v-accent-2));color:white;display:grid;place-items:center;font-size:22px}.vsv2-brand strong{display:block;font-size:22px}.vsv2-brand span{display:block;font-size:11px;color:var(--v-muted);margin-top:3px}
-.vsv2-side-nav{display:flex;flex-direction:column;gap:6px}.vsv2-side-nav button{border:0;background:transparent;color:var(--v-text);text-align:left;padding:12px 14px;border-radius:10px;display:flex;gap:10px;align-items:center}.vsv2-side-nav button.active{background:var(--v-soft);color:var(--v-accent);font-weight:800}.iconDot{width:22px;height:22px;border:1px solid var(--v-line);border-radius:50%;display:grid;place-items:center;font-size:10px}.nav-sep{border-top:1px solid var(--v-line);margin:8px 0}
-.vsv2-project-card{margin-top:auto;border:1px solid var(--v-line);border-radius:12px;padding:14px;background:var(--v-panel)}.vsv2-project-card small,.vsv2-project-card span{display:block;color:var(--v-muted)}.vsv2-project-card strong{display:block;font-size:18px;margin:10px 0 3px}.vsv2-project-card button{width:100%;margin-top:12px;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:8px;padding:9px}
-.vsv2-main{min-width:0;padding:18px 22px}.vsv2-header{position:relative;display:flex;align-items:center;justify-content:center;min-height:68px}.vsv2-title{background:var(--v-accent);color:#fff;border-radius:12px;padding:12px 28px;font-size:25px;font-weight:900;letter-spacing:.01em}.vsv2-title-num{margin-right:8px}.vsv2-theme{position:absolute;right:0;top:3px;border:1px solid var(--v-line);background:var(--v-panel);border-radius:999px;display:flex;overflow:hidden}.vsv2-theme button{border:0;background:transparent;color:var(--v-text);padding:10px 13px}.vsv2-theme button.active{background:var(--v-soft);color:var(--v-accent);font-weight:800}
-.vsv2-stepper{display:flex;justify-content:center;align-items:center;gap:9px;margin:5px auto 20px}.vsv2-stepper button{border:0;background:transparent;color:var(--v-text);padding:9px 13px;border-radius:10px}.vsv2-stepper button span{display:inline-grid;place-items:center;width:28px;height:28px;border:1px solid var(--v-line);border-radius:50%;margin-right:7px}.vsv2-stepper button.active{background:var(--v-soft);color:var(--v-accent);font-weight:800}.vsv2-stepper button.active span{background:var(--v-accent);color:#fff;border-color:var(--v-accent)}.vsv2-stepper i{color:var(--v-accent);font-style:normal}
-.stage-page h2{font-size:17px;margin:0 0 18px}.card{background:var(--v-panel);border:1px solid var(--v-line);border-radius:12px;box-shadow:var(--v-shadow);padding:18px}.card h3{margin:0 0 18px;font-size:16px}.card h4{margin:15px 0 8px}.field{display:grid;grid-template-columns:170px 1fr;gap:12px;align-items:start;margin:11px 0}.field>span,.fieldLabel{font-size:13px;padding-top:8px}.field input,.field textarea,.field select,.stack-field select,.fullInput,.search,.properties-panel select,.properties-panel input,.properties-panel textarea,.row input{width:100%;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:9px 11px}.field textarea{min-height:74px;resize:vertical}.brief-grid{display:grid;grid-template-columns:1fr 1fr 300px;gap:14px}.right-stack{display:flex;flex-direction:column;gap:14px}.check-list{padding-left:0;list-style:none}.check-list li{margin:12px 0;line-height:1.45}.check-list li:before{content:"✓";color:var(--v-accent);font-weight:900;margin-right:10px}.platform-pills{display:flex;gap:7px}.platform-pills button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:8px;padding:8px 11px}.platform-pills.big button{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:64px}.platform-pills small{font-size:8px}.thumb-row{display:flex;gap:8px;margin:8px 0 22px}.mini-thumb{width:92px;height:66px;border-radius:7px;background:linear-gradient(135deg,#4b4d45,#151918);position:relative}.mini-thumb span{position:absolute;top:5px;left:5px;background:#000a;color:#fff;border-radius:4px;padding:2px 5px}.add-tile{width:66px;border:1px dashed var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px}.primary{border:0;background:var(--v-accent);color:#fff;border-radius:8px;padding:11px 18px;font-weight:800}.secondary{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:8px;padding:10px 17px}.wide{width:100%}.stage-footer{display:flex;justify-content:space-between;gap:10px;margin-top:20px}.stage-footer.triple>div{display:flex;gap:10px}
+.vsv2-sidebar{background:var(--v-sidebar);border-right:1px solid var(--v-line);padding:20px 14px;display:flex;flex-direction:column;min-height:100vh}
+.vsv2-brand{display:flex;gap:12px;align-items:center;padding:0 8px 26px}.vsv2-brandmark{width:40px;height:40px;flex-shrink:0;border-radius:10px;background:linear-gradient(135deg,var(--v-accent),var(--v-accent-2));color:var(--v-on-accent);display:grid;place-items:center}.vsv2-brand strong{display:block;font-size:19px;line-height:1.2}.vsv2-brand span{display:block;font-size:11px;color:var(--v-muted);margin-top:2px}
+.vsv2-side-nav{display:flex;flex-direction:column;gap:3px}.vsv2-side-nav button{border:1px solid transparent;background:transparent;color:var(--v-text);text-align:left;padding:11px 12px;border-radius:9px;display:flex;gap:11px;align-items:center;font-size:14px;font-weight:600}.vsv2-side-nav button svg{flex-shrink:0;opacity:.75}.vsv2-side-nav button.active{background:var(--v-soft);border-color:var(--v-line);color:var(--v-accent);font-weight:800}.vsv2-side-nav button.active svg{opacity:1}.nav-sep{border-top:1px solid var(--v-line);margin:10px 4px}
+.vsv2-project-card{margin-top:auto;border:1px solid var(--v-line);border-radius:12px;padding:14px;background:var(--v-panel)}.vsv2-project-card .pc-head{display:flex;align-items:center;gap:7px;color:var(--v-muted);font-size:12px}.vsv2-project-card .pc-head svg{color:var(--v-accent)}.vsv2-project-card span{display:block;color:var(--v-muted);font-size:12px}.vsv2-project-card strong{display:block;font-size:17px;margin:9px 0 2px}.vsv2-project-card button{width:100%;margin-top:12px;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:8px;padding:9px;font-size:13px;font-weight:600}
+.vsv2-main{min-width:0;padding:20px 26px}.vsv2-header{position:relative;display:flex;align-items:center;justify-content:center;min-height:56px}.vsv2-title{background:var(--v-accent);color:var(--v-on-accent);border-radius:10px;padding:11px 26px;font-size:19px;font-weight:900;letter-spacing:.01em}.vsv2-title-num{margin-right:6px}.vsv2-theme{position:absolute;right:0;top:3px;border:1px solid var(--v-line);background:var(--v-panel);border-radius:999px;display:flex;overflow:hidden}.vsv2-theme button{border:0;background:transparent;color:var(--v-muted);padding:9px 14px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px}.vsv2-theme button.active{background:var(--v-soft);color:var(--v-accent)}
+.vsv2-stepper{display:flex;justify-content:center;align-items:center;margin:18px auto 24px;padding:6px;border:1px solid var(--v-line);border-radius:14px;background:var(--v-panel)}.vsv2-stepper button{border:0;background:transparent;color:var(--v-muted);padding:9px 14px;border-radius:10px;font-size:12px;font-weight:700;letter-spacing:.02em;display:flex;align-items:center;white-space:nowrap}.vsv2-stepper button span{display:inline-grid;place-items:center;width:24px;height:24px;border:1px solid var(--v-line);border-radius:50%;margin-right:8px;font-size:11px;color:var(--v-text);background:var(--v-panel)}.vsv2-stepper button.active{background:var(--v-soft);color:var(--v-accent)}.vsv2-stepper button.active span{background:var(--v-accent);color:var(--v-on-accent);border-color:var(--v-accent)}.vsv2-stepper i{color:var(--v-line);font-style:normal;padding:0 4px;flex-shrink:0}.vsv2-stepper i.done{color:var(--v-accent)}
+.stage-page h2{font-size:17px;margin:0 0 18px}.card{background:var(--v-panel);border:1px solid var(--v-line);border-radius:12px;box-shadow:var(--v-shadow);padding:18px}.card h3{margin:0 0 18px;font-size:16px}.card h4{margin:15px 0 8px}.field{display:grid;grid-template-columns:170px 1fr;gap:12px;align-items:start;margin:11px 0}.field>span,.fieldLabel{font-size:13px;padding-top:8px}.field input,.field textarea,.field select,.stack-field select,.fullInput,.search,.properties-panel select,.properties-panel input,.properties-panel textarea,.row input{width:100%;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:9px 11px}.field textarea{min-height:74px;resize:vertical}.brief-grid{display:grid;grid-template-columns:1fr 1fr 300px;gap:14px}.right-stack{display:flex;flex-direction:column;gap:14px}.check-list{padding-left:0;list-style:none}.check-list li{margin:12px 0;line-height:1.45}.check-list li:before{content:"✓";color:var(--v-accent);font-weight:900;margin-right:10px}.platform-pills{display:flex;gap:7px}.platform-pills button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:8px;padding:8px 11px}.platform-pills.big button{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:64px}.platform-pills small{font-size:8px}.thumb-row{display:flex;gap:8px;margin:8px 0 22px}.mini-thumb{width:92px;height:66px;border-radius:7px;background:linear-gradient(135deg,#4b4d45,#151918);position:relative}.mini-thumb span{position:absolute;top:5px;left:5px;background:#000a;color:#fff;border-radius:4px;padding:2px 5px}.add-tile{width:66px;border:1px dashed var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px}.primary{border:0;background:var(--v-accent);color:var(--v-on-accent);border-radius:8px;padding:11px 18px;font-weight:800}.secondary{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:8px;padding:10px 17px}.wide{width:100%}.stage-footer{display:flex;justify-content:space-between;gap:10px;margin-top:20px}.stage-footer.triple>div{display:flex;gap:10px}
 .subtabs{display:flex;border-bottom:1px solid var(--v-line);margin-bottom:18px}.subtabs button{border:0;background:transparent;color:var(--v-text);padding:12px 28px;border-bottom:2px solid transparent}.subtabs button.active{border-color:var(--v-accent);color:var(--v-accent);font-weight:800}.subtabs.compact{margin:8px 0}.subtabs.compact button{padding:8px 12px}
+/* Instruction 14: .subtabs.compact is SHARED with the Properties panel's own Properties/
+   Layers/Adjustments row — do not touch it directly, that would also restyle Properties (out
+   of scope, explicitly locked). All 6 Media-panel tab labels ("All"/"Videos"/"Images"/"Text"/
+   "Overlays"/"Audio") were always present in the DOM and fully wired — they were only
+   overflowing the 220px Media panel's ~195px content width (measured: 415px of buttons in a
+   195px row, with .asset-panel's own overflow:auto turning the extra tabs into an
+   undiscoverable horizontal scroll region instead of visibly wrapping). Scoping this fix to
+   .asset-panel specifically restores visibility without touching the Properties panel's tabs
+   or the Media panel's own width. */
+.asset-panel .subtabs.compact{flex-wrap:wrap;row-gap:4px}
+.asset-panel .subtabs.compact button{padding:6px 7px;font-size:11px}
 .intel-grid{display:grid;grid-template-columns:1.1fr 1.2fr 1.1fr 1fr;gap:14px}.separated li{border-bottom:1px solid var(--v-line);padding-bottom:14px}.callout{background:var(--v-soft);border:1px solid var(--v-line);border-radius:10px;padding:16px;color:var(--v-accent)}.callout.big{font-size:18px;font-weight:900;line-height:1.45}.pill-row{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}.pill-row span{background:var(--v-soft);border:1px solid var(--v-line);border-radius:8px;padding:7px 10px;font-size:11px;color:var(--v-accent)}.angle-list li{padding:7px 0 7px 10px}.framework-card{margin-top:14px}.framework-flow{display:flex;align-items:stretch;gap:10px}.framework-flow>div{flex:1;border:1px solid var(--v-line);border-radius:8px;padding:12px}.framework-flow b,.framework-flow span{display:block}.framework-flow span{color:var(--v-muted);font-size:11px;margin-top:4px}.framework-flow i{align-self:center;color:var(--v-accent)}
 .creative-grid{display:grid;grid-template-columns:200px 1.2fr 1fr 270px;gap:14px}.stack-field{display:block;margin:14px 0}.stack-field span{display:block;font-size:12px;margin-bottom:6px}.hook-row{width:100%;border:0;border-bottom:1px solid var(--v-line);background:transparent;color:var(--v-text);display:grid;grid-template-columns:24px 1fr auto auto 24px;gap:9px;align-items:center;text-align:left;padding:15px 8px}.hook-row.active{background:var(--v-soft);border-radius:8px}.hook-row em{font-style:normal;background:var(--v-accent);color:white;padding:4px 6px;border-radius:5px;font-size:10px}.hook-row>span{font-size:10px}.radioDot{width:16px;height:16px;border:1px solid var(--v-accent);border-radius:50%}.hook-row.active .radioDot{background:radial-gradient(circle,var(--v-accent) 0 45%,transparent 48%)}.quote-box{border:1px solid var(--v-line);border-radius:8px;padding:14px;line-height:1.5}.split-actions{display:flex;gap:8px;margin-top:20px}.split-actions>*{flex:1}.ring-score{width:138px;height:138px;border-radius:50%;margin:10px auto 22px;background:conic-gradient(var(--v-accent) 0 86%,var(--v-line) 86%);display:grid;place-items:center;position:relative}.ring-score:after{content:"";position:absolute;width:102px;height:102px;border-radius:50%;background:var(--v-panel)}.ring-score>*{position:relative;z-index:2}.ring-score b{font-size:38px}.ring-score small{display:block}.ring-score.large{width:155px;height:155px;background:conic-gradient(var(--v-accent) 0 92%,var(--v-line) 92%)}.ring-score.large:after{width:116px;height:116px}.score-line{margin:10px 0}.score-line>span,.score-line>b{font-size:11px}.score-line>b{float:right}.score-line i{display:block;height:3px;background:var(--v-line);margin-top:6px;border-radius:3px}.score-line u{display:block;height:100%;background:var(--v-accent);border-radius:3px;text-decoration:none}.total-line{display:flex;justify-content:space-between;margin-top:18px}
-.creation-modes{display:flex;gap:12px;align-items:center;margin-bottom:12px}.creation-modes>button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:8px;padding:10px 16px;font-weight:700}.creation-modes>button.active{background:var(--v-accent);color:#fff}.canvas-size{margin-left:auto;display:flex;align-items:center;gap:8px}.canvas-size select,.canvas-size button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:8px}
-.editor-shell{display:grid;grid-template-columns:105px 340px minmax(360px,1fr) 270px 270px;grid-template-rows:610px auto auto;gap:0;border:1px solid var(--v-line);border-radius:12px;background:var(--v-panel);overflow:hidden}.editor-rail{border-right:1px solid var(--v-line);padding:8px}.editor-rail button{width:100%;border:0;background:transparent;color:var(--v-text);padding:9px 6px;text-align:left;border-radius:7px;font-size:11px}.editor-rail button span{margin-right:7px}.editor-rail button.active{background:var(--v-soft);color:var(--v-accent);font-weight:800}.asset-panel{border-right:1px solid var(--v-line);padding:12px;overflow:auto}.asset-head{display:flex;justify-content:space-between;align-items:center}.asset-head select{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:7px}.search{margin:10px 0}.media-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.media-card{min-width:0}.fake-media{height:95px;border-radius:7px;background:linear-gradient(135deg,#a89b79,#333832);position:relative}.fake-media:after{content:attr(data-index);position:absolute;bottom:5px;left:5px;background:#0009;color:#fff;border-radius:4px;padding:2px 5px}.media-card small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}.add-media{border:1px dashed var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;min-height:112px}.preview-area{padding:10px;border-right:1px solid var(--v-line)}.canvas-toolbar{display:flex;gap:8px;justify-content:center;margin-bottom:8px}.canvas-toolbar button,.canvas-toolbar select{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:7px}.canvas-toolbar .active{background:var(--v-soft);color:var(--v-accent)}.video-preview{width:280px;height:495px;margin:auto;border-radius:8px;background:linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.7)),linear-gradient(135deg,#8d6744,#211a15);color:#fff;position:relative;padding:24px;overflow:hidden}.preview-brand{font-size:16px}.preview-copy{font-size:26px;font-weight:900;line-height:1.06;margin-top:78px}.preview-copy strong{color:#33e791}.preview-badge{background:#087a3e;padding:7px;margin-top:10px;font-weight:800;font-size:11px}.preview-icons{display:flex;justify-content:space-between;margin-top:86px}.preview-icons span{display:grid;text-align:center;font-size:18px}.preview-icons b{font-size:9px;margin-top:4px}.preview-cta{position:absolute;bottom:26px;left:24px;right:24px;background:#fff;color:#111;padding:8px;text-align:center;font-weight:900;font-size:10px}.transport{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:10px}.transport button{border:0;background:transparent;color:var(--v-text)}.properties-panel{padding:12px;border-right:1px solid var(--v-line);overflow:auto}.properties-panel textarea{min-height:105px;resize:none}.properties-panel .row,.row{display:flex;gap:8px;margin:8px 0}.row>*{flex:1;min-width:0}.align-row{display:flex;gap:5px}.align-row button{flex:1;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);padding:7px}.align-row button.active{background:var(--v-soft);color:var(--v-accent)}.ai-tools-panel{padding:12px;overflow:auto}.ai-tools-panel>button{width:100%;text-align:left;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:10px;margin:5px 0}.ai-tools-panel b,.ai-tools-panel small{display:block}.ai-tools-panel small{color:var(--v-muted);margin-top:3px}.timeline{grid-column:1/-1;padding:10px;border-top:1px solid var(--v-line)}.timeline-toolbar{display:flex;gap:10px;margin-bottom:8px}.timeline-toolbar button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:7px 10px}.time-ruler{padding-left:140px;display:flex;justify-content:space-between;font-size:9px;color:var(--v-muted)}.track{display:grid;grid-template-columns:140px 1fr;min-height:36px}.track-label{border-right:1px solid var(--v-line);padding:8px;font-size:11px;display:flex;justify-content:space-between}.track-lane{display:flex;align-items:center;gap:4px;padding:4px;background:var(--v-panel-2)}.clip{height:27px;border-radius:4px;padding:6px 10px;font-size:9px;color:#fff;min-width:140px}.clip.blue{background:var(--v-blue)}.clip.purple{background:var(--v-purple)}.clip.pink{background:var(--v-pink)}.clip.aqua{background:var(--v-aqua);color:#08342f}.clip.long{min-width:65%}.ai-assistant{grid-column:1/-1;display:flex;align-items:center;gap:8px;border-top:1px solid var(--v-line);padding:10px}.ai-assistant input{flex:1;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:10px}.ai-assistant button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:9px 11px}
+.creation-modes{display:flex;gap:12px;align-items:center;margin-bottom:12px}.creation-modes>button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:8px;padding:10px 16px;font-weight:700}.creation-modes>button.active{background:var(--v-accent);color:var(--v-on-accent)}.canvas-size{margin-left:auto;display:flex;align-items:center;gap:8px}.canvas-size select,.canvas-size button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:8px}.canvas-size select{max-width:260px}
+.custom-size-inputs{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--v-muted)}.custom-size-inputs input{width:64px;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:6px}
+.canvas-versions{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:-4px 0 12px;font-size:11px}.canvas-versions>span{color:var(--v-muted)}.canvas-versions button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:999px;padding:5px 11px;font-size:11px}.canvas-versions button.active{background:var(--v-soft);border-color:var(--v-accent);color:var(--v-accent);font-weight:700}
+.canvas-dims{text-align:center;font-size:10px;color:var(--v-muted);margin-top:6px;flex-shrink:0}
+.resize-picker{border:1px solid var(--v-line);border-radius:8px;padding:10px;margin:6px 0;background:var(--v-panel-2)}.resize-note{font-size:10px;color:var(--v-muted);margin:0 0 8px}.resize-target-row{display:flex;align-items:center;gap:7px;font-size:12px;padding:4px 0}.resize-picker>button.primary{width:100%;margin-top:8px}
+.resize-status{font-size:11px;color:var(--v-accent);background:var(--v-soft);border-radius:7px;padding:8px 10px;margin:6px 0}
+.editor-shell{position:relative;display:grid;grid-template-columns:220px minmax(360px,1fr) 270px 270px;grid-template-rows:700px auto auto;gap:0;border:1px solid var(--v-line);border-radius:12px;background:var(--v-panel);overflow:hidden}
+/* Focus Mode — additive only: Normal Mode's own columns/rows/panels are untouched above.
+   Collapsing the three side columns to 0 (rather than removing them) means the underlying
+   panel components never unmount, so no state is lost switching in or out. */
+.editor-shell.focus-mode{grid-template-columns:0px minmax(360px,1fr) 0px 0px}
+.editor-shell.focus-mode>.asset-panel,.editor-shell.focus-mode>.properties-panel,.editor-shell.focus-mode>.ai-tools-panel{display:none}
+.focus-tabs{display:flex;gap:8px;justify-content:center;margin-bottom:8px;flex-shrink:0}
+.focus-tabs button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:7px 12px;font-size:12px;font-weight:700}
+.focus-tabs button.active{background:var(--v-soft);color:var(--v-accent);border-color:var(--v-accent)}
+.focus-drawer{position:absolute;top:0;height:700px;width:300px;background:var(--v-panel);box-shadow:0 12px 34px rgba(0,0,0,.3);z-index:30;overflow:auto;padding:12px}
+.focus-drawer.left{left:0;border-right:1px solid var(--v-line)}
+.focus-drawer.right{right:0;border-left:1px solid var(--v-line)}
+.focus-drawer-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.focus-drawer-head b{font-size:13px}
+.focus-drawer-head button{border:0;background:transparent;color:var(--v-muted);font-size:18px;line-height:1;cursor:pointer;padding:0 4px}
+.zoom-readout{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:7px 10px;font-size:12px;font-weight:700}.asset-panel{grid-column:1;border-right:1px solid var(--v-line);padding:12px;overflow:auto}.asset-head{display:flex;justify-content:space-between;align-items:center}.asset-head select{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:7px}.search{margin:10px 0}.media-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.media-card{min-width:0}.fake-media{height:95px;border-radius:7px;background:linear-gradient(135deg,#a89b79,#333832);position:relative}.fake-media:after{content:attr(data-index);position:absolute;bottom:5px;left:5px;background:#0009;color:#fff;border-radius:4px;padding:2px 5px}.media-card small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}.add-media{border:1px dashed var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;min-height:112px}.preview-area{grid-column:2;padding:6px;border-right:1px solid var(--v-line);display:flex;flex-direction:column;min-height:0}.canvas-toolbar{display:flex;gap:8px;justify-content:center;margin-bottom:8px;flex-shrink:0}.canvas-toolbar button,.canvas-toolbar select{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:7px}.canvas-toolbar .active{background:var(--v-soft);color:var(--v-accent)}
+.preview-canvas-region{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.video-preview{border-radius:8px;background:linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.7)),linear-gradient(135deg,#8d6744,#211a15);color:#fff;position:relative;padding:24px;overflow:hidden;flex-shrink:0}.preview-brand{font-size:16px}.preview-copy{font-size:26px;font-weight:900;line-height:1.06;margin-top:78px}.preview-copy strong{color:#33e791}.preview-badge{background:#087a3e;padding:7px;margin-top:10px;font-weight:800;font-size:11px}.preview-icons{display:flex;justify-content:space-between;margin-top:86px}.preview-icons span{display:grid;text-align:center;font-size:18px}.preview-icons b{font-size:9px;margin-top:4px}.preview-cta{position:absolute;bottom:26px;left:24px;right:24px;background:#fff;color:#111;padding:8px;text-align:center;font-weight:900;font-size:10px}.transport{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:10px;flex-shrink:0}.transport button{border:0;background:transparent;color:var(--v-text)}.properties-panel{grid-column:3;padding:12px;border-right:1px solid var(--v-line);overflow:auto}.properties-panel textarea{min-height:105px;resize:none}
+/* Step 5 follow-up (Defect: caret invisible): `.field input,.field textarea,...,.properties-panel
+   textarea{...color:var(--v-text)...}` (above) never set `caret-color`, which normally just
+   defaults to the text colour (`currentColor`) — but declaring it explicitly here removes any
+   doubt/browser inconsistency, directly on the exact property the diagnosis called for, in both
+   themes (var(--v-text) already flips correctly between Light/Dark on its own). */
+.properties-panel textarea,.properties-panel input{caret-color:var(--v-text)}.properties-panel .row,.row{display:flex;gap:8px;margin:8px 0}.row>*{flex:1;min-width:0}.align-row{display:flex;gap:5px}.align-row button{flex:1;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);padding:7px}.align-row button.active{background:var(--v-soft);color:var(--v-accent)}.ai-tools-panel{grid-column:4;padding:12px;overflow:auto}.ai-tools-panel>button{width:100%;text-align:left;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:10px;margin:5px 0}.ai-tools-panel b,.ai-tools-panel small{display:block}.ai-tools-panel small{color:var(--v-muted);margin-top:3px}.timeline{grid-column:1/-1;padding:10px;border-top:1px solid var(--v-line)}.timeline-toolbar{display:flex;gap:10px;margin-bottom:8px}.timeline-toolbar button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:7px 10px}.time-ruler{padding-left:140px;display:flex;justify-content:space-between;font-size:9px;color:var(--v-muted)}.track{display:grid;grid-template-columns:140px 1fr;min-height:36px}.track-label{border-right:1px solid var(--v-line);padding:8px;font-size:11px;display:flex;justify-content:space-between}/* STEP 3 fix (visual-verification bug): .clip is `position:absolute` (see .clip below) but
+   .track-lane previously had no `position` of its own, so every clip's left/width % resolved
+   against the nearest positioned ancestor instead — .editor-shell, which is both wider than and
+   offset differently from .track-lane. A clip anchored at startTime 0 (left:0%) still landed
+   correctly by coincidence, but any clip anchored later in the timeline (the common case for a
+   Text/Overlay added after scrubbing the playhead forward) resolved its left/width against the
+   wrong, wider box and rendered mostly or entirely past .track-lane's own right edge — and past
+   .editor-shell's own `overflow:hidden` (above), clipped away to invisible. This is also what
+   the drag/trim handlers already assumed: onMove/onTrimLeft/onTrimRight already measure pixels
+   against `lane.getBoundingClientRect()` (this element), not editor-shell — so `position:
+   relative` here just makes the CSS containing block match the JS's pre-existing assumption,
+   for all four lanes uniformly. Ruler tick alignment is a separate, disclosed, pre-existing
+   cosmetic gap (see the playhead/IN-OUT comment below) — unaffected by this fix. */
+.track-lane{position:relative;display:flex;align-items:center;gap:4px;padding:4px;background:var(--v-panel-2)}.clip{height:27px;border-radius:4px;padding:6px 10px;font-size:9px;color:#fff;min-width:140px}.clip.blue{background:var(--v-blue)}.clip.purple{background:var(--v-purple)}.clip.pink{background:var(--v-pink)}.clip.aqua{background:var(--v-aqua);color:#08342f}.clip.long{min-width:65%}.ai-assistant{grid-column:1/-1;display:flex;align-items:center;gap:8px;border-top:1px solid var(--v-line);padding:10px}.ai-assistant input{flex:1;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:10px}.ai-assistant button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:9px 11px}
 .review-grid{display:grid;grid-template-columns:250px 1fr 1fr 260px;gap:14px}.criteria{display:flex;justify-content:space-between;font-size:11px;margin:11px 0}.review-preview .video-preview{width:100%;height:460px}.review-transport{background:#050505;color:#fff;padding:10px;border-radius:0 0 8px 8px}.story-strip{display:flex;gap:7px;justify-content:center;margin-top:12px}.story-thumb{width:54px;height:68px;border-radius:5px;background:linear-gradient(135deg,#8d6744,#171511);border:1px solid var(--v-line)}.mid-stack{display:flex;flex-direction:column;gap:14px}.review-page textarea{width:100%;min-height:120px;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:10px}
 .learn-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}.performance-table{grid-column:1/-1;overflow:auto}.table-head{display:flex;justify-content:space-between;align-items:center}.table-head select{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:7px;margin-left:7px}.performance-table table{width:100%;border-collapse:collapse;font-size:10px}.performance-table th,.performance-table td{padding:10px 8px;border-bottom:1px solid var(--v-line);text-align:left}.performance-summary{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,1fr);gap:12px}.metric-card span,.metric-card b,.metric-card em{display:block}.metric-card b{font-size:22px;margin:5px 0}.metric-card em{color:var(--v-accent);font-style:normal;font-size:11px}.upload-drop{min-height:210px;border:1px dashed var(--v-line);border-radius:9px;display:grid;place-items:center;text-align:center;padding:20px}.upload-drop>*{display:block}.positive li{color:var(--v-accent)}.negative li{color:#c94d4d}.learning-score{margin-top:16px;border-top:1px solid var(--v-line);padding-top:14px}.learning-score b{font-size:28px;margin-left:8px}
-@media(max-width:1500px){.vsv2{grid-template-columns:210px 1fr}.brief-grid{grid-template-columns:1fr 1fr}.brief-grid>.right-stack{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}.intel-grid{grid-template-columns:1fr 1fr}.creative-grid{grid-template-columns:180px 1fr 1fr}.creative-grid>.scorecard{grid-column:1/-1}.editor-shell{grid-template-columns:90px 270px minmax(320px,1fr) 240px}.ai-tools-panel{grid-column:1/-1;border-top:1px solid var(--v-line);display:grid;grid-template-columns:repeat(4,1fr)}.review-grid{grid-template-columns:240px 1fr 1fr}.review-grid>.right-stack{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}}
-@media(max-width:1000px){.vsv2{grid-template-columns:1fr}.vsv2-sidebar{display:none}.vsv2-main{padding:12px}.vsv2-stepper{overflow:auto;justify-content:flex-start}.brief-grid,.intel-grid,.creative-grid,.review-grid,.learn-grid{grid-template-columns:1fr}.performance-summary{grid-template-columns:1fr 1fr}.editor-shell{display:block}.editor-rail{display:flex;overflow:auto}.asset-panel,.preview-area,.properties-panel,.ai-tools-panel{border-bottom:1px solid var(--v-line)}}
+.platform-pills button.active{background:var(--v-soft);border-color:var(--v-accent);color:var(--v-accent)}
+.empty-hint{color:var(--v-muted);font-size:13px;padding:20px 4px}
+.hook-list-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.hook-list-head h3{margin:0}.compare-toggle{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--v-muted)}
+.checkDot{width:16px;height:16px;border:1px solid var(--v-accent);border-radius:4px;display:grid;place-items:center;font-size:10px;color:var(--v-accent);font-weight:900}
+.bookmark{cursor:pointer}
+.quote-box{position:relative;padding-right:34px}.copy-btn{position:absolute;top:10px;right:10px;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:4px 7px;cursor:pointer}
+.angles-grid,.frames-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.angle-card{position:relative;padding-top:30px}.angle-num{position:absolute;top:14px;left:16px;width:22px;height:22px;border-radius:50%;background:var(--v-accent);color:var(--v-on-accent);font-size:11px;font-weight:800;display:grid;place-items:center}
+.frame-card{border:1px solid var(--v-line);border-radius:8px;overflow:hidden;background:var(--v-panel)}.frame-thumb{height:80px;background:linear-gradient(135deg,#4b4d45,#151918);display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700}.frame-card small{display:block;padding:6px 8px;font-size:11px}
+.pretext-card .ring-score{margin:14px auto}
+.compare-table{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.compare-col{border:1px solid var(--v-line);border-radius:8px;padding:12px}
+.char-count{display:block;text-align:right;font-size:10px;color:var(--v-muted);margin-top:4px}
+.check-list.applied li{color:var(--v-accent)}
+.story-thumb.active{outline:2px solid var(--v-accent);outline-offset:1px}
+.inline-status{margin-top:10px;background:var(--v-soft);color:var(--v-accent);border-radius:8px;padding:9px 14px;font-size:12px;font-weight:700}
+.video-preview.real{background:#000;padding:0;display:flex;align-items:center;justify-content:center}.real-video-el{width:100%;height:100%;object-fit:contain}
+.clip.selected{outline:2px solid #fff;outline-offset:-2px}
+.timeline.drop-active{outline:2px dashed var(--v-accent);outline-offset:-2px;background:var(--v-soft)}
+.layers-list{list-style:none;padding:0;margin:0}.layers-list li{padding:9px 8px;border-bottom:1px solid var(--v-line);font-size:12px;cursor:pointer}.layers-list li:hover{background:var(--v-soft)}.layers-list li.active{background:var(--v-soft);color:var(--v-accent);font-weight:700;border-left:2px solid var(--v-accent)}
+/* Layers reorder: the draggable Text/Overlay rows get a grab cursor so it reads as
+   reorderable — geometry/colours otherwise identical to every other .layers-list row in both
+   themes (no new palette introduced). */
+.layers-list li.draggable-layer{cursor:grab}
+/* Canvas element selection (Video Studio V2 Create/Edit) — selection UI only, never alters
+   the exported composition. Outline-based so it never disturbs an element's own position:
+   several of these (e.g. the CTA) already rely on position:absolute for layout. */
+.canvas-selectable{cursor:pointer}
+.canvas-el-selected{outline:2px solid var(--v-accent);outline-offset:2px;border-radius:2px}
+/* Instruction 3: only elements with a movable position model (see DRAGGABLE_CANVAS_ITEM_IDS
+   in CreateEditTab.tsx) get the move cursor, and only once selected — Logo/Graphic/CTA stay
+   plain "pointer" since they're selection-only. */
+.canvas-movable.canvas-el-selected{cursor:move}
+/* Step 5 follow-up (Defect 2): corner resize handles for selected Text/Overlay canvas items —
+   same dark-chip-with-light-rim treatment as the timeline's .clip-trim-handle (Instruction 11),
+   reused here rather than inventing a second visual language: fixed, theme-agnostic colours
+   that already read clearly against every clip colour in both Light and Dark, so the same
+   values work unchanged here against whatever sits on the canvas underneath. 10px squares,
+   centered on each corner (half overlapping the selection outline, half outside it) — small
+   enough to stay unobtrusive per the "clear but unobtrusive" requirement, large enough to
+   grab. Only rendered while the element is selected (see resizeHandles() in CreateEditTab). */
+.canvas-resize-handle{
+  position:absolute;width:10px;height:10px;box-sizing:border-box;
+  background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.9);border-radius:2px;
+}
+.canvas-resize-handle.nw{top:-5px;left:-5px;cursor:nwse-resize}
+.canvas-resize-handle.se{bottom:-5px;right:-5px;cursor:nwse-resize}
+.canvas-resize-handle.ne{top:-5px;right:-5px;cursor:nesw-resize}
+.canvas-resize-handle.sw{bottom:-5px;left:-5px;cursor:nesw-resize}
+/* Instruction 4: Media panel's Text/Overlays tabs reuse the existing .media-card/.fake-media
+   grid layout untouched (same size, same 2-column grid) — only these two swatch faces are new. */
+.fake-media.text-swatch{display:flex;align-items:center;justify-content:center;text-align:center;font-size:10px;font-weight:700;line-height:1.3;padding:8px;background:var(--v-soft);color:var(--v-accent)}
+.fake-media.overlay-swatch{display:flex;align-items:center;justify-content:center;font-size:26px;background:var(--v-soft);color:var(--v-accent)}
+.media-card.text-card{cursor:pointer}
+/* Instruction 6: minimal on-canvas presence for a real MediaOverlay — selection only, no
+   drag/resize yet. Position/size come from the overlay's own existing x/y/width/height fields
+   (%), so it's positioned absolute within its container (.video-preview is already
+   position:relative). Semi-transparent so it doesn't hide whatever's underneath. */
+.canvas-overlay-item{position:absolute;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:rgba(255,255,255,.15);border:1px dashed rgba(255,255,255,.65);font-size:18px;color:#fff;overflow:hidden}
+/* Step 5 follow-up (Defect 3): the real uploaded image/video asset, filling the Overlay's own
+   box exactly — resizing/moving the .canvas-overlay-item parent (Defect 2's drag/resize) moves
+   and resizes this with it for free, since it's just 100% of the parent. object-fit:contain
+   matches the existing precedent already set for the real V1 video preview (.real-video-el),
+   so the asset is never distorted/stretched to fill a mismatched aspect ratio. */
+.canvas-overlay-media{width:100%;height:100%;object-fit:contain;pointer-events:none}
+/* Instruction 7: real TextOverlay rendered on canvas, positioned via its own existing x/y/
+   width (%) fields. No new visual language — same .canvas-selectable/.canvas-el-selected/
+   .canvas-movable classes already used by canvas items and overlays. */
+.canvas-text-item{position:absolute;box-sizing:border-box;white-space:pre-wrap;line-height:1.15;padding:2px}
+/* Instruction 8: Timeline clip drag — same .clip visual design untouched (no colour/height/
+   geometry changes), just a grab cursor and a small proposed-time readout while dragging. */
+.clip.draggable-clip{cursor:grab}
+.clip.draggable-clip:active{cursor:grabbing}
+.clip-drag-badge{position:absolute;top:-18px;left:0;background:var(--v-panel);color:var(--v-text);border:1px solid var(--v-line);border-radius:4px;padding:1px 5px;font-size:9px;font-weight:700;white-space:nowrap;pointer-events:none}
+/* Instruction 9: the one obvious "Add to Timeline" action for an Audio-kind media card —
+   same card, same grid, no Audio-tab redesign; just one small full-width button under the
+   existing filename label. */
+.add-to-timeline-btn{width:100%;margin-top:4px;border:1px solid var(--v-line);background:var(--v-soft);color:var(--v-accent);border-radius:5px;padding:4px 6px;font-size:10px;font-weight:700;cursor:pointer}
+/* Instruction 14: separates "uploaded audio files" from "audio already on the A1 timeline"
+   within the same Audio tab's grid — spans both columns, same 2-column .media-grid untouched. */
+.media-grid-divider{grid-column:1/-1;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--v-muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--v-line)}
+/* Instruction 11: same hit-area/positioning as before (6px wide, full clip height, flush with
+   each true edge — untouched) — only the visual treatment changed, because a translucent white
+   tint was too subtle against the lighter clip colours (Overlay pink, Audio aqua especially).
+   Now a near-opaque dark chip with a light rim: the chip itself is darker than every clip
+   colour in both themes, and the light border/inner grip line reads against it regardless —
+   contrast comes from the handle's own two-tone design, not from picking one colour that
+   happens to work against four different clip hues. Deliberately the SAME literal colours in
+   Light and Dark (both already tested as high-contrast against both themes' clip colours), so
+   no [data-theme] branching was needed — geometry and colour both end up identical, which the
+   instruction allows ("only colours may differ", not "colours must differ"). */
+.clip-trim-handle{
+  position:absolute;top:0;bottom:0;width:6px;box-sizing:border-box;
+  cursor:ew-resize;
+  background:rgba(0,0,0,.55);
+  border:1px solid rgba(255,255,255,.9);
+  display:flex;align-items:center;justify-content:center;
+}
+.clip-trim-handle::after{content:"";width:2px;height:13px;border-radius:1px;background:rgba(255,255,255,.95)}
+.clip-trim-handle:hover{background:rgba(0,0,0,.75)}
+.clip-trim-handle.left{left:0;border-radius:4px 0 0 4px}
+.clip-trim-handle.right{right:0;border-radius:0 4px 4px 0}
+/* Instruction 13: Playhead + IN/OUT range markers. These supply only static visuals (colour,
+   shape, cursor) — left/top/height are computed in JS per-render (at the time this was written,
+   none of .timeline/.track/.track-lane/.time-ruler were themselves `position`-ed, so real
+   measured pixels were used instead of relying on CSS inheritance; .track-lane has since gained
+   `position:relative` below — see that rule's comment — but these markers are deliberately left
+   on their own independent ruler-relative pixel math rather than switched to `%` of
+   .track-lane, since the ruler and .track-lane still don't share the same box: the ruler has no
+   left-side label gutter, .track-lane does, and playhead/IN/OUT must align with the ruler's own
+   ticks, not with clip lanes).
+   Fixed, theme-agnostic colours — same reasoning as the trim handles: these read clearly
+   against the existing panel backgrounds in both Light and Dark without needing separate
+   values, so geometry AND colour end up identical, which the "only colours may differ"
+   allowance permits without requiring it. */
+.timeline-playhead{position:absolute;width:2px;background:#ff3b30;pointer-events:none;z-index:20}
+.timeline-playhead-grabber{position:absolute;top:-5px;left:-4px;width:10px;height:10px;border-radius:2px;background:#ff3b30;border:1px solid rgba(255,255,255,.9);cursor:ew-resize;pointer-events:auto}
+.timeline-mark{position:absolute;top:0;width:8px;cursor:ew-resize;z-index:15;box-sizing:border-box;border:1px solid rgba(0,0,0,.4)}
+.timeline-mark-in{background:#2ecc71;border-radius:2px 0 0 2px}
+.timeline-mark-out{background:#f5a623;border-radius:0 2px 2px 0;transform:translateX(-100%)}
+.selection-summary{background:var(--v-soft);border:1px solid var(--v-line);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--v-text)}
+.selection-summary-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--v-accent);margin-bottom:2px}
+.clip-name{font-size:13px;font-weight:700;margin:0 0 10px}
+.ai-chat-log{grid-column:1/-1;border-top:1px solid var(--v-line);padding:8px 14px;font-size:11px;color:var(--v-muted);max-height:70px;overflow:auto}.ai-chat-log p{margin:3px 0}
+.metric-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px}.metric-card-v2{padding:16px}.metric-card-v2 span{display:block;color:var(--v-muted);font-size:12px}.metric-card-v2 b{display:block;font-size:26px;margin:6px 0 2px}.metric-card-v2 em{font-style:normal;font-size:12px;font-weight:700}
+.trend-card{margin-bottom:14px}.trend-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.trend-head h3{margin:0}.trend-legend{display:flex;gap:14px;font-size:11px;color:var(--v-muted)}.trend-legend span{display:flex;align-items:center;gap:5px}.trend-legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.trend-chart{width:100%;height:160px;display:block}.trend-grid{stroke:var(--v-line);stroke-width:1}
+.trend-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--v-muted);margin-top:4px}
+.learn-lower-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.ai-learn-banner{display:flex;align-items:center;justify-content:space-between;background:var(--v-soft)}.ai-learn-banner strong{display:block;color:var(--v-accent)}.ai-learn-banner span{display:block;color:var(--v-muted);font-size:12px;margin-top:2px}
+@media(max-width:1500px){.vsv2{grid-template-columns:210px 1fr}.brief-grid{grid-template-columns:1fr 1fr}.brief-grid>.right-stack{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}.intel-grid{grid-template-columns:1fr 1fr}.creative-grid{grid-template-columns:180px 1fr 1fr}.creative-grid>.scorecard{grid-column:1/-1}.editor-shell{grid-template-columns:180px minmax(320px,1fr) 240px}.ai-tools-panel{grid-column:1/-1;border-top:1px solid var(--v-line);display:grid;grid-template-columns:repeat(4,1fr)}.review-grid{grid-template-columns:240px 1fr 1fr}.review-grid>.right-stack{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr}.angles-grid,.frames-grid{grid-template-columns:1fr 1fr}.metric-row{grid-template-columns:1fr 1fr}}
+@media(max-width:1000px){.vsv2{grid-template-columns:1fr}.vsv2-sidebar{display:none}.vsv2-main{padding:12px}.vsv2-stepper{overflow:auto;justify-content:flex-start}.brief-grid,.intel-grid,.creative-grid,.review-grid,.learn-grid{grid-template-columns:1fr}.performance-summary{grid-template-columns:1fr 1fr}.editor-shell{display:block}.editor-rail{display:flex;overflow:auto}.asset-panel,.preview-area,.properties-panel,.ai-tools-panel{border-bottom:1px solid var(--v-line)}.angles-grid,.frames-grid,.metric-row,.learn-lower-grid{grid-template-columns:1fr}}
+
+/* STEP 7.9: Save Draft + My Drafts — reuses the existing --v-* tokens only, so it already
+   matches both themes with no new tokens; an overlay so the approved screen underneath it is
+   never rearranged. */
+.save-draft-btn{white-space:nowrap}
+.draft-status{font-size:12px;color:var(--v-muted);align-self:center}
+.draft-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:80}
+.draft-modal{background:var(--v-panel-2);border:1px solid var(--v-line);border-radius:12px;padding:20px;width:380px;max-width:90vw;max-height:80vh;overflow:auto;color:var(--v-text);box-shadow:0 20px 60px var(--v-shadow)}
+.draft-modal h3{margin:0 0 14px}
+.draft-modal .stack-field input[type=text]{width:100%;padding:9px 12px;border:1px solid var(--v-line);border-radius:8px;background:var(--v-panel);color:var(--v-text)}
+.draft-modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.draft-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:320px;overflow:auto}
+.draft-list-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--v-line);border-radius:8px}
+.draft-meta strong{display:block;font-size:13px}
+.draft-meta small{display:block;color:var(--v-muted);font-size:11px;margin-top:2px}
+
+/* Media Library delete/remove — hover-reveal trash icon, top-right corner of each card. */
+.media-card{position:relative}
+.media-card-delete{position:absolute;top:4px;right:4px;z-index:5;width:20px;height:20px;padding:0;line-height:1;border:0;border-radius:5px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;cursor:pointer;opacity:0;transition:opacity .15s}
+.media-card:hover .media-card-delete,.media-card:focus-within .media-card-delete{opacity:1}
+
+/* Direct inline text editing on canvas — cursor:text instead of the move cursor while editing,
+   and a visible focus outline (contentEditable's own default outline is suppressed so this one,
+   consistent with .canvas-el-selected's own accent-coloured outline, is the only one shown). */
+.canvas-text-item.canvas-text-editing{cursor:text;outline:2px solid var(--v-accent);outline-offset:2px}
+.canvas-text-item.canvas-text-editing:focus{outline:2px solid var(--v-accent)}
+
+/* STEP 7.15F: a real export failure must look nothing like the aqua/blue success toast above
+   it (that visual sameness was part of the original bug — a fake success and a real one were
+   indistinguishable). Plain red, matching Login.tsx's own precedent for error text since no
+   themed "error" token exists yet in this file's palette. */
+.inline-status.error{background:rgba(192,57,43,.12);color:#c0392b}

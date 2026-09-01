@@ -1,9 +1,9 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   Film, Image as ImageIcon, Music2, Upload, Filter, Share2, LayoutGrid, List,
 } from 'lucide-react'
 import { useStudio } from '../../contexts/StudioContext'
-import { templatesApi, jobsApi } from '../../api/client'
+import { templatesApi, jobsApi, assetsApi } from '../../api/client'
 import type { Template, Job, Asset } from '../../types'
 import VideoControls from './VideoControls'
 import ImageControls from './ImageControls'
@@ -11,6 +11,7 @@ import TextOverlayEditor from './TextOverlayEditor'
 import AudioTrackControls from './AudioTrackControls'
 import MediaOverlayEditor from './MediaOverlayEditor'
 import EffectsPanel from './EffectsPanel'
+import { MEDIA_ASSET_DRAG_TYPE, type MediaAssetDragPayload } from './dragTypes'
 import LowerThirdBuilder from './LowerThirdBuilder'
 import IntroOutroBuilder from './IntroOutroBuilder'
 import SEOPanel from './SEOPanel'
@@ -62,7 +63,13 @@ const MEDIA_TABS = ['All', 'Video', 'Image', 'Audio'] as const
 // panel reads correctly for visual approval. Never shown in production builds; the real
 // clip list (VideoControls, unchanged) always renders underneath. Gradients stand in for real
 // thumbnails since no actual frame/photo assets exist yet.
-const DEMO_MEDIA: { name: string; kind: 'Video' | 'Image' | 'Audio'; duration: string; gradient: string }[] = [
+type MediaTileItem = {
+  name: string; kind: 'Video' | 'Image' | 'Audio'; duration?: string; gradient?: string
+  // Present only for real uploaded assets — used to make the tile draggable onto the timeline.
+  asset?: Asset
+}
+
+const DEMO_MEDIA: MediaTileItem[] = [
   { name: 'Beach Drone.mp4', kind: 'Video', duration: '0:12', gradient: 'linear-gradient(135deg, #1e4a5f, #d4a56a)' },
   { name: 'Surfing.mp4', kind: 'Video', duration: '0:09', gradient: 'linear-gradient(135deg, #cf6b3f, #f4c34a)' },
   { name: 'Palm Trees.mp4', kind: 'Video', duration: '0:07', gradient: 'linear-gradient(135deg, #0f5c7a, #2a9d6f)' },
@@ -71,11 +78,44 @@ const DEMO_MEDIA: { name: string; kind: 'Video' | 'Image' | 'Audio'; duration: s
   { name: 'Ocean View.mp4', kind: 'Video', duration: '0:10', gradient: 'linear-gradient(135deg, #145a7a, #5fb5c9)' },
 ]
 
+// Maps the backend Asset's file_type to the same 'Video'/'Image'/'Audio' kind the demo
+// tiles use, so uploaded assets render through the same grid. Anything else (thumbnails,
+// documents) isn't shown in this library.
+function assetKind(fileType: string): 'Video' | 'Image' | 'Audio' | null {
+  if (fileType === 'video') return 'Video'
+  if (fileType === 'image') return 'Image'
+  if (fileType === 'audio') return 'Audio'
+  return null
+}
+
 function MediaLibrary() {
+  const { uploadAsset, mediaAssets, addMediaAsset } = useStudio()
   const [tab, setTab] = useState<typeof MEDIA_TABS[number]>('All')
-  const items = import.meta.env.DEV
-    ? DEMO_MEDIA.filter(m => tab === 'All' || m.kind === tab)
-    : []
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const uploaded: MediaTileItem[] = mediaAssets
+    .map((a): MediaTileItem | null => {
+      const kind = assetKind(a.file_type)
+      return kind ? { name: a.original_filename, kind, asset: a } : null
+    })
+    .filter((m): m is MediaTileItem => m !== null)
+
+  const items = [
+    ...(import.meta.env.DEV ? DEMO_MEDIA : []),
+    ...uploaded,
+  ].filter(m => tab === 'All' || m.kind === tab)
+
+  const handleFilesSelected = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return
+    for (const file of Array.from(fileList)) {
+      try {
+        const asset = await uploadAsset(file)
+        addMediaAsset(asset)
+      } catch {
+        // uploadAsset already reports the failure via a chat system message
+      }
+    }
+  }
 
   return (
     <div>
@@ -102,7 +142,15 @@ function MediaLibrary() {
         </div>
       </div>
 
-      <button className="sgv-btn" style={s.uploadBtn}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*,image/*,audio/*"
+        multiple
+        style={s.hiddenFileInput}
+        onChange={e => { void handleFilesSelected(e.target.files); e.target.value = '' }}
+      />
+      <button className="sgv-btn" style={s.uploadBtn} onClick={() => fileInputRef.current?.click()}>
         <Upload size={14} /> Upload Files
       </button>
 
@@ -110,17 +158,38 @@ function MediaLibrary() {
         <p style={s.empty}>No media yet. Upload files to build your library.</p>
       ) : (
         <div style={s.mediaGrid}>
-          {items.map(m => (
-            <div key={m.name} style={s.mediaCard} title={m.name}>
-              <div style={{ ...s.mediaThumb, background: m.gradient }}>
+          {items.map((m, i) => {
+            // Only real uploaded videos are draggable onto the timeline for now — demo
+            // tiles are presentational placeholders with no asset/url behind them.
+            const draggableVideo = m.kind === 'Video' && m.asset
+            return (
+            <div
+              key={`${m.name}-${i}`}
+              style={{ ...s.mediaCard, ...(draggableVideo ? s.mediaCardDraggable : null) }}
+              title={draggableVideo ? `${m.name} — drag onto V1 to add to timeline` : m.name}
+              draggable={!!draggableVideo}
+              onDragStart={draggableVideo ? (e) => {
+                const asset = m.asset!
+                const payload: MediaAssetDragPayload = {
+                  assetId: asset.id,
+                  url: assetsApi.previewUrl(asset.file_path),
+                  name: asset.original_filename,
+                  mimeType: asset.mime_type,
+                }
+                e.dataTransfer.setData(MEDIA_ASSET_DRAG_TYPE, JSON.stringify(payload))
+                e.dataTransfer.effectAllowed = 'copy'
+              } : undefined}
+            >
+              <div style={{ ...s.mediaThumb, background: m.gradient ?? 'var(--sg-bg-4)' }}>
                 {m.kind === 'Video' && <Film size={18} color="rgba(255,255,255,0.85)" />}
                 {m.kind === 'Image' && <ImageIcon size={18} color="rgba(255,255,255,0.85)" />}
                 {m.kind === 'Audio' && <Music2 size={18} color="rgba(255,255,255,0.85)" />}
-                <span style={s.durationBadge}>{m.duration}</span>
+                {m.duration && <span style={s.durationBadge}>{m.duration}</span>}
               </div>
               <span style={s.mediaName}>{m.name}</span>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -320,6 +389,7 @@ const s: Record<string, CSSProperties> = {
   mediaTabs: { display: 'flex', gap: 16, marginBottom: 4, borderBottom: '1px solid var(--border)', flex: 1 },
   mediaHeaderIcons: { display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 },
   smallIconBtn: { width: 28, height: 28 },
+  hiddenFileInput: { display: 'none' },
   viewToggleActive: { background: 'var(--sg-bg-4)', color: 'var(--sg-text-primary)' },
   uploadBtn: {
     width: '100%', height: 42, marginTop: 12, background: 'var(--sg-green-dark)',
@@ -339,6 +409,9 @@ const s: Record<string, CSSProperties> = {
   brandSummaryDesc: { fontSize: 11, color: 'var(--text-tertiary)' },
   mediaGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 },
   mediaCard: { display: 'flex', flexDirection: 'column', gap: 4, cursor: 'pointer' },
+  // Extra affordance + text-selection guard for tiles that are actually draggable onto the
+  // timeline (uploaded videos only) — demo tiles are untouched.
+  mediaCardDraggable: { cursor: 'grab', userSelect: 'none', WebkitUserSelect: 'none' },
   mediaThumb: {
     position: 'relative', aspectRatio: '16 / 9', borderRadius: 7, overflow: 'hidden',
     border: '1px solid transparent', background: 'var(--sg-bg-4)',

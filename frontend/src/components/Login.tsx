@@ -17,8 +17,14 @@ export default function Login() {
     try {
       await login(username, password)
       navigate('/studio')
-    } catch {
-      setError('Invalid username or password')
+    } catch (err) {
+      // Distinguish a genuine credential rejection (401) from the backend simply being
+      // unreachable — the previous blanket "Invalid username or password" for every failure
+      // made a real connectivity problem look identical to a typo'd password, which is exactly
+      // what happened during Step 7 testing (the backend had stopped; the correct, documented
+      // credentials were never actually wrong).
+      const status = (err as { response?: { status?: number } })?.response?.status
+      setError(status === 401 ? 'Invalid username or password' : 'Could not reach the server — please try again in a moment')
     } finally {
       setLoading(false)
     }

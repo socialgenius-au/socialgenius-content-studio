@@ -118,8 +118,8 @@ export interface VideoClip {
   endTime: number
   trimIn: number
   trimOut: number
-  colorGrade: 'none' | 'warm' | 'cool' | 'cinematic' | 'bw' | 'high_contrast' | 'desaturated'
-  speed: 0.25 | 0.5 | 1 | 2
+  colorGrade: 'none' | 'warm' | 'cool' | 'cinematic' | 'bw' | 'high_contrast' | 'desaturated' | 'sepia'
+  speed: 0.25 | 0.5 | 0.75 | 1 | 1.25 | 1.5 | 2
   brightness: number
   contrast: number
   saturation: number
@@ -143,6 +143,11 @@ export interface TextOverlay {
   bgColor: string
   bgOpacity: number
   animation: 'none' | 'fade_in' | 'slide_left' | 'slide_right' | 'slide_top' | 'slide_bottom' | 'typewriter' | 'pop'
+  // Layers reorder: canvas paint order relative to other visual (Text/Overlay) elements — higher
+  // paints later (more in front). Shares one numeric space with MediaOverlay.order so the two
+  // types can freely interleave. Optional/undefined (treated as 0) for any element created
+  // before this field existed, so it never needs a migration.
+  order?: number
 }
 
 export interface MediaOverlay {
@@ -156,6 +161,19 @@ export interface MediaOverlay {
   opacity: number
   startTime: number
   endTime: number
+  // Step 5 follow-up: audio properties for a video-backed Overlay (ignored for an image-backed
+  // one) — mirrors AudioTrack's own `volume` field/convention rather than inventing a new one.
+  muted?: boolean
+  volume?: number
+  // Step 5 follow-up: same non-destructive colour-grade/adjustment fields VideoClip already
+  // has, extended to Overlay so Filters/Adjust can apply to a visual Overlay (image or video)
+  // too, per that step's requirement — same field shapes, so both share one rendering helper.
+  colorGrade?: VideoClip['colorGrade']
+  brightness?: number
+  contrast?: number
+  saturation?: number
+  // Layers reorder: see TextOverlay.order — same shared numeric space.
+  order?: number
 }
 
 export interface AudioTrack {

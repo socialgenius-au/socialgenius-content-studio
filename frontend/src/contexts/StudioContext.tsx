@@ -18,6 +18,31 @@ interface TimelineState {
   markOut: number | null
 }
 
+// Video Studio V2's Create/Edit multi-platform canvas system (see
+// pages/video-studio-v2/data/canvasFormats.ts for the full platform → placement menu that
+// produces these values). Kept here, not in the V2 page tree, purely so it's carried by the
+// same StudioContext instance Review reads from — legacy /studio never reads or writes this.
+export interface CanvasFormatState {
+  platformKey: string
+  placementKey: string
+  label: string
+  ratio: string
+  width: number
+  height: number
+}
+
+const DEFAULT_CANVAS_FORMAT: CanvasFormatState = {
+  platformKey: 'instagram', placementKey: 'reel_story', label: 'Instagram - Reel / Story',
+  ratio: '9:16', width: 1080, height: 1920,
+}
+
+// Video Studio V2 Create/Edit — drag position for a canvas element that has no dedicated
+// data-model position field yet (see SelectedElement's 'canvasItem' variant). Stored as a
+// fraction (0–1) of the canvas's own width/height, NOT display pixels — that makes it a true
+// canvas/project coordinate (survives any zoom level) and, being a fraction rather than an
+// absolute pixel count, it also stays proportionally in place when the canvas format changes.
+export interface CanvasItemPosition { xPct: number; yPct: number }
+
 export type RailTool =
   | 'history' | 'templates'
   | 'video' | 'image' | 'text' | 'audio' | 'media' | 'effects' | 'lower' | 'intro' | 'platform'
@@ -27,6 +52,15 @@ export type SelectedElement =
   | { type: 'clip'; lane: 'video' | 'additional'; id: string }
   | { type: 'text'; id: string }
   | { type: 'audio'; id: string }
+  // MediaOverlay (uploaded overlay asset) — mirrors 'text'/'audio' exactly: real backing
+  // data-model entry, identified by id alone. Added when Overlay selection was wired up
+  // (previously the only gap: MediaOverlay had a full data model but no SelectedElement
+  // variant at all, so nothing could ever select one).
+  | { type: 'overlay'; id: string }
+  // A canvas element with no backing data-model entry yet (Video Studio V2's placeholder
+  // mock content — headline, badge, CTA, etc.) — carries just enough for Properties'
+  // "Type / Name" identification. Additive only; legacy /studio never produces this variant.
+  | { type: 'canvasItem'; id: string; kind: string; name: string }
   | null
 
 interface StudioState {
@@ -67,6 +101,29 @@ interface StudioState {
   seoPackage: SEOPackage | null
 
   templates: Template[]
+
+  // Media library — assets uploaded via the "Upload Files" button, shown in the left panel
+  mediaAssets: Asset[]
+  addMediaAsset: (a: Asset) => void
+  // Video Studio V2's "remove from Media Library" — only ever removes this session's local
+  // reference (the array entry that makes it show up in the left panel); never calls the
+  // backend's own DELETE /assets/{id} (that would touch the underlying file/DB row shared
+  // across every other draft that might reference the same asset id — out of scope and unsafe
+  // for a per-project "remove from library" action).
+  removeMediaAsset: (id: number) => void
+
+  // Video Studio V2 multi-platform canvas — current active format, plus every format the
+  // project has been given a version for. The master timeline (videoClips etc.) is identical
+  // across all of them; only the canvas frame differs, and only ever fitted, never stretched.
+  canvasFormat: CanvasFormatState
+  setCanvasFormat: (f: CanvasFormatState) => void
+  canvasVersions: CanvasFormatState[]
+  addCanvasVersion: (f: CanvasFormatState) => void
+
+  // Drag position for canvas elements with no dedicated position field of their own yet
+  // (see CanvasItemPosition above). Keyed by the element's canvasItem id.
+  canvasItemPositions: Record<string, CanvasItemPosition>
+  setCanvasItemPosition: (id: string, pos: CanvasItemPosition) => void
 
   // Icon-rail: which tool panel is expanded (null = collapsed, canvas gets full width)
   activeRailTool: RailTool | null
@@ -152,6 +209,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [brands, setBrands] = useState<Brand[]>([])
   const [recentJobs, setRecentJobs] = useState<Job[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
+  const [mediaAssets, setMediaAssets] = useState<Asset[]>([])
+  const [canvasFormat, setCanvasFormat] = useState<CanvasFormatState>(DEFAULT_CANVAS_FORMAT)
+  const [canvasVersions, setCanvasVersions] = useState<CanvasFormatState[]>([DEFAULT_CANVAS_FORMAT])
+  const [canvasItemPositions, setCanvasItemPositions] = useState<Record<string, CanvasItemPosition>>({})
 
   const [contentType, setContentType] = useState<ContentType>('video')
   const [platform, setPlatform] = useState<Platform>('instagram_reel')
@@ -189,6 +250,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [selectedElement, setSelectedElement] = useState<SelectedElement>(null)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [pendingApproval, setPendingApproval] = useState<ApprovalGate | null>(null)
+
+  const addMediaAsset = useCallback((a: Asset) => setMediaAssets(p => [...p, a]), [])
+  const removeMediaAsset = useCallback((id: number) => setMediaAssets(p => p.filter(a => a.id !== id)), [])
+
+  // Non-destructive: adding a version never touches the master timeline, and re-adding a
+  // format that already has a version just moves focus rather than duplicating it.
+  const addCanvasVersion = useCallback((f: CanvasFormatState) => setCanvasVersions(p =>
+    p.some(v => v.platformKey === f.platformKey && v.placementKey === f.placementKey) ? p : [...p, f]
+  ), [])
+
+  const setCanvasItemPosition = useCallback((id: string, pos: CanvasItemPosition) =>
+    setCanvasItemPositions(p => ({ ...p, [id]: pos })), [])
 
   const msgIdRef = useRef(1)
   const nextId = () => String(msgIdRef.current++)
@@ -361,6 +434,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     chatMessages, chatLoading,
     seoPackage,
     templates,
+    mediaAssets, addMediaAsset, removeMediaAsset,
+    canvasFormat, setCanvasFormat, canvasVersions, addCanvasVersion,
+    canvasItemPositions, setCanvasItemPosition,
     activeRailTool, selectedElement,
     uploadProgress,
     pendingApproval,
