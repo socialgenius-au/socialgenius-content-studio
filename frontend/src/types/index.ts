@@ -82,6 +82,130 @@ export interface Asset {
   created_at: string
 }
 
+// Video Deconstructor — Stage 2 (Reference Video Ingestion) and Stage 3 (Technical Analysis).
+// Mirrors backend app/schemas/reference_video.py exactly; see reference_videos.py's own module
+// docstring for scope.
+export interface VideoAnalysisSummary {
+  id: number
+  analysis_tier: 'quick' | 'standard' | 'deep'
+  status: 'pending' | 'running' | 'complete' | 'failed'
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+  // Populated on a real failure of whichever pass most recently failed (Stage 3's
+  // technical_probe, or Stage 4's scene_segmentation) — a real, truthful message, never
+  // fabricated.
+  error: string | null
+  // Stage 4: each named pass's own state, tracked independently — e.g.
+  // {"technical_probe": "complete", "scene_segmentation": "running"}. A running/failed
+  // scene_segmentation never implies technical_probe's own already-complete state changed.
+  pass_status: Record<string, string>
+}
+
+// One Stage-5 representative still frame extracted from a Shot. certainty is always "MEASURED" —
+// every field here is a direct, deterministic fact about the extracted image itself (timestamp,
+// dimensions, pixel measurements), never an interpretation of what it shows. measurements mirrors
+// TechnicalDetails' own "small versioned JSON payload" convention:
+// {width, height, luminance_mean, is_black_frame, sharpness_score}.
+export interface ShotFrameSummary {
+  id: number
+  order: number
+  timestamp: number
+  extraction_method: string
+  width: number
+  height: number
+  measurements: Record<string, number | boolean>
+  certainty: string
+  evidence_summary: string | null
+  produced_by_pass: string | null
+  // The extracted frame's own file — build a thumbnail URL via the existing
+  // assetsApi.previewUrl(), same helper ReferenceVideo.asset_file_path already uses.
+  asset_file_path: string
+}
+
+// One deterministically-detected cut-bounded segment (Stage 4). certainty is always "MEASURED".
+// evidence_summary carries the detector's own score/threshold as human-readable text — detector
+// evidence, not semantic confidence (a separate, unused-here confidence_score field is reserved
+// for later, genuinely INFERRED judgments).
+export interface ShotSummary {
+  id: number
+  order: number
+  start_time: number
+  end_time: number
+  certainty: string
+  evidence_summary: string | null
+  produced_by_pass: string | null
+  // Stage 5's representative-frame evidence set for this Shot, chronological order — empty
+  // until visual-evidence extraction completes at least once.
+  frames: ShotFrameSummary[]
+}
+
+// Mirrors backend app/services/ffmpeg_svc._empty_technical_details() exactly — a controlled,
+// versioned structure (schema_version), not an unrestricted raw-ffmpeg dump. Every non-null
+// value is directly observed/measured by ffmpeg's own container/stream metadata; null means
+// "not reliably determined by this probe mechanism," never a guess. Derived-only values (aspect
+// ratio label, etc.) are deliberately absent here — see CreateEditTab's deriveAspectRatioLabel.
+export interface TechnicalDetails {
+  schema_version: number
+  probe: { mechanism: string; ffmpeg_build: string | null }
+  container: {
+    format_name: string | null
+    format_long_name: string | null
+    duration_seconds: number | null
+    size_bytes: number | null
+    bitrate_kbps: number | null
+  }
+  video: {
+    codec_name: string | null
+    codec_long_name: string | null
+    profile: string | null
+    width: number | null
+    height: number | null
+    coded_width: number | null
+    coded_height: number | null
+    pixel_format: string | null
+    sample_aspect_ratio: string | null
+    display_aspect_ratio: string | null
+    frame_rate: number | null
+    average_frame_rate: number | null
+    time_base: string | null
+    frame_count: number | null
+    bitrate_kbps: number | null
+    rotation_degrees: number | null
+    duration_seconds: number | null
+  }
+  audio: {
+    present: boolean
+    codec_name: string | null
+    codec_long_name: string | null
+    sample_rate_hz: number | null
+    channels: number | null
+    channel_layout: string | null
+    bitrate_kbps: number | null
+    duration_seconds: number | null
+  }
+  streams: { count: number; video_count: number; audio_count: number }
+}
+
+export interface ReferenceVideo {
+  id: number
+  asset_id: number
+  original_filename: string
+  // Reference Preview (post-Stage-4 UI gap fix): the underlying Asset's own file_path — build a
+  // preview URL with the existing assetsApi.previewUrl(), same as every editor clip already
+  // does. Never used to write/modify anything; read-only source for an independent player.
+  asset_file_path: string
+  source: 'upload' | 'url'
+  original_url: string | null
+  rights_status: 'owned' | 'licensed' | 'unknown_third_party'
+  created_at: string
+  latest_analysis: VideoAnalysisSummary
+  technical_details: TechnicalDetails | null
+  // Stage 4's deterministically-detected shot segments, chronological order — empty until
+  // structural analysis completes at least once.
+  shots: ShotSummary[]
+}
+
 // ── Studio types ──────────────────────────────────────────────────────────────
 
 export type Platform =
@@ -125,6 +249,28 @@ export interface VideoClip {
   saturation: number
   transition: 'cut' | 'dissolve' | 'whip_pan' | 'fade_black' | 'zoom_punch'
   transitionDuration: number
+  // Step 7 (Original Video Audio controls): this clip's OWN embedded audio only — mirrors
+  // MediaOverlay's own muted/volume convention exactly. Independent of, and additive to, the
+  // existing "muted once separated to A1" auto-mute rule (Step 7.6A) — this is a separate,
+  // explicit per-clip control the user can set regardless of whether an A1 track exists for
+  // it. Optional/undefined (treated as unmuted/100%) for any clip created before this field
+  // existed, so it never needs a migration.
+  muted?: boolean
+  volume?: number
+  // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): how this clip's source frame maps
+  // onto the platform canvas box when their aspect ratios differ (near-universal across 7
+  // platform formats spanning 9:16 down to 2:3 — a single source rarely matches all of them).
+  // 'fit' (the long-standing default, so every clip authored before this field existed renders
+  // exactly as it always has) letterboxes/pillarboxes to show the whole frame, same as CSS
+  // object-fit:contain. 'fill' scales to cover the entire canvas with no bars, cropping
+  // whichever dimension overflows — same as object-fit:cover — which is what "Crop &
+  // Reposition" in the toolbar switches a clip into; cropOffsetX/Y (both 0-100, default 50/50
+  // = centered) are that crop's position, directly usable as CSS object-position so the
+  // preview and export share the exact same positioning math. Optional/undefined (treated as
+  // 'fit'/50/50) for any clip created before this field existed.
+  fitMode?: 'fit' | 'fill'
+  cropOffsetX?: number
+  cropOffsetY?: number
 }
 
 export interface TextOverlay {

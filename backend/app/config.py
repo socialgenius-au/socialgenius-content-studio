@@ -13,6 +13,22 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
 
+    # ── SocialGenius AI service (app/services/ai/) — provider-neutral AI Tools ────────────────
+    # AI_TEXT_PROVIDER/AI_TEXT_MODEL choose the DEFAULT provider+model any AI task in
+    # app/services/ai/tasks.py uses, unless that task pins its own override. Switching provider
+    # means AI_TEXT_MODEL must also become a valid model name for that provider (there's no
+    # single model string that means anything across Claude/GPT/Gemini) — CLAUDE_MODEL above is
+    # untouched and still belongs only to the older, pre-existing Job Planner/AI Assistant code
+    # (app/services/claude.py, generate_svc.generate_content/chat_reply), which this refactor
+    # deliberately does not move onto this new layer.
+    AI_TEXT_PROVIDER: str = "anthropic"
+    AI_TEXT_MODEL: str = "claude-sonnet-4-20250514"
+    # Only the currently-selected AI_TEXT_PROVIDER's key needs to actually be set — the other
+    # two stay "" (falsy) until/unless that provider is selected, exactly like ANTHROPIC_API_KEY
+    # already worked before this provider-neutral layer existed.
+    OPENAI_API_KEY: str = ""
+    GOOGLE_AI_API_KEY: str = ""
+
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 500
 

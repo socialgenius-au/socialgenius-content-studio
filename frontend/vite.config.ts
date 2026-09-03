@@ -29,6 +29,8 @@ export default defineConfig({
       '/templates':  { target: 'http://localhost:8000', changeOrigin: true },
       '/video-studio-drafts': { target: 'http://localhost:8000', changeOrigin: true },
       '/video-export': { target: 'http://localhost:8000', changeOrigin: true },
+      // Video Deconstructor — Stage 2 (Reference Video Ingestion).
+      '/reference-videos': { target: 'http://localhost:8000', changeOrigin: true },
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,

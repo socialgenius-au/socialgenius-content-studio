@@ -88,6 +88,8 @@ export const brandsApi = {
 export const generateApi = {
   generate: (body: Record<string, unknown>) => api.post('/generate/', body),
   chat: (body: Record<string, unknown>) => api.post('/generate/chat', body),
+  // Video Studio V2 AI Tools — AI Prompt Generator (first of six AI Tools cards).
+  prompt: (body: Record<string, unknown>) => api.post('/generate/prompt', body),
 }
 
 export const assetsApi = {
@@ -102,6 +104,28 @@ export const assetsApi = {
   // forward slashes first so the "uploads/" strip matches on every platform; otherwise on
   // Windows it never matches and the URL doubles up into "/uploads/uploads\1\x.mp4".
   previewUrl: (filePath: string)           => `${import.meta.env.VITE_API_URL ?? ''}/uploads/${filePath.replace(/\\/g, '/').replace(/^\/?uploads\//, '')}`,
+}
+
+// Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Takes an asset_id already
+// returned by uploadApi.upload — never uploads a file itself; see reference_videos.py's own
+// module docstring on the backend for exact scope.
+export const referenceVideosApi = {
+  ingest:  (asset_id: number) => api.post('/reference-videos/', { asset_id }),
+  get:     (id: number)       => api.get(`/reference-videos/${id}`),
+  // Restoration path (post-Stage-3 defect fix): the caller's own ReferenceVideos, newest first
+  // — lets Import External restore an already-ingested reference after a reload/remount instead
+  // of only ever holding it in local component state.
+  list:    ()                 => api.get('/reference-videos/'),
+  // Video Deconstructor — Stage 3 (Reference Video Technical Analysis) ONLY. Deterministic
+  // ffmpeg-based facts, no AI — see reference_videos.py's own module docstring for exact scope.
+  analyze: (id: number)       => api.post(`/reference-videos/${id}/analyze`),
+  // Video Deconstructor — Stage 4 (Deterministic Shot/Cut Boundary Detection) ONLY. No semantic
+  // Scene grouping, no AI — see reference_videos.py's own module docstring for exact scope.
+  analyzeStructure: (id: number) => api.post(`/reference-videos/${id}/analyze-structure`),
+  // Video Deconstructor — Stage 5 (Visual Evidence / Representative Frames) ONLY. Deterministic
+  // ffmpeg + Pillow/numpy frame extraction, no AI/OCR/object detection — see reference_videos.py's
+  // own module docstring for exact scope.
+  analyzeFrames: (id: number) => api.post(`/reference-videos/${id}/analyze-frames`),
 }
 
 export const templatesApi = {

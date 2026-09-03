@@ -1,17 +1,65 @@
 import type { VideoClip } from '../../types'
 
+// Step 7 defect fix (Video 1 base visual missing at a clip's exact boundary): a clip's own
+// startTime/endTime are the accumulated result of pixel-based drag/trim/split math (see
+// beginClipDrag and friends) — dragging a clip and letting it settle back near an edge does
+// not reliably land on a perfectly clean value; it can end up a few femto/pico-seconds off
+// zero (e.g. 1.4e-13 instead of 0). This function's own boundary check used to be a hard
+// `time >= c.startTime`, so a playhead sitting at an exact, clean 0 (from pausing/seeking to
+// the very start) would MISS a clip whose stored startTime is a hair above that — no clip
+// matched, hasRealSrc fell back to false, and the mock placeholder rendered underneath the
+// still-correctly-rendered small overlay (which has no dependency on activeVideoClip at all).
+// Reproduced and confirmed exactly this way: paused at 0:00, Video 1 not visible, O1 overlay
+// still showing correctly on top of the placeholder. CLIP_BOUNDARY_EPSILON (matching this
+// codebase's own existing RIPPLE_EPSILON convention for the same class of float-drift problem)
+// tolerates that drift on the START of a clip's range only — see the deliberate asymmetry
+// below for why the END must stay a hard, un-widened bound.
+const CLIP_BOUNDARY_EPSILON = 1e-6
+
 // Which V1 clip (if any) covers a given playhead time. Clips aren't necessarily stored in
 // chronological order (dragging a clip's body can move its startTime past another's), so this
 // checks ranges rather than assuming array order — and freezes on the chronologically last
 // clip once the playhead reaches/passes the end of everything, same as a single video would.
 // Shared by the legacy /studio PreviewCanvas and the Video Studio V2 Create/Edit preview so
 // both drive off the identical, already-verified logic rather than two drifting copies.
+//
+// Manual Test 7.2 fix (continuous Video 1 -> Video 2 handoff): the END of a clip's range
+// deliberately does NOT get the same epsilon widening as the START. Two back-to-back clips
+// (the overwhelmingly common case — clip2.startTime is literally set to clip1.endTime by
+// handleDrop/split) share one exact boundary value. Widening BOTH edges — as an earlier
+// version of this function did — makes that shared instant match TWO clips at once
+// (clip1: time < clip1.endTime + EPSILON is still true; clip2: time >= clip2.startTime -
+// EPSILON is also true), and .find() returns whichever clip sits first in the array — which,
+// for two clips added in timeline order, is always clip1, the one that just ended. Reproduced
+// directly: playing through a real two-clip timeline, timeline.currentTime correctly reaches
+// the boundary and keeps advancing (so audio, which only follows currentTime, plays on
+// uninterrupted), but activeVideoClip stayed clip1 — so the <video> element's src never
+// repointed at clip2, exactly matching "audio continues, Video 2 visual never starts".
+// Keeping the epsilon on the START only still fixes the original 0:00 defect (a clip whose
+// stored startTime drifted a hair above a clean 0) without ever letting a clip's END outlive
+// its own boundary into the next clip's territory.
 export function findActiveClip(clips: VideoClip[], time: number): VideoClip | null {
-  const hit = clips.find(c => time >= c.startTime && time < c.endTime)
+  const hit = clips.find(c => time >= c.startTime - CLIP_BOUNDARY_EPSILON && time < c.endTime)
   if (hit) return hit
   if (clips.length === 0) return null
   const last = clips.reduce((a, c) => (c.endTime > a.endTime ? c : a))
-  return time >= last.endTime ? last : null
+  return time >= last.endTime - CLIP_BOUNDARY_EPSILON ? last : null
+}
+
+// Video Editor Playback Regression defect fix (found via Sameena's Stage-4 manual test): a
+// clip's endTime/trimIn/trimOut together define its own already-trimmed, valid source range —
+// changing `speed` alone (the only thing the Properties panel's Speed control used to write)
+// leaves endTime fixed at whatever timeline duration was correct under the PREVIOUS speed, so
+// the offset formula (trimIn + elapsed*speed, in CreateEditTab's own sync effect) ends up
+// asking for source positions well past the footage this clip's own trim boundary said it
+// should ever show — playing material the user had deliberately trimmed away. This computes the
+// new endTime a speed change requires to keep exactly the same trimmed source range (never
+// touched here) mapped onto a (shorter/longer) timeline span at the new speed — extracted as its
+// own pure, exported function so this exact fix is independently unit-testable, not just
+// exercised indirectly through the UI.
+export function computeEndTimeForSpeed(clip: Pick<VideoClip, 'startTime' | 'duration' | 'trimIn' | 'trimOut'>, newSpeed: number): number {
+  const sourceSpan = Math.max(0.01, clip.duration - clip.trimIn - clip.trimOut);
+  return clip.startTime + sourceSpan / newSpeed;
 }
 
 // Reads real duration off an uploaded video file (no server-provided metadata exists yet) by

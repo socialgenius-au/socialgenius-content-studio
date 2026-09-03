@@ -72,7 +72,7 @@ async def test_build_clip_segment_speed_changes_output_duration(clips):
     seg = await ffmpeg_svc.build_clip_segment(
         clips[0], trim_in=0, source_duration=2.0, speed=2.0,
         color_grade="none", brightness=0, contrast=0, saturation=0,
-        canvas_w=320, canvas_h=180, keep_audio=True, user_id=USER_ID,
+        canvas_w=320, canvas_h=180, keep_audio=True, volume=1.0, user_id=USER_ID,
     )
     assert _decode_error_count(str(seg)) == 0
     assert await ffmpeg_svc._get_duration(str(seg)) == pytest.approx(1.0, abs=0.15)
@@ -83,7 +83,7 @@ async def test_build_clip_segment_bw_desaturates(clips, tmp_path):
     seg = await ffmpeg_svc.build_clip_segment(
         clips[1], trim_in=0, source_duration=3.0, speed=1,
         color_grade="bw", brightness=0, contrast=0, saturation=0,
-        canvas_w=640, canvas_h=360, keep_audio=True, user_id=USER_ID,
+        canvas_w=640, canvas_h=360, keep_audio=True, volume=1.0, user_id=USER_ID,
     )
     r, g, b = _frame_pixel(str(seg), 1.0, 320, 180, tmp_path)
     # The source clip is solid green (0,255,0); full desaturation must pull r/g/b together.
@@ -94,13 +94,101 @@ async def test_build_clip_segment_no_audio_produces_silent_track(clips, tmp_path
     seg = await ffmpeg_svc.build_clip_segment(
         clips[0], trim_in=0, source_duration=3.0, speed=1,
         color_grade="none", brightness=0, contrast=0, saturation=0,
-        canvas_w=640, canvas_h=360, keep_audio=False, user_id=USER_ID,
+        canvas_w=640, canvas_h=360, keep_audio=False, volume=1.0, user_id=USER_ID,
     )
     assert await ffmpeg_svc._has_audio_stream(str(seg)) is True
     wav = _extract_audio_wav(str(seg), tmp_path)
     w = wave.open(str(wav), "rb")
     data = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
     assert np.abs(data).max() < 50, "keep_audio=False should produce (near-)silence, not the original 440Hz tone"
+
+
+# ---------------------------------------------------------------------------
+# STEP 7: Original Video Audio controls (per-clip on/off + volume)
+# ---------------------------------------------------------------------------
+
+async def test_build_clip_segment_volume_scales_original_audio(clips, tmp_path):
+    """The clip's own saved volume must actually scale its own embedded audio, independent of
+    speed's atempo chain (both may be present in the same -af)."""
+    loud = await ffmpeg_svc.build_clip_segment(
+        clips[0], trim_in=0, source_duration=3.0, speed=1,
+        color_grade="none", brightness=0, contrast=0, saturation=0,
+        canvas_w=320, canvas_h=180, keep_audio=True, volume=1.0, user_id=USER_ID,
+    )
+    quiet = await ffmpeg_svc.build_clip_segment(
+        clips[0], trim_in=0, source_duration=3.0, speed=1,
+        color_grade="none", brightness=0, contrast=0, saturation=0,
+        canvas_w=320, canvas_h=180, keep_audio=True, volume=0.25, user_id=USER_ID,
+    )
+    loud_dir, quiet_dir = tmp_path / "loud", tmp_path / "quiet"
+    loud_dir.mkdir(); quiet_dir.mkdir()
+    wav_loud = _extract_audio_wav(str(loud), loud_dir)
+    wav_quiet = _extract_audio_wav(str(quiet), quiet_dir)
+    w1, w2 = wave.open(str(wav_loud), "rb"), wave.open(str(wav_quiet), "rb")
+    d1 = np.frombuffer(w1.readframes(w1.getnframes()), dtype=np.int16).astype(np.float64)
+    d2 = np.frombuffer(w2.readframes(w2.getnframes()), dtype=np.int16).astype(np.float64)
+    rms1, rms2 = float(np.sqrt(np.mean(d1 ** 2))), float(np.sqrt(np.mean(d2 ** 2)))
+    assert rms2 == pytest.approx(rms1 * 0.25, rel=0.15), (
+        f"expected volume=0.25 to be ~1/4 of volume=1.0's level, got rms1={rms1:.0f} rms2={rms2:.0f}"
+    )
+
+
+async def test_render_project_original_audio_off_mutes_clip_without_a1(clips, tmp_path):
+    """The Original Audio toggle must work on its own, with no A1 track present at all — this
+    is a separate, explicit control from the existing "muted once separated to A1" rule, not a
+    re-implementation of it."""
+    project = {
+        "canvas_width": 320, "canvas_height": 180,
+        "video_clips": [{
+            "path": clips[0], "trim_in": 0, "start_time": 0, "end_time": 3, "speed": 1,
+            "color_grade": "none", "brightness": 0, "contrast": 0, "saturation": 0,
+            "transition": "cut", "transition_duration": 0.5,
+            "has_separated_audio": False, "muted": True, "volume": 1.0,
+        }],
+        "text_overlays": [], "media_overlays": [], "audio_tracks": [],
+    }
+    out = await ffmpeg_svc.render_project(project, USER_ID)
+    assert await ffmpeg_svc._has_audio_stream(str(out)) is True
+    wav = _extract_audio_wav(str(out), tmp_path)
+    w = wave.open(str(wav), "rb")
+    data = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
+    assert np.abs(data).max() < 50, "Original Audio = Off must silence the clip even with no A1 track involved"
+
+
+async def test_render_project_original_audio_example_scenario(clips, custom_audio, tmp_path):
+    """Exact scenario from the Step 7 request: Video 1 original audio OFF + A1 replacement at
+    100%, then Video 2 original audio ON at 100% with no A1 covering it. Expected result:
+    Video 1's own 440Hz tone never plays; A1's 220Hz plays during Video 1's window; Video 2's
+    own 550Hz tone plays during its own window, unaffected by Video 1's or A1's settings."""
+    project = {
+        "canvas_width": 320, "canvas_height": 180,
+        "video_clips": [
+            {"path": clips[0], "trim_in": 0, "start_time": 0, "end_time": 3, "speed": 1,
+             "color_grade": "none", "brightness": 0, "contrast": 0, "saturation": 0,
+             "transition": "cut", "transition_duration": 0.5,
+             "has_separated_audio": False, "muted": True, "volume": 1.0},  # Video 1: original audio OFF
+            {"path": clips[1], "trim_in": 0, "start_time": 3, "end_time": 6, "speed": 1,
+             "color_grade": "none", "brightness": 0, "contrast": 0, "saturation": 0,
+             "transition": "cut", "transition_duration": 0.5,
+             "has_separated_audio": False, "muted": False, "volume": 1.0},  # Video 2: original audio ON
+        ],
+        "text_overlays": [], "media_overlays": [],
+        "audio_tracks": [
+            {"path": custom_audio, "trim_in": 0, "start_time": 0, "end_time": 3, "volume": 1.0},  # A1 replaces Video 1 only
+        ],
+    }
+    out = await ffmpeg_svc.render_project(project, USER_ID)
+    wav = _extract_audio_wav(str(out), tmp_path)
+
+    freqs1, mag1 = _spectrum(wav, 1.0, 2.0)  # inside Video 1's window
+    noise1 = float(np.median(mag1))
+    assert _band_energy(freqs1, mag1, 440.0) < 10 * noise1, "Video 1's own audio must be off"
+    assert _band_energy(freqs1, mag1, 220.0) > 10 * noise1, "A1 replacement must be audible during Video 1"
+
+    freqs2, mag2 = _spectrum(wav, 4.0, 5.0)  # inside Video 2's window
+    noise2 = float(np.median(mag2))
+    assert _band_energy(freqs2, mag2, 550.0) > 10 * noise2, "Video 2's own audio must be on"
+    assert _band_energy(freqs2, mag2, 220.0) < 10 * noise2, "A1 (scoped to [0,3)) must not bleed into Video 2's window"
 
 
 # ---------------------------------------------------------------------------
@@ -156,19 +244,81 @@ def _content_column_range(path: str, t: float, tmp_path: Path, threshold: int = 
 
 async def test_build_clip_segment_fill_covers_mismatched_canvas_no_bars(portrait_clip, tmp_path):
     """STEP 7.15H canvas-fill defect: a 9:16 (360x640) source exported to a 16:9 (640x360)
-    canvas must fully cover the frame (no black pillarbox/letterbox bars) — this is the exact
-    "very small ... excessive black space" defect, reproduced directly with a controlled source/
-    canvas mismatch."""
+    canvas, with fit_mode="fill" explicitly selected, must fully cover the frame (no black
+    pillarbox/letterbox bars) — this is the exact "very small ... excessive black space" defect,
+    reproduced directly with a controlled source/canvas mismatch.
+
+    STEP 7 (Platform Canvas / Full-Screen Video Acceptance): fit_mode="fill" is now passed
+    explicitly — build_clip_segment's default changed to "fit" (matching the live preview's own
+    long-standing object-fit:contain default) once fit_mode became a real, per-clip choice
+    rather than every export always being FILL regardless of what the clip's own data says."""
     seg = await ffmpeg_svc.build_clip_segment(
         portrait_clip, trim_in=0, source_duration=3, speed=1,
         color_grade="none", brightness=0, contrast=0, saturation=0,
-        canvas_w=640, canvas_h=360, keep_audio=True, user_id=USER_ID,
+        canvas_w=640, canvas_h=360, keep_audio=True, volume=1.0, user_id=USER_ID,
+        fit_mode="fill",
     )
     assert await ffmpeg_svc._get_video_dimensions(str(seg)) == (640, 360), "canvas dimensions must be honoured exactly, never hard-coded"
     min_col, max_col, width = _content_column_range(str(seg), 1.0, tmp_path)
     assert min_col == 0 and max_col == width - 1, (
         f"expected FILL to cover the entire frame width with no black bars, "
         f"got content only from col {min_col} to {max_col} of {width}"
+    )
+
+
+async def test_build_clip_segment_fit_mode_shows_letterbox_bars(portrait_clip, tmp_path):
+    """STEP 7 (Platform Canvas / Full-Screen Video Acceptance): "fit" is the default and must
+    preserve the WHOLE source frame — for a 9:16 source into a 16:9 canvas that necessarily
+    means visible pillarbox bars (never cropping, never stretching), the exact opposite
+    assertion from the FILL test above, over the identical source/canvas mismatch."""
+    seg = await ffmpeg_svc.build_clip_segment(
+        portrait_clip, trim_in=0, source_duration=3, speed=1,
+        color_grade="none", brightness=0, contrast=0, saturation=0,
+        canvas_w=640, canvas_h=360, keep_audio=True, volume=1.0, user_id=USER_ID,
+        fit_mode="fit",
+    )
+    assert await ffmpeg_svc._get_video_dimensions(str(seg)) == (640, 360)
+    min_col, max_col, width = _content_column_range(str(seg), 1.0, tmp_path)
+    assert min_col > 0 and max_col < width - 1, (
+        f"expected FIT to letterbox/pillarbox a mismatched-aspect source (whole frame visible, "
+        f"centred), got content spanning the full col 0 to {width - 1} — i.e. no bars at all"
+    )
+    # And the same default with no fit_mode argument at all must behave identically — this is
+    # the actual "existing project with no fit_mode key" scenario render_project relies on.
+    seg_default = await ffmpeg_svc.build_clip_segment(
+        portrait_clip, trim_in=0, source_duration=3, speed=1,
+        color_grade="none", brightness=0, contrast=0, saturation=0,
+        canvas_w=640, canvas_h=360, keep_audio=True, volume=1.0, user_id=USER_ID,
+    )
+    min_col2, max_col2, _ = _content_column_range(str(seg_default), 1.0, tmp_path)
+    assert (min_col2, max_col2) == (min_col, max_col), "omitting fit_mode must behave exactly like fit_mode='fit'"
+
+
+async def test_build_clip_segment_fill_crop_position_shifts_visible_region(portrait_two_tone_clip, tmp_path):
+    """STEP 7 (Platform Canvas / Full-Screen Video Acceptance): crop_x/crop_y must actually move
+    which part of an over-tall scaled source is kept, mirroring CSS object-position's own 0-100
+    convention exactly (this is what the toolbar's "Crop & Reposition" drag writes) — verified
+    on the VERTICAL axis: the fixture's 9:16 source filled into a very wide/short canvas is
+    over-tall on the vertical axis, so crop_y=0 must keep the fixture's YELLOW top half and
+    crop_y=100 must keep its BLUE bottom half — a real, different colour, not the same centred
+    crop regardless of the argument."""
+    top = await ffmpeg_svc.build_clip_segment(
+        portrait_two_tone_clip, trim_in=0, source_duration=3, speed=1,
+        color_grade="none", brightness=0, contrast=0, saturation=0,
+        canvas_w=640, canvas_h=100, keep_audio=False, volume=1.0, user_id=USER_ID,
+        fit_mode="fill", crop_y=0,
+    )
+    bottom = await ffmpeg_svc.build_clip_segment(
+        portrait_two_tone_clip, trim_in=0, source_duration=3, speed=1,
+        color_grade="none", brightness=0, contrast=0, saturation=0,
+        canvas_w=640, canvas_h=100, keep_audio=False, volume=1.0, user_id=USER_ID,
+        fit_mode="fill", crop_y=100,
+    )
+    px_top = _frame_pixel(str(top), 1.0, 320, 50, tmp_path)
+    px_bottom = _frame_pixel(str(bottom), 1.0, 320, 50, tmp_path)
+    assert px_top != px_bottom, (
+        f"expected crop_y=0 and crop_y=100 to keep visibly different parts of the source, "
+        f"got the same pixel {px_top} at the sampled point in both — crop_y is not being applied"
     )
 
 
@@ -179,7 +329,7 @@ async def test_build_clip_segment_fill_vertical_canvas_no_distortion(portrait_cl
     seg = await ffmpeg_svc.build_clip_segment(
         portrait_clip, trim_in=0, source_duration=3, speed=1,
         color_grade="none", brightness=0, contrast=0, saturation=0,
-        canvas_w=360, canvas_h=640, keep_audio=True, user_id=USER_ID,
+        canvas_w=360, canvas_h=640, keep_audio=True, volume=1.0, user_id=USER_ID,
     )
     assert await ffmpeg_svc._get_video_dimensions(str(seg)) == (360, 640)
     import subprocess

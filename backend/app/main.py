@@ -17,10 +17,18 @@ logger = logging.getLogger("app")
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.limiter import limiter
-from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export
+from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos
 
 # Import all models so Base.metadata is fully populated before create_all
-from app.models import User, Brand, Job, Asset, Transcript, Template, VideoStudioDraft  # noqa: F401
+from app.models import (  # noqa: F401
+    User, Brand, Job, Asset, Transcript, Template, VideoStudioDraft,
+    # Video Deconstructor — Stage 1 (Core Analysis Data Model): eight new, siloed tables.
+    # create_all only ever CREATES missing tables — it never alters or drops an existing one —
+    # so this import list growing is what makes these 8 tables get created on next startup,
+    # with zero effect on any table already in the database.
+    ReferenceVideo, VideoAnalysis, Scene, Shot, TextElement, VisualObject,
+    AnalysisAnnotation, StrategicInsight,
+)
 
 # ── Sentry ────────────────────────────────────────────────────────────────────
 if settings.SENTRY_DSN:
@@ -133,6 +141,9 @@ app.include_router(assets.router,     prefix="/assets",     tags=["assets"])
 app.include_router(templates.router,  prefix="/templates",  tags=["templates"])
 app.include_router(video_studio_drafts.router, prefix="/video-studio-drafts", tags=["video-studio-drafts"])
 app.include_router(video_export.router, prefix="/video-export", tags=["video-export"])
+# Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. See reference_videos.py's own
+# module docstring for exact scope.
+app.include_router(reference_videos.router, prefix="/reference-videos", tags=["reference-videos"])
 app.include_router(ws.router,         prefix="/ws",         tags=["websocket"])
 
 

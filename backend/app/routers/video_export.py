@@ -62,6 +62,15 @@ async def export_project(
             # ALSO carry that clip's original embedded audio — same "no duplicate audio"
             # principle already enforced in the live preview.
             "has_separated_audio": c.asset_id in audio_asset_ids_by_clip,
+            # Step 7 (Original Video Audio controls): this clip's own explicit on/off + volume
+            # — additive to has_separated_audio above, never a replacement for it.
+            "muted": c.muted,
+            "volume": c.volume,
+            # STEP 7 (Platform Canvas / Full-Screen Video Acceptance): this clip's own Fit/Fill
+            # + crop position, exactly as its live preview rendered it.
+            "fit_mode": c.fit_mode,
+            "crop_x": c.crop_x,
+            "crop_y": c.crop_y,
         })
 
     text_overlays: list[dict] = []

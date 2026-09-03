@@ -68,6 +68,26 @@ def portrait_clip(tmp_path) -> str:
 
 
 @pytest.fixture
+def portrait_two_tone_clip(tmp_path) -> str:
+    """STEP 7 (Platform Canvas / Full-Screen Video Acceptance): same 360x640 (9:16) shape as
+    portrait_clip, but split top-half yellow / bottom-half blue (vstack) instead of one solid
+    colour — portrait_clip's own solid purple can't distinguish "which part of the source
+    survived a crop", since every part of it looks identical. This is specifically for verifying
+    that crop_x/crop_y genuinely changes which region is kept, not just that scaling/cropping
+    happens at all."""
+    out = tmp_path / "portrait_two_tone_clip.mp4"
+    _run([
+        FFMPEG_BIN, "-y",
+        "-f", "lavfi", "-i", "color=c=yellow:s=360x320:d=3:r=30",
+        "-f", "lavfi", "-i", "color=c=blue:s=360x320:d=3:r=30",
+        "-filter_complex", "[0:v][1:v]vstack=inputs=2",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        str(out),
+    ])
+    return str(out)
+
+
+@pytest.fixture
 def overlay_clip(tmp_path) -> str:
     """STEP 7.15H: a small video-backed overlay with its own distinct 880Hz tone — standing in
     for Sameena's "overlay contains music" scenario, distinguishable by frequency from both

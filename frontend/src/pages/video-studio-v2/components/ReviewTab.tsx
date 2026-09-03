@@ -74,6 +74,14 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
           speed: c.speed, color_grade: c.colorGrade,
           brightness: c.brightness, contrast: c.contrast, saturation: c.saturation,
           transition: c.transition, transition_duration: c.transitionDuration,
+          // Step 7 (Original Video Audio controls): this clip's own embedded-audio on/off +
+          // volume — independent of A1, other clips, and overlay audio.
+          muted: c.muted ?? false, volume: c.volume ?? 1,
+          // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): this clip's own Fit/Fill +
+          // crop position, exactly as its live preview rendered it — the backend default
+          // ("fit"/50/50) matches this same fallback, so a clip saved before this feature
+          // existed sends the same values either way.
+          fit_mode: c.fitMode ?? "fit", crop_x: c.cropOffsetX ?? 50, crop_y: c.cropOffsetY ?? 50,
         })),
         text_overlays: textOverlays.map(t => ({
           text: t.text, start_time: t.startTime, end_time: t.endTime,

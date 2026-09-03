@@ -21,6 +21,18 @@ class ExportVideoClip(BaseModel):
     saturation: float = 0
     transition: str = "cut"
     transition_duration: float = 0.5
+    # STEP 7 (Original Video Audio controls): this clip's OWN embedded audio only — additive to
+    # (never a replacement for) the existing "muted once separated to A1" rule computed from
+    # audio_tracks below. Independent of A1's own volume, other clips, and overlay audio.
+    muted: bool = False
+    volume: float = 1.0
+    # STEP 7 (Platform Canvas / Full-Screen Video Acceptance): how this clip's frame maps onto
+    # the platform canvas — mirrors VideoClip.fitMode/cropOffsetX/Y in frontend/src/types/
+    # index.ts exactly, including the "fit"/50/50 default for a clip saved before this field
+    # existed, so the export always matches what that clip's own live preview showed.
+    fit_mode: str = "fit"
+    crop_x: float = 50.0
+    crop_y: float = 50.0
 
 
 class ExportTextOverlay(BaseModel):

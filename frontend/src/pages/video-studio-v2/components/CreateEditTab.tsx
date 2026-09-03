@@ -1,11 +1,11 @@
 
 import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useStudio } from "../../../contexts/StudioContext";
-import { assetsApi, videoStudioDraftsApi } from "../../../api/client";
+import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi } from "../../../api/client";
 import { MEDIA_ASSET_DRAG_TYPE, type MediaAssetDragPayload } from "../../../components/studio/dragTypes";
-import { findActiveClip, probeVideoDuration, probeHasAudioTrack } from "../../../components/studio/videoPreviewUtils";
+import { findActiveClip, probeVideoDuration, probeHasAudioTrack, computeEndTimeForSpeed } from "../../../components/studio/videoPreviewUtils";
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
-import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack } from "../../../types";
+import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, ReferenceVideo } from "../../../types";
 import {
   CANVAS_PLATFORMS, findPlacement, fitCanvasBox, PENDING_REFRAME_NOTE, RESIZE_TARGET_PLATFORMS,
   defaultPlacementForPlatform, type CanvasPlacement,
@@ -29,6 +29,14 @@ const DRAGGABLE_CANVAS_ITEM_IDS = new Set(["ph-headline", "ph-badge"]);
 // trimmed down to (near) zero width. Deliberately small since "keep a sensible minimum" is
 // the only requirement, not a specific value.
 const MIN_CLIP_DURATION = 0.2;
+
+// STEP 7.9's own client/project identity label, extracted to a shared constant so buildProjectSnapshot
+// (below) and the AI Prompt Generator's project context (Task 3) reference the exact same value
+// instead of two copies that could drift. This project has no real, structured Brand Kit record
+// wired into Video Studio V2 yet (Brief/Intelligence tabs are local, unpersisted mock state, and
+// no `Brand` row exists for this client) — this is the one genuine, already-established piece of
+// "who this project is for" identity this editor has, not a fabricated stand-in for a real Brand Kit.
+const PROJECT_CLIENT_IDENTITY = { client: "ABC Tiles", campaign: "Builders Footfall Campaign" };
 
 // Step 5 follow-up (Defect 2): the one shared canvas-resize floor — a Text/Overlay element can
 // never be resized down to (near) zero, same "keep a sensible minimum" principle as
@@ -76,6 +84,25 @@ function formatTimecode(t: number): string {
   const m = Math.floor(t / 60);
   const s = Math.floor(t % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+// Video Deconstructor — Stage 3 (Reference Video Technical Analysis). Aspect ratio is
+// deliberately never persisted anywhere in technical_details (see the backend's own
+// ffmpeg_svc.probe_technical_metadata docstring) — it's pure arithmetic on width/height, so it's
+// computed here, at display time only, exactly like the Stage 3 design review promised.
+function deriveAspectRatioLabel(width: number, height: number): string {
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const d = gcd(width, height) || 1;
+  return `${width / d}:${height / d}`;
+}
+
+// Video Deconstructor — Stage 4. Matches the exact "00:00.000" mm:ss.mmm format requested for
+// the chronological shot list — deliberately more precise than formatTimecode above (m:ss, no
+// ms), since a shot's exact boundary is the whole point of this listing.
+function formatShotTimecode(t: number): string {
+  const m = Math.floor(t / 60);
+  const s = t % 60;
+  return `${m.toString().padStart(2, "0")}:${s.toFixed(3).padStart(6, "0")}`;
 }
 
 export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
@@ -190,6 +217,115 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [focusMode, setFocusMode] = useState(false);
   const [drawer, setDrawer] = useState<null | "media" | "properties" | "aiTools">(null);
   const toggleDrawer = (which: "media" | "properties" | "aiTools") => setDrawer(d => (d === which ? null : which));
+  // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): purely local UI state — which clip
+  // (if any) currently has the drag-to-reposition handle armed on the canvas, and whether the
+  // Fit/Fill/Crop & Reposition dropdown is open. Neither ever touches StudioContext directly;
+  // they only gate which handlers respond to canvas interaction and which menu renders.
+  const [cropMenuOpen, setCropMenuOpen] = useState(false);
+  const [repositionClipId, setRepositionClipId] = useState<string | null>(null);
+  // STEP 7 (Keyboard Shortcuts): reference panel visibility — purely local UI state, same as
+  // the two above.
+  const [shortcutsPanelOpen, setShortcutsPanelOpen] = useState(false);
+
+  // AI Tools — AI Prompt Generator (first of six AI Tools cards; the other five and Quick
+  // Actions stay unimplemented for now, on purpose). Purely local UI/request state — nothing
+  // here is persisted with the project (a generated prompt is a one-off aid, not project data),
+  // so Save Draft/Undo/Redo/export are all untouched by this feature entirely.
+  const [promptGenOpen, setPromptGenOpen] = useState(false);
+  const [promptGenInstruction, setPromptGenInstruction] = useState("");
+  const [promptGenLoading, setPromptGenLoading] = useState(false);
+  const [promptGenResult, setPromptGenResult] = useState<string | null>(null);
+  const [promptGenError, setPromptGenError] = useState<string | null>(null);
+  const [promptGenCopied, setPromptGenCopied] = useState(false);
+
+  // Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Wires up "Import External"
+  // — previously a dead creation-mode button; `mode` (see the comment above `draftId` below)
+  // "was never read anywhere" until now. Reuses the exact same uploadAsset() call every other
+  // media tab in this file already uses (fileInputRef's onChange, handleFiles, etc.) — this
+  // never introduces a second upload path or touches the existing /upload/ endpoint. After the
+  // upload succeeds, the resulting asset_id is wrapped into an immutable ReferenceVideo + its
+  // initial "pending" VideoAnalysis via the new /reference-videos/ endpoint. No scene, shot,
+  // text, hook, transcript, or any other analysis happens here — see
+  // backend/app/routers/reference_videos.py's own module docstring for exact scope. Purely
+  // local UI/request state, same as promptGen* above — nothing here is part of the saved
+  // project snapshot (Save Draft/Undo/Redo/export are all untouched).
+  const [refIngestBusy, setRefIngestBusy] = useState(false);
+  const [refIngestError, setRefIngestError] = useState<string | null>(null);
+  const [refIngestResult, setRefIngestResult] = useState<ReferenceVideo | null>(null);
+
+  // Video Deconstructor — Stage 3 (Reference Video Technical Analysis) ONLY. Wires up the
+  // (until now genuinely disabled — see the fix noted below on the button itself) "Analyse
+  // Reference" button. Deterministic technical facts only — no scene/shot/hook/transcript/any
+  // other analysis; see backend/app/routers/reference_videos.py's own module docstring and
+  // app/services/ffmpeg_svc.probe_technical_metadata for exact scope and certainty treatment.
+  // `refAnalyzeBusy` covers only the in-flight request; the actual lifecycle shown to the user
+  // (Ready for Analysis / Analysing / Technical Analysis Complete / Analysis Failed) is read
+  // straight off refIngestResult.latest_analysis.status, which this response replaces in place.
+  const [refAnalyzeBusy, setRefAnalyzeBusy] = useState(false);
+  const [refAnalyzeError, setRefAnalyzeError] = useState<string | null>(null);
+  const [refIngestRestoring, setRefIngestRestoring] = useState(false);
+
+  // Video Deconstructor — Stage 4 (Deterministic Shot/Cut Boundary Detection) ONLY. Wires up
+  // "Analyse Structure". No scene grouping, no transcription/OCR/visual AI, no reconstruction —
+  // see backend/app/routers/reference_videos.py's own module docstring and
+  // app/services/ffmpeg_svc.detect_shot_boundary_candidates/build_shot_segments for exact scope.
+  // The Stage-3 "Technical Analysis Complete" section is read from
+  // refIngestResult.latest_analysis.pass_status.technical_probe, NOT from the top-level status
+  // field — Stage 4 running/failing must never make Stage 3's already-trustworthy results
+  // disappear from view (top-level status legitimately flips to "running" while Stage 4 works).
+  const [refAnalyzeStructureBusy, setRefAnalyzeStructureBusy] = useState(false);
+  const [refAnalyzeStructureError, setRefAnalyzeStructureError] = useState<string | null>(null);
+
+  // Video Deconstructor — Stage 5 (Visual Evidence / Representative Frames) ONLY. Same
+  // independent busy/error pair as Stage 4 above — a running/failed Stage-5 pass must never hide
+  // Stage 3's or Stage 4's already-complete results (read from pass_status.visual_evidence, not
+  // the top-level status field, same reasoning as structureStatus below).
+  const [refAnalyzeFramesBusy, setRefAnalyzeFramesBusy] = useState(false);
+  const [refAnalyzeFramesError, setRefAnalyzeFramesError] = useState<string | null>(null);
+
+  // Reference Preview defect fix (Shot rows reported not clickable / no visible feedback):
+  // which Shot's row is currently selected (highlighted), purely local UI state — never written
+  // to any Shot record, never affects the editor. refPreviewTime/refPreviewDuration mirror the
+  // Reference Preview <video>'s own currentTime/duration via native timeupdate/loadedmetadata
+  // events (not requestAnimationFrame — a plain media event, so this works regardless of
+  // whether rAF is throttled), rendered as an explicit, high-contrast text readout so a click's
+  // effect is unmistakable even if the small preview thumbnail change itself goes unnoticed.
+  const [selectedShotId, setSelectedShotId] = useState<number | null>(null);
+  const [refPreviewTime, setRefPreviewTime] = useState(0);
+  const [refPreviewDuration, setRefPreviewDuration] = useState(0);
+  // Stage 5 (Visual Evidence): which representative-frame thumbnail is selected, independent of
+  // selectedShotId above — clicking a specific frame highlights THAT frame, not just its parent
+  // Shot row (both can be true at once: the Shot row and one of its own frames).
+  const [selectedFrameId, setSelectedFrameId] = useState<number | null>(null);
+
+  // Defect fix (post-Stage-3 Manual Test 1): refIngestResult above was ONLY ever set by a fresh
+  // upload/analyze response — nothing ever read an already-ingested ReferenceVideo back from
+  // the backend, so it reset to null on every remount (a page reload, or simply leaving and
+  // re-entering this tab) even though Stage 2 had genuinely persisted it server-side. This
+  // restores it the first time "Import External" is opened and nothing has been loaded into
+  // this session yet — never re-uploads, never creates a ReferenceVideo or VideoAnalysis (GET
+  // only). Guarded by a ref (not just refIngestResult itself), same "run once" pattern
+  // seededVersionsRef above already uses, so this can't re-fire and clobber a result the user
+  // just produced by uploading or analysing in this same session.
+  const refIngestRestoreAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (mode !== "Import External" || refIngestRestoreAttemptedRef.current || refIngestResult) return;
+    refIngestRestoreAttemptedRef.current = true;
+    setRefIngestRestoring(true);
+    (async () => {
+      try {
+        const { data } = await referenceVideosApi.list();
+        const latest = (data as ReferenceVideo[])[0]; // newest first, per the backend's own ordering
+        if (latest) setRefIngestResult(latest);
+      } catch {
+        // Best-effort restoration only — on failure the panel simply stays at its normal
+        // "Upload Reference Video" idle state; nothing else in the editor is affected.
+      } finally {
+        setRefIngestRestoring(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   // STEP 7.6 defect fix: the speaker icon under the preview was a plain <span> — decorative,
   // no click handler at all. This is purely a PREVIEW listening convenience (like a video
@@ -221,7 +357,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const buildProjectSnapshot = (): DraftProjectSnapshot => ({
     videoClips, textOverlays, mediaOverlays, audioTracks, mediaAssets,
     canvasFormat, timeline, canvasItemPositions,
-    clientIdentity: { client: "ABC Tiles", campaign: "Builders Footfall Campaign" },
+    clientIdentity: PROJECT_CLIENT_IDENTITY,
   });
 
   // Removes every current clip/text/overlay/audio-track (leaves mediaAssets and canvasFormat/
@@ -281,8 +417,11 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
 
   // Requirement 8: reuses draftId (if this session already opened/saved one) so saving again
   // updates the same backend row via PUT rather than POSTing a new duplicate every time.
-  const handleConfirmSaveDraft = async () => {
-    const name = saveNameInput.trim() || defaultDraftName();
+  // STEP 7 (Keyboard Shortcuts): extracted from handleConfirmSaveDraft below so Ctrl+S can
+  // trigger the exact same save operation without going through the name-entry modal at all —
+  // same order of operations, same state updates, one source of truth for "how a draft is
+  // actually saved" either way.
+  const performSaveDraft = async (name: string): Promise<boolean> => {
     setDraftBusy(true);
     setDraftStatus(null);
     try {
@@ -295,12 +434,27 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       }
       setDraftName(name);
       setDraftStatus(`Saved "${name}"`);
-      setShowSaveDraft(false);
+      return true;
     } catch {
       setDraftStatus("Save failed — please try again.");
+      return false;
     } finally {
       setDraftBusy(false);
     }
+  };
+
+  const handleConfirmSaveDraft = async () => {
+    const ok = await performSaveDraft(saveNameInput.trim() || defaultDraftName());
+    if (ok) setShowSaveDraft(false);
+  };
+
+  // STEP 7 (Keyboard Shortcuts): Ctrl+S — saves immediately with this session's existing draft
+  // name (if any) or a fresh default, deliberately NOT reusing saveNameInput (that belongs only
+  // to the modal's own text field and could hold stale text from an abandoned/cancelled modal
+  // session) — Ctrl+S always saves under a real, current name, never a leftover draft of one.
+  const handleQuickSaveDraft = () => {
+    if (draftBusy) return;
+    void performSaveDraft(draftName || defaultDraftName());
   };
 
   const openMyDrafts = async () => {
@@ -338,6 +492,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const refIngestFileInputRef = useRef<HTMLInputElement>(null);
+  // Reference Preview (post-Stage-4 UI gap fix): a SEPARATE <video> element, own ref, own
+  // native controls, own playhead — deliberately NOT videoRef (the editor's own V1 element).
+  // Used only to inspect the analysed ReferenceVideo itself (e.g. verify a detected Shot
+  // boundary against the actual footage); never reads or writes timeline.currentTime, never
+  // touches videoClips, and is unaffected by (and has no effect on) the editor project/timeline.
+  const refPreviewVideoRef = useRef<HTMLVideoElement>(null);
   const previewRegionRef = useRef<HTMLDivElement>(null);
   const [regionSize, setRegionSize] = useState({ w: 320, h: 400 });
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -388,6 +549,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     id: string; boxW: number; boxH: number; startClientX: number; startClientY: number; corner: ResizeCorner;
     origX: number; origY: number; origWidth: number; origHeight: number;
   } | null>(null);
+  // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): drag-to-reposition session for a
+  // clip in Fill mode — same "session ref + boxW/boxH + origin" shape as dragOverlaySessionRef
+  // above, just writing into VideoClip's cropOffsetX/Y instead of MediaOverlay's x/y.
+  const cropDragSessionRef = useRef<{
+    id: string; boxW: number; boxH: number; startClientX: number; startClientY: number;
+    origOffsetX: number; origOffsetY: number;
+  } | null>(null);
+  const cropDragMovedRef = useRef(false);
   // Step 6: same "only push history once an actual move happens" guard as ClipBlock's
   // gestureStartedRef — a plain click-to-select on a canvas Text/Overlay item (mousedown with
   // no following mousemove) must never push a no-op snapshot onto the undo stack.
@@ -584,52 +753,71 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setTimeout(() => setResizeStatus(null), 6000);
   };
 
-  // ---- Real playback engine: same proven approach as the legacy /studio PreviewCanvas
-  // (rAF sync loop + persistent 'ended' listener + clip-switch + scrub-sync), reimplemented
-  // here rather than importing that component directly so this stage can own its own JSX
-  // matching the approved Create/Edit layout, while still driving off the shared
-  // findActiveClip/probeVideoDuration utilities and the same StudioContext data. ----
+  // ---- STEP 7 LIVE PLAYBACK ENGINE FAILURE — master-clock rearchitecture. ----
+  // Root cause of the freeze / repeating-audio-fragment / "O1 plays but V1 doesn't" reports:
+  // timeline.currentTime — meant to be the ONE global playhead every media element follows —
+  // was actually being DERIVED from V1's own <video>.currentTime every rAF frame (see the old
+  // "tick" loop this replaced). That inverts the intended master/slave relationship: V1's video
+  // is supposed to be a SLAVE that seeks itself to match the global playhead (that's exactly
+  // what the applyOffset/scrub-sync effects below do, correctly, in that direction), not the
+  // SOURCE the playhead is read from. The moment V1's own element stalls, gets reseeked
+  // mid-flight (e.g. the backward seek a split clip's own trimIn requires when Video 2 takes
+  // over — see videoPreviewUtils.ts), or simply free-runs oddly across a tab visibility change,
+  // the "global" clock silently inherits whatever V1's element happens to be doing — including
+  // going nowhere. A1's own sync effects are innocent bystanders in this: they correctly follow
+  // timeline.currentTime, so once THAT froze, A1 kept getting yanked back to the same frozen
+  // target every frame — which is exactly what a repeating fraction-of-a-second audio loop is.
+  //
+  // The fix: timeline.currentTime now advances from a real, independent wall clock
+  // (performance.now()), never from any <video>/<audio> element's own currentTime. Every media
+  // element (V1's <video>, A1's <audio>, overlay <video>s) is purely a SLAVE that reconciles
+  // itself to timeline.currentTime — that direction was already correct in the effects below
+  // and is untouched here. Which clip is "active" is now purely findActiveClip(videoClips,
+  // timeline.currentTime) reacting to the independently-advancing clock, not something this
+  // loop decides by watching any element's playback position — so clip hand-off, overlap
+  // regions, and the exact end of the last clip are all just the SAME one time comparison,
+  // wherever it happens to fall, with no separate "did a clip end" heuristic to get out of sync.
+  //
+  // This also directly fixes the tab-visibility symptom: requestAnimationFrame genuinely does
+  // not fire (or fires at a throttled rate) while the tab is hidden, in every real browser, not
+  // just this project's own code — that's a browser-level behaviour, not something to work
+  // around. A clock that measured "wall time since the last tick" would lose that hidden time
+  // outright. Anchoring instead to "wall time since the CURRENT play session started" means the
+  // very next tick after returning to the tab computes the full, correct elapsed real time in
+  // one step — playback resumes exactly where it should, with no catch-up animation, no
+  // restart, and no drift, regardless of how long the tab was hidden.
   useEffect(() => {
     if (!hasRealSrc || !timeline.playing) return;
-    const vid = videoRef.current;
-    if (!vid) return;
     let rafId: number;
+    // Anchor: at this wall-clock instant, the timeline was at this position. Re-anchored fresh
+    // every time this effect (re)starts — i.e. on every play/pause toggle and on every genuine
+    // clip-availability change — so a scrub that happens while paused, or a play/pause toggle,
+    // is picked up automatically without this loop needing to know why currentTime changed.
+    const anchorWallMs = performance.now();
+    const anchorTimelineSeconds = timelineRef.current.currentTime;
     const tick = () => {
-      const clip = activeVideoClipRef.current;
-      if (clip) {
-        // Instruction 10: a trimmed-off tail isn't something findActiveClip's range check can
-        // catch on its own here — this IS the loop deriving the timeline clock FROM vid's own
-        // (untrimmed-source) playback position, so without this check it would just keep
-        // reading vid.currentTime straight past the trimmed cutoff toward the source's true
-        // end. Same hand-off-or-stop behaviour as the native 'ended' listener below, just
-        // triggered at the correct (possibly earlier, trimmed) point instead of the source's
-        // real end.
-        // Step 5 follow-up (Speed): source time advances `speed`× as fast as timeline time
-        // once played back at a non-1x rate, so both the cutoff and the reverse (source→
-        // timeline) mapping below divide/multiply by it — a 1x clip (the default) reduces to
-        // exactly the pre-existing formula.
-        const speed = clip.speed || 1;
-        const sourceCutoff = clip.trimIn + (clip.endTime - clip.startTime) * speed;
-        if (vid.currentTime >= sourceCutoff) {
-          const next = videoClipsRef.current.find(c => Math.abs(c.startTime - clip.endTime) < 0.05);
-          if (next) setTimeline({ currentTime: next.startTime });
-          else { vid.pause(); setTimeline({ currentTime: clip.endTime, playing: false }); }
-        } else {
-          // vid.currentTime is source-relative (offset by trimIn once trimmed), so subtract
-          // trimIn back out (then divide by speed) to keep the derived timeline clock
-          // trim- and speed-agnostic.
-          const derivedTime = clip.startTime + (vid.currentTime - clip.trimIn) / speed;
-          const markOut = timelineRef.current.markOut;
-          // Instruction 13: prefer stopping at OUT within this already-existing loop — a small,
-          // local addition alongside the trim-cutoff check above, not a new playback concept.
-          if (markOut !== null && derivedTime >= markOut) {
-            vid.pause();
-            setTimeline({ currentTime: markOut, playing: false });
-          } else {
-            setTimeline({ currentTime: derivedTime });
-          }
-        }
+      const elapsedSeconds = (performance.now() - anchorWallMs) / 1000;
+      const newTime = anchorTimelineSeconds + elapsedSeconds;
+      // Stop point: the end of V1's own authored coverage (last video clip's endTime — matches
+      // the previous architecture's stopping behaviour exactly) or an explicit IN/OUT mark,
+      // whichever is reached first. Purely a comparison against known clip metadata — no media
+      // element read of any kind.
+      const clips = videoClipsRef.current;
+      const lastVideoEnd = clips.length > 0 ? Math.max(...clips.map(c => c.endTime)) : 0;
+      const markOut = timelineRef.current.markOut;
+      const stopAt = markOut !== null ? Math.min(markOut, lastVideoEnd) : lastVideoEnd;
+      if (newTime >= stopAt) {
+        setTimeline({ currentTime: stopAt, playing: false });
+        return; // this play session is over — no more ticks, no watchdog poke below
       }
+      setTimeline({ currentTime: newTime });
+      // Watchdog: if the active clip's <video> should be playing but the browser hasn't
+      // actually started it yet (its own play() call, in the offset/seek effect below, fires
+      // from a loadedmetadata callback rather than synchronously inside a user gesture, so a
+      // browser can in principle race or decline it), keep nudging it. Purely a one-way poke —
+      // it never reads the element's currentTime, so it cannot feed back into this clock.
+      const vid = videoRef.current;
+      if (vid && vid.paused && vid.readyState >= 2) vid.play().catch(() => {});
       rafId = requestAnimationFrame(tick);
     };
     rafId = requestAnimationFrame(tick);
@@ -640,16 +828,21 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid || !hasRealSrc) return;
+    // Clip hand-off is now purely a function of the wall-clock-driven timeline.currentTime
+    // crossing into the next clip's range (see the master clock above and findActiveClip) —
+    // never of any single <video> element's own native "ended" state, which the previous
+    // architecture used as one of two competing hand-off triggers. If the browser still fires
+    // its own 'ended' (e.g. the authored clip metadata slightly overstates the real file's
+    // usable length), the only correct response is: if we should still be playing, try to
+    // resume — wherever the video needs to seek to lands via the offset/scrub-sync effects
+    // below, and once the master clock's own comparison crosses into the next clip's territory,
+    // activeClipId switches on its own regardless of what this element is doing.
     const onEnded = () => {
-      const clip = activeVideoClipRef.current;
-      if (!clip) return;
-      const next = videoClipsRef.current.find(c => Math.abs(c.startTime - clip.endTime) < 0.05);
-      if (next) setTimeline({ currentTime: next.startTime });
-      else setTimeline({ playing: false });
+      if (timelineRef.current.playing) vid.play().catch(() => {});
     };
     vid.addEventListener("ended", onEnded);
     return () => vid.removeEventListener("ended", onEnded);
-  }, [hasRealSrc, setTimeline]);
+  }, [hasRealSrc]);
 
   useEffect(() => {
     const vid = videoRef.current;
@@ -742,10 +935,24 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // volume. This is deliberately NOT "globally mute the preview" (Instruction 4) — an
   // un-separated video (no matching A1 track) is untouched by this term and still only follows
   // previewMuted, exactly as before.
+  //
+  // STEP 7 (Original Video Audio controls): activeVideoClip?.muted is a THIRD, independent
+  // reason V1 can be muted — the clip's own saved on/off toggle (Properties → Audio), set by
+  // the user regardless of whether this clip's audio has been separated to A1. OR'd in exactly
+  // like the other two terms, never replacing them: whichever of the three is true, V1 is
+  // muted; none of them ever touch each other's underlying state.
   useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = previewMuted || videoHasSeparatedAudio;
+    if (videoRef.current) videoRef.current.muted = previewMuted || videoHasSeparatedAudio || (activeVideoClip?.muted ?? false);
     if (audioRef.current) audioRef.current.muted = previewMuted;
-  }, [previewMuted, hasRealSrc, activeAudioId, videoHasSeparatedAudio]);
+  }, [previewMuted, hasRealSrc, activeAudioId, videoHasSeparatedAudio, activeVideoClip?.muted]);
+
+  // STEP 7 (Original Video Audio controls): V1's own volume — same "own effect, never touches
+  // .muted" separation the A1 volume effect below already established. Only meaningful while
+  // V1 isn't muted by one of the three reasons above, but is still safe to always apply: a
+  // muted element's .volume has no audible effect regardless of its value.
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.volume = activeVideoClip?.volume ?? 1;
+  }, [activeVideoClip?.volume, activeClipId]);
 
   // STEP 7.6 (Audio Volume): the A1 <audio> element's own `.volume` was never wired to
   // activeAudioTrack.volume at all — the field existed on the data model since Step 1 but had
@@ -794,6 +1001,119 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         // uploadAsset already surfaces a chat error message
       }
     }
+  };
+
+  // ---- Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY: upload one video via
+  // the exact same uploadAsset() call handleFiles above already uses, then wrap the resulting
+  // asset in an immutable ReferenceVideo + pending VideoAnalysis. Ingestion only — no analysis
+  // of any kind runs here (see backend/app/routers/reference_videos.py's own docstring). ----
+  const handleImportExternalFile = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setRefIngestBusy(true);
+    setRefIngestError(null);
+    setRefIngestResult(null);
+    try {
+      const asset = await uploadAsset(file);
+      // The underlying file is a genuine video asset too — usable anywhere in this editor like
+      // any other uploaded video (drag onto V1, etc.), same as every other media-tab upload.
+      addMediaAsset(asset);
+      const { data } = await referenceVideosApi.ingest(asset.id);
+      setRefIngestResult(data as ReferenceVideo);
+    } catch (err) {
+      // Same "read the backend's real detail message" convention the AI Prompt Generator
+      // (runAiPromptGeneration, above) already established — never a generic message when the
+      // backend gave a specific, actionable reason (e.g. "not a video" / "asset not found").
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setRefIngestError(detail || "Could not import this reference video — please try again.");
+    } finally {
+      setRefIngestBusy(false);
+    }
+  };
+
+  // ---- Video Deconstructor — Stage 3 (Reference Video Technical Analysis) ONLY. Runs the
+  // deterministic ffmpeg-based technical probe against the SAME already-ingested
+  // ReferenceVideo — never re-uploads, never touches the file. Safe to call again after a
+  // failure (creates a fresh analysis version server-side) or after success (idempotent,
+  // returns the same completed result) — this handler itself has no special-casing for either,
+  // it just always calls analyze() and replaces refIngestResult with whatever comes back. ----
+  const handleAnalyzeReference = async () => {
+    if (!refIngestResult) return;
+    setRefAnalyzeBusy(true);
+    setRefAnalyzeError(null);
+    try {
+      const { data } = await referenceVideosApi.analyze(refIngestResult.id);
+      setRefIngestResult(data as ReferenceVideo);
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setRefAnalyzeError(detail || "Could not analyse this reference video — please try again.");
+    } finally {
+      setRefAnalyzeBusy(false);
+    }
+  };
+
+  // ---- Video Deconstructor — Stage 4 (Deterministic Shot/Cut Boundary Detection) ONLY. Same
+  // "always call, replace refIngestResult with whatever comes back" shape as
+  // handleAnalyzeReference above — safe to call again after a failure (retries in place
+  // server-side) or after success (idempotent, returns the same completed shots). ----
+  const handleAnalyzeStructure = async () => {
+    if (!refIngestResult) return;
+    setRefAnalyzeStructureBusy(true);
+    setRefAnalyzeStructureError(null);
+    try {
+      const { data } = await referenceVideosApi.analyzeStructure(refIngestResult.id);
+      setRefIngestResult(data as ReferenceVideo);
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setRefAnalyzeStructureError(detail || "Could not analyse this reference video's structure — please try again.");
+    } finally {
+      setRefAnalyzeStructureBusy(false);
+    }
+  };
+
+  // ---- Video Deconstructor — Stage 5 (Visual Evidence / Representative Frames) ONLY. Same
+  // "always call, replace refIngestResult with whatever comes back" shape as
+  // handleAnalyzeStructure above — safe to call again after a failure (retries in place
+  // server-side) or after success (idempotent, returns the same completed frames). ----
+  const handleAnalyzeFrames = async () => {
+    if (!refIngestResult) return;
+    setRefAnalyzeFramesBusy(true);
+    setRefAnalyzeFramesError(null);
+    try {
+      const { data } = await referenceVideosApi.analyzeFrames(refIngestResult.id);
+      setRefIngestResult(data as ReferenceVideo);
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setRefAnalyzeFramesError(detail || "Could not extract visual evidence for this reference video — please try again.");
+    } finally {
+      setRefAnalyzeFramesBusy(false);
+    }
+  };
+
+  // Reference Preview (post-Stage-4 UI gap fix): seeks ONLY the independent reference player —
+  // never timeline.currentTime, never videoRef (the editor's own V1 element). Pauses at the
+  // target so a boundary can be inspected frame-by-frame rather than immediately playing past
+  // it, matching the actual use case ("visually inspect the reference immediately before/after
+  // that boundary"). Also records which Shot is "selected" (for the row's own highlight) and
+  // updates refPreviewTime immediately — not just via the video's own timeupdate event — so the
+  // on-screen readout reflects the new position the instant a row is clicked, not on the next
+  // ~250ms timeupdate tick.
+  const handleSeekReferencePreview = (shotId: number, seconds: number) => {
+    setSelectedShotId(shotId);
+    const vid = refPreviewVideoRef.current;
+    if (!vid) return;
+    vid.currentTime = seconds;
+    vid.pause();
+    setRefPreviewTime(seconds);
+  };
+
+  // Stage 5 (Visual Evidence): identical seek behaviour to handleSeekReferencePreview above (same
+  // ref, same independence from the editor — see that function's own comment), plus tracking
+  // which specific frame thumbnail is selected so ITS OWN card can be highlighted, not just its
+  // parent Shot row's.
+  const handleSeekReferencePreviewToFrame = (shotId: number, frameId: number, seconds: number) => {
+    setSelectedFrameId(frameId);
+    handleSeekReferencePreview(shotId, seconds);
   };
 
   // ---- Text tab (Instruction 4): reuses the exact existing TextOverlay data model and
@@ -1024,6 +1344,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const selectedOverlay = selectedElement?.type === "overlay"
     ? mediaOverlays.find(o => o.id === selectedElement.id) ?? null
     : null;
+  // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): which clip the toolbar's Fit/Fill/
+  // Crop & Reposition dropdown acts on — the explicitly selected clip if there is one (matching
+  // every other per-clip control's precedence in this file), otherwise whichever clip the
+  // preview is currently showing, so the toolbar (sitting right over the canvas) stays useful
+  // without first requiring a timeline selection.
+  const cropTargetClip = selectedClip ?? activeVideoClip;
   // Instruction 8: Audio's Timeline clip is now draggable, which requires it to select on
   // mousedown (same as every other lane) — so it needs to actually participate in the
   // selection-identification summary too, reusing the exact same mechanism every other type
@@ -1312,6 +1638,73 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     document.body.style.userSelect = "none";
     window.addEventListener("mousemove", handleOverlayDragMove);
     window.addEventListener("mouseup", handleOverlayDragEnd);
+  };
+  // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): drag-to-reposition for a clip in
+  // Fill mode — same percentage-delta-and-clamp shape as handleOverlayDragMove above, writing
+  // into VideoClip's own cropOffsetX/Y instead of MediaOverlay's x/y. cropOffsetX/Y map directly
+  // onto CSS object-position (see the <video> element's style below and build_clip_segment on
+  // the export side), whose own convention is: increasing X% reveals more of the source's RIGHT
+  // side (the source's right edge slides toward the container's right edge). Dragging the
+  // VISIBLE CONTENT — i.e. what the user actually sees under their cursor — is the more
+  // intuitive direction for a crop-reposition handle (matching how dragging a photo in a crop
+  // tool moves the photo, not the window), so the sign is inverted: dragging right subtracts
+  // from cropOffsetX, revealing more of the LEFT side, exactly as if the frame were being
+  // pushed rightward under a fixed viewport.
+  const handleCropDragMove = (e: MouseEvent) => {
+    const s = cropDragSessionRef.current;
+    if (!s) return;
+    if (!cropDragMovedRef.current) { pushHistory(); cropDragMovedRef.current = true; }
+    const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
+    const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
+    const nextOffsetX = Math.min(100, Math.max(0, s.origOffsetX - dxPct));
+    const nextOffsetY = Math.min(100, Math.max(0, s.origOffsetY - dyPct));
+    rawUpdateVideoClip(s.id, { cropOffsetX: nextOffsetX, cropOffsetY: nextOffsetY }); // Step 6: raw during drag, see handleOverlayDragMove above
+  };
+  const handleCropDragEnd = () => {
+    cropDragSessionRef.current = null;
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", handleCropDragMove);
+    window.removeEventListener("mouseup", handleCropDragEnd);
+  };
+  const beginCropDrag = (clip: VideoClip) => (e: React.MouseEvent) => {
+    if (repositionClipId !== clip.id) return; // only while this clip's reposition handle is armed
+    e.stopPropagation();
+    e.preventDefault();
+    const boxEl = videoPreviewBoxRef.current;
+    if (!boxEl) return;
+    cropDragMovedRef.current = false;
+    const boxRect = boxEl.getBoundingClientRect();
+    cropDragSessionRef.current = {
+      id: clip.id, boxW: boxRect.width, boxH: boxRect.height,
+      startClientX: e.clientX, startClientY: e.clientY,
+      origOffsetX: clip.cropOffsetX ?? 50, origOffsetY: clip.cropOffsetY ?? 50,
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleCropDragMove);
+    window.addEventListener("mouseup", handleCropDragEnd);
+  };
+  // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): the three Fit/Fill/Crop &
+  // Reposition actions the toolbar's Crop dropdown offers, applied to whichever clip is
+  // currently selected on the timeline, falling back to whichever clip the preview is showing
+  // right now if none is selected — so the toolbar (right next to the canvas) stays useful
+  // without first requiring a trip to select a clip, while a real selection still takes
+  // precedence, consistent with every other per-clip control in this file. "Fit" and "Fill"
+  // are one-shot, discrete actions (pushHistory via the existing updateVideoClip wrapper, same
+  // as every other clip-property change in this file); "Crop & Reposition" additionally arms
+  // the drag handle above without itself changing history (arming isn't a data change).
+  const applyClipFitMode = (clip: VideoClip, mode: "fit" | "fill") => {
+    updateVideoClip(clip.id, mode === "fit"
+      ? { fitMode: "fit" }
+      : { fitMode: "fill", cropOffsetX: clip.cropOffsetX ?? 50, cropOffsetY: clip.cropOffsetY ?? 50 });
+    setRepositionClipId(null);
+    setCropMenuOpen(false);
+  };
+  const enterCropReposition = (clip: VideoClip) => {
+    if (clip.fitMode !== "fill") {
+      updateVideoClip(clip.id, { fitMode: "fill", cropOffsetX: clip.cropOffsetX ?? 50, cropOffsetY: clip.cropOffsetY ?? 50 });
+    }
+    setRepositionClipId(clip.id);
+    setCropMenuOpen(false);
   };
   // Step 5 follow-up (Defect 2): Overlay corner-resize — same left/right-edge-fixed convention
   // as Text's resize above, extended to the vertical axis too since MediaOverlay already has a
@@ -1706,6 +2099,301 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setSelectedElement(null);
   };
 
+  // STEP 7 (Keyboard Shortcuts): [ and ] — trim the selected element's start/end to the current
+  // playhead as one discrete action, reusing the exact same trim*Left/trim*Right functions the
+  // drag handles already call (see beginTrim/handleTrimMove above) rather than re-deriving the
+  // clamp/trimIn math a second time. A drag pushes history once at gesture-start via
+  // onGestureStart; a keyboard trim IS the whole gesture in one keypress, so it pushes here,
+  // once, only after confirming the selected element still exists.
+  const trimSelectedStartToPlayhead = () => {
+    if (!selectedElement) return;
+    const p = timeline.currentTime;
+    if (selectedElement.type === "clip" && selectedElement.lane === "video") {
+      const c = videoClips.find(v => v.id === selectedElement.id);
+      if (!c) return;
+      pushHistory(); trimVideoLeft(c, p);
+    } else if (selectedElement.type === "audio") {
+      const a = audioTracks.find(x => x.id === selectedElement.id);
+      if (!a) return;
+      pushHistory(); trimAudioLeft(a, p);
+    } else if (selectedElement.type === "text") {
+      const t = textOverlays.find(x => x.id === selectedElement.id);
+      if (!t) return;
+      pushHistory(); trimTextLeft(t, p);
+    } else if (selectedElement.type === "overlay") {
+      const o = mediaOverlays.find(x => x.id === selectedElement.id);
+      if (!o) return;
+      pushHistory(); trimOverlayLeft(o, p);
+    }
+  };
+  const trimSelectedEndToPlayhead = () => {
+    if (!selectedElement) return;
+    const p = timeline.currentTime;
+    if (selectedElement.type === "clip" && selectedElement.lane === "video") {
+      const c = videoClips.find(v => v.id === selectedElement.id);
+      if (!c) return;
+      pushHistory(); trimVideoRight(c, p);
+    } else if (selectedElement.type === "audio") {
+      const a = audioTracks.find(x => x.id === selectedElement.id);
+      if (!a) return;
+      pushHistory(); trimAudioRight(a, p);
+    } else if (selectedElement.type === "text") {
+      const t = textOverlays.find(x => x.id === selectedElement.id);
+      if (!t) return;
+      pushHistory(); trimTextRight(t, p);
+    } else if (selectedElement.type === "overlay") {
+      const o = mediaOverlays.find(x => x.id === selectedElement.id);
+      if (!o) return;
+      pushHistory(); trimOverlayRight(o, p);
+    }
+  };
+
+  // STEP 7 (Keyboard Shortcuts): Copy/Paste/Duplicate — this editor had no clipboard concept at
+  // all before this; clipboardRef holds a plain data snapshot (never a live reference into
+  // videoClips/etc., so later edits to the original can never leak into a later paste) of
+  // whichever one element was selected at the moment of Copy. Paste places a fresh copy (new
+  // id, same duration) starting at the current playhead, on the same lane it was copied from;
+  // Duplicate is the one-key equivalent of copy-then-paste-immediately-after the original
+  // (placed at the original's own endTime, not the playhead) — the standard editor convention
+  // for the two being distinct actions rather than Duplicate just being Copy+Paste.
+  const clipboardRef = useRef<
+    | { kind: "clip"; data: VideoClip }
+    | { kind: "audio"; data: AudioTrack }
+    | { kind: "text"; data: TextOverlay }
+    | { kind: "overlay"; data: MediaOverlay }
+    | null
+  >(null);
+  const copySelected = () => {
+    if (!selectedElement) return;
+    if (selectedElement.type === "clip" && selectedElement.lane === "video") {
+      const c = videoClips.find(v => v.id === selectedElement.id);
+      if (c) clipboardRef.current = { kind: "clip", data: c };
+    } else if (selectedElement.type === "audio") {
+      const a = audioTracks.find(x => x.id === selectedElement.id);
+      if (a) clipboardRef.current = { kind: "audio", data: a };
+    } else if (selectedElement.type === "text") {
+      const t = textOverlays.find(x => x.id === selectedElement.id);
+      if (t) clipboardRef.current = { kind: "text", data: t };
+    } else if (selectedElement.type === "overlay") {
+      const o = mediaOverlays.find(x => x.id === selectedElement.id);
+      if (o) clipboardRef.current = { kind: "overlay", data: o };
+    }
+  };
+  const pasteClipboard = () => {
+    const cb = clipboardRef.current;
+    if (!cb) return;
+    const p = timeline.currentTime;
+    const id = crypto.randomUUID();
+    if (cb.kind === "clip") {
+      const dur = cb.data.endTime - cb.data.startTime;
+      addVideoClip({ ...cb.data, id, startTime: p, endTime: p + dur });
+      setSelectedElement({ type: "clip", lane: "video", id });
+    } else if (cb.kind === "audio") {
+      const dur = cb.data.endTime - cb.data.startTime;
+      addAudioTrack({ ...cb.data, id, startTime: p, endTime: p + dur });
+      setSelectedElement({ type: "audio", id });
+    } else if (cb.kind === "text") {
+      const dur = cb.data.endTime - cb.data.startTime;
+      addTextOverlay({ ...cb.data, id, startTime: p, endTime: p + dur });
+      setSelectedElement({ type: "text", id });
+    } else if (cb.kind === "overlay") {
+      const dur = cb.data.endTime - cb.data.startTime;
+      addMediaOverlay({ ...cb.data, id, startTime: p, endTime: p + dur });
+      setSelectedElement({ type: "overlay", id });
+    }
+  };
+  const duplicateSelected = () => {
+    if (!selectedElement) return;
+    const id = crypto.randomUUID();
+    if (selectedElement.type === "clip" && selectedElement.lane === "video") {
+      const c = videoClips.find(v => v.id === selectedElement.id);
+      if (!c) return;
+      const dur = c.endTime - c.startTime;
+      addVideoClip({ ...c, id, startTime: c.endTime, endTime: c.endTime + dur });
+      setSelectedElement({ type: "clip", lane: "video", id });
+    } else if (selectedElement.type === "audio") {
+      const a = audioTracks.find(x => x.id === selectedElement.id);
+      if (!a) return;
+      const dur = a.endTime - a.startTime;
+      addAudioTrack({ ...a, id, startTime: a.endTime, endTime: a.endTime + dur });
+      setSelectedElement({ type: "audio", id });
+    } else if (selectedElement.type === "text") {
+      const t = textOverlays.find(x => x.id === selectedElement.id);
+      if (!t) return;
+      const dur = t.endTime - t.startTime;
+      addTextOverlay({ ...t, id, startTime: t.endTime, endTime: t.endTime + dur });
+      setSelectedElement({ type: "text", id });
+    } else if (selectedElement.type === "overlay") {
+      const o = mediaOverlays.find(x => x.id === selectedElement.id);
+      if (!o) return;
+      const dur = o.endTime - o.startTime;
+      addMediaOverlay({ ...o, id, startTime: o.endTime, endTime: o.endTime + dur });
+      setSelectedElement({ type: "overlay", id });
+    }
+  };
+
+  // STEP 7 (Keyboard Shortcuts): arrow-key nudge for the two "movable canvas element" types
+  // (Text/Overlay — the ones with an x/y canvas position at all; a VideoClip has none, it
+  // always occupies the whole canvas). Clamped against the SAME edges dragging already
+  // respects: Overlay stores both width and height so both axes clamp precisely; Text only
+  // ever stored width (its box height has always been implicit/unmeasured — see
+  // dragTextSessionRef's own live-measured elH for why the drag path can be more precise than a
+  // keyboard nudge can without a fresh DOM read), so its Y nudge clamps only to the plain
+  // 0-100 canvas bounds, same generosity a drag falls back to without a measurement in hand.
+  const CANVAS_NUDGE_SMALL_PCT = 0.5;
+  const CANVAS_NUDGE_LARGE_PCT = 5;
+  const nudgeSelectedCanvasElement = (dx: number, dy: number) => {
+    if (selectedElement?.type === "text") {
+      const t = textOverlays.find(x => x.id === selectedElement.id);
+      if (!t) return;
+      const maxX = Math.max(0, 100 - t.width);
+      updateTextOverlay(t.id, { x: Math.min(maxX, Math.max(0, t.x + dx)), y: Math.min(100, Math.max(0, t.y + dy)) });
+    } else if (selectedElement?.type === "overlay") {
+      const o = mediaOverlays.find(x => x.id === selectedElement.id);
+      if (!o) return;
+      const maxX = Math.max(0, 100 - o.width);
+      const maxY = Math.max(0, 100 - o.height);
+      updateMediaOverlay(o.id, { x: Math.min(maxX, Math.max(0, o.x + dx)), y: Math.min(maxY, Math.max(0, o.y + dy)) });
+    }
+  };
+  // STEP 7 (Keyboard Shortcuts): Left/Right step by exactly one frame when there's no movable
+  // canvas element to nudge instead — 1/30s, matching ffmpeg_svc.py's own hardcoded `-r 30`
+  // export frame rate, so "one frame" means the same real duration in the preview as it will in
+  // the exported file.
+  const FRAME_SECONDS = 1 / 30;
+  const stepPlayheadByFrame = (deltaFrames: number) => {
+    setTimeline({ currentTime: Math.max(0, Math.min(effectiveDuration, timeline.currentTime + deltaFrames * FRAME_SECONDS)) });
+  };
+
+  // ---- STEP 7 (Keyboard Shortcuts): global editor shortcuts. ----
+  // Deliberately re-subscribes on every render (no dependency array) rather than the
+  // ref-mirroring pattern the master-clock rAF loop above uses — that pattern exists there
+  // specifically so ONE long-lived effect survives across many renders without tearing down;
+  // a keydown listener has no such constraint, and removeEventListener+addEventListener every
+  // render is cheap, so this stays a plain closure over whatever selectedElement/videoClips/
+  // timeline/etc. the current render already has — always current, no staleness to guard
+  // against, and no new refs needed for state this effect doesn't otherwise touch.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Critical safeguard: never fire while the user is typing anywhere — Text field, AI
+      // Assistant, search, project/draft name, any future input this editor adds. Checked by
+      // element kind, not by which specific field it is, so nothing needs listing by name.
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (target?.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      const mod = e.ctrlKey || e.metaKey; // metaKey too, so Cmd on macOS gets the same shortcuts for free
+
+      // Ctrl/Cmd combos first — checked ahead of the plain-key switch below so e.g. Ctrl+S
+      // never also matches a bare "s" case.
+      if (mod) {
+        switch (e.code) {
+          case "KeyZ":
+            e.preventDefault();
+            if (e.shiftKey) handleRedo(); else handleUndo();
+            return;
+          case "KeyS":
+            e.preventDefault(); // the one browser default every shortcut here must suppress — native Save Page must never appear
+            handleQuickSaveDraft();
+            return;
+          case "KeyC":
+            e.preventDefault();
+            copySelected();
+            return;
+          case "KeyV":
+            e.preventDefault();
+            pasteClipboard();
+            return;
+          case "KeyD":
+            e.preventDefault();
+            duplicateSelected();
+            return;
+          default:
+            return; // no other Ctrl/Cmd combo is an editor shortcut — never swallow the browser's own (e.g. Ctrl+T, Ctrl+W)
+        }
+      }
+
+      switch (e.code) {
+        case "Space":
+          e.preventDefault(); // browser default here is "activate the focused button" (e.g. re-clicking Play), not scroll — still not what Space should do in an editor
+          setTimeline({ playing: !timeline.playing });
+          break;
+        case "KeyS":
+          handleSplitAtPlayhead();
+          break;
+        case "BracketLeft":
+          trimSelectedStartToPlayhead();
+          break;
+        case "BracketRight":
+          trimSelectedEndToPlayhead();
+          break;
+        case "Delete":
+        case "Backspace":
+          e.preventDefault(); // Backspace with no focused input can navigate back in some browsers
+          if (e.shiftKey) handleRippleDeleteSelected(); else handleDeleteSelected();
+          break;
+        case "KeyC":
+          if (selectedClip) enterCropReposition(selectedClip);
+          break;
+        case "KeyF":
+          if (selectedClip) applyClipFitMode(selectedClip, e.shiftKey ? "fit" : "fill");
+          break;
+        case "KeyR":
+          // "Resize/Transform" has exactly one meaning in this editor for a video clip — Crop &
+          // Reposition (Text/Overlay already expose resize directly via their own corner
+          // handles the instant they're selected, with no separate mode to enter) — so R is
+          // deliberately the same action as C for a selected clip, and a safe no-op otherwise
+          // rather than a fabricated mode that wouldn't visibly do anything.
+          if (selectedClip) enterCropReposition(selectedClip);
+          break;
+        case "KeyV":
+          // "Select/Move" is this editor's only normal state — there's no separate mode to
+          // switch INTO, so V's one real, honest action is switching OUT of the one special
+          // mode that exists (Crop & Reposition), same as Escape/Done below.
+          setRepositionClipId(null);
+          break;
+        case "ArrowLeft":
+        case "ArrowRight":
+        case "ArrowUp":
+        case "ArrowDown": {
+          const isMovableCanvasSelection = selectedElement?.type === "text" || selectedElement?.type === "overlay";
+          if (isMovableCanvasSelection) {
+            e.preventDefault();
+            const nudge = e.shiftKey ? CANVAS_NUDGE_LARGE_PCT : CANVAS_NUDGE_SMALL_PCT;
+            const dx = e.code === "ArrowLeft" ? -nudge : e.code === "ArrowRight" ? nudge : 0;
+            const dy = e.code === "ArrowUp" ? -nudge : e.code === "ArrowDown" ? nudge : 0;
+            nudgeSelectedCanvasElement(dx, dy);
+          } else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+            e.preventDefault();
+            stepPlayheadByFrame(e.code === "ArrowLeft" ? -1 : 1);
+          }
+          // ArrowUp/ArrowDown with no movable canvas element selected: no defined action —
+          // left alone rather than guessing at one.
+          break;
+        }
+        case "Home":
+          e.preventDefault();
+          setTimeline({ currentTime: 0 });
+          break;
+        case "End":
+          e.preventDefault();
+          setTimeline({ currentTime: effectiveDuration });
+          break;
+        case "Escape":
+          // Cancel whichever of this editor's own special modes/overlays is currently open —
+          // never touches selection itself, only the crop-reposition handle and its dropdown.
+          if (repositionClipId !== null) setRepositionClipId(null);
+          if (cropMenuOpen) setCropMenuOpen(false);
+          if (shortcutsPanelOpen) setShortcutsPanelOpen(false);
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  });
+
   // Extracted so the exact same panel markup renders both in its normal grid column (Normal
   // Mode) and inside a Focus Mode drawer overlay — one implementation, two mount points, no
   // behavioural difference between them.
@@ -1830,6 +2518,306 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     </>
   );
 
+  // Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Shown instead of
+  // mediaPanelBody when the "Import External" creation mode is active (see assetPanelBody just
+  // below). Ingestion only — "Analyse Reference" is deliberately disabled; a later stage wires
+  // it up to real analysis.
+  const importExternalPanelBody = (
+    <>
+      <div className="asset-head"><b>Import External</b></div>
+      <p className="empty-hint">
+        Bring in a reference video to analyse later — angles, hooks, structure, on-screen text,
+        and more. This step only imports it; analysing it is a separate, later step.
+      </p>
+      <input
+        ref={refIngestFileInputRef} type="file" accept="video/*" style={{ display: "none" }}
+        onChange={e => { void handleImportExternalFile(e.target.files); e.target.value = ""; }}
+      />
+
+      {/* Defect fix (post-Stage-3 Manual Test 1): briefly shown while checking for an already-
+          ingested reference (see refIngestRestoreAttemptedRef's effect above) — without this,
+          the upload button flashed on screen for a moment even when a reference already existed,
+          which is exactly the restoration gap that was reported. */}
+      {refIngestRestoring ? (
+        <p className="empty-hint">Checking for an existing reference…</p>
+      ) : (
+        <button
+          className="add-media" type="button"
+          onClick={() => refIngestFileInputRef.current?.click()}
+          disabled={refIngestBusy}
+        >
+          {refIngestBusy ? "Uploading…" : <>⬆<br />Upload Reference Video</>}
+        </button>
+      )}
+
+      {refIngestError && <p className="inline-status error">{refIngestError}</p>}
+
+      {refIngestResult && !refIngestError && (() => {
+        const details = refIngestResult.technical_details;
+        const passStatus = refIngestResult.latest_analysis.pass_status || {};
+        // Stage 4 fix: Stage 3's own results are gated on ITS OWN pass state, never on the
+        // top-level `status` field — that field legitimately becomes "running"/"complete" again
+        // around Stage 4's own pass, and must never make Stage 3's already-trustworthy,
+        // still-valid results disappear from view while Stage 4 works (or if it fails).
+        const technicalProbeStatus = passStatus.technical_probe ?? "pending";
+        const structureStatus = passStatus.scene_segmentation; // undefined until first attempted
+        const frameStatus = passStatus.visual_evidence; // undefined until first attempted (Stage 5)
+        const statusLabel: Record<string, string> = {
+          pending: "Ready for Analysis",
+          running: "Analysing…",
+          complete: "Technical Analysis Complete",
+          failed: "Analysis Failed",
+        };
+        return (
+          <div className="media-card" style={{ padding: 12, cursor: "default" }}>
+            <h4 style={{ margin: "0 0 8px" }}>Reference uploaded</h4>
+            <p className="clip-name">{refIngestResult.original_filename}</p>
+
+            {/* Reference Preview (post-Stage-4 UI gap fix): an INDEPENDENT player for the
+                analysed ReferenceVideo itself — deliberately separate from the centre editor
+                preview (which shows Sameena's own project timeline, not this reference). Native
+                <video controls> is the smallest correct implementation: play/pause, a seek bar,
+                and current-time/duration all come for free, no custom player UI needed. Never
+                reads or writes timeline.currentTime/videoClips — clicking a Shot below only ever
+                calls refPreviewVideoRef.current.currentTime, never touches the editor. */}
+            <video
+              ref={refPreviewVideoRef}
+              src={assetsApi.previewUrl(refIngestResult.asset_file_path)}
+              controls
+              onTimeUpdate={(e) => setRefPreviewTime(e.currentTarget.currentTime)}
+              onLoadedMetadata={(e) => setRefPreviewDuration(e.currentTarget.duration)}
+              onSeeked={(e) => setRefPreviewTime(e.currentTarget.currentTime)}
+              style={{ width: "100%", maxHeight: 220, borderRadius: 6, background: "#000", marginBottom: 4 }}
+            />
+            {/* Explicit current-position readout (Stage-4 Shot-02-not-clickable fix, requirement 6):
+                native <video controls> already shows a scrubber, but its own time text is too small/
+                imprecise for Sameena to visually confirm a boundary like 30.100s against a Shot's
+                exact start_time — this mirrors formatShotTimecode's own mm:ss.mmm precision. */}
+            <p className="empty-hint" style={{ margin: "0 0 10px", fontSize: 11, textAlign: "right" }}>
+              Reference Preview: {formatShotTimecode(refPreviewTime)} / {formatShotTimecode(refPreviewDuration)}
+            </p>
+
+            <p className="selection-summary-label">Status: {statusLabel[technicalProbeStatus] ?? technicalProbeStatus}</p>
+
+            {/* pending/failed -> a real, clickable action (previously a permanently-disabled
+                button — see the Stage-2 defect-fix note this replaced). running is included
+                defensively (e.g. a page reload mid-request would show it via a re-fetch) even
+                though the normal click-and-wait flow below never leaves it visible for long. */}
+            {(technicalProbeStatus === "pending" || technicalProbeStatus === "failed") && (
+              <button
+                className="primary wide" type="button"
+                onClick={() => void handleAnalyzeReference()}
+                disabled={refAnalyzeBusy}
+              >
+                {refAnalyzeBusy ? "Analysing…" : technicalProbeStatus === "failed" ? "Retry Analysis →" : "Analyse Reference →"}
+              </button>
+            )}
+            {technicalProbeStatus === "running" && !refAnalyzeBusy && (
+              <button className="secondary wide" type="button" disabled style={{ opacity: 0.6, cursor: "not-allowed" }}>
+                Analysing…
+              </button>
+            )}
+
+            {refAnalyzeError && <p className="inline-status error">{refAnalyzeError}</p>}
+            {technicalProbeStatus === "failed" && refIngestResult.latest_analysis.error && !refAnalyzeError && (
+              <p className="inline-status error">{refIngestResult.latest_analysis.error}</p>
+            )}
+
+            {technicalProbeStatus === "complete" && details && (
+              <div style={{ marginTop: 12 }}>
+                <p className="selection-summary-label">Technical Analysis</p>
+                {[
+                  ["Duration", details.container.duration_seconds != null ? formatTimecode(details.container.duration_seconds) : "Not determined"],
+                  ["Resolution", details.video.width && details.video.height ? `${details.video.width}×${details.video.height}` : "Not determined"],
+                  ["Aspect Ratio", details.video.width && details.video.height ? deriveAspectRatioLabel(details.video.width, details.video.height) : "Not determined"],
+                  ["Frame Rate", details.video.frame_rate != null ? `${details.video.frame_rate} fps` : "Not determined"],
+                  ["Video Codec", details.video.codec_name ?? "Not determined"],
+                  ...(details.video.bitrate_kbps != null ? [["Video Bitrate", `${details.video.bitrate_kbps} kb/s`]] : []),
+                  ["Audio Present", details.audio.present ? "Yes" : "No"],
+                  ...(details.audio.present ? [
+                    ["Audio Codec", details.audio.codec_name ?? "Not determined"],
+                    ["Channels", details.audio.channel_layout ?? (details.audio.channels != null ? String(details.audio.channels) : "Not determined")],
+                    ["Sample Rate", details.audio.sample_rate_hz != null ? `${details.audio.sample_rate_hz} Hz` : "Not determined"],
+                  ] as [string, string][] : []),
+                  ["Container/Format", details.container.format_name ?? "Not determined"],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "5px 0", borderBottom: "1px solid var(--v-line)" }}>
+                    <span style={{ color: "var(--v-muted)" }}>{label}</span>
+                    <b>{value}</b>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Video Deconstructor — Stage 4 (Deterministic Shot/Cut Boundary Detection) ONLY.
+                Only ever shown once Stage 3 has genuinely completed — structural analysis
+                depends on Stage 3's own duration fact and is refused server-side otherwise. */}
+            {technicalProbeStatus === "complete" && (
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--v-line)" }}>
+                <p className="selection-summary-label">
+                  {structureStatus === "complete" ? "Structural Analysis Complete"
+                    : structureStatus === "running" ? "Analysing Structure…"
+                    : structureStatus === "failed" ? "Structural Analysis Failed"
+                    : "Structure"}
+                </p>
+
+                {(structureStatus === undefined || structureStatus === "pending" || structureStatus === "failed") && (
+                  <button
+                    className="primary wide" type="button"
+                    onClick={() => void handleAnalyzeStructure()}
+                    disabled={refAnalyzeStructureBusy}
+                  >
+                    {refAnalyzeStructureBusy ? "Analysing Structure…" : structureStatus === "failed" ? "Retry Structure Analysis →" : "Analyse Structure →"}
+                  </button>
+                )}
+                {structureStatus === "running" && !refAnalyzeStructureBusy && (
+                  <button className="secondary wide" type="button" disabled style={{ opacity: 0.6, cursor: "not-allowed" }}>
+                    Analysing Structure…
+                  </button>
+                )}
+
+                {refAnalyzeStructureError && <p className="inline-status error">{refAnalyzeStructureError}</p>}
+                {structureStatus === "failed" && refIngestResult.latest_analysis.error && !refAnalyzeStructureError && (
+                  <p className="inline-status error">{refIngestResult.latest_analysis.error}</p>
+                )}
+
+                {structureStatus === "complete" && (
+                  <div style={{ marginTop: 10 }}>
+                    <p className="clip-name">Detected Shots: {refIngestResult.shots.length}</p>
+                    <p className="empty-hint" style={{ padding: "0 0 8px", fontSize: 11 }}>
+                      Click a shot to seek the Reference Preview above to its start — for visually
+                      checking a detected boundary against the actual footage.
+                    </p>
+                    {refIngestResult.shots.map(shot => (
+                      <div key={shot.id} style={{ marginBottom: 6 }}>
+                        <button
+                          type="button"
+                          className={`shot-row${selectedShotId === shot.id ? " active" : ""}`}
+                          onClick={() => handleSeekReferencePreview(shot.id, shot.start_time)}
+                          title={`Seek Reference Preview to ${formatShotTimecode(shot.start_time)}`}
+                          style={{ fontSize: 12 }}
+                        >
+                          <b>Shot {String(shot.order + 1).padStart(2, "0")}</b>
+                          <div>{formatShotTimecode(shot.start_time)} → {formatShotTimecode(shot.end_time)}</div>
+                          <div style={{ color: "var(--v-muted)" }}>{(shot.end_time - shot.start_time).toFixed(3)} sec</div>
+                        </button>
+
+                        {/* Video Deconstructor — Stage 5 (Visual Evidence / Representative
+                            Frames) ONLY. Nested as a SIBLING of the Shot's own button above, not
+                            a child — a <button> cannot legally contain another <button>. Each
+                            thumbnail seeks the SAME independent Reference Preview, never the
+                            editor, via the same handleSeekReferencePreview used by the Shot row
+                            itself; the frame's own exact timestamp (not the shot's start_time) is
+                            what makes clicking a specific frame meaningfully different from
+                            clicking the shot row. */}
+                        {frameStatus === "complete" && shot.frames.length > 0 && (
+                          <div style={{ padding: "4px 0 0 8px" }}>
+                            <p className="empty-hint" style={{ margin: "0 0 4px", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                              Visual Evidence · {shot.frames.length} frame{shot.frames.length === 1 ? "" : "s"}
+                            </p>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              {shot.frames.map(frame => (
+                                <button
+                                  key={frame.id}
+                                  type="button"
+                                  className={`shot-row${selectedFrameId === frame.id ? " active" : ""}`}
+                                  onClick={() => handleSeekReferencePreviewToFrame(shot.id, frame.id, frame.timestamp)}
+                                  title={`Seek Reference Preview to ${formatShotTimecode(frame.timestamp)}`}
+                                  style={{ width: 64, padding: 4, textAlign: "center", userSelect: "none" }}
+                                >
+                                  {/* Manual test defect (thumbnail click did nothing in Sameena's
+                                      real browser): <img> is natively draggable in Chrome by
+                                      default — same root cause this file already fixed once for
+                                      the Crop & Reposition <video> (see that fix's own comment a
+                                      few hundred lines below). A real physical mousedown+tiny-
+                                      move+mouseup on the image starts the browser's OWN native
+                                      drag gesture instead of firing a click at all — invisible to
+                                      an automated *synthetic* click (never a real OS-level drag),
+                                      which is exactly why this passed every automated check yet
+                                      failed for a real person. draggable={false} plus
+                                      pointer-events:none (the image is decorative inside an
+                                      already-clickable button — same pattern
+                                      .canvas-overlay-media already uses elsewhere in this file's
+                                      own CSS) makes the ENTIRE card's mousedown/click always land
+                                      on the <button> itself, never the <img>. */}
+                                  <img
+                                    src={assetsApi.previewUrl(frame.asset_file_path)}
+                                    alt={`Shot ${shot.order + 1} frame at ${formatShotTimecode(frame.timestamp)}`}
+                                    draggable={false}
+                                    style={{ width: "100%", height: 40, objectFit: "cover", borderRadius: 4, display: "block", pointerEvents: "none" }}
+                                  />
+                                  <div style={{ fontSize: 9, marginTop: 3, color: "var(--v-muted)" }}>
+                                    {formatShotTimecode(frame.timestamp)}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--v-line)" }}>
+                      <p className="selection-summary-label">
+                        {frameStatus === "complete" ? "Visual Evidence Complete"
+                          : frameStatus === "running" ? "Extracting Visual Evidence…"
+                          : frameStatus === "failed" ? "Visual Evidence Extraction Failed"
+                          : "Visual Evidence"}
+                      </p>
+                      {(frameStatus === undefined || frameStatus === "pending" || frameStatus === "failed") && (
+                        <button
+                          className="primary wide" type="button"
+                          onClick={() => void handleAnalyzeFrames()}
+                          disabled={refAnalyzeFramesBusy}
+                        >
+                          {refAnalyzeFramesBusy ? "Extracting…" : frameStatus === "failed" ? "Retry Visual Evidence →" : "Extract Visual Evidence →"}
+                        </button>
+                      )}
+                      {frameStatus === "running" && !refAnalyzeFramesBusy && (
+                        <button className="secondary wide" type="button" disabled style={{ opacity: 0.6, cursor: "not-allowed" }}>
+                          Extracting…
+                        </button>
+                      )}
+                      {refAnalyzeFramesError && <p className="inline-status error">{refAnalyzeFramesError}</p>}
+                      {frameStatus === "failed" && refIngestResult.latest_analysis.error && !refAnalyzeFramesError && (
+                        <p className="inline-status error">{refIngestResult.latest_analysis.error}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+    </>
+  );
+
+  // Swapped into both places mediaPanelBody normally renders (the asset-panel aside and its
+  // focus-mode drawer equivalent) so "Import External" behaves consistently in both.
+  const assetPanelBody = mode === "Import External" ? importExternalPanelBody : mediaPanelBody;
+
+  // Defect fix (Video Editor Playback Regression, found via Sameena's Stage-4 manual test):
+  // the Speed control below used to write ONLY the `speed` field, leaving `endTime` fixed at
+  // whatever it was under the PREVIOUS speed. A clip's endTime/trimIn/trimOut together define
+  // its own already-trimmed, valid source range (Instruction 10's own
+  // "sourceTime = trimIn + elapsed*speed" formula, in the offset-sync effect above) — so a clip
+  // whose endTime was set while speed=1 and is then switched to a faster speed keeps asking
+  // that formula for source positions well past the footage its own trim boundary said this
+  // clip should ever show, by the time playback reaches its (unchanged) endTime. That plays
+  // footage the user had deliberately trimmed away for the remainder of the clip's own
+  // timeline span — exactly the kind of "V1 stops looking right" symptom reported. Recomputing
+  // endTime here keeps THIS ONE clip's own start/end/speed/trim relationship internally
+  // consistent — it deliberately never touches any OTHER clip's own startTime/endTime (the
+  // smallest fix that corrects this clip without touching a neighbour's authored timing): if an
+  // adjacent clip was contiguous before, a speed change may now leave a small gap or overlap
+  // next to it, both of which findActiveClip already resolves deterministically (see
+  // videoPreviewUtils.ts and its own Manual Test 7.2 fix note) — a visible timing nudge at
+  // worst, never a clip that fails to hand off or a dropped frame.
+  const handleClipSpeedChange = (clip: VideoClip, newSpeed: VideoClip["speed"]) => {
+    updateVideoClip(clip.id, { speed: newSpeed, endTime: computeEndTimeForSpeed(clip, newSpeed) });
+  };
+
   const propertiesPanelBody = (
     <>
       <div className="subtabs compact">
@@ -1887,7 +2875,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 never exposed anywhere in this tab or applied to real playback — wired to
                 vid.playbackRate + the speed-aware offset math in the sync effects above. */}
             <label className="stack-field"><span>Speed</span>
-              <select value={String(selectedClip.speed)} onChange={e => updateVideoClip(selectedClip.id, { speed: Number(e.target.value) as VideoClip["speed"] })}>
+              <select value={String(selectedClip.speed)} onChange={e => handleClipSpeedChange(selectedClip, Number(e.target.value) as VideoClip["speed"])}>
                 {[0.5, 0.75, 1, 1.25, 1.5, 2].map(s => <option key={s} value={s}>{s}×</option>)}
               </select>
             </label>
@@ -1911,6 +2899,24 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 </select>
               </label>
             )}
+            {/* Step 7 (Original Video Audio controls): this clip's OWN embedded audio only —
+                same checkbox+slider pattern Overlay Audio already uses below, applied to V1
+                instead. Independent of A1's own volume, other clips, and overlay audio (each
+                is its own separate field on its own object) — and additive to, not a
+                replacement for, the existing "muted once separated to A1" auto-mute rule. */}
+            <h4>Audio</h4>
+            <label className="stack-field" style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: "row" }}>
+              <input type="checkbox" checked={!(selectedClip.muted ?? false)}
+                onChange={e => updateVideoClip(selectedClip.id, { muted: !e.target.checked })} />
+              <span>Original Audio</span>
+            </label>
+            <label className="stack-field"><span>Volume — {Math.round((selectedClip.volume ?? 1) * 100)}%</span>
+              {/* Step 6: onMouseDown pushes one history snapshot at the start of a drag; onChange
+                  (continuous) uses the raw action — same pattern as every other slider here. */}
+              <input type="range" min={0} max={100} value={Math.round((selectedClip.volume ?? 1) * 100)}
+                onMouseDown={pushHistory}
+                onChange={e => rawUpdateVideoClip(selectedClip.id, { volume: Number(e.target.value) / 100 })} />
+            </label>
           </>
         ) : selectedOverlay ? (
           <>
@@ -2062,6 +3068,72 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     </>
   );
 
+  // AI Prompt Generator — Task 3 (project context). Everything here is real, live editor state;
+  // nothing is invented. Deliberately excludes a Brand Kit lookup: no `Brand` row exists for
+  // this client in this environment (confirmed by inspection), and Video Studio V2 has no
+  // brand_id anywhere in its own data model to look one up by, so sending one would mean
+  // guessing which brand this project belongs to — PROJECT_CLIENT_IDENTITY's plain client/
+  // campaign label is the one real "who this is for" fact this editor actually has.
+  const buildAiPromptContext = () => {
+    const ctx: Record<string, unknown> = {
+      client: PROJECT_CLIENT_IDENTITY.client,
+      campaign: PROJECT_CLIENT_IDENTITY.campaign,
+      platform_format: canvasFormat.label,
+      aspect_ratio: canvasFormat.ratio,
+      canvas_width: canvasFormat.width,
+      canvas_height: canvasFormat.height,
+      project_duration_seconds: Math.round(effectiveDuration),
+      video_clip_count: videoClips.length,
+    };
+    const targetClip = selectedClip ?? activeVideoClip;
+    if (targetClip) ctx.selected_media_name = targetClip.name;
+    const existingText = textOverlays.map(t => t.text).filter(Boolean);
+    if (existingText.length) ctx.existing_on_screen_text = existingText;
+    return ctx;
+  };
+
+  const runAiPromptGeneration = async () => {
+    const instruction = promptGenInstruction.trim();
+    if (!instruction) return;
+    setPromptGenLoading(true);
+    setPromptGenError(null);
+    setPromptGenCopied(false);
+    try {
+      const { data } = await generateApi.prompt({ instruction, context: buildAiPromptContext() });
+      setPromptGenResult((data as { prompt: string }).prompt);
+    } catch (err) {
+      // Same "read the backend's real detail message" convention ReviewTab's export error
+      // handling already established — never a generic "something went wrong" when the
+      // backend gave a specific, actionable reason (Task 4: missing config vs. call failure).
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setPromptGenError(detail || "Could not generate a prompt — please try again.");
+      setPromptGenResult(null);
+    } finally {
+      setPromptGenLoading(false);
+    }
+  };
+
+  const closeAiPromptGenerator = () => {
+    setPromptGenOpen(false);
+    setPromptGenInstruction("");
+    setPromptGenResult(null);
+    setPromptGenError(null);
+    setPromptGenLoading(false);
+    setPromptGenCopied(false);
+  };
+
+  const copyAiPromptResult = async () => {
+    if (!promptGenResult) return;
+    try {
+      await navigator.clipboard.writeText(promptGenResult);
+      setPromptGenCopied(true);
+      setTimeout(() => setPromptGenCopied(false), 1800);
+    } catch {
+      // Clipboard permission denied/unavailable — the text is still fully visible and
+      // selectable in the result area, so this fails quietly rather than blocking anything.
+    }
+  };
+
   const aiToolsPanelBody = (
     <>
       <h3>✦ AI Tools</h3>
@@ -2072,7 +3144,15 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         ["AI Script Writer", "Write engaging scripts"],
         ["AI Caption Generator", "Create captions & hashtags"],
         ["AI Thumbnail Ideas", "Generate thumbnails"],
-      ].map(([t, d]) => <button key={t} type="button" title="Not yet connected to a generation backend"><b>{t}</b><small>{d}</small></button>)}
+      ].map(([t, d]) =>
+        // AI Prompt Generator only, first of these six — the other five stay exactly as they
+        // were (dead, honestly labeled) until each is implemented and approved individually.
+        t === "AI Prompt Generator" ? (
+          <button key={t} type="button" onClick={() => setPromptGenOpen(true)}><b>{t}</b><small>{d}</small></button>
+        ) : (
+          <button key={t} type="button" title="Not yet connected to a generation backend"><b>{t}</b><small>{d}</small></button>
+        )
+      )}
       <h3>Quick Actions</h3>
       {["Remove Background", "Auto Enhance"].map(x => (
         <button key={x} type="button" title="Not yet connected to a generation backend">{x}</button>
@@ -2166,7 +3246,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       </div>
 
       <div className={`editor-shell ${focusMode ? "focus-mode" : ""}`} ref={editorShellRef}>
-        <aside className="asset-panel">{mediaPanelBody}</aside>
+        <aside className="asset-panel">{assetPanelBody}</aside>
 
         <section className="preview-area">
           <div className="canvas-toolbar">
@@ -2175,7 +3255,47 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             <button type="button">✋</button>
             <button className="active" type="button">⌁</button>
             <span className="zoom-readout" title="Actual scale of the canvas as displayed">{Math.round((canvasBox.w / rawW) * 100)}%</span>
-            <button type="button">Crop⌄</button>
+            {/* STEP 7 (Platform Canvas / Full-Screen Video Acceptance): was a fully dead
+                placeholder button (no onClick at all) — the same "decorative control" pattern
+                already found and fixed for the preview mute speaker and Undo/Redo before this
+                project's Step 5/6. Acts on cropTargetClip (selected clip, else whatever the
+                preview is currently showing); disabled with no clip loaded since there's nothing
+                to apply Fit/Fill to yet. */}
+            <span className="crop-mode-menu">
+              <button
+                type="button"
+                disabled={!cropTargetClip}
+                onClick={() => setCropMenuOpen(v => !v)}
+                title="How the video fills the platform canvas"
+              >
+                Crop⌄
+              </button>
+              {cropMenuOpen && cropTargetClip && (
+                <div className="crop-mode-dropdown">
+                  <button
+                    type="button"
+                    className={(cropTargetClip.fitMode ?? "fit") === "fit" ? "active" : ""}
+                    onClick={() => applyClipFitMode(cropTargetClip, "fit")}
+                  >
+                    Fit — show the whole frame, bars where ratios differ
+                  </button>
+                  <button
+                    type="button"
+                    className={cropTargetClip.fitMode === "fill" && repositionClipId !== cropTargetClip.id ? "active" : ""}
+                    onClick={() => applyClipFitMode(cropTargetClip, "fill")}
+                  >
+                    Fill — cover the canvas, no bars (crops to fit)
+                  </button>
+                  <button
+                    type="button"
+                    className={repositionClipId === cropTargetClip.id ? "active" : ""}
+                    onClick={() => enterCropReposition(cropTargetClip)}
+                  >
+                    Crop &amp; Reposition — drag to choose what's cropped
+                  </button>
+                </div>
+              )}
+            </span>
             <button
               type="button"
               className={focusMode ? "active" : ""}
@@ -2183,6 +3303,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               onClick={() => { setFocusMode(v => !v); setDrawer(null); }}
             >
               ⛶
+            </button>
+            {/* STEP 7 (Keyboard Shortcuts): the one new control this step adds — everything
+                else in this toolbar is unchanged. Staff won't remember shortcuts on day one, so
+                this stays visible rather than being buried in a menu. */}
+            <button type="button" className={shortcutsPanelOpen ? "active" : ""} title="Keyboard Shortcuts" onClick={() => setShortcutsPanelOpen(v => !v)}>
+              ?
             </button>
           </div>
 
@@ -2204,7 +3330,44 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 title={`${activeVideoClip!.name || "Video"} — click to select`}
               >
                 <video ref={videoRef} src={activeVideoClip!.url} className="real-video-el" playsInline
-                  style={{ filter: getMediaFilter(activeVideoClip!), opacity: getClipTransitionOpacity(activeVideoClip!, timeline.currentTime) }} />
+                  // Manual test defect (Crop & Reposition drag not working in real Chrome):
+                  // <video> (like <img>) is natively draggable in Chrome by default — a real,
+                  // physical mousedown+drag on it starts the browser's OWN HTML5 drag-and-drop
+                  // gesture (dragstart/drag/dragend), which takes over the pointer and stops
+                  // dispatching ordinary 'mousemove' events for the gesture's duration. That
+                  // silently starved handleCropDragMove's window-level 'mousemove' listener of
+                  // any events at all, so cropOffsetX/Y never updated — reproduced exactly this
+                  // way: a real physical drag produced nothing, while an earlier *synthetic*
+                  // dispatchEvent('mousedown'/'mousemove') test (not a real, trusted OS-level
+                  // gesture) never triggered native drag detection in the first place, so it
+                  // never exposed this. draggable={false} disables the browser's native drag
+                  // entirely, so this element's mousedown->mousemove->mouseup sequence reaches
+                  // beginCropDrag/handleCropDragMove exactly like any other draggable canvas
+                  // element in this file (Text/Overlay, neither of which is a native-draggable
+                  // element to begin with, which is why they never needed this).
+                  draggable={false}
+                  onMouseDown={beginCropDrag(activeVideoClip!)}
+                  style={{
+                    filter: getMediaFilter(activeVideoClip!),
+                    opacity: getClipTransitionOpacity(activeVideoClip!, timeline.currentTime),
+                    // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): 'fit' (undefined/
+                    // default, so every clip authored before this feature renders exactly as it
+                    // always did) keeps the long-standing object-fit:contain from this class's
+                    // own CSS rule — this inline style only overrides it once a clip explicitly
+                    // opts into 'fill'. objectPosition mirrors cropOffsetX/Y directly (both
+                    // 0-100, CSS's own percentage convention) so preview and export share the
+                    // exact same crop-position math (see build_clip_segment on the export side).
+                    ...(activeVideoClip!.fitMode === "fill"
+                      ? { objectFit: "cover", objectPosition: `${activeVideoClip!.cropOffsetX ?? 50}% ${activeVideoClip!.cropOffsetY ?? 50}%` }
+                      : {}),
+                    cursor: repositionClipId === activeVideoClip!.id ? "move" : undefined,
+                  }} />
+                {repositionClipId === activeVideoClip!.id && (
+                  <div className="crop-reposition-hint" onClick={e => e.stopPropagation()}>
+                    Drag the video to choose what's cropped
+                    <button type="button" onClick={() => setRepositionClipId(null)}>Done</button>
+                  </div>
+                )}
                 {visualLayers}
               </div>
             ) : (
@@ -2299,7 +3462,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         {focusMode && drawer === "media" && (
           <div className="focus-drawer left">
             <div className="focus-drawer-head"><b>Media</b><button type="button" onClick={() => setDrawer(null)}>×</button></div>
-            {mediaPanelBody}
+            {assetPanelBody}
           </div>
         )}
         {focusMode && drawer === "properties" && (
@@ -2451,6 +3614,95 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 {draftBusy ? "Saving…" : "Save Draft"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 7 (Keyboard Shortcuts): compact reference panel — reuses the exact same
+          draft-modal-overlay/draft-modal visual treatment as Save Draft/My Drafts above rather
+          than inventing new modal styling. Purely a reference list; no field to fill in, so
+          just a Close button. */}
+      {shortcutsPanelOpen && (
+        <div className="draft-modal-overlay" onClick={() => setShortcutsPanelOpen(false)}>
+          <div className="draft-modal shortcuts-modal" onClick={e => e.stopPropagation()}>
+            <h3>Keyboard Shortcuts</h3>
+            <ul className="shortcuts-list">
+              <li><span>Play / Pause</span><kbd>Space</kbd></li>
+              <li><span>Split at playhead</span><kbd>S</kbd></li>
+              <li><span>Trim start to playhead</span><kbd>[</kbd></li>
+              <li><span>Trim end to playhead</span><kbd>]</kbd></li>
+              <li><span>Delete selected</span><kbd>Delete</kbd> / <kbd>Backspace</kbd></li>
+              <li><span>Ripple Delete</span><kbd>Shift</kbd>+<kbd>Delete</kbd></li>
+              <li><span>Undo</span><kbd>Ctrl</kbd>+<kbd>Z</kbd></li>
+              <li><span>Redo</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></li>
+              <li><span>Copy</span><kbd>Ctrl</kbd>+<kbd>C</kbd></li>
+              <li><span>Paste</span><kbd>Ctrl</kbd>+<kbd>V</kbd></li>
+              <li><span>Duplicate</span><kbd>Ctrl</kbd>+<kbd>D</kbd></li>
+              <li><span>Crop &amp; Reposition</span><kbd>C</kbd></li>
+              <li><span>Fill canvas</span><kbd>F</kbd></li>
+              <li><span>Fit video</span><kbd>Shift</kbd>+<kbd>F</kbd></li>
+              <li><span>Resize / Transform</span><kbd>R</kbd></li>
+              <li><span>Select / Move</span><kbd>V</kbd></li>
+              <li><span>Nudge selected element</span><kbd>Arrow keys</kbd></li>
+              <li><span>Fine nudge</span><kbd>Shift</kbd>+<kbd>Arrow</kbd></li>
+              <li><span>Previous / next frame</span><kbd>←</kbd> / <kbd>→</kbd></li>
+              <li><span>Go to beginning</span><kbd>Home</kbd></li>
+              <li><span>Go to end</span><kbd>End</kbd></li>
+              <li><span>Save Draft</span><kbd>Ctrl</kbd>+<kbd>S</kbd></li>
+              <li><span>Cancel crop/resize mode</span><kbd>Esc</kbd></li>
+            </ul>
+            <p className="empty-hint">Shortcuts act on whatever's currently selected, and never fire while typing.</p>
+            <div className="draft-modal-actions">
+              <button type="button" onClick={() => setShortcutsPanelOpen(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Tools — AI Prompt Generator. Same draft-modal-overlay/draft-modal visual language as
+          Save Draft/My Drafts/Shortcuts above — no new modal styling introduced, per "do not
+          redesign the AI Tools panel / Create/Edit screen". Closing while a generation is in
+          flight is blocked (same convention as Save Draft's own draftBusy guard) so a request
+          can't be abandoned mid-flight and silently resolve into a closed panel. */}
+      {promptGenOpen && (
+        <div className="draft-modal-overlay" onClick={() => !promptGenLoading && closeAiPromptGenerator()}>
+          <div className="draft-modal ai-prompt-gen-modal" onClick={e => e.stopPropagation()}>
+            <h3>✦ AI Prompt Generator</h3>
+            <label className="stack-field">
+              <span>Instruction</span>
+              <textarea
+                placeholder='e.g. "Create a promotional video concept for ABC Tiles" or "Give me a prompt for a 15-second Instagram Reel promoting this product."'
+                value={promptGenInstruction}
+                onChange={e => setPromptGenInstruction(e.target.value)}
+                disabled={promptGenLoading}
+                rows={3}
+              />
+            </label>
+            <p className="empty-hint">
+              Uses this project's own context automatically — platform ({canvasFormat.label}), duration (~{Math.round(effectiveDuration)}s){(selectedClip ?? activeVideoClip) ? `, selected media (${(selectedClip ?? activeVideoClip)!.name})` : ""}.
+            </p>
+            <div className="draft-modal-actions">
+              <button type="button" onClick={closeAiPromptGenerator} disabled={promptGenLoading}>Cancel</button>
+              <button className="primary" type="button" onClick={runAiPromptGeneration} disabled={promptGenLoading || !promptGenInstruction.trim()}>
+                {promptGenLoading ? "Generating…" : "Generate"}
+              </button>
+            </div>
+
+            {promptGenError && <p className="inline-status error">{promptGenError}</p>}
+
+            {promptGenResult && !promptGenError && (
+              <div className="ai-prompt-result">
+                <label className="stack-field">
+                  <span>Generated Prompt</span>
+                  <textarea value={promptGenResult} readOnly rows={6} />
+                </label>
+                <div className="draft-modal-actions">
+                  <button type="button" onClick={copyAiPromptResult}>{promptGenCopied ? "✓ Copied" : "Copy"}</button>
+                  <button type="button" onClick={runAiPromptGeneration} disabled={promptGenLoading}>Regenerate</button>
+                  <button className="primary" type="button" onClick={closeAiPromptGenerator}>Close</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

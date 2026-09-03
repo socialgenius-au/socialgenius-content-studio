@@ -18,6 +18,8 @@ import uuid
 from pathlib import Path
 
 import imageio_ffmpeg
+import numpy as np
+from PIL import Image
 
 from app.config import settings
 
@@ -508,36 +510,47 @@ async def build_clip_segment(
     canvas_w: int,
     canvas_h: int,
     keep_audio: bool,
+    volume: float,
     user_id: int,
+    fit_mode: str = "fit",
+    crop_x: float = 50.0,
+    crop_y: float = 50.0,
 ) -> Path:
     """One clip's [trimIn, trimIn+sourceDuration) source range → a single normalized segment:
-    speed-adjusted, colour/brightness/contrast/saturation applied, scaled to FILL the project's
-    canvas size (see Step 7.15H's own "FILL" note below), re-encoded to one common codec/
-    framerate/audio format so segments can be crossfaded together afterward regardless of their
-    original, possibly-differing source formats.
+    speed-adjusted, colour/brightness/contrast/saturation applied, scaled onto the project's
+    canvas size per this clip's own fit_mode, re-encoded to one common codec/framerate/audio
+    format so segments can be crossfaded together afterward regardless of their original,
+    possibly-differing source formats.
 
-    STEP 7.15H (canvas-fill defect): this used to be FIT (`force_original_aspect_ratio=decrease`
-    + `pad`) — mathematically correct, but for any source whose aspect ratio doesn't already
-    match the selected canvas (portrait footage exported to a 16:9 canvas, the exact reported
-    case) that produces heavy letterboxing/pillarboxing: verified directly, a 480x864 source
-    fit into a 1920x1080 canvas rendered at only ~600px wide (≈31% of the frame) surrounded by
-    black — correct FIT math, but exactly the "very small ... excessive black space" defect
-    reported. Switched to FILL (`force_original_aspect_ratio=increase` + centre `crop`): the
-    source is scaled up until it fully covers the canvas on both axes, with any overflow beyond
-    the canvas centre-cropped away — genuinely occupies the full canvas, never stretches/
-    distorts (only ever crops), and there is no per-clip crop/transform/pan setting anywhere in
-    the data model yet to otherwise decide "which part remains visible", so a plain centre-crop
-    is the complete, correct implementation for now. NOTE: the live Create/Edit preview's own
-    canvas (`.real-video-el { object-fit: contain }` in VideoStudioV2.css) still uses FIT/
-    letterbox and was deliberately left untouched by this fix (out of this defect's scope, and
-    changing previously-approved preview rendering needs its own sign-off) — so after this
-    change, a mismatched-aspect clip's export will visually differ from its own Create/Edit
-    preview (filled vs. letterboxed) until/unless the preview is updated to match.
+    STEP 7 (Platform Canvas / Full-Screen Video Acceptance): fit_mode is now a genuine per-clip
+    choice mirroring the live Create/Edit preview's own `.real-video-el` CSS exactly, closing
+    the gap Step 7.15H's own note here used to flag ("a mismatched-aspect clip's export will
+    visually differ from its own Create/Edit preview ... until/unless the preview is updated to
+    match") — the preview now uses this same fit_mode/crop_x/crop_y per clip (object-fit /
+    object-position), so what's previewed is what exports.
+      - "fit" (`force_original_aspect_ratio=decrease` + centred `pad`): shows the whole source
+        frame, centred, letterboxed/pillarboxed where the ratios differ — never stretches,
+        never crops. This is every clip's default (matches the CSS default too), so a clip
+        authored before this feature renders exactly as it always did.
+      - "fill" (`force_original_aspect_ratio=increase` + `crop`): scales up until the source
+        fully covers the canvas on both axes, cropping only the overflow — never stretches,
+        never shows bars. crop_x/crop_y (0-100, CSS object-position's own convention — 50/50 is
+        centred, matching the previous hardcoded-centre behaviour exactly when left at default)
+        choose WHICH part of the overflow is kept, so a subject near one edge of the source
+        isn't forced to be cropped off: `x = (in_w-out_w) * crop_x/100`, `y` likewise — the
+        direct ffmpeg-`crop`-filter equivalent of CSS's own object-position formula.
 
     keep_audio=False (this clip's audio has been separated to its own A1 track — Step 7.6A's
-    "V1 is muted once separated" rule applies here too, so the base timeline must not carry a
-    second copy of that audio) still produces a real (silent) audio stream rather than none at
-    all, so every segment has a uniform [v][a] shape for the concat/crossfade step below.
+    "V1 is muted once separated" rule — OR the clip's own Original Audio toggle is off, OR its
+    own volume is 0 — the router folds all three into this one flag before calling here) still
+    produces a real (silent) audio stream rather than none at all, so every segment has a
+    uniform [v][a] shape for the concat/crossfade step below.
+
+    STEP 7 (Original Video Audio controls): `volume` only applies when keep_audio is True — the
+    clip's own saved volume (Properties → Audio → Volume), independent of A1's own volume,
+    other clips, and overlay audio. Applied via the same `volume=` filter approach already used
+    for A1/overlay audio, not ffmpeg's own automatic mixing normalization (not relevant here —
+    there's only one audio input in this specific command either way).
     """
     out = _out(user_id, "mp4")
 
@@ -552,10 +565,18 @@ async def build_clip_segment(
         vf_parts.append(f"eq=brightness={b:.4f}:contrast={c:.4f}:saturation={s:.4f}")
     if speed != 1:
         vf_parts.append(f"setpts=PTS/{speed}")
-    vf_parts.append(
-        f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase,"
-        f"crop={canvas_w}:{canvas_h},setsar=1"
-    )
+    if fit_mode == "fit":
+        vf_parts.append(
+            f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease,"
+            f"pad={canvas_w}:{canvas_h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
+        )
+    else:
+        crop_x_frac = max(0.0, min(1.0, crop_x / 100))
+        crop_y_frac = max(0.0, min(1.0, crop_y / 100))
+        vf_parts.append(
+            f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase,"
+            f"crop={canvas_w}:{canvas_h}:(in_w-out_w)*{crop_x_frac:.4f}:(in_h-out_h)*{crop_y_frac:.4f},setsar=1"
+        )
     vf = ",".join(vf_parts)
 
     common_out = ["-r", "30", "-pix_fmt", "yuv420p", "-c:v", "libx264",
@@ -563,8 +584,13 @@ async def build_clip_segment(
 
     if keep_audio:
         cmd = [FFMPEG_BIN, "-y", "-ss", str(trim_in), "-t", str(source_duration), "-i", input_path, "-vf", vf]
+        af_parts = []
         if speed != 1:
-            cmd += ["-af", _atempo_chain(speed)]
+            af_parts.append(_atempo_chain(speed))
+        if volume != 1:
+            af_parts.append(f"volume={volume}")
+        if af_parts:
+            cmd += ["-af", ",".join(af_parts)]
         cmd += common_out + [str(out)]
     else:
         out_duration = source_duration / speed
@@ -712,10 +738,26 @@ async def render_project(project: dict, user_id: int) -> Path:
 
     segment_paths: list[str] = []
     for c in clips:
+        # STEP 7 (Original Video Audio controls): three independent reasons a clip's own
+        # embedded audio should be dropped entirely — separated to A1 (Step 7.6A), the clip's
+        # own Original Audio toggle switched off, or its own volume at 0% (equivalent to off).
+        # Any one of them is enough; none of them affect A1, other clips, or overlay audio.
+        clip_volume = c.get("volume", 1.0)
+        keep_audio = not (c["has_separated_audio"] or c.get("muted") or clip_volume <= 0)
+        # STEP 7 (Platform Canvas / Full-Screen Video Acceptance): "fit" here is a deliberate
+        # default CHANGE from this function's previous always-FILL behaviour (Step 7.15H) —
+        # matching the frontend VideoClip type's own "undefined == fit" convention, which is
+        # itself unchanged from the CSS default the live preview has always used
+        # (.real-video-el{object-fit:contain}). This is the fix for exactly the divergence Step
+        # 7.15H's own docstring flagged as future work: preview defaulted to fit, export
+        # defaulted to fill, so a clip nobody had touched this control for would visually differ
+        # between the two. A project saved before this feature existed has no fit_mode/crop_x/
+        # crop_y keys at all and now exports exactly what its own preview already shows.
         seg = await build_clip_segment(
             c["path"], c["trim_in"], (c["end_time"] - c["start_time"]) * c["speed"], c["speed"],
             c["color_grade"], c["brightness"], c["contrast"], c["saturation"],
-            cw, ch, keep_audio=not c["has_separated_audio"], user_id=user_id,
+            cw, ch, keep_audio=keep_audio, volume=clip_volume, user_id=user_id,
+            fit_mode=c.get("fit_mode", "fit"), crop_x=c.get("crop_x", 50.0), crop_y=c.get("crop_y", 50.0),
         )
         segment_paths.append(str(seg))
 
@@ -757,3 +799,617 @@ async def render_project(project: dict, user_id: int) -> Path:
             pass
 
     return current
+
+
+# ============================================================================
+# Video Deconstructor — Stage 3 (Reference Video Technical Analysis) ONLY.
+#
+# Deterministic container/stream fact extraction — no AI, no scene/shot segmentation, no
+# analysis of any content beyond what ffmpeg's own demuxer reports about the file's technical
+# shape. Reuses `_probe` (above) exactly as every other technical-fact function in this file
+# already does; adds nothing to the ffmpeg command surface itself, only new *parsing* of the
+# same kind of stderr text `_get_duration`/`_get_video_dimensions`/`_has_audio_stream` already
+# rely on. See the Stage 3 design-review report for the full rationale; this docstring covers
+# only the mechanics.
+# ============================================================================
+
+TECHNICAL_DETAILS_SCHEMA_VERSION = 1
+
+
+class TechnicalProbeError(RuntimeError):
+    """Raised when the input cannot be read as a video at all (corrupt/malformed/truncated) —
+    distinct from a normal RuntimeError so the router can map it to VideoAnalysis status
+    "failed" without mistaking it for a programming error."""
+
+
+def _empty_technical_details() -> dict:
+    """The full, stable key shape technical_details always has — every key always present, so
+    calling code never needs defensive `.get()` chains to know what *could* exist. A value stays
+    None precisely when this probe mechanism could not reliably determine it — see each field's
+    own comment in probe_technical_metadata below for why. This function alone defines the
+    schema; nothing else in this codebase should construct a technical_details dict by hand.
+    """
+    return {
+        "schema_version": TECHNICAL_DETAILS_SCHEMA_VERSION,
+        "probe": {
+            "mechanism": "ffmpeg_stderr_probe",  # names the deterministic method — never "ai"
+            "ffmpeg_build": None,
+        },
+        "container": {
+            "format_name": None,
+            # Not derivable from `ffmpeg -i` output without a hardcoded format_name -> long_name
+            # lookup table, which would itself be a fixed string ffmpeg never actually reported
+            # for this file — left None rather than guess.
+            "format_long_name": None,
+            "duration_seconds": None,
+            # Sourced from the already-known Asset.file_size, not re-measured by ffmpeg (ffmpeg
+            # -i never reports on-disk file size) — see probe_technical_metadata's docstring.
+            "size_bytes": None,
+            "bitrate_kbps": None,
+        },
+        "video": {
+            "codec_name": None,
+            "codec_long_name": None,  # same reasoning as format_long_name above
+            "profile": None,
+            "width": None,
+            "height": None,
+            # ffmpeg -i's plain text never distinguishes macroblock-aligned "coded" dimensions
+            # from display dimensions (that split needs ffprobe's own coded_width/coded_height
+            # fields) — always None here, never assumed equal to width/height.
+            "coded_width": None,
+            "coded_height": None,
+            "pixel_format": None,
+            # Populated ONLY when ffmpeg's own "[SAR a:b DAR c:d]" bracket is present in the
+            # stream line — i.e. only when the container itself carries this as real metadata.
+            # When the bracket is absent, DAR is implicitly 1:1-pixel width:height, but that is
+            # an ARITHMETIC fact about width/height, not something ffmpeg observed and reported
+            # — computing and storing it here would misrepresent a derived value as an observed
+            # one (see the Stage 3 design review, certainty/evidence section). Deriving a
+            # display aspect-ratio LABEL from width/height for UI purposes happens only in the
+            # API response / frontend, never here.
+            "sample_aspect_ratio": None,
+            "display_aspect_ratio": None,
+            "frame_rate": None,
+            # ffmpeg's plain-text output gives "fps" and "tbr" (a timing-derived guess), but not
+            # ffprobe's own distinct r_frame_rate vs avg_frame_rate split — for genuinely
+            # variable-frame-rate content these differ and we cannot tell them apart from this
+            # text alone. Always None: never copies frame_rate into this field to "fill" it.
+            "average_frame_rate": None,
+            "time_base": None,
+            # Never computed as duration x frame_rate — that is an ESTIMATE, wrong for VFR
+            # content, and `ffmpeg -i` never prints a real decoded frame count (that needs a
+            # full decode pass, e.g. ffprobe -count_frames, which this probe deliberately never
+            # runs — Stage 3 must stay a header-read, not a decode). Only ever None.
+            "frame_count": None,
+            "bitrate_kbps": None,
+            # Populated ONLY from an explicit `rotate` metadata tag or a `displaymatrix`
+            # side-data line if either is present in ffmpeg's own output. Absence of either is
+            # recorded as None ("no rotation metadata found") — never assumed to mean 0 degrees
+            # (a file can be physically rotated without any metadata tag saying so).
+            "rotation_degrees": None,
+            # Not independently reported per-stream by `ffmpeg -i` for muxed streams sharing one
+            # container timeline — left None rather than copying container.duration_seconds,
+            # which would misrepresent it as an independent per-stream measurement.
+            "duration_seconds": None,
+        },
+        "audio": {
+            "present": False,
+            "codec_name": None,
+            "codec_long_name": None,
+            "sample_rate_hz": None,
+            "channels": None,
+            "channel_layout": None,
+            "bitrate_kbps": None,
+            "duration_seconds": None,  # same reasoning as video.duration_seconds above
+        },
+        "streams": {
+            "count": 0,
+            "video_count": 0,
+            "audio_count": 0,
+        },
+    }
+
+
+_CHANNEL_LAYOUT_COUNTS: dict[str, int] = {
+    "mono": 1, "stereo": 2, "2.1": 3, "3.0": 3, "quad": 4, "4.0": 4,
+    "5.0": 5, "5.1": 6, "6.1": 7, "7.1": 8,
+}
+
+
+def _parse_video_stream(line: str) -> dict:
+    """`line` is everything after "Video: " on a Stream line, e.g.
+    "h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 480x864, 1418 kb/s,
+    30 fps, 30 tbr, 90k tbn (default)". Every extraction below is independent and best-effort —
+    one field failing to match never blocks another."""
+    out: dict = {}
+
+    m = re.match(r"([a-zA-Z0-9_]+)", line)
+    if m:
+        out["codec_name"] = m.group(1)
+
+    # The profile paren (e.g. "(High)") is distinguished from the fourcc paren (e.g.
+    # "(avc1 / 0x31637661)") by the fourcc always containing a "/" — excluded from this class.
+    m = re.match(r"[a-zA-Z0-9_]+\s*\(([^()/]+)\)", line)
+    if m:
+        out["profile"] = m.group(1).strip()
+
+    m = re.search(r",\s*([a-z][a-z0-9_]*)\s*(?:\([^)]*\))?,\s*(\d{2,5})x(\d{2,5})", line)
+    if m:
+        out["pixel_format"] = m.group(1)
+        out["width"] = int(m.group(2))
+        out["height"] = int(m.group(3))
+
+    m = re.search(r"\[SAR (\d+:\d+) DAR (\d+:\d+)\]", line)
+    if m:
+        out["sample_aspect_ratio"] = m.group(1)
+        out["display_aspect_ratio"] = m.group(2)
+
+    m = re.search(r",\s*(\d+) kb/s,\s*[\d.]+ fps", line)
+    if m:
+        out["bitrate_kbps"] = int(m.group(1))
+
+    m = re.search(r"([\d.]+) fps", line)
+    if m:
+        out["frame_rate"] = float(m.group(1))
+
+    m = re.search(r"(\d+)(k)?\s*tbn", line)
+    if m:
+        denom = int(m.group(1)) * (1000 if m.group(2) else 1)
+        out["time_base"] = f"1/{denom}"
+
+    return out
+
+
+def _parse_audio_stream(line: str) -> dict:
+    """`line` is everything after "Audio: " on a Stream line, e.g.
+    "aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 127 kb/s (default)"."""
+    out: dict = {"present": True}
+
+    m = re.match(r"([a-zA-Z0-9_]+)", line)
+    if m:
+        out["codec_name"] = m.group(1)
+
+    m = re.search(r"(\d+) Hz", line)
+    if m:
+        out["sample_rate_hz"] = int(m.group(1))
+
+    m = re.search(r"Hz,\s*([a-zA-Z0-9._]+)\s*,", line)
+    if m:
+        layout = m.group(1)
+        out["channel_layout"] = layout
+        if layout in _CHANNEL_LAYOUT_COUNTS:
+            out["channels"] = _CHANNEL_LAYOUT_COUNTS[layout]
+    if "channels" not in out:
+        m = re.search(r"(\d+) channels?\b", line)
+        if m:
+            out["channels"] = int(m.group(1))
+
+    bitrates = re.findall(r"(\d+) kb/s", line)
+    if bitrates:
+        out["bitrate_kbps"] = int(bitrates[-1])
+
+    return out
+
+
+def _looks_like_probe_failure(text: str) -> bool:
+    """A normal, successful probe always contains an "Input #0" line (even though the process
+    still exits non-zero, because no output file was requested — see `_probe`'s own docstring).
+    Its absence, or an explicit "Invalid data found" / "Error opening input" message, is
+    ffmpeg's own signal that the file could not be read as a video at all — verified directly
+    against a genuinely corrupt file during this stage's own design/implementation work."""
+    if "Input #0" not in text:
+        return True
+    if "Invalid data found when processing input" in text:
+        return True
+    if "Error opening input" in text:
+        return True
+    return False
+
+
+async def probe_technical_metadata(path: str, file_size_bytes: int | None = None, timeout: float = 30.0) -> dict:
+    """The Stage 3 entry point. Runs the existing `_probe` (bare `ffmpeg -i`, no decode — a
+    header read, not a transcode, so this is fast regardless of file length) with a hard
+    timeout, then parses its stderr text into the stable shape `_empty_technical_details`
+    defines. Every field is either a value ffmpeg's own container/stream metadata directly
+    reported, or None ("not reliably determined by this probe mechanism") — never a guess, never
+    interpreted, never AI-derived. `file_size_bytes` (from the caller's own Asset.file_size) is
+    the one field placed here that ffmpeg itself never reports.
+
+    Raises TechnicalProbeError if the file cannot be read as a video at all (corrupt, truncated,
+    wrong format) or if the probe subprocess doesn't finish within `timeout` seconds (a
+    defensive guard `_probe`/`_run` don't otherwise have — added here rather than there so this
+    Stage-3-only guard cannot change behaviour for any of this module's existing, already-
+    approved callers).
+    """
+    try:
+        text_out = await asyncio.wait_for(_probe(path), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        raise TechnicalProbeError(f"ffmpeg probe did not complete within {timeout}s") from exc
+
+    if _looks_like_probe_failure(text_out):
+        raise TechnicalProbeError(f"Could not read {path!r} as a video: {text_out[-400:]}")
+
+    details = _empty_technical_details()
+
+    m = re.search(r"ffmpeg version (\S+)", text_out)
+    if m:
+        details["probe"]["ffmpeg_build"] = m.group(1)
+
+    m = re.search(r"Input #0,\s*(.+?),\s*from ['\"]", text_out)
+    if m:
+        details["container"]["format_name"] = m.group(1).strip()
+
+    m = re.search(r"Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?),\s*start:\s*[\d.]+,\s*bitrate:\s*(\d+) kb/s", text_out)
+    if m:
+        h, mi, s, br = m.groups()
+        details["container"]["duration_seconds"] = int(h) * 3600 + int(mi) * 60 + float(s)
+        details["container"]["bitrate_kbps"] = int(br)
+    else:
+        m = re.search(r"Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)", text_out)
+        if m:
+            h, mi, s = m.groups()
+            details["container"]["duration_seconds"] = int(h) * 3600 + int(mi) * 60 + float(s)
+
+    if file_size_bytes is not None:
+        details["container"]["size_bytes"] = file_size_bytes
+
+    video_lines = re.findall(r"Stream #\d+:\d+[^\n]*: Video: ([^\n]+)", text_out)
+    if video_lines:
+        details["video"].update(_parse_video_stream(video_lines[0]))
+
+    audio_lines = re.findall(r"Stream #\d+:\d+[^\n]*: Audio: ([^\n]+)", text_out)
+    if audio_lines:
+        details["audio"].update(_parse_audio_stream(audio_lines[0]))
+
+    m = re.search(r"\brotate\s*:\s*(-?\d+)", text_out)
+    if m:
+        details["video"]["rotation_degrees"] = float(m.group(1))
+    else:
+        m = re.search(r"rotation of (-?[\d.]+) degrees", text_out)
+        if m:
+            details["video"]["rotation_degrees"] = float(m.group(1))
+
+    details["streams"]["video_count"] = len(video_lines)
+    details["streams"]["audio_count"] = len(audio_lines)
+    details["streams"]["count"] = len(re.findall(r"Stream #\d+:\d+", text_out))
+
+    return details
+
+
+def summarize_technical_facts(details: dict) -> dict:
+    """Extracts the subset of `technical_details` that maps onto ReferenceVideo's own six
+    pre-existing scalar columns (duration/width/height/fps/codec/has_audio) — the single source
+    of truth is `details` itself, so these columns and technical_details can never disagree.
+    """
+    return {
+        "duration": details["container"]["duration_seconds"],
+        "width": details["video"]["width"],
+        "height": details["video"]["height"],
+        "fps": details["video"]["frame_rate"],
+        "codec": details["video"]["codec_name"],
+        "has_audio": details["audio"]["present"],
+    }
+
+
+# ============================================================================
+# Video Deconstructor — Stage 4 (Deterministic Shot/Cut Boundary Detection) ONLY.
+#
+# Detects hard visual cuts via ffmpeg's own built-in `scene` frame-difference score — no AI, no
+# new dependency, the same bundled `imageio_ffmpeg` binary Stage 3 already uses, now actually
+# decoding the stream (Stage 3's probe never did) rather than just reading headers. This ONLY
+# detects that a visual break occurred and roughly how strong it looked to a pixel-difference
+# metric — it never claims to know it is a semantically meaningful "scene" (see shot.py's own
+# module docstring for the MEASURED-vs-INFERRED distinction this is built on).
+#
+# SHOT_DETECTION_THRESHOLD was chosen from real, empirical evidence gathered during this stage's
+# own design review, not guessed:
+#   - Sameena's real 34s reference video: one unambiguous cut at t=30.100s, score=0.3843 — every
+#     other one of its 1020 frames scored under 0.01.
+#   - A textured synthetic fixture with cuts deliberately placed at exactly 2.0s/4.0s: detected
+#     at exactly those timestamps, scores 0.844/0.751, against a noise floor under 0.03.
+#   - A flat-solid-color synthetic fixture (red->green->blue) scored the red->green cut at
+#     exactly 0.0 — a genuine, documented weakness of simple pixel-difference scene detection on
+#     texture-less content; harmless for real camera footage (confirmed above) but the reason
+#     this project's own Stage-4 tests use textured fixtures, never flat colors.
+# 0.3 sits comfortably below every real detected cut in that evidence and roughly 10x above every
+# observed noise-floor score — configurable per call, never hardcoded silently.
+# ============================================================================
+
+SHOT_DETECTION_PASS_NAME = "scene_cut_detection_v1"
+SHOT_DETECTION_THRESHOLD = 0.3
+
+
+async def detect_shot_boundary_candidates(path: str, threshold: float = SHOT_DETECTION_THRESHOLD, timeout: float = 120.0) -> list[dict]:
+    """Runs `ffmpeg -i <path> -vf select='gte(scene,threshold)',metadata=print -f null -` — a
+    full decode (unlike Stage 3's header-only probe), so this can take real time on long/large
+    files; `timeout` (seconds) bounds it and raises TechnicalProbeError rather than hanging
+    forever on a malformed or pathological input.
+
+    Returns an ascending-by-timestamp list of {"timestamp": float, "score": float} — one entry
+    per frame whose scene-difference score met `threshold`, each a genuine candidate shot
+    boundary. Never includes frame 0 (ffmpeg always reports its own score as 0.0 — there is no
+    prior frame to differ against). Deterministic: the same file and threshold always produce
+    the exact same result, verified directly against real output during this stage's own design
+    review — never AI, never randomized.
+    """
+    cmd = [FFMPEG_BIN, "-i", path, "-vf", f"select='gte(scene,{threshold})',metadata=print", "-f", "null", "-"]
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    try:
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        raise TechnicalProbeError(f"Shot-boundary detection did not complete within {timeout}s") from exc
+
+    text_out = stderr.decode(errors="replace")
+    if _looks_like_probe_failure(text_out):
+        raise TechnicalProbeError(f"Could not read {path!r} as a video for shot-boundary detection: {text_out[-400:]}")
+
+    boundaries: list[dict] = []
+    lines = text_out.splitlines()
+    for i, line in enumerate(lines):
+        m = re.search(r"pts_time:\s*([\d.]+)", line)
+        if not m or i + 1 >= len(lines):
+            continue
+        score_m = re.search(r"lavfi\.scene_score=([\d.]+)", lines[i + 1])
+        if score_m:
+            boundaries.append({"timestamp": float(m.group(1)), "score": float(score_m.group(1))})
+    boundaries.sort(key=lambda b: b["timestamp"])
+    return boundaries
+
+
+def build_shot_segments(boundaries: list[dict], total_duration: float) -> list[dict]:
+    """Turns a list of candidate cut timestamps into a gap-free, overlap-free, chronologically
+    ordered list of shot segments spanning exactly [0, total_duration] — items 9/10 of the
+    Stage 4 spec (correct first/last segment handling; zero unexplained gaps or overlaps; a
+    video with zero detected cuts correctly yields exactly one segment spanning the whole
+    duration, with no special-casing needed).
+
+    No minimum-duration merging is applied, deliberately: a genuinely rapid cut produces a
+    genuinely short segment, reported exactly as detected — silently merging short segments away
+    would be an interpretive judgment this deterministic pass does not make.
+
+    Returns: [{"order": int, "start_time": float, "end_time": float, "boundary_score": float | None}],
+    where boundary_score is the detector's score for the cut that STARTS this segment (None for
+    the first segment, which starts at the reference video's own beginning with no preceding cut
+    to score).
+    """
+    cut_times = sorted({b["timestamp"] for b in boundaries if 0.0 < b["timestamp"] < total_duration})
+    score_by_time = {b["timestamp"]: b["score"] for b in boundaries}
+    edges = [0.0, *cut_times, total_duration]
+
+    segments: list[dict] = []
+    for i in range(len(edges) - 1):
+        start, end = edges[i], edges[i + 1]
+        if end <= start:
+            continue  # a duplicate/degenerate timestamp collapsed to zero length — skip it
+        segments.append({
+            "order": len(segments),
+            "start_time": start,
+            "end_time": end,
+            "boundary_score": score_by_time.get(start) if i > 0 else None,
+        })
+    return segments
+
+
+# ─── Stage 5 — Visual Evidence / Representative Frames ──────────────────────────────────────
+#
+# Deterministic, local-only (ffmpeg + Pillow + numpy, all already installed — no new dependency)
+# extraction of a SMALL representative-frame set per Shot, per the approved Stage-5 design
+# review. Every value computed here is MEASURED — a direct, pixel-level fact about the extracted
+# image itself — never an interpretation of what the frame shows (no OCR, no object/person/
+# text/logo detection: that is explicitly out of scope, see the design review's own section 20).
+
+FRAME_EXTRACTION_PASS_NAME = "representative_frame_extraction_v1"
+
+# Frame-count strategy — see the approved design review's section E for the full trade-off
+# discussion (this fixed, time-based rule now; perceptual-change-within-shot sampling deferred
+# until a real long-form video actually needs it).
+FRAME_SHORT_SHOT_SECONDS = 1.0          # below this: a single midpoint frame only
+FRAME_LONG_SHOT_SECONDS = 6.0           # above this: extra evenly-spaced frames are added
+FRAME_EXTRA_INTERVAL_SECONDS = 5.0      # one more frame per additional interval beyond the above
+FRAME_MAX_PER_SHOT = 8                  # hard cap regardless of duration
+FRAME_EPSILON_FRACTION = 0.05           # start/end offset, as a fraction of shot duration
+FRAME_EPSILON_MAX_SECONDS = 0.15        # ...capped in absolute terms for very long shots
+
+# Near-duplicate suppression (dHash Hamming distance out of 64 bits) — a low-cost, well-known
+# perceptual-hash cutoff; frames closer than this are visually indistinguishable and never
+# stored, so a static/near-static shot doesn't produce redundant evidence files.
+FRAME_DUPLICATE_HAMMING_THRESHOLD = 4
+
+# Empirically justified (verified directly against this project's own real reference video, a
+# 34.146875s file): ffmpeg's own `-ss <t> -frames:v 1` single-frame mjpeg extraction can fail to
+# produce ANY output within roughly the last ~0.2s of a file's own probed duration (33.95s
+# succeeded, 33.99s failed against that exact file) — almost certainly too little decodable video
+# left after the seek point to complete even one frame. Clamping every candidate at least this far
+# before the file's own end avoids that failure mode entirely, at the cost of at most this many
+# seconds of temporal precision on a shot whose own end coincides with the file's last instant.
+END_OF_FILE_SAFETY_SECONDS = 0.25
+
+# A frame whose mean luminance (0-255 grayscale) is at or below this is flagged is_black_frame —
+# a signal that an extraction landed on a genuinely blank/transitional instant (a hard cut, a
+# fade), not a real evidence frame; still stored (dropping it silently would be its own kind of
+# interpretive judgment), just honestly flagged for whatever later stage consumes it.
+FRAME_BLACK_LUMINANCE_THRESHOLD = 10.0
+
+
+def plan_representative_frame_timestamps(start_time: float, end_time: float) -> list[dict]:
+    """Deterministic, duration-based representative-frame plan for ONE Shot.
+
+    Returns an ascending-by-timestamp list of
+    {"timestamp": float, "extraction_method": str} — always non-empty for any Shot with
+    end_time > start_time (a malformed/zero-length Shot yields an empty list; callers treat that
+    as nothing-to-extract, not an error, since it can only happen for already-invalid input).
+
+    Rule:
+      - duration < 1.0s  -> 1 frame: the midpoint ("shot_midpoint")
+      - 1.0s - 6.0s      -> 3 frames: start+epsilon, midpoint, end-epsilon
+      - > 6.0s           -> the same 3, plus one more frame per additional 5s beyond 6.0s, capped
+                            at FRAME_MAX_PER_SHOT total — each extra frame subdivides the CURRENT
+                            largest gap between already-planned points (start with [start, mid,
+                            end], repeatedly bisect the widest remaining interval); this is
+                            deliberately not "evenly spaced across the whole span" naively — that
+                            formula can land an extra point exactly ON an already-planned point
+                            (e.g. duration=12.0s's one extra frame at duration/2 exactly equals
+                            the midpoint already-planned above), producing a collided/duplicate
+                            timestamp. Bisecting the largest gap is collision-free by construction
+                            (a gap's midpoint is always strictly between two distinct existing
+                            points) and still yields even, deterministic coverage.
+
+    epsilon keeps the start/end samples just inside the shot's own boundary (never exactly on
+    the detected cut frame, where a hard cut can occasionally still show a sliver of the
+    previous/next shot) — min(0.15s, 5% of duration), always well inside the midpoint for any
+    duration this branch can be reached with (>= 1.0s).
+    """
+    duration = end_time - start_time
+    if duration <= 0:
+        return []
+
+    if duration < FRAME_SHORT_SHOT_SECONDS:
+        return [{"timestamp": start_time + duration / 2, "extraction_method": "shot_midpoint"}]
+
+    epsilon = min(FRAME_EPSILON_MAX_SECONDS, duration * FRAME_EPSILON_FRACTION)
+    points: list[tuple[str, float]] = [
+        ("shot_start", start_time + epsilon),
+        ("shot_midpoint", start_time + duration / 2),
+        ("shot_end", end_time - epsilon),
+    ]
+
+    if duration > FRAME_LONG_SHOT_SECONDS:
+        extra_count = min(
+            FRAME_MAX_PER_SHOT - len(points),
+            int((duration - FRAME_LONG_SHOT_SECONDS) // FRAME_EXTRA_INTERVAL_SECONDS),
+        )
+        timestamps = sorted(t for _, t in points)
+        for i in range(extra_count):
+            gaps = [(timestamps[j + 1] - timestamps[j], j) for j in range(len(timestamps) - 1)]
+            _, widest_j = max(gaps)
+            new_t = (timestamps[widest_j] + timestamps[widest_j + 1]) / 2
+            timestamps.insert(widest_j + 1, new_t)
+            points.append((f"shot_interval_{i + 1}", new_t))
+
+    points.sort(key=lambda p: p[1])
+    return [{"timestamp": t, "extraction_method": m} for m, t in points]
+
+
+def compute_frame_measurements(image_path: str) -> dict:
+    """Deterministic, local, pixel-only measurements for one extracted frame image — Pillow +
+    numpy only (both already installed; no OpenCV, no new dependency). Every value here is a
+    direct fact about the image's own pixels — nothing interprets or names what the frame shows.
+
+    Returns {"width", "height", "luminance_mean", "is_black_frame", "sharpness_score"}.
+
+    sharpness_score is a discrete-Laplacian (edge-energy) variance — a standard, well-known
+    blur/sharpness proxy: a sharp image has strong local intensity changes (high-variance
+    Laplacian response); a blurred one is smooth (low-variance). Computed directly with numpy
+    slicing (edge-padded, no wraparound artifacts) — no scipy/OpenCV dependency needed.
+    """
+    img = Image.open(image_path)
+    width, height = img.size
+    gray = np.asarray(img.convert("L"), dtype=np.float64)
+
+    luminance_mean = float(gray.mean())
+
+    padded = np.pad(gray, 1, mode="edge")
+    laplacian = (
+        -4 * padded[1:-1, 1:-1]
+        + padded[:-2, 1:-1] + padded[2:, 1:-1]
+        + padded[1:-1, :-2] + padded[1:-1, 2:]
+    )
+    sharpness_score = float(laplacian.var())
+
+    return {
+        "width": width,
+        "height": height,
+        "luminance_mean": round(luminance_mean, 2),
+        "is_black_frame": luminance_mean <= FRAME_BLACK_LUMINANCE_THRESHOLD,
+        "sharpness_score": round(sharpness_score, 2),
+    }
+
+
+_DHASH_SIZE = 8  # -> a 9x8 grayscale thumbnail -> a 64-bit hash
+
+
+def compute_dhash(image_path: str) -> int:
+    """Difference hash (dHash) — Pillow + numpy only, no new dependency (no `imagehash` package
+    installed or needed). Resizes to a tiny 9x8 grayscale thumbnail and encodes whether each
+    pixel is brighter than its right neighbour as one bit; visually near-identical frames produce
+    identical or near-identical hashes, robust to the small compression/timing noise between two
+    ffmpeg extractions of almost the same instant. Used ONLY to decide whether to skip storing a
+    near-duplicate candidate frame — never used to interpret content."""
+    img = Image.open(image_path).convert("L").resize((_DHASH_SIZE + 1, _DHASH_SIZE), Image.LANCZOS)
+    pixels = np.asarray(img, dtype=np.int16)
+    diff = pixels[:, 1:] > pixels[:, :-1]
+    bits = 0
+    for bit in diff.flatten():
+        bits = (bits << 1) | int(bit)
+    return bits
+
+
+def hamming_distance(a: int, b: int) -> int:
+    return bin(a ^ b).count("1")
+
+
+async def extract_representative_frames_for_shot(
+    video_path: str, shot_start: float, shot_end: float, user_id: int, total_duration: float | None = None,
+) -> list[dict]:
+    """Extracts one Shot's full representative-frame candidate set (see
+    plan_representative_frame_timestamps), skipping any candidate whose dHash is a near-duplicate
+    of the immediately-preceding ACCEPTED frame in this same shot — comparison is always against
+    the last frame actually KEPT, not the last candidate tried, so a run of several near-identical
+    candidates collapses to just the first one, not every-other-one.
+
+    `total_duration` (the ReferenceVideo's own probed container duration, from Stage 3) clamps
+    every candidate timestamp to stay at least END_OF_FILE_SAFETY_SECONDS before it — see that
+    constant's own docstring for why. Pass None only when no known total duration exists (never
+    true at this app's own real call site).
+
+    A skipped duplicate's temporary file is deleted immediately — it is never persisted, never
+    becomes an Asset row, and never appears in the returned list.
+
+    Returns only the accepted frames, in chronological order, each as
+    {"timestamp", "extraction_method", "order", "file_path", "measurements"} — `order` is
+    renumbered densely (0..N-1) over the accepted set only, so a skipped duplicate never leaves a
+    gap in the sequence a caller will persist.
+
+    If any candidate's extraction/measurement raises partway through this shot's own plan, every
+    file this call has written so far (accepted or already-skipped-as-duplicate) is unlinked
+    before the exception propagates — nothing from a call that never returns is left on disk with
+    no return value (and therefore no DB row) to ever reference it.
+    """
+    plan = plan_representative_frame_timestamps(shot_start, shot_end)
+    if total_duration is not None:
+        safe_limit = max(0.0, total_duration - END_OF_FILE_SAFETY_SECONDS)
+        for point in plan:
+            point["timestamp"] = min(point["timestamp"], safe_limit)
+
+    accepted: list[dict] = []
+    all_written: list[Path] = []
+    last_hash: int | None = None
+    try:
+        for point in plan:
+            out_path = await extract_thumbnail(video_path, user_id, timestamp=point["timestamp"])
+            all_written.append(out_path)
+            digest = compute_dhash(str(out_path))
+            if last_hash is not None and hamming_distance(digest, last_hash) <= FRAME_DUPLICATE_HAMMING_THRESHOLD:
+                out_path.unlink(missing_ok=True)
+                continue
+            measurements = compute_frame_measurements(str(out_path))
+            accepted.append({
+                "timestamp": point["timestamp"],
+                "extraction_method": point["extraction_method"],
+                "order": len(accepted),
+                "file_path": str(out_path),
+                "measurements": measurements,
+            })
+            last_hash = digest
+        return accepted
+    except Exception:
+        for p in all_written:
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise

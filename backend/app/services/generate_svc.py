@@ -2,6 +2,7 @@
 import json
 
 from app.config import settings
+from app.services import ai as ai_service
 from app.services.claude import get_client
 
 SYSTEM = """You are SocialGenius, a professional social media content writer.
@@ -98,6 +99,24 @@ APPROVAL_TOOL = {
         "required": ["summary"],
     },
 }
+
+
+# STEP: Video Studio V2 AI Tools — AI Prompt Generator (first of six AI Tools cards; the other
+# five and Quick Actions stay unimplemented for now, on purpose).
+#
+# Provider-neutral refactor: this used to call get_client()/settings.CLAUDE_MODEL directly (the
+# same Anthropic wiring generate_content/chat_reply below still use, untouched). It now goes
+# through app.services.ai.generate_text("prompt_generation", ...) instead — the router resolves
+# AI_TEXT_PROVIDER/AI_TEXT_MODEL (or "prompt_generation"'s own override, if one is ever set in
+# app/services/ai/tasks.py) and calls whichever provider adapter that resolves to. This
+# function's only remaining job is assembling THIS task's prompt (instruction + brand + project
+# context) — a "hook_generation"/"caption_generation"/etc. task would assemble its own
+# differently-shaped context the same way, alongside this function, once each is built.
+async def generate_prompt(instruction: str, brand_context: dict | None, project_context: dict) -> ai_service.AIResult:
+    brand_block = f"\nBrand: {json.dumps(brand_context)}" if brand_context else ""
+    ctx_block = f"\nProject context: {json.dumps(project_context)}" if project_context else ""
+    prompt = f"{instruction}{brand_block}{ctx_block}"
+    return await ai_service.generate_text("prompt_generation", prompt)
 
 
 async def chat_reply(prompt: str, brand_context: dict | None, context: dict) -> dict:
