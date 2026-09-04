@@ -7,6 +7,7 @@ import type {
   Platform, ContentType,
   VideoClip, TextOverlay, MediaOverlay, AudioTrack, ImageSlide,
   ChatMessage, SEOPackage, LowerThird, IntroOutro, ApprovalGate, Shape,
+  SubtitleSegment, SubtitleStyle,
 } from '../types'
 import { generateApi, uploadApi } from '../api/client'
 
@@ -34,6 +35,15 @@ export interface CanvasFormatState {
 const DEFAULT_CANVAS_FORMAT: CanvasFormatState = {
   platformKey: 'instagram', placementKey: 'reel_story', label: 'Instagram - Reel / Story',
   ratio: '9:16', width: 1080, height: 1920,
+}
+
+// Phase 5 (Video Studio V2 — Subtitles / Transcript): the project-wide default every subtitle
+// segment inherits unless it sets its own styleOverride field(s) — a conventional readable-
+// captions look (white text, dark translucent chip, centered, thin dark outline).
+const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
+  fontFamily: 'Inter', fontSize: 36, color: '#FFFFFF',
+  bgColor: '#000000', bgOpacity: 0.6, align: 'center',
+  outlineColor: '#000000', outlineWidth: 0, shadowColor: '#000000', shadowBlur: 0,
 }
 
 // Video Studio V2 Create/Edit — drag position for a canvas element that has no dedicated
@@ -64,6 +74,9 @@ export type SelectedElement =
   // Phase 4 (Video Studio V2 — Independent Shapes): same pattern again, over the brand-new
   // Shape type (no legacy /studio equivalent exists at all).
   | { type: 'shape'; id: string }
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript): same pattern again, over the brand-new
+  // SubtitleSegment type.
+  | { type: 'subtitle'; id: string }
   // A canvas element with no backing data-model entry yet (Video Studio V2's placeholder
   // mock content — headline, badge, CTA, etc.) — carries just enough for Properties'
   // "Type / Name" identification. Additive only; legacy /studio never produces this variant.
@@ -91,6 +104,12 @@ interface StudioState {
   lowerThirds: LowerThird[]
   // Phase 4 (Video Studio V2 — Independent Shapes)
   shapes: Shape[]
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript). subtitleStyle is the "global style ...
+  // inherited" the spec asks for — the project-wide default every segment falls back to unless
+  // it sets its own styleOverride field(s).
+  subtitles: SubtitleSegment[]
+  subtitleStyle: SubtitleStyle
+  setSubtitleStyle: (s: SubtitleStyle) => void
   intro: IntroOutro | null
   outro: IntroOutro | null
 
@@ -191,6 +210,11 @@ interface StudioState {
   updateShape: (id: string, upd: Partial<Shape>) => void
   removeShape: (id: string) => void
 
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript)
+  addSubtitle: (s: SubtitleSegment) => void
+  updateSubtitle: (id: string, upd: Partial<SubtitleSegment>) => void
+  removeSubtitle: (id: string) => void
+
   // Audio
   addAudioTrack: (t: AudioTrack) => void
   updateAudioTrack: (id: string, upd: Partial<AudioTrack>) => void
@@ -239,6 +263,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([])
   const [lowerThirds, setLowerThirds] = useState<LowerThird[]>([])
   const [shapes, setShapes] = useState<Shape[]>([])
+  const [subtitles, setSubtitles] = useState<SubtitleSegment[]>([])
+  const [subtitleStyle, setSubtitleStyle] = useState<SubtitleStyle>(DEFAULT_SUBTITLE_STYLE)
   const [intro, setIntro] = useState<IntroOutro | null>(null)
   const [outro, setOutro] = useState<IntroOutro | null>(null)
 
@@ -326,6 +352,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setShapes(p => p.map(s => s.id === id ? { ...s, ...upd } : s)), [])
   const removeShape = useCallback((id: string) =>
     setShapes(p => p.filter(s => s.id !== id)), [])
+
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript)
+  const addSubtitle = useCallback((s: SubtitleSegment) => setSubtitles(p => [...p, s]), [])
+  const updateSubtitle = useCallback((id: string, upd: Partial<SubtitleSegment>) =>
+    setSubtitles(p => p.map(s => s.id === id ? { ...s, ...upd } : s)), [])
+  const removeSubtitle = useCallback((id: string) =>
+    setSubtitles(p => p.filter(s => s.id !== id)), [])
 
   // Audio actions
   const addAudioTrack = useCallback((t: AudioTrack) => setAudioTracks(p => [...p, t]), [])
@@ -450,7 +483,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const value: StudioState = {
     activeBrand, activeJob, brands, recentJobs,
     contentType, platform,
-    videoClips, additionalVideoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, intro, outro,
+    videoClips, additionalVideoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, subtitles, subtitleStyle, intro, outro,
     previewUrl, previewHtml, previewText,
     timeline,
     chatMessages, chatLoading,
@@ -474,6 +507,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     addTextOverlay, updateTextOverlay, removeTextOverlay,
     addMediaOverlay, updateMediaOverlay, removeMediaOverlay,
     addShape, updateShape, removeShape,
+    addSubtitle, updateSubtitle, removeSubtitle, setSubtitleStyle,
     addAudioTrack, updateAudioTrack, removeAudioTrack,
     addLowerThird, updateLowerThird, removeLowerThird,
     setIntro, setOutro,

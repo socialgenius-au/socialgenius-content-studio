@@ -1,7 +1,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useStudio } from "../../../contexts/StudioContext";
-import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi } from "../../../api/client";
+import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
 import {
   MEDIA_ASSET_DRAG_TYPE, dragKindMimeType,
   type MediaAssetDragPayload, type MediaAssetDragKind,
@@ -9,9 +9,10 @@ import {
 import {
   findActiveClip, probeVideoDuration, probeHasAudioTrack, computeEndTimeForSpeed,
   computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode, composeTextBgColor, composeHexAlpha,
+  parseSrtTranscript, autoSegmentPlainTranscript,
 } from "../../../components/studio/videoPreviewUtils";
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
-import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, Shape, ReferenceVideo } from "../../../types";
+import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, Shape, SubtitleSegment, SubtitleStyle, ReferenceVideo } from "../../../types";
 import {
   CANVAS_PLATFORMS, findPlacement, fitCanvasBox, PENDING_REFRAME_NOTE, RESIZE_TARGET_PLATFORMS,
   defaultPlacementForPlatform, type CanvasPlacement,
@@ -23,7 +24,7 @@ const CREATION_MODES = ["AI Create (Text to Video)", "Templates", "Import Extern
 // its tab button was, so it falls straight into the same existing asset-grid branch that
 // already renders Videos/Images via the untouched mediaItems/fileInputRef/"+ Add Media" path.
 // "GIFs" stays out per this instruction ("Do not add GIFs yet").
-const MEDIA_TABS = ["All", "Videos", "Images", "Text", "Overlays", "Lower Thirds", "Shapes", "Audio"] as const;
+const MEDIA_TABS = ["All", "Videos", "Images", "Text", "Overlays", "Lower Thirds", "Shapes", "Subtitles", "Audio"] as const;
 
 // Instruction 3 scope: only canvas elements whose data model already carries (or can trivially
 // carry, via CanvasItemPosition) a position are made draggable — the headline text and the
@@ -133,6 +134,10 @@ interface DraftProjectSnapshot {
   lowerThirds: LowerThird[];
   // Phase 4 (Video Studio V2 — Independent Shapes): survives Save/Refresh/Reopen too.
   shapes: Shape[];
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript): segments AND the global style both
+  // survive Save/Refresh/Reopen.
+  subtitles: SubtitleSegment[];
+  subtitleStyle: SubtitleStyle;
   mediaAssets: Asset[];
   canvasFormat: CanvasFormatState;
   timeline: ReturnType<typeof useStudio>["timeline"];
@@ -219,6 +224,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     // Phase 4 (Video Studio V2 — Independent Shapes): brand-new on StudioContext (added
     // alongside this phase) — same "raw + history-wrapped" pattern as every other lane.
     shapes, addShape: rawAddShape, updateShape: rawUpdateShape, removeShape: rawRemoveShape,
+    // Phase 5 (Video Studio V2 — Subtitles / Transcript): brand-new on StudioContext (added
+    // alongside this phase) — same "raw + history-wrapped" pattern as every other lane.
+    subtitles, addSubtitle: rawAddSubtitle, updateSubtitle: rawUpdateSubtitle, removeSubtitle: rawRemoveSubtitle,
+    subtitleStyle, setSubtitleStyle,
     mediaAssets, addMediaAsset, removeMediaAsset, uploadAsset,
     timeline, setTimeline,
     selectedElement, setSelectedElement,
@@ -243,7 +252,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // same rules, same reasoning (playhead/selection stay excluded), just a fifth array.
   // Phase 2: lowerThirds joins the content arrays Undo/Redo covers — same rules as V2's own
   // additionalVideoClips addition before it.
-  type EditorSnapshot = { videoClips: VideoClip[]; additionalVideoClips: VideoClip[]; textOverlays: TextOverlay[]; mediaOverlays: MediaOverlay[]; audioTracks: AudioTrack[]; lowerThirds: LowerThird[]; shapes: Shape[] };
+  // Phase 5: subtitles joins the content arrays too. subtitleStyle (the global default) is
+  // deliberately NOT part of this — same "settings, not content" treatment canvasFormat/timeline
+  // already get; a subtitleStyle edit isn't reverted by Undo, consistent with those.
+  type EditorSnapshot = { videoClips: VideoClip[]; additionalVideoClips: VideoClip[]; textOverlays: TextOverlay[]; mediaOverlays: MediaOverlay[]; audioTracks: AudioTrack[]; lowerThirds: LowerThird[]; shapes: Shape[]; subtitles: SubtitleSegment[] };
   const MAX_HISTORY = 50;
   const undoStackRef = useRef<EditorSnapshot[]>([]);
   const redoStackRef = useRef<EditorSnapshot[]>([]);
@@ -251,7 +263,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const currentEditorState = (): EditorSnapshot => ({
     videoClips: [...videoClips], additionalVideoClips: [...additionalVideoClips],
     textOverlays: [...textOverlays], mediaOverlays: [...mediaOverlays], audioTracks: [...audioTracks],
-    lowerThirds: [...lowerThirds], shapes: [...shapes],
+    lowerThirds: [...lowerThirds], shapes: [...shapes], subtitles: [...subtitles],
   });
   // Called at the start of every mutating action (via the wrapped add/update/remove functions
   // below) — captures what the content looked like right BEFORE this action, so Undo can put it
@@ -277,6 +289,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     snap.lowerThirds.forEach(l => rawAddLowerThird(l));
     shapes.forEach(s => rawRemoveShape(s.id));
     snap.shapes.forEach(s => rawAddShape(s));
+    subtitles.forEach(s => rawRemoveSubtitle(s.id));
+    snap.subtitles.forEach(s => rawAddSubtitle(s));
     // If whatever was selected no longer exists in the restored state, fall back to no
     // selection rather than leave Properties/Layers pointing at a stale id.
     if (selectedElement) {
@@ -288,6 +302,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         (selectedElement.type === "audio" && snap.audioTracks.some(a => a.id === selectedElement.id)) ||
         (selectedElement.type === "lowerThird" && snap.lowerThirds.some(l => l.id === selectedElement.id)) ||
         (selectedElement.type === "shape" && snap.shapes.some(s => s.id === selectedElement.id)) ||
+        (selectedElement.type === "subtitle" && snap.subtitles.some(s => s.id === selectedElement.id)) ||
         selectedElement.type === "canvasItem"; // has no backing array to check against — leave as-is
       if (!stillExists) setSelectedElement(null);
     }
@@ -327,6 +342,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const addShape = (s: Shape) => { pushHistory(); rawAddShape(s); };
   const updateShape = (id: string, upd: Partial<Shape>) => { pushHistory(); rawUpdateShape(id, upd); };
   const removeShape = (id: string) => { pushHistory(); rawRemoveShape(id); };
+  const addSubtitle = (s: SubtitleSegment) => { pushHistory(); rawAddSubtitle(s); };
+  const updateSubtitle = (id: string, upd: Partial<SubtitleSegment>) => { pushHistory(); rawUpdateSubtitle(id, upd); };
+  const removeSubtitle = (id: string) => { pushHistory(); rawRemoveSubtitle(id); };
   const addAudioTrack = (a: AudioTrack) => { pushHistory(); rawAddAudioTrack(a); };
   const updateAudioTrack = (id: string, upd: Partial<AudioTrack>) => { pushHistory(); rawUpdateAudioTrack(id, upd); };
   const removeAudioTrack = (id: string) => { pushHistory(); rawRemoveAudioTrack(id); };
@@ -508,7 +526,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [draftsError, setDraftsError] = useState<string | null>(null);
 
   const buildProjectSnapshot = (): DraftProjectSnapshot => ({
-    videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, mediaAssets,
+    videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, subtitles, subtitleStyle, mediaAssets,
     canvasFormat, timeline, canvasItemPositions,
     clientIdentity: PROJECT_CLIENT_IDENTITY,
   });
@@ -527,6 +545,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     audioTracks.forEach(a => rawRemoveAudioTrack(a.id));
     lowerThirds.forEach(l => rawRemoveLowerThird(l.id));
     shapes.forEach(s => rawRemoveShape(s.id));
+    subtitles.forEach(s => rawRemoveSubtitle(s.id));
     setSelectedElement(null);
     undoStackRef.current = [];
     redoStackRef.current = [];
@@ -542,6 +561,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     (snap.audioTracks ?? []).forEach(a => rawAddAudioTrack(a));
     (snap.lowerThirds ?? []).forEach(l => rawAddLowerThird(l));
     (snap.shapes ?? []).forEach(s => rawAddShape(s));
+    (snap.subtitles ?? []).forEach(s => rawAddSubtitle(s));
+    if (snap.subtitleStyle) setSubtitleStyle(snap.subtitleStyle);
     // mediaAssets only has an additive action (no bulk replace) — skip any id already present
     // rather than duplicate entries already in the Media panel.
     const existingAssetIds = new Set(mediaAssets.map(a => a.id));
@@ -756,6 +777,20 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   } | null>(null);
   const shapeDragMovedRef = useRef(false);
   const shapeResizeMovedRef = useRef(false);
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript): move session shaped like Shape's own
+  // above (real x/y/width move); resize is width-only, same convention as Text's own
+  // resizeTextSessionRef — a subtitle's box height is implicit from its wrapped text content,
+  // not a stored field, exactly like Text.
+  const dragSubtitleSessionRef = useRef<{
+    id: string; boxW: number; boxH: number; elW: number; elH: number;
+    startClientX: number; startClientY: number; origX: number; origY: number;
+  } | null>(null);
+  const resizeSubtitleSessionRef = useRef<{
+    id: string; boxW: number; startClientX: number; corner: ResizeCorner;
+    origX: number; origWidth: number;
+  } | null>(null);
+  const subtitleDragMovedRef = useRef(false);
+  const subtitleResizeMovedRef = useRef(false);
   // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): drag-to-reposition session for a
   // clip in Fill mode — same "session ref + boxW/boxH + origin" shape as dragOverlaySessionRef
   // above, just writing into VideoClip's cropOffsetX/Y instead of MediaOverlay's x/y.
@@ -1791,6 +1826,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const selectedShape = selectedElement?.type === "shape"
     ? shapes.find(s => s.id === selectedElement.id) ?? null
     : null;
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript): same pattern.
+  const selectedSubtitle = selectedElement?.type === "subtitle"
+    ? subtitles.find(s => s.id === selectedElement.id) ?? null
+    : null;
   // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): which clip the toolbar's Fit/Fill/
   // Crop & Reposition dropdown acts on — the explicitly selected clip if there is one (matching
   // every other per-clip control's precedence in this file), otherwise whichever clip the
@@ -1927,6 +1966,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     ? { kind: "Lower Third", name: selectedLowerThird.name || "Lower Third" }
     : selectedShape
     ? { kind: "Shape", name: SHAPE_KIND_LABELS[selectedShape.kind] }
+    : selectedSubtitle
+    ? { kind: "Subtitle", name: selectedSubtitle.text.slice(0, 24) || "Subtitle" }
     : selectedAudio
     ? { kind: "Audio", name: selectedAudio.name }
     : selectedCanvasItem
@@ -2489,6 +2530,169 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     window.addEventListener("mouseup", handleShapeResizeEnd);
   };
 
+  // ==== Phase 5 (Video Studio V2 — Subtitles / Transcript) — canvas move/resize ====
+  const handleSubtitleDragMove = (e: MouseEvent) => {
+    const s = dragSubtitleSessionRef.current;
+    if (!s) return;
+    if (!subtitleDragMovedRef.current) { pushHistory(); subtitleDragMovedRef.current = true; }
+    const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
+    const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
+    const maxX = Math.max(0, 100 - (s.elW / s.boxW) * 100);
+    const maxY = Math.max(0, 100 - (s.elH / s.boxH) * 100);
+    const nextX = Math.min(maxX, Math.max(0, s.origX + dxPct));
+    const nextY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    rawUpdateSubtitle(s.id, { x: nextX, y: nextY });
+  };
+  const handleSubtitleDragEnd = () => {
+    dragSubtitleSessionRef.current = null;
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 0);
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", handleSubtitleDragMove);
+    window.removeEventListener("mouseup", handleSubtitleDragEnd);
+  };
+  const beginSubtitleDrag = (id: string) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedElement({ type: "subtitle", id });
+    const boxEl = videoPreviewBoxRef.current;
+    const el = e.currentTarget as HTMLElement;
+    const sub = subtitles.find(s => s.id === id);
+    if (!boxEl || !sub) return;
+    subtitleDragMovedRef.current = false;
+    const boxRect = boxEl.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    dragSubtitleSessionRef.current = {
+      id, boxW: boxRect.width, boxH: boxRect.height, elW: elRect.width, elH: elRect.height,
+      startClientX: e.clientX, startClientY: e.clientY, origX: sub.x, origY: sub.y,
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleSubtitleDragMove);
+    window.addEventListener("mouseup", handleSubtitleDragEnd);
+  };
+  // Width-only resize — same convention as Text's own beginTextResize (a subtitle's box height
+  // is implicit from its wrapped text content, not a stored field).
+  const handleSubtitleResizeMove = (e: MouseEvent) => {
+    const s = resizeSubtitleSessionRef.current;
+    if (!s) return;
+    if (!subtitleResizeMovedRef.current) { pushHistory(); subtitleResizeMovedRef.current = true; }
+    const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
+    const isLeft = s.corner === "nw" || s.corner === "sw";
+    let nextWidth = Math.max(MIN_ELEMENT_SIZE_PCT, isLeft ? s.origWidth - dxPct : s.origWidth + dxPct);
+    let nextX = s.origX;
+    if (isLeft) {
+      nextX = s.origX + (s.origWidth - nextWidth);
+      if (nextX < 0) { nextWidth += nextX; nextX = 0; }
+    } else if (nextX + nextWidth > 100) {
+      nextWidth = 100 - nextX;
+    }
+    rawUpdateSubtitle(s.id, { x: nextX, width: Math.max(MIN_ELEMENT_SIZE_PCT, nextWidth) });
+  };
+  const handleSubtitleResizeEnd = () => {
+    resizeSubtitleSessionRef.current = null;
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 0);
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", handleSubtitleResizeMove);
+    window.removeEventListener("mouseup", handleSubtitleResizeEnd);
+  };
+  const beginSubtitleResize = (id: string, corner: ResizeCorner) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const boxEl = videoPreviewBoxRef.current;
+    const sub = subtitles.find(s => s.id === id);
+    if (!boxEl || !sub) return;
+    subtitleResizeMovedRef.current = false;
+    const boxRect = boxEl.getBoundingClientRect();
+    resizeSubtitleSessionRef.current = {
+      id, boxW: boxRect.width, startClientX: e.clientX, corner,
+      origX: sub.x, origWidth: sub.width,
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleSubtitleResizeMove);
+    window.addEventListener("mouseup", handleSubtitleResizeEnd);
+  };
+
+  // Requirement (SUBTITLE DATA MODEL — "global style ... inherited ... per-segment override"):
+  // the one place a segment's real, resolved style is computed — canvas render and (later)
+  // export should both call this rather than duplicating the merge.
+  const resolveSubtitleStyle = (seg: SubtitleSegment): SubtitleStyle => ({ ...subtitleStyle, ...seg.styleOverride });
+
+  const DEFAULT_SUBTITLE_BOX = { x: 10, y: 82, width: 80 };
+
+  // Requirement (AUTOMATIC TRANSCRIPT GENERATION — "wire it into the V2 editor properly"): calls
+  // the REAL backend Whisper endpoint (backend/app/routers/transcribe.py, confirmed working by
+  // inspection) against the current V1 source video's own asset — the only new backend call this
+  // phase makes; everything else (segment creation, canvas/timeline wiring) is real V2
+  // architecture, not a mock. One pushHistory covers the whole batch of segments this creates,
+  // same "one user action" convention Ripple Delete/layer-reorder already use.
+  const [captionGenBusy, setCaptionGenBusy] = useState(false);
+  const [captionGenError, setCaptionGenError] = useState<string | null>(null);
+  const captionSourceClip = selectedClip ?? activeVideoClip;
+  const handleGenerateCaptions = async () => {
+    const assetId = captionSourceClip?.assetId;
+    if (!assetId) { setCaptionGenError("Select or play a V1 clip with an uploaded source file first."); return; }
+    setCaptionGenBusy(true);
+    setCaptionGenError(null);
+    try {
+      const { data } = await transcribeApi.transcribe(assetId);
+      const result = data as { segments: { id: number; start: number; end: number; text: string }[] };
+      const clipStart = captionSourceClip.startTime;
+      if (!result.segments?.length) { setCaptionGenError("No speech detected in this clip."); return; }
+      pushHistory();
+      result.segments.forEach((seg, i) => {
+        // Whisper's own segment times are relative to the SOURCE FILE; anchoring at the clip's
+        // own timeline startTime keeps captions aligned with where this clip actually plays —
+        // exactly the same startTime-relative offset convention every other source-anchored
+        // element in this file (video/audio playback offset) already uses.
+        rawAddSubtitle({
+          id: crypto.randomUUID(), text: seg.text.trim(),
+          startTime: clipStart + seg.start, endTime: clipStart + seg.end,
+          ...DEFAULT_SUBTITLE_BOX, order: -(i + 1),
+        });
+      });
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setCaptionGenError(typeof detail === "string" ? detail : "Could not generate captions — please try again.");
+    } finally {
+      setCaptionGenBusy(false);
+    }
+  };
+
+  // Requirement (PASTE TRANSCRIPT — Options A & B): real parsing logic, extracted as pure,
+  // independently-tested functions in videoPreviewUtils.ts (parseSrtTranscript /
+  // autoSegmentPlainTranscript) — see their own comments there for exactly which spec
+  // requirement each covers.
+  const [pasteTranscriptText, setPasteTranscriptText] = useState("");
+  const handlePasteTranscript = () => {
+    const raw = pasteTranscriptText.trim();
+    if (!raw) return;
+    const srtSegments = parseSrtTranscript(raw);
+    const segments = srtSegments.length > 0 ? srtSegments : autoSegmentPlainTranscript(raw, timeline.currentTime);
+    if (!segments.length) return;
+    pushHistory();
+    segments.forEach((seg, i) => {
+      rawAddSubtitle({ id: crypto.randomUUID(), text: seg.text, startTime: seg.start, endTime: seg.end, ...DEFAULT_SUBTITLE_BOX, order: -(i + 1) });
+    });
+    setPasteTranscriptText("");
+  };
+
+  // Requirement (EDIT TRANSCRIPT/SUBTITLES — "merge segments"): this editor has no multi-select,
+  // so "merge" is the well-defined single-selection equivalent — combine the selected segment
+  // with whichever OTHER segment starts soonest at/after its own end (its natural neighbour in
+  // playback order), concatenating text and spanning both segments' time range. "Split segments"
+  // reuses the existing generic split-at-playhead mechanism every other lane already has (see
+  // handleSplitAtPlayhead's own subtitle branch) rather than a second implementation.
+  const handleMergeSubtitleWithNext = (seg: SubtitleSegment) => {
+    const next = subtitles
+      .filter(s => s.id !== seg.id && s.startTime >= seg.endTime - 1e-6)
+      .sort((a, b) => a.startTime - b.startTime)[0];
+    if (!next) return;
+    pushHistory();
+    rawUpdateSubtitle(seg.id, { text: `${seg.text} ${next.text}`.trim(), endTime: next.endTime });
+    rawRemoveSubtitle(next.id);
+  };
+
   // ==== Phase 1 (V2 Inserts/B-roll) — canvas move/resize/crop/fit ====
   // Requirement 5 ("move anywhere on canvas", "resize"): identical percentage-delta-and-clamp
   // drag/resize as MediaOverlay's own beginOverlayDrag/beginOverlayResize above, writing into
@@ -2674,20 +2878,23 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // Phase 4: "shape" joins the same shared paint-order space too — satisfies "place a shape
   // behind text" as a normal drag in this exact list (its default order, set at creation, only
   // decides where it STARTS; this reorder mechanism is what lets it move afterward).
-  type VisualLayerRef = { type: "text" | "overlay" | "lowerThird" | "shape"; id: string; order: number; label: string };
+  // Phase 5: "subtitle" joins the same shared paint-order space too — its z-order is this exact
+  // reorder, satisfying the spec's own "layer/zIndex" field on the subtitle data model.
+  type VisualLayerRef = { type: "text" | "overlay" | "lowerThird" | "shape" | "subtitle"; id: string; order: number; label: string };
   const layersListVisual: VisualLayerRef[] = [
     ...textOverlays.map(t => ({ type: "text" as const, id: t.id, order: t.order ?? 0, label: `🔤 ${t.text.slice(0, 20)}` })),
     ...mediaOverlays.map(o => ({ type: "overlay" as const, id: o.id, order: o.order ?? 0, label: `🖼 ${overlayLabel(o)}` })),
     ...lowerThirds.map(l => ({ type: "lowerThird" as const, id: l.id, order: l.order ?? 0, label: `▭ ${l.name || "Lower Third"}` })),
     ...shapes.map(sh => ({ type: "shape" as const, id: sh.id, order: sh.order ?? 0, label: `◆ ${SHAPE_KIND_LABELS[sh.kind]}` })),
+    ...subtitles.map(s => ({ type: "subtitle" as const, id: s.id, order: s.order ?? 0, label: `💬 ${s.text.slice(0, 20)}` })),
   ].sort((a, b) => b.order - a.order);
 
-  const dragLayerRef = useRef<{ type: "text" | "overlay" | "lowerThird" | "shape"; id: string } | null>(null);
+  const dragLayerRef = useRef<{ type: "text" | "overlay" | "lowerThird" | "shape" | "subtitle"; id: string } | null>(null);
   // Dropping onto a row reassigns every visual layer's `order` in one pass — simplest way to
   // guarantee no two elements ever collide on the same order value after a reorder, and it
   // never touches anything else on either object (timing, position, size, media, filters, etc
   // are all separate fields, untouched here).
-  const reorderVisualLayers = (dragged: { type: "text" | "overlay" | "lowerThird" | "shape"; id: string }, targetIndex: number) => {
+  const reorderVisualLayers = (dragged: { type: "text" | "overlay" | "lowerThird" | "shape" | "subtitle"; id: string }, targetIndex: number) => {
     const withoutDragged = layersListVisual.filter(l => !(l.type === dragged.type && l.id === dragged.id));
     const draggedEntry = layersListVisual.find(l => l.type === dragged.type && l.id === dragged.id);
     if (!draggedEntry) return;
@@ -2701,7 +2908,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       if (l.type === "text") rawUpdateTextOverlay(l.id, { order });
       else if (l.type === "overlay") rawUpdateMediaOverlay(l.id, { order });
       else if (l.type === "lowerThird") rawUpdateLowerThird(l.id, { order });
-      else rawUpdateShape(l.id, { order });
+      else if (l.type === "shape") rawUpdateShape(l.id, { order });
+      else rawUpdateSubtitle(l.id, { order });
     });
   };
 
@@ -2891,11 +3099,42 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       };
     });
 
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript) — Requirement (SUBTITLES AS REAL CANVAS
+  // ELEMENTS): real, positioned, resolveSubtitleStyle-styled boxes, same gated-to-startTime/
+  // endTime pattern as every other real visual layer — never fixed to one position.
+  const subtitleEntries = subtitles
+    .filter(s => timeline.currentTime >= s.startTime && timeline.currentTime < s.endTime)
+    .map(s => {
+      const style = resolveSubtitleStyle(s);
+      return {
+        order: s.order ?? 0,
+        node: (
+    <div
+      key={s.id}
+      className={`canvas-subtitle-item canvas-selectable canvas-movable ${selectedElement?.type === "subtitle" && selectedElement.id === s.id ? "canvas-el-selected" : ""}`}
+      style={{
+        left: `${s.x}%`, top: `${s.y}%`, width: `${s.width}%`,
+        color: style.color, fontFamily: style.fontFamily, fontSize: style.fontSize, textAlign: style.align,
+        background: composeTextBgColor(style.bgColor, style.bgOpacity),
+        WebkitTextStroke: style.outlineWidth ? `${style.outlineWidth}px ${style.outlineColor ?? "#000000"}` : undefined,
+        textShadow: style.shadowBlur ? `0px 0px ${style.shadowBlur}px ${style.shadowColor ?? "#000000"}` : undefined,
+      }}
+      onMouseDown={beginSubtitleDrag(s.id)}
+      onClick={e => e.stopPropagation()}
+      title="Subtitle — click and drag to move"
+    >
+      {s.text}
+      {selectedElement?.type === "subtitle" && selectedElement.id === s.id && resizeHandles(corner => beginSubtitleResize(s.id, corner))}
+    </div>
+        ),
+      };
+    });
+
   // Ascending sort: lowest `order` paints first (furthest back), highest paints last (furthest
   // front) — plain DOM paint order, no z-index needed. Ties (both default to 0, e.g. before any
   // reorder has ever happened) keep Array.sort's stable ordering, which preserves the exact
   // pre-existing "all Overlays behind all Text" look until the user actually reorders something.
-  const visualLayers = [...overlayEntries, ...textEntries, ...lowerThirdEntries, ...shapeEntries]
+  const visualLayers = [...overlayEntries, ...textEntries, ...lowerThirdEntries, ...shapeEntries, ...subtitleEntries]
     .sort((a, b) => a.order - b.order)
     .map(e => e.node);
 
@@ -3008,6 +3247,11 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     rawUpdateShape(sh.id, { startTime: Math.max(0, Math.min(proposedStart, sh.endTime - MIN_CLIP_DURATION)) });
   const trimShapeRight = (sh: Shape, proposedEnd: number) =>
     rawUpdateShape(sh.id, { endTime: Math.max(sh.startTime + MIN_CLIP_DURATION, proposedEnd) });
+  // Phase 5: same shape again, for SubtitleSegment (no legacy optionality — always required).
+  const trimSubtitleLeft = (s: SubtitleSegment, proposedStart: number) =>
+    rawUpdateSubtitle(s.id, { startTime: Math.max(0, Math.min(proposedStart, s.endTime - MIN_CLIP_DURATION)) });
+  const trimSubtitleRight = (s: SubtitleSegment, proposedEnd: number) =>
+    rawUpdateSubtitle(s.id, { endTime: Math.max(s.startTime + MIN_CLIP_DURATION, proposedEnd) });
 
   // Step 5: Split / Delete / Ripple Delete. The scissors (✂), delete (⌫) and one of the two
   // previously-inert mock icons (◫, repurposed for Ripple Delete — ◩ and ⧉ stay untouched/
@@ -3104,6 +3348,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       rawUpdateShape(sh.id, { endTime: p });
       rawAddShape({ ...sh, id: rightId, startTime: p });
       setSelectedElement({ type: "shape", id: rightId });
+    } else if (selectedElement.type === "subtitle") {
+      const s = subtitles.find(x => x.id === selectedElement.id);
+      if (!s || p <= s.startTime + MIN_CLIP_DURATION || p >= s.endTime - MIN_CLIP_DURATION) return;
+      pushHistory();
+      const rightId = crypto.randomUUID();
+      rawUpdateSubtitle(s.id, { endTime: p });
+      rawAddSubtitle({ ...s, id: rightId, startTime: p });
+      setSelectedElement({ type: "subtitle", id: rightId });
     }
   };
 
@@ -3134,6 +3386,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     else if (selectedElement.type === "overlay") removeMediaOverlay(selectedElement.id);
     else if (selectedElement.type === "lowerThird") removeLowerThird(selectedElement.id);
     else if (selectedElement.type === "shape") removeShape(selectedElement.id);
+    else if (selectedElement.type === "subtitle") removeSubtitle(selectedElement.id);
     else return;
     setSelectedElement(null); // Properties/Layers fall back to their existing "nothing selected" state
   };
@@ -3202,6 +3455,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = sh.endTime - sh.startTime;
       rawRemoveShape(sh.id);
       shapes.forEach(x => { if (x.id !== sh.id && x.startTime >= sh.endTime - RIPPLE_EPSILON) rawUpdateShape(x.id, { startTime: x.startTime - dur, endTime: x.endTime - dur }); });
+    } else if (selectedElement.type === "subtitle") {
+      const s = subtitles.find(x => x.id === selectedElement.id);
+      if (!s) return;
+      pushHistory();
+      const dur = s.endTime - s.startTime;
+      rawRemoveSubtitle(s.id);
+      subtitles.forEach(x => { if (x.id !== s.id && x.startTime >= s.endTime - RIPPLE_EPSILON) rawUpdateSubtitle(x.id, { startTime: x.startTime - dur, endTime: x.endTime - dur }); });
     } else {
       return;
     }
@@ -3245,6 +3505,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const sh = shapes.find(x => x.id === selectedElement.id);
       if (!sh) return;
       pushHistory(); trimShapeLeft(sh, p);
+    } else if (selectedElement.type === "subtitle") {
+      const s = subtitles.find(x => x.id === selectedElement.id);
+      if (!s) return;
+      pushHistory(); trimSubtitleLeft(s, p);
     }
   };
   const trimSelectedEndToPlayhead = () => {
@@ -3278,6 +3542,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const sh = shapes.find(x => x.id === selectedElement.id);
       if (!sh) return;
       pushHistory(); trimShapeRight(sh, p);
+    } else if (selectedElement.type === "subtitle") {
+      const s = subtitles.find(x => x.id === selectedElement.id);
+      if (!s) return;
+      pushHistory(); trimSubtitleRight(s, p);
     }
   };
 
@@ -3297,6 +3565,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     | { kind: "overlay"; data: MediaOverlay }
     | { kind: "lowerThird"; data: LowerThird }
     | { kind: "shape"; data: Shape }
+    | { kind: "subtitle"; data: SubtitleSegment }
     | null
   >(null);
   const copySelected = () => {
@@ -3322,6 +3591,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     } else if (selectedElement.type === "shape") {
       const sh = shapes.find(x => x.id === selectedElement.id);
       if (sh) clipboardRef.current = { kind: "shape", data: sh };
+    } else if (selectedElement.type === "subtitle") {
+      const s = subtitles.find(x => x.id === selectedElement.id);
+      if (s) clipboardRef.current = { kind: "subtitle", data: s };
     }
   };
   const pasteClipboard = () => {
@@ -3360,6 +3632,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = cb.data.endTime - cb.data.startTime;
       addShape({ ...cb.data, id, startTime: p, endTime: p + dur });
       setSelectedElement({ type: "shape", id });
+    } else if (cb.kind === "subtitle") {
+      const dur = cb.data.endTime - cb.data.startTime;
+      addSubtitle({ ...cb.data, id, startTime: p, endTime: p + dur });
+      setSelectedElement({ type: "subtitle", id });
     }
   };
   const duplicateSelected = () => {
@@ -3410,6 +3686,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = sh.endTime - sh.startTime;
       addShape({ ...sh, id, startTime: sh.endTime, endTime: sh.endTime + dur });
       setSelectedElement({ type: "shape", id });
+    } else if (selectedElement.type === "subtitle") {
+      const s = subtitles.find(x => x.id === selectedElement.id);
+      if (!s) return;
+      const dur = s.endTime - s.startTime;
+      addSubtitle({ ...s, id, startTime: s.endTime, endTime: s.endTime + dur });
+      setSelectedElement({ type: "subtitle", id });
     }
   };
 
@@ -3454,6 +3736,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const maxX = Math.max(0, 100 - sh.width);
       const maxY = Math.max(0, 100 - sh.height);
       updateShape(sh.id, { x: Math.min(maxX, Math.max(0, sh.x + dx)), y: Math.min(maxY, Math.max(0, sh.y + dy)) });
+    } else if (selectedElement?.type === "subtitle") {
+      // Phase 5: same "width only, Y clamps to plain 0-100" convention as Text's own branch —
+      // a subtitle's box height is implicit from its content, never a measured/stored field.
+      const s = subtitles.find(x => x.id === selectedElement.id);
+      if (!s) return;
+      const maxX = Math.max(0, 100 - s.width);
+      updateSubtitle(s.id, { x: Math.min(maxX, Math.max(0, s.x + dx)), y: Math.min(100, Math.max(0, s.y + dy)) });
     }
   };
   // STEP 7 (Keyboard Shortcuts): Left/Right step by exactly one frame when there's no movable
@@ -3556,7 +3845,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         case "ArrowRight":
         case "ArrowUp":
         case "ArrowDown": {
-          const isMovableCanvasSelection = selectedElement?.type === "text" || selectedElement?.type === "overlay" || selectedElement?.type === "lowerThird" || selectedElement?.type === "shape";
+          const isMovableCanvasSelection = selectedElement?.type === "text" || selectedElement?.type === "overlay" || selectedElement?.type === "lowerThird" || selectedElement?.type === "shape" || selectedElement?.type === "subtitle";
           if (isMovableCanvasSelection) {
             e.preventDefault();
             const nudge = e.shiftKey ? CANVAS_NUDGE_LARGE_PCT : CANVAS_NUDGE_SMALL_PCT;
@@ -3679,6 +3968,75 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
           {(Object.keys(SHAPE_KIND_LABELS) as Shape["kind"][]).map(kind => (
             <button key={kind} className="add-media" type="button" onClick={() => handleAddShape(kind)}>+<br />{SHAPE_KIND_LABELS[kind]}</button>
           ))}
+        </div>
+      ) : mediaTab === "Subtitles" ? (
+        <div className="subtitles-panel">
+          {/* Requirement (AUTOMATIC TRANSCRIPT GENERATION — "wire it into the V2 editor
+              properly"): the real backend Whisper call, against V1's current source clip. */}
+          <h4>Generate Captions</h4>
+          <p className="empty-hint">
+            {captionSourceClip ? `From: ${captionSourceClip.name || "V1 clip"}` : "Select or play a V1 clip with a source file first."}
+          </p>
+          <button type="button" className="add-media" disabled={captionGenBusy || !captionSourceClip?.assetId} onClick={() => void handleGenerateCaptions()}>
+            {captionGenBusy ? "Transcribing…" : "Generate Captions from Audio"}
+          </button>
+          {captionGenError && <p className="empty-hint" style={{ color: "#c94d4d" }}>{captionGenError}</p>}
+
+          {/* Requirement (PASTE TRANSCRIPT): Option A (SRT, real timestamps) or Option B (plain
+              text, auto-segmented into subtitle-sized chunks) — see parseSrtTranscript/
+              autoSegmentPlainTranscript's own comments for exactly which path a paste takes. */}
+          <h4>Paste Transcript</h4>
+          <textarea
+            placeholder="Paste an SRT transcript (with timestamps) or plain text — plain text is auto-segmented into subtitle-sized chunks starting at the current playhead."
+            value={pasteTranscriptText}
+            onChange={e => setPasteTranscriptText(e.target.value)}
+          />
+          <button type="button" className="add-media" disabled={!pasteTranscriptText.trim()} onClick={handlePasteTranscript}>
+            Add as Subtitles
+          </button>
+
+          {/* Requirement (SUBTITLE DATA MODEL — "global style ... inherited"). */}
+          <h4>Global Style</h4>
+          <div className="row">
+            <select value={subtitleStyle.fontFamily} onChange={e => setSubtitleStyle({ ...subtitleStyle, fontFamily: e.target.value })}>
+              <option>Inter</option><option>Montserrat</option><option>Poppins</option>
+            </select>
+            <select value={String(subtitleStyle.fontSize)} onChange={e => setSubtitleStyle({ ...subtitleStyle, fontSize: Number(e.target.value) })}>
+              {[24, 28, 32, 36, 42, 48, 56].map(sz => <option key={sz} value={sz}>{sz}</option>)}
+            </select>
+            <input type="color" value={subtitleStyle.color} onChange={e => setSubtitleStyle({ ...subtitleStyle, color: e.target.value })} />
+          </div>
+          <div className="row align-row">
+            {(["left", "center", "right"] as const).map(a => (
+              <button key={a} type="button" className={subtitleStyle.align === a ? "active" : ""} onClick={() => setSubtitleStyle({ ...subtitleStyle, align: a })}>
+                {a === "left" ? "⯇" : a === "center" ? "≡" : "⯈"}
+              </button>
+            ))}
+          </div>
+          <label className="stack-field"><span>Background — {Math.round(subtitleStyle.bgOpacity * 100)}%</span>
+            <div className="row">
+              <input type="color" value={subtitleStyle.bgColor === "transparent" ? "#000000" : subtitleStyle.bgColor}
+                onChange={e => setSubtitleStyle({ ...subtitleStyle, bgColor: e.target.value })} />
+              <input type="range" min={0} max={100} value={Math.round(subtitleStyle.bgOpacity * 100)}
+                onChange={e => setSubtitleStyle({ ...subtitleStyle, bgOpacity: Number(e.target.value) / 100 })} />
+            </div>
+          </label>
+
+          <h4>Segments</h4>
+          <div className="media-grid">
+            {subtitles.map(s => (
+              <div
+                key={s.id}
+                className={`media-card text-card ${selectedElement?.type === "subtitle" && selectedElement.id === s.id ? "canvas-el-selected" : ""}`}
+                onClick={() => setSelectedElement({ type: "subtitle", id: s.id })}
+                title="Click to select — edit it in the Properties panel"
+              >
+                <div className="fake-media text-swatch">{s.text.slice(0, 40) || "Subtitle"}</div>
+                <small>{formatTimecode(s.startTime)} – {formatTimecode(s.endTime)}</small>
+              </div>
+            ))}
+            {subtitles.length === 0 && <p className="empty-hint">No subtitles yet — generate captions or paste a transcript above.</p>}
+          </div>
         </div>
       ) : mediaTab === "Audio" ? (
         <div className="media-grid">
@@ -4606,6 +4964,83 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             </div>
             <p className="empty-hint">Layer order (front/behind text) is set in the Layers tab, same as every other visual element.</p>
           </>
+        ) : selectedSubtitle ? (
+          <>
+            {/* Phase 5 (Video Studio V2 — Subtitles / Transcript) — Requirement (EDIT TRANSCRIPT/
+                SUBTITLES): correct words, per-segment style override, merge with the next
+                segment (split reuses the shared ✂ Split-at-playhead toolbar action — same
+                mechanism every other lane already has, see handleSplitAtPlayhead's own
+                subtitle branch), move/resize on canvas (above), adjust start/end (timeline trim
+                handles). Nothing here is mocked — same live-binding convention as every other
+                selected type. */}
+            <h4>Subtitle</h4>
+            <textarea value={selectedSubtitle.text} onFocus={pushHistory}
+              onChange={e => rawUpdateSubtitle(selectedSubtitle.id, { text: e.target.value })} />
+            <button type="button" onClick={() => handleMergeSubtitleWithNext(selectedSubtitle)} title="Combine this segment's text and timing with whichever segment plays next">
+              Merge with Next Segment
+            </button>
+            <h4>Style</h4>
+            <label className="stack-field" style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: "row" }}>
+              <input type="checkbox" checked={!!selectedSubtitle.styleOverride}
+                onChange={e => updateSubtitle(selectedSubtitle.id, { styleOverride: e.target.checked ? {} : undefined })} />
+              <span>Override global style for this segment</span>
+            </label>
+            {selectedSubtitle.styleOverride && (() => {
+              const resolved = resolveSubtitleStyle(selectedSubtitle);
+              const setOverride = (field: keyof SubtitleStyle, value: SubtitleStyle[keyof SubtitleStyle]) =>
+                updateSubtitle(selectedSubtitle.id, { styleOverride: { ...selectedSubtitle.styleOverride, [field]: value } });
+              return (
+                <>
+                  <div className="row">
+                    <select value={resolved.fontFamily} onChange={e => setOverride("fontFamily", e.target.value)}>
+                      <option>Inter</option><option>Montserrat</option><option>Poppins</option>
+                    </select>
+                    <select value={String(resolved.fontSize)} onChange={e => setOverride("fontSize", Number(e.target.value))}>
+                      {[24, 28, 32, 36, 42, 48, 56].map(sz => <option key={sz} value={sz}>{sz}</option>)}
+                    </select>
+                    <input type="color" value={resolved.color} onChange={e => setOverride("color", e.target.value)} />
+                  </div>
+                  <div className="row align-row">
+                    {(["left", "center", "right"] as const).map(a => (
+                      <button key={a} type="button" className={resolved.align === a ? "active" : ""} onClick={() => setOverride("align", a)}>
+                        {a === "left" ? "⯇" : a === "center" ? "≡" : "⯈"}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="stack-field"><span>Background</span>
+                    <div className="row">
+                      <input type="color" value={resolved.bgColor === "transparent" ? "#000000" : resolved.bgColor} onChange={e => setOverride("bgColor", e.target.value)} />
+                      <input type="range" min={0} max={100} value={Math.round(resolved.bgOpacity * 100)}
+                        onMouseDown={pushHistory}
+                        onChange={e => setOverride("bgOpacity", Number(e.target.value) / 100)} />
+                    </div>
+                  </label>
+                  <label className="stack-field"><span>Outline</span>
+                    <div className="row">
+                      <input type="color" value={resolved.outlineColor ?? "#000000"} onChange={e => setOverride("outlineColor", e.target.value)} />
+                      <input type="range" min={0} max={4} step={0.5} value={resolved.outlineWidth ?? 0}
+                        onMouseDown={pushHistory}
+                        onChange={e => setOverride("outlineWidth", Number(e.target.value))} />
+                    </div>
+                  </label>
+                  <label className="stack-field"><span>Shadow</span>
+                    <div className="row">
+                      <input type="color" value={resolved.shadowColor ?? "#000000"} onChange={e => setOverride("shadowColor", e.target.value)} />
+                      <input type="range" min={0} max={20} value={resolved.shadowBlur ?? 0}
+                        onMouseDown={pushHistory}
+                        onChange={e => setOverride("shadowBlur", Number(e.target.value))} />
+                    </div>
+                  </label>
+                </>
+              );
+            })()}
+            <h4>Transform</h4>
+            <div className="row">
+              <input value={`X ${Math.round(selectedSubtitle.x)}%`} readOnly />
+              <input value={`Y ${Math.round(selectedSubtitle.y)}%`} readOnly />
+            </div>
+            <input value={`W ${Math.round(selectedSubtitle.width)}%`} readOnly />
+          </>
         ) : selectedAudio ? (
           <>
             <h4>Audio</h4>
@@ -4693,7 +5128,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             <li key={a.id} className={selectedElement?.type === "audio" && selectedElement.id === a.id ? "active" : ""}
               onClick={() => setSelectedElement({ type: "audio", id: a.id })}>🎵 {a.name}</li>
           ))}
-          {videoClips.length + additionalVideoClips.length + textOverlays.length + audioTracks.length + mediaOverlays.length + lowerThirds.length + shapes.length === 0 && (
+          {videoClips.length + additionalVideoClips.length + textOverlays.length + audioTracks.length + mediaOverlays.length + lowerThirds.length + shapes.length + subtitles.length === 0 && (
             <p className="empty-hint">No layers yet.</p>
           )}
         </ul>
@@ -5258,6 +5693,17 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 onMove={newStart => rawUpdateShape(sh.id, { startTime: newStart, endTime: newStart + (sh.endTime - sh.startTime) })}
                 onTrimLeft={p => trimShapeLeft(sh, p)} onTrimRight={p => trimShapeRight(sh, p)} onGestureStart={pushHistory}
                 color="lime" label={SHAPE_KIND_LABELS[sh.kind]} />
+            ))}
+          </TrackRow>
+          {/* Phase 5 (Video Studio V2 — Subtitles / Transcript): same ClipBlock mechanics again. */}
+          <TrackRow label="CC1 Subtitles">
+            {subtitles.map(s => (
+              <ClipBlock key={s.id} start={s.startTime} end={s.endTime} total={effectiveDuration}
+                selected={selectedElement?.type === "subtitle" && selectedElement.id === s.id}
+                onClick={() => setSelectedElement({ type: "subtitle", id: s.id })}
+                onMove={newStart => rawUpdateSubtitle(s.id, { startTime: newStart, endTime: newStart + (s.endTime - s.startTime) })}
+                onTrimLeft={p => trimSubtitleLeft(s, p)} onTrimRight={p => trimSubtitleRight(s, p)} onGestureStart={pushHistory}
+                color="rose" label={s.text || "Subtitle"} />
             ))}
           </TrackRow>
           <TrackRow label="A1 Audio" highlight={dragOverKind === "audio"}>

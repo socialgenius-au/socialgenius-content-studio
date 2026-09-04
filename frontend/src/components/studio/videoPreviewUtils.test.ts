@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   findActiveClip, computeEndTimeForSpeed,
   computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode, composeTextBgColor, composeHexAlpha,
+  parseSrtTranscript, autoSegmentPlainTranscript,
 } from "./videoPreviewUtils";
 import type { VideoClip } from "../../types";
 
@@ -238,5 +239,72 @@ describe("composeHexAlpha — shared by Text backgrounds and Shape fills", () =>
   it("clamps out-of-range opacity", () => {
     expect(composeHexAlpha("#FFE066", 2)).toBe("#FFE066ff");
     expect(composeHexAlpha("#FFE066", -1)).toBe("#FFE06600");
+  });
+});
+
+// Phase 5 (Video Studio V2 — Subtitles / Transcript)
+describe("parseSrtTranscript — Paste Transcript Option A (timestamps included)", () => {
+  it("parses a real multi-block SRT transcript into timed segments", () => {
+    const srt = [
+      "1",
+      "00:00:00,000 --> 00:00:02,500",
+      "Hello and welcome.",
+      "",
+      "2",
+      "00:00:02,500 --> 00:00:05,000",
+      "Let's get started.",
+      "",
+    ].join("\n");
+    expect(parseSrtTranscript(srt)).toEqual([
+      { start: 0, end: 2.5, text: "Hello and welcome." },
+      { start: 2.5, end: 5, text: "Let's get started." },
+    ]);
+  });
+
+  it("joins a multi-line caption's text onto one segment", () => {
+    const srt = "1\n00:00:01,000 --> 00:00:03,000\nLine one\nLine two\n";
+    expect(parseSrtTranscript(srt)).toEqual([{ start: 1, end: 3, text: "Line one Line two" }]);
+  });
+
+  it("handles CRLF line endings and a trailing hour field", () => {
+    const srt = "1\r\n01:00:00,000 --> 01:00:01,000\r\nAn hour in\r\n";
+    expect(parseSrtTranscript(srt)).toEqual([{ start: 3600, end: 3601, text: "An hour in" }]);
+  });
+
+  it("returns no segments for plain text with no '-->' timestamp line", () => {
+    expect(parseSrtTranscript("Just some plain text.\nNo timestamps here.")).toEqual([]);
+  });
+
+  it("skips a block with an empty caption (real timestamps, no text)", () => {
+    const srt = "1\n00:00:00,000 --> 00:00:01,000\n\n";
+    expect(parseSrtTranscript(srt)).toEqual([]);
+  });
+});
+
+describe("autoSegmentPlainTranscript — Paste Transcript Option B (no timestamps)", () => {
+  it("never produces one giant permanent text box — splits at the configured max length", () => {
+    const text = "This is a fairly long sentence that should definitely be split into more than one subtitle-sized chunk for readability.";
+    const segments = autoSegmentPlainTranscript(text, 0, 3, 42);
+    expect(segments.length).toBeGreaterThan(1);
+    segments.forEach(s => expect(s.text.length).toBeLessThanOrEqual(42));
+  });
+
+  it("never splits a single word, even if it exceeds maxChars", () => {
+    const segments = autoSegmentPlainTranscript("Supercalifragilisticexpialidocious", 0, 3, 10);
+    expect(segments).toEqual([{ start: 0, end: 3, text: "Supercalifragilisticexpialidocious" }]);
+  });
+
+  it("gives sequential draft timing starting at the given playhead", () => {
+    const segments = autoSegmentPlainTranscript("one two three four five six seven eight nine ten", 12, 2, 10);
+    expect(segments[0].start).toBe(12);
+    segments.forEach((s, i) => {
+      if (i > 0) expect(s.start).toBe(segments[i - 1].end);
+      expect(s.end - s.start).toBe(2);
+    });
+  });
+
+  it("reassembles to the original words with normalized whitespace", () => {
+    const segments = autoSegmentPlainTranscript("  one   two three  ", 0, 3, 100);
+    expect(segments.map(s => s.text).join(" ")).toBe("one two three");
   });
 });

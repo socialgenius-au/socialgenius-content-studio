@@ -185,3 +185,63 @@ export function probeHasAudioTrack(url: string): Promise<boolean> {
     vid.src = url
   })
 }
+
+export interface ParsedTranscriptSegment {
+  start: number
+  end: number
+  text: string
+}
+
+// Phase 5 (Video Studio V2 — Subtitles / Transcript) — Requirement (PASTE TRANSCRIPT, Option A:
+// "if timestamps are included, parse and create timed subtitle segments"). SRT is the one real,
+// unambiguous timestamped-transcript format already in use in this codebase — Whisper's own
+// segments_to_srt on the backend (backend/app/services/whisper_svc.py) produces exactly this —
+// so pasting a transcript exported from this project, or any standard .srt file, parses into
+// real timed segments rather than becoming one giant permanent text block. Deliberately does
+// not guess at other ad-hoc timestamp notations (e.g. "[00:01]") — SRT is the one format there's
+// a real, checkable spec for. Extracted as a pure function so the parsing itself — not just the
+// UI that calls it — is independently testable.
+export function parseSrtTranscript(raw: string): ParsedTranscriptSegment[] {
+  const srtTimeToSeconds = (t: string): number => {
+    const m = t.trim().match(/(\d+):(\d{2}):(\d{2})[,.](\d{3})/)
+    if (!m) return NaN
+    return Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000
+  }
+  const blocks = raw.replace(/\r\n/g, '\n').split(/\n\s*\n/).map(b => b.trim()).filter(Boolean)
+  const segments: ParsedTranscriptSegment[] = []
+  for (const block of blocks) {
+    const lines = block.split('\n')
+    const timeLineIdx = lines.findIndex(l => l.includes('-->'))
+    if (timeLineIdx === -1) continue
+    const [rawStart, rawEnd] = lines[timeLineIdx].split('-->')
+    const start = srtTimeToSeconds(rawStart)
+    const end = srtTimeToSeconds(rawEnd)
+    const text = lines.slice(timeLineIdx + 1).join(' ').trim()
+    if (!Number.isNaN(start) && !Number.isNaN(end) && text) segments.push({ start, end, text })
+  }
+  return segments
+}
+
+// Conventional single-line subtitle length — long enough to read comfortably in one glance,
+// short enough not to cover the frame.
+export const CAPTION_CHUNK_MAX_CHARS = 42
+
+// Requirement (PASTE TRANSCRIPT, Option B: "plain transcript with no timestamps ... auto-segment
+// into subtitle-sized chunks ... OR create draft segments for manual timing"). Real speech-to-
+// audio alignment is a separate ML capability this codebase has no infrastructure for (out of
+// scope — see the report); this implements the explicit fallback the spec itself offers instead:
+// even, word-boundary-respecting chunks at a conventional per-line length, given sequential
+// draft timing starting at startAt, for the user to then trim/move like any other real segment —
+// never one giant permanent text box.
+export function autoSegmentPlainTranscript(raw: string, startAt: number, secondsPerChunk = 3, maxChars = CAPTION_CHUNK_MAX_CHARS): ParsedTranscriptSegment[] {
+  const words = raw.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)
+  const chunks: string[] = []
+  let current = ''
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word
+    if (next.length > maxChars && current) { chunks.push(current); current = word }
+    else current = next
+  }
+  if (current) chunks.push(current)
+  return chunks.map((text, i) => ({ start: startAt + i * secondsPerChunk, end: startAt + (i + 1) * secondsPerChunk, text }))
+}

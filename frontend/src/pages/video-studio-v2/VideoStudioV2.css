@@ -12,6 +12,9 @@
   /* Phase 4 (Video Studio V2 — Independent Shapes): a sixth timeline color, distinct from every
      lane already in use (including the accent, in both themes). */
   --v-lime:#7cb62e;
+  /* Phase 5 (Video Studio V2 — Subtitles / Transcript): a seventh timeline colour, distinct
+     from every lane already in use. */
+  --v-rose:#c23f6e;
   /* Text that sits on a solid --v-accent fill (title pill, primary buttons, filled stepper dot). */
   --v-on-accent:#ffffff;
 }
@@ -25,6 +28,7 @@
   --v-amber:#e0a13f;
   --v-teal:#3fc7c7;
   --v-lime:#a3e04a;
+  --v-rose:#e0699a;
   --v-on-accent:#04191a;
 }
 *{box-sizing:border-box}.vsv2{min-height:100vh;background:var(--v-bg);color:var(--v-text);display:grid;grid-template-columns:240px 1fr;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
@@ -95,7 +99,7 @@
    relative` here just makes the CSS containing block match the JS's pre-existing assumption,
    for all four lanes uniformly. Ruler tick alignment is a separate, disclosed, pre-existing
    cosmetic gap (see the playhead/IN-OUT comment below) — unaffected by this fix. */
-.track-lane{position:relative;display:flex;align-items:center;gap:4px;padding:4px;background:var(--v-panel-2)}.clip{height:27px;border-radius:4px;padding:6px 10px;font-size:9px;color:#fff;min-width:140px}.clip.blue{background:var(--v-blue)}.clip.purple{background:var(--v-purple)}.clip.pink{background:var(--v-pink)}.clip.aqua{background:var(--v-aqua);color:#08342f}.clip.amber{background:var(--v-amber)}.clip.teal{background:var(--v-teal)}.clip.lime{background:var(--v-lime);color:#12210a}.clip.long{min-width:65%}.ai-assistant{grid-column:1/-1;display:flex;align-items:center;gap:8px;border-top:1px solid var(--v-line);padding:10px}.ai-assistant input{flex:1;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:10px}.ai-assistant button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:9px 11px}
+.track-lane{position:relative;display:flex;align-items:center;gap:4px;padding:4px;background:var(--v-panel-2)}.clip{height:27px;border-radius:4px;padding:6px 10px;font-size:9px;color:#fff;min-width:140px}.clip.blue{background:var(--v-blue)}.clip.purple{background:var(--v-purple)}.clip.pink{background:var(--v-pink)}.clip.aqua{background:var(--v-aqua);color:#08342f}.clip.amber{background:var(--v-amber)}.clip.teal{background:var(--v-teal)}.clip.lime{background:var(--v-lime);color:#12210a}.clip.rose{background:var(--v-rose)}.clip.long{min-width:65%}.ai-assistant{grid-column:1/-1;display:flex;align-items:center;gap:8px;border-top:1px solid var(--v-line);padding:10px}.ai-assistant input{flex:1;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:10px}.ai-assistant button{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:9px 11px}
 .review-grid{display:grid;grid-template-columns:250px 1fr 1fr 260px;gap:14px}.criteria{display:flex;justify-content:space-between;font-size:11px;margin:11px 0}.review-preview .video-preview{width:100%;height:460px}.review-transport{background:#050505;color:#fff;padding:10px;border-radius:0 0 8px 8px}.story-strip{display:flex;gap:7px;justify-content:center;margin-top:12px}.story-thumb{width:54px;height:68px;border-radius:5px;background:linear-gradient(135deg,#8d6744,#171511);border:1px solid var(--v-line)}.mid-stack{display:flex;flex-direction:column;gap:14px}.review-page textarea{width:100%;min-height:120px;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:10px}
 .learn-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}.performance-table{grid-column:1/-1;overflow:auto}.table-head{display:flex;justify-content:space-between;align-items:center}.table-head select{border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:6px;padding:7px;margin-left:7px}.performance-table table{width:100%;border-collapse:collapse;font-size:10px}.performance-table th,.performance-table td{padding:10px 8px;border-bottom:1px solid var(--v-line);text-align:left}.performance-summary{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,1fr);gap:12px}.metric-card span,.metric-card b,.metric-card em{display:block}.metric-card b{font-size:22px;margin:5px 0}.metric-card em{color:var(--v-accent);font-style:normal;font-size:11px}.upload-drop{min-height:210px;border:1px dashed var(--v-line);border-radius:9px;display:grid;place-items:center;text-align:center;padding:20px}.upload-drop>*{display:block}.positive li{color:var(--v-accent)}.negative li{color:#c94d4d}.learning-score{margin-top:16px;border-top:1px solid var(--v-line);padding-top:14px}.learning-score b{font-size:28px;margin-left:8px}
 .platform-pills button.active{background:var(--v-soft);border-color:var(--v-accent);color:var(--v-accent)}
@@ -182,6 +186,11 @@
    behind text) still reads as a distinct, grabbable canvas object. */
 .canvas-shape-item{position:absolute;box-sizing:border-box;outline:1px dashed rgba(255,255,255,.25);outline-offset:-1px}
 .canvas-shape-item.canvas-movable{cursor:move}
+/* Phase 5 (Video Studio V2 — Subtitles / Transcript): same absolute-positioned-box convention
+   as .canvas-text-item — colour/font/background/outline/shadow are all inline-style-driven
+   (resolveSubtitleStyle's own output), this is purely the box mechanics. */
+.canvas-subtitle-item{position:absolute;box-sizing:border-box;white-space:pre-wrap;line-height:1.25;padding:4px 10px;border-radius:4px}
+.canvas-subtitle-item.canvas-movable{cursor:move}
 /* Step 5 follow-up (Defect 3): the real uploaded image/video asset, filling the Overlay's own
    box exactly — resizing/moving the .canvas-overlay-item parent (Defect 2's drag/resize) moves
    and resizes this with it for free, since it's just 100% of the parent. object-fit:contain
@@ -204,6 +213,14 @@
 /* Instruction 14: separates "uploaded audio files" from "audio already on the A1 timeline"
    within the same Audio tab's grid — spans both columns, same 2-column .media-grid untouched. */
 .media-grid-divider{grid-column:1/-1;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--v-muted);margin-top:6px;padding-top:6px;border-top:1px solid var(--v-line)}
+/* Phase 5 (Video Studio V2 — Subtitles / Transcript): the Subtitles Media Library tab is a
+   stacked form (Generate Captions / Paste Transcript / Global Style / segment list), not a
+   .media-grid of cards — its own minimal layout plus real textarea styling (the shared
+   .field/.properties-panel textarea rule doesn't reach a bare .subtitles-panel textarea). */
+.subtitles-panel{display:flex;flex-direction:column;gap:6px}
+.subtitles-panel h4{margin:10px 0 2px}
+.subtitles-panel h4:first-child{margin-top:0}
+.subtitles-panel textarea{width:100%;min-height:70px;resize:vertical;border:1px solid var(--v-line);background:var(--v-panel);color:var(--v-text);border-radius:7px;padding:9px 11px;box-sizing:border-box;font:inherit}
 /* Instruction 11: same hit-area/positioning as before (6px wide, full clip height, flush with
    each true edge — untouched) — only the visual treatment changed, because a translucent white
    tint was too subtle against the lighter clip colours (Overlay pink, Audio aqua especially).

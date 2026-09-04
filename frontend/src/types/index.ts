@@ -487,6 +487,43 @@ export interface Shape {
   order?: number
 }
 
+// Phase 5 (Video Studio V2 — Subtitles / Transcript). A subtitle segment's own visual styling —
+// the exact same subset of fields TextOverlay's own Phase 3 style already covers (font, colour,
+// background, alignment, outline, shadow), factored out as its own type here because it's used
+// TWICE per the spec's own "global style ... inherited, per-segment override" requirement: once
+// as the project-wide default (StudioContext's own subtitleStyle) and once, partially, as each
+// segment's optional override.
+export interface SubtitleStyle {
+  fontFamily: string
+  fontSize: number
+  color: string
+  bgColor: string
+  bgOpacity: number
+  align: 'left' | 'center' | 'right'
+  outlineColor?: string
+  outlineWidth?: number // px
+  shadowColor?: string
+  shadowBlur?: number // px
+}
+
+// Each segment carries its own real position/size (Requirement: "movable on canvas, resizable,
+// positionable anywhere") — never fixed to one predefined spot. `styleOverride` is a PARTIAL
+// SubtitleStyle: any field left unset falls back to StudioContext's subtitleStyle (the "global
+// style ... inherited" the spec asks for) — see resolveSubtitleStyle in CreateEditTab.tsx, the
+// one place that merge happens, so canvas render, Properties, and (later) export all agree.
+export interface SubtitleSegment {
+  id: string
+  text: string
+  startTime: number
+  endTime: number
+  x: number
+  y: number
+  width: number // "width/maxWidth" per the spec
+  styleOverride?: Partial<SubtitleStyle>
+  // Joins the same shared paint-order space every other real visual layer uses.
+  order?: number
+}
+
 export interface AudioTrack {
   id: string
   assetId?: number
