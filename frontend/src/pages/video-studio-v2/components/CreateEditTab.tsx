@@ -11,7 +11,7 @@ import {
   computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode,
 } from "../../../components/studio/videoPreviewUtils";
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
-import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, ReferenceVideo } from "../../../types";
+import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, ReferenceVideo } from "../../../types";
 import {
   CANVAS_PLATFORMS, findPlacement, fitCanvasBox, PENDING_REFRAME_NOTE, RESIZE_TARGET_PLATFORMS,
   defaultPlacementForPlatform, type CanvasPlacement,
@@ -23,7 +23,7 @@ const CREATION_MODES = ["AI Create (Text to Video)", "Templates", "Import Extern
 // its tab button was, so it falls straight into the same existing asset-grid branch that
 // already renders Videos/Images via the untouched mediaItems/fileInputRef/"+ Add Media" path.
 // "GIFs" stays out per this instruction ("Do not add GIFs yet").
-const MEDIA_TABS = ["All", "Videos", "Images", "Text", "Overlays", "Audio"] as const;
+const MEDIA_TABS = ["All", "Videos", "Images", "Text", "Overlays", "Lower Thirds", "Audio"] as const;
 
 // Instruction 3 scope: only canvas elements whose data model already carries (or can trivially
 // carry, via CanvasItemPosition) a position are made draggable — the headline text and the
@@ -55,6 +55,11 @@ type ResizeCorner = "nw" | "ne" | "sw" | "se";
 // starting position. Percent-of-canvas, same convention as MediaOverlay's own x/y/width/height.
 const DEFAULT_INSERT_BOX = { insertX: 56, insertY: 56, insertWidth: 38, insertHeight: 38 };
 
+// Phase 2 (Video Studio V2 — Lower Thirds): starting canvas box for a newly-added lower third —
+// the conventional broadcast lower-third shape/position (a wide, short band low on the frame,
+// left-aligned). Percent-of-canvas, same convention as MediaOverlay's own x/y/width/height.
+const DEFAULT_LOWER_THIRD_BOX = { x: 5, y: 78, width: 55, height: 14 };
+
 // STEP 7.9 (Save Draft + My Drafts): the complete, intentionally-saved project — everything
 // listed in the Step 7.9 requirement (video/audio/text/overlay/timeline/canvas/format state)
 // plus a lightweight "client/project identity" label. `clientIdentity` mirrors the two strings
@@ -69,6 +74,9 @@ interface DraftProjectSnapshot {
   textOverlays: TextOverlay[];
   mediaOverlays: MediaOverlay[];
   audioTracks: AudioTrack[];
+  // Phase 2 (Video Studio V2 — Lower Thirds): survives Save/Refresh/Reopen, same as every
+  // other real V2 timeline content array.
+  lowerThirds: LowerThird[];
   mediaAssets: Asset[];
   canvasFormat: CanvasFormatState;
   timeline: ReturnType<typeof useStudio>["timeline"];
@@ -147,6 +155,11 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     textOverlays, addTextOverlay: rawAddTextOverlay, updateTextOverlay: rawUpdateTextOverlay, removeTextOverlay: rawRemoveTextOverlay,
     audioTracks, addAudioTrack: rawAddAudioTrack, updateAudioTrack: rawUpdateAudioTrack, removeAudioTrack: rawRemoveAudioTrack,
     mediaOverlays, addMediaOverlay: rawAddMediaOverlay, updateMediaOverlay: rawUpdateMediaOverlay, removeMediaOverlay: rawRemoveMediaOverlay,
+    // Phase 2 (Video Studio V2 — Lower Thirds): lowerThirds already existed on StudioContext
+    // with full CRUD (legacy /studio's own LowerThirdBuilder.tsx already uses it) but had no
+    // canvas/timeline presence in Video Studio V2 until now — same "raw + history-wrapped"
+    // pattern as every other lane below.
+    lowerThirds, addLowerThird: rawAddLowerThird, updateLowerThird: rawUpdateLowerThird, removeLowerThird: rawRemoveLowerThird,
     mediaAssets, addMediaAsset, removeMediaAsset, uploadAsset,
     timeline, setTimeline,
     selectedElement, setSelectedElement,
@@ -169,7 +182,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // lines of StudioContext.tsx (used by legacy /studio too) and can't regress it.
   // Phase 1: additionalVideoClips (V2) joins the four content arrays Undo/Redo already covers —
   // same rules, same reasoning (playhead/selection stay excluded), just a fifth array.
-  type EditorSnapshot = { videoClips: VideoClip[]; additionalVideoClips: VideoClip[]; textOverlays: TextOverlay[]; mediaOverlays: MediaOverlay[]; audioTracks: AudioTrack[] };
+  // Phase 2: lowerThirds joins the content arrays Undo/Redo covers — same rules as V2's own
+  // additionalVideoClips addition before it.
+  type EditorSnapshot = { videoClips: VideoClip[]; additionalVideoClips: VideoClip[]; textOverlays: TextOverlay[]; mediaOverlays: MediaOverlay[]; audioTracks: AudioTrack[]; lowerThirds: LowerThird[] };
   const MAX_HISTORY = 50;
   const undoStackRef = useRef<EditorSnapshot[]>([]);
   const redoStackRef = useRef<EditorSnapshot[]>([]);
@@ -177,6 +192,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const currentEditorState = (): EditorSnapshot => ({
     videoClips: [...videoClips], additionalVideoClips: [...additionalVideoClips],
     textOverlays: [...textOverlays], mediaOverlays: [...mediaOverlays], audioTracks: [...audioTracks],
+    lowerThirds: [...lowerThirds],
   });
   // Called at the start of every mutating action (via the wrapped add/update/remove functions
   // below) — captures what the content looked like right BEFORE this action, so Undo can put it
@@ -198,6 +214,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     snap.mediaOverlays.forEach(o => rawAddMediaOverlay(o));
     audioTracks.forEach(a => rawRemoveAudioTrack(a.id));
     snap.audioTracks.forEach(a => rawAddAudioTrack(a));
+    lowerThirds.forEach(l => rawRemoveLowerThird(l.id));
+    snap.lowerThirds.forEach(l => rawAddLowerThird(l));
     // If whatever was selected no longer exists in the restored state, fall back to no
     // selection rather than leave Properties/Layers pointing at a stale id.
     if (selectedElement) {
@@ -207,6 +225,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         (selectedElement.type === "text" && snap.textOverlays.some(t => t.id === selectedElement.id)) ||
         (selectedElement.type === "overlay" && snap.mediaOverlays.some(o => o.id === selectedElement.id)) ||
         (selectedElement.type === "audio" && snap.audioTracks.some(a => a.id === selectedElement.id)) ||
+        (selectedElement.type === "lowerThird" && snap.lowerThirds.some(l => l.id === selectedElement.id)) ||
         selectedElement.type === "canvasItem"; // has no backing array to check against — leave as-is
       if (!stillExists) setSelectedElement(null);
     }
@@ -240,6 +259,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const addMediaOverlay = (o: MediaOverlay) => { pushHistory(); rawAddMediaOverlay(o); };
   const updateMediaOverlay = (id: string, upd: Partial<MediaOverlay>) => { pushHistory(); rawUpdateMediaOverlay(id, upd); };
   const removeMediaOverlay = (id: string) => { pushHistory(); rawRemoveMediaOverlay(id); };
+  const addLowerThird = (l: LowerThird) => { pushHistory(); rawAddLowerThird(l); };
+  const updateLowerThird = (id: string, upd: Partial<LowerThird>) => { pushHistory(); rawUpdateLowerThird(id, upd); };
+  const removeLowerThird = (id: string) => { pushHistory(); rawRemoveLowerThird(id); };
   const addAudioTrack = (a: AudioTrack) => { pushHistory(); rawAddAudioTrack(a); };
   const updateAudioTrack = (id: string, upd: Partial<AudioTrack>) => { pushHistory(); rawUpdateAudioTrack(id, upd); };
   const removeAudioTrack = (id: string) => { pushHistory(); rawRemoveAudioTrack(id); };
@@ -421,7 +443,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [draftsError, setDraftsError] = useState<string | null>(null);
 
   const buildProjectSnapshot = (): DraftProjectSnapshot => ({
-    videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, mediaAssets,
+    videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, mediaAssets,
     canvasFormat, timeline, canvasItemPositions,
     clientIdentity: PROJECT_CLIENT_IDENTITY,
   });
@@ -438,6 +460,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     textOverlays.forEach(t => rawRemoveTextOverlay(t.id));
     mediaOverlays.forEach(o => rawRemoveMediaOverlay(o.id));
     audioTracks.forEach(a => rawRemoveAudioTrack(a.id));
+    lowerThirds.forEach(l => rawRemoveLowerThird(l.id));
     setSelectedElement(null);
     undoStackRef.current = [];
     redoStackRef.current = [];
@@ -451,6 +474,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     (snap.textOverlays ?? []).forEach(t => rawAddTextOverlay(t));
     (snap.mediaOverlays ?? []).forEach(o => rawAddMediaOverlay(o));
     (snap.audioTracks ?? []).forEach(a => rawAddAudioTrack(a));
+    (snap.lowerThirds ?? []).forEach(l => rawAddLowerThird(l));
     // mediaAssets only has an additive action (no bulk replace) — skip any id already present
     // rather than duplicate entries already in the Media panel.
     const existingAssetIds = new Set(mediaAssets.map(a => a.id));
@@ -641,6 +665,18 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     origOffsetX: number; origOffsetY: number;
   } | null>(null);
   const insertCropDragMovedRef = useRef(false);
+  // Phase 2 (Video Studio V2 — Lower Thirds): identical drag/resize session shapes to Overlay's
+  // own above, writing into LowerThird's new x/y/width/height fields.
+  const dragLowerThirdSessionRef = useRef<{
+    id: string; boxW: number; boxH: number; elW: number; elH: number;
+    startClientX: number; startClientY: number; origX: number; origY: number;
+  } | null>(null);
+  const resizeLowerThirdSessionRef = useRef<{
+    id: string; boxW: number; boxH: number; startClientX: number; startClientY: number; corner: ResizeCorner;
+    origX: number; origY: number; origWidth: number; origHeight: number;
+  } | null>(null);
+  const lowerThirdDragMovedRef = useRef(false);
+  const lowerThirdResizeMovedRef = useRef(false);
   // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): drag-to-reposition session for a
   // clip in Fill mode — same "session ref + boxW/boxH + origin" shape as dragOverlaySessionRef
   // above, just writing into VideoClip's cropOffsetX/Y instead of MediaOverlay's x/y.
@@ -1668,6 +1704,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const selectedOverlay = selectedElement?.type === "overlay"
     ? mediaOverlays.find(o => o.id === selectedElement.id) ?? null
     : null;
+  // Phase 2 (Video Studio V2 — Lower Thirds): same pattern as selectedOverlay above.
+  const selectedLowerThird = selectedElement?.type === "lowerThird"
+    ? lowerThirds.find(l => l.id === selectedElement.id) ?? null
+    : null;
   // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): which clip the toolbar's Fit/Fill/
   // Crop & Reposition dropdown acts on — the explicitly selected clip if there is one (matching
   // every other per-clip control's precedence in this file), otherwise whichever clip the
@@ -1746,6 +1786,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     ? { kind: "Text", name: selectedText.text.slice(0, 24) || "Headline" }
     : selectedOverlay
     ? { kind: "Overlay", name: overlayLabel(selectedOverlay) }
+    : selectedLowerThird
+    ? { kind: "Lower Third", name: selectedLowerThird.name || "Lower Third" }
     : selectedAudio
     ? { kind: "Audio", name: selectedAudio.name }
     : selectedCanvasItem
@@ -2096,6 +2138,113 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     </>
   );
 
+  // ==== Phase 2 (Video Studio V2 — Lower Thirds) — canvas move/resize ====
+  // Identical percentage-delta-and-clamp drag/resize to MediaOverlay's own beginOverlayDrag/
+  // beginOverlayResize above, writing into LowerThird's new x/y/width/height instead — same
+  // "canvas position and size must persist" guarantee, since these write through
+  // updateLowerThird/rawUpdateLowerThird, the same StudioContext-backed array Save Draft and
+  // buildProjectSnapshot already read.
+  const handleLowerThirdDragMove = (e: MouseEvent) => {
+    const s = dragLowerThirdSessionRef.current;
+    if (!s) return;
+    if (!lowerThirdDragMovedRef.current) { pushHistory(); lowerThirdDragMovedRef.current = true; }
+    const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
+    const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
+    const maxX = Math.max(0, 100 - (s.elW / s.boxW) * 100);
+    const maxY = Math.max(0, 100 - (s.elH / s.boxH) * 100);
+    const nextX = Math.min(maxX, Math.max(0, s.origX + dxPct));
+    const nextY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    rawUpdateLowerThird(s.id, { x: nextX, y: nextY });
+  };
+  const handleLowerThirdDragEnd = () => {
+    dragLowerThirdSessionRef.current = null;
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 0);
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", handleLowerThirdDragMove);
+    window.removeEventListener("mouseup", handleLowerThirdDragEnd);
+  };
+  const beginLowerThirdDrag = (id: string) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedElement({ type: "lowerThird", id });
+    const boxEl = videoPreviewBoxRef.current;
+    const el = e.currentTarget as HTMLElement;
+    const lt = lowerThirds.find(l => l.id === id);
+    if (!boxEl || !lt) return;
+    lowerThirdDragMovedRef.current = false;
+    const boxRect = boxEl.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    dragLowerThirdSessionRef.current = {
+      id, boxW: boxRect.width, boxH: boxRect.height, elW: elRect.width, elH: elRect.height,
+      startClientX: e.clientX, startClientY: e.clientY,
+      origX: lt.x ?? DEFAULT_LOWER_THIRD_BOX.x, origY: lt.y ?? DEFAULT_LOWER_THIRD_BOX.y,
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleLowerThirdDragMove);
+    window.addEventListener("mouseup", handleLowerThirdDragEnd);
+  };
+  const handleLowerThirdResizeMove = (e: MouseEvent) => {
+    const s = resizeLowerThirdSessionRef.current;
+    if (!s) return;
+    if (!lowerThirdResizeMovedRef.current) { pushHistory(); lowerThirdResizeMovedRef.current = true; }
+    const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
+    const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
+    const isLeft = s.corner === "nw" || s.corner === "sw";
+    const isTop = s.corner === "nw" || s.corner === "ne";
+    let nextWidth = Math.max(MIN_ELEMENT_SIZE_PCT, isLeft ? s.origWidth - dxPct : s.origWidth + dxPct);
+    let nextHeight = Math.max(MIN_ELEMENT_SIZE_PCT, isTop ? s.origHeight - dyPct : s.origHeight + dyPct);
+    let nextX = isLeft ? s.origX + (s.origWidth - nextWidth) : s.origX;
+    let nextY = isTop ? s.origY + (s.origHeight - nextHeight) : s.origY;
+    if (isLeft && nextX < 0) { nextWidth += nextX; nextX = 0; }
+    if (isTop && nextY < 0) { nextHeight += nextY; nextY = 0; }
+    if (!isLeft && nextX + nextWidth > 100) nextWidth = 100 - nextX;
+    if (!isTop && nextY + nextHeight > 100) nextHeight = 100 - nextY;
+    rawUpdateLowerThird(s.id, {
+      x: nextX, y: nextY,
+      width: Math.max(MIN_ELEMENT_SIZE_PCT, nextWidth), height: Math.max(MIN_ELEMENT_SIZE_PCT, nextHeight),
+    });
+  };
+  const handleLowerThirdResizeEnd = () => {
+    resizeLowerThirdSessionRef.current = null;
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 0);
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", handleLowerThirdResizeMove);
+    window.removeEventListener("mouseup", handleLowerThirdResizeEnd);
+  };
+  const beginLowerThirdResize = (id: string, corner: ResizeCorner) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const boxEl = videoPreviewBoxRef.current;
+    const lt = lowerThirds.find(l => l.id === id);
+    if (!boxEl || !lt) return;
+    lowerThirdResizeMovedRef.current = false;
+    const boxRect = boxEl.getBoundingClientRect();
+    resizeLowerThirdSessionRef.current = {
+      id, boxW: boxRect.width, boxH: boxRect.height, startClientX: e.clientX, startClientY: e.clientY, corner,
+      origX: lt.x ?? DEFAULT_LOWER_THIRD_BOX.x, origY: lt.y ?? DEFAULT_LOWER_THIRD_BOX.y,
+      origWidth: lt.width ?? DEFAULT_LOWER_THIRD_BOX.width, origHeight: lt.height ?? DEFAULT_LOWER_THIRD_BOX.height,
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleLowerThirdResizeMove);
+    window.addEventListener("mouseup", handleLowerThirdResizeEnd);
+  };
+  // "+ Add Lower Third" (mirrors handleAddText's own creation pattern — no upload, an authored
+  // element created directly at the current playhead with sensible defaults, immediately
+  // selected so Properties is where the user refines it).
+  const handleAddLowerThird = () => {
+    const lt: LowerThird = {
+      id: crypto.randomUUID(), name: "New Lower Third", title: "",
+      animation: "slide_left", duration: 5, positionY: DEFAULT_LOWER_THIRD_BOX.y, showLogo: false,
+      startTime: timeline.currentTime,
+      endTime: Math.min(timeline.currentTime + 5, effectiveDuration || timeline.currentTime + 5),
+      ...DEFAULT_LOWER_THIRD_BOX,
+    };
+    addLowerThird(lt);
+    setSelectedElement({ type: "lowerThird", id: lt.id });
+  };
+
   // ==== Phase 1 (V2 Inserts/B-roll) — canvas move/resize/crop/fit ====
   // Requirement 5 ("move anywhere on canvas", "resize"): identical percentage-delta-and-clamp
   // drag/resize as MediaOverlay's own beginOverlayDrag/beginOverlayResize above, writing into
@@ -2275,18 +2424,22 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // Sorted descending (highest `order` first) so top-of-list reads as "front-most", matching
   // the same visual-editor convention (Photoshop/Figma-style layer panels) the canvas's own
   // ascending paint-order sort is the mirror image of.
-  type VisualLayerRef = { type: "text" | "overlay"; id: string; order: number; label: string };
+  // Phase 2: "lowerThird" joins the same shared paint-order space text/overlay already use —
+  // interleaves freely with either, matching the spec's own layering example ("...overlay image
+  // -> lower third -> text -> logo/watermark").
+  type VisualLayerRef = { type: "text" | "overlay" | "lowerThird"; id: string; order: number; label: string };
   const layersListVisual: VisualLayerRef[] = [
     ...textOverlays.map(t => ({ type: "text" as const, id: t.id, order: t.order ?? 0, label: `🔤 ${t.text.slice(0, 20)}` })),
     ...mediaOverlays.map(o => ({ type: "overlay" as const, id: o.id, order: o.order ?? 0, label: `🖼 ${overlayLabel(o)}` })),
+    ...lowerThirds.map(l => ({ type: "lowerThird" as const, id: l.id, order: l.order ?? 0, label: `▭ ${l.name || "Lower Third"}` })),
   ].sort((a, b) => b.order - a.order);
 
-  const dragLayerRef = useRef<{ type: "text" | "overlay"; id: string } | null>(null);
+  const dragLayerRef = useRef<{ type: "text" | "overlay" | "lowerThird"; id: string } | null>(null);
   // Dropping onto a row reassigns every visual layer's `order` in one pass — simplest way to
   // guarantee no two elements ever collide on the same order value after a reorder, and it
   // never touches anything else on either object (timing, position, size, media, filters, etc
   // are all separate fields, untouched here).
-  const reorderVisualLayers = (dragged: { type: "text" | "overlay"; id: string }, targetIndex: number) => {
+  const reorderVisualLayers = (dragged: { type: "text" | "overlay" | "lowerThird"; id: string }, targetIndex: number) => {
     const withoutDragged = layersListVisual.filter(l => !(l.type === dragged.type && l.id === dragged.id));
     const draggedEntry = layersListVisual.find(l => l.type === dragged.type && l.id === dragged.id);
     if (!draggedEntry) return;
@@ -2298,7 +2451,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     withoutDragged.forEach((l, i) => {
       const order = n - i; // index 0 (top of list) gets the highest order = front-most on canvas
       if (l.type === "text") rawUpdateTextOverlay(l.id, { order });
-      else rawUpdateMediaOverlay(l.id, { order });
+      else if (l.type === "overlay") rawUpdateMediaOverlay(l.id, { order });
+      else rawUpdateLowerThird(l.id, { order });
     });
   };
 
@@ -2426,11 +2580,47 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       ),
     }));
 
+  // Phase 2 (Video Studio V2 — Lower Thirds): real LowerThird items on canvas — same
+  // "gated to its own startTime/endTime, draggable/resizable via x/y/width/height" pattern as
+  // Overlay/Text above. Content is edited via Properties (name/title fields), not inline on
+  // canvas, same simpler convention Overlay itself uses (Text alone has the richer
+  // double-click-to-edit-in-place system). `endTime`/x/y/width/height are always set by
+  // handleAddLowerThird for anything created in Video Studio V2 — the `?? DEFAULT_LOWER_THIRD_BOX`
+  // fallback exists only for type-safety against legacy /studio's older LowerThird shape (which
+  // predates these fields and has no endTime at all — such an item simply never satisfies the
+  // startTime/endTime filter below, so it's excluded from V2's canvas rather than rendered with
+  // guessed timing).
+  const lowerThirdEntries = lowerThirds
+    .filter(l => l.endTime !== undefined && timeline.currentTime >= l.startTime && timeline.currentTime < l.endTime)
+    .map(l => ({
+      order: l.order ?? 0,
+      node: (
+    <div
+      key={l.id}
+      className={`canvas-lowerthird-item canvas-selectable canvas-movable ${selectedElement?.type === "lowerThird" && selectedElement.id === l.id ? "canvas-el-selected" : ""}`}
+      style={{
+        left: `${l.x ?? DEFAULT_LOWER_THIRD_BOX.x}%`, top: `${l.y ?? DEFAULT_LOWER_THIRD_BOX.y}%`,
+        width: `${l.width ?? DEFAULT_LOWER_THIRD_BOX.width}%`, height: `${l.height ?? DEFAULT_LOWER_THIRD_BOX.height}%`,
+      }}
+      onMouseDown={beginLowerThirdDrag(l.id)}
+      onClick={e => e.stopPropagation()}
+      title="Lower Third — click and drag to move"
+    >
+      <span className="lowerthird-bar" />
+      <span className="lowerthird-text">
+        <b>{l.name || "Name"}</b>
+        {l.title && <small>{l.title}</small>}
+      </span>
+      {selectedElement?.type === "lowerThird" && selectedElement.id === l.id && resizeHandles(corner => beginLowerThirdResize(l.id, corner))}
+    </div>
+      ),
+    }));
+
   // Ascending sort: lowest `order` paints first (furthest back), highest paints last (furthest
   // front) — plain DOM paint order, no z-index needed. Ties (both default to 0, e.g. before any
   // reorder has ever happened) keep Array.sort's stable ordering, which preserves the exact
   // pre-existing "all Overlays behind all Text" look until the user actually reorders something.
-  const visualLayers = [...overlayEntries, ...textEntries]
+  const visualLayers = [...overlayEntries, ...textEntries, ...lowerThirdEntries]
     .sort((a, b) => a.order - b.order)
     .map(e => e.node);
 
@@ -2531,6 +2721,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     rawUpdateMediaOverlay(o.id, { startTime: Math.max(0, Math.min(proposedStart, o.endTime - MIN_CLIP_DURATION)) });
   const trimOverlayRight = (o: MediaOverlay, proposedEnd: number) =>
     rawUpdateMediaOverlay(o.id, { endTime: Math.max(o.startTime + MIN_CLIP_DURATION, proposedEnd) });
+  // Phase 2: same shape as trimOverlayLeft/Right above — LowerThird has no source media to
+  // reveal/hide (like Text), so this is just moving the visible start/end window.
+  const trimLowerThirdLeft = (l: LowerThird, proposedStart: number) =>
+    rawUpdateLowerThird(l.id, { startTime: Math.max(0, Math.min(proposedStart, (l.endTime ?? proposedStart) - MIN_CLIP_DURATION)) });
+  const trimLowerThirdRight = (l: LowerThird, proposedEnd: number) =>
+    rawUpdateLowerThird(l.id, { endTime: Math.max(l.startTime + MIN_CLIP_DURATION, proposedEnd) });
 
   // Step 5: Split / Delete / Ripple Delete. The scissors (✂), delete (⌫) and one of the two
   // previously-inert mock icons (◫, repurposed for Ripple Delete — ◩ and ⧉ stay untouched/
@@ -2611,6 +2807,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       rawUpdateMediaOverlay(o.id, { endTime: p });
       rawAddMediaOverlay({ ...o, id: rightId, startTime: p }); // same underlying asset/url, independent timeline segment
       setSelectedElement({ type: "overlay", id: rightId });
+    } else if (selectedElement.type === "lowerThird") {
+      const l = lowerThirds.find(x => x.id === selectedElement.id);
+      if (!l || l.endTime === undefined || p <= l.startTime + MIN_CLIP_DURATION || p >= l.endTime - MIN_CLIP_DURATION) return;
+      pushHistory();
+      const rightId = crypto.randomUUID();
+      rawUpdateLowerThird(l.id, { endTime: p });
+      rawAddLowerThird({ ...l, id: rightId, startTime: p });
+      setSelectedElement({ type: "lowerThird", id: rightId });
     }
   };
 
@@ -2639,6 +2843,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     else if (selectedElement.type === "audio") removeAudioTrack(selectedElement.id);
     else if (selectedElement.type === "text") removeTextOverlay(selectedElement.id);
     else if (selectedElement.type === "overlay") removeMediaOverlay(selectedElement.id);
+    else if (selectedElement.type === "lowerThird") removeLowerThird(selectedElement.id);
     else return;
     setSelectedElement(null); // Properties/Layers fall back to their existing "nothing selected" state
   };
@@ -2692,6 +2897,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = o.endTime - o.startTime;
       rawRemoveMediaOverlay(o.id);
       mediaOverlays.forEach(x => { if (x.id !== o.id && x.startTime >= o.endTime - RIPPLE_EPSILON) rawUpdateMediaOverlay(x.id, { startTime: x.startTime - dur, endTime: x.endTime - dur }); });
+    } else if (selectedElement.type === "lowerThird") {
+      const l = lowerThirds.find(x => x.id === selectedElement.id);
+      if (!l || l.endTime === undefined) return;
+      const lEndTime = l.endTime;
+      pushHistory();
+      const dur = lEndTime - l.startTime;
+      rawRemoveLowerThird(l.id);
+      lowerThirds.forEach(x => { if (x.id !== l.id && x.endTime !== undefined && x.startTime >= lEndTime - RIPPLE_EPSILON) rawUpdateLowerThird(x.id, { startTime: x.startTime - dur, endTime: x.endTime - dur }); });
     } else {
       return;
     }
@@ -2727,6 +2940,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const o = mediaOverlays.find(x => x.id === selectedElement.id);
       if (!o) return;
       pushHistory(); trimOverlayLeft(o, p);
+    } else if (selectedElement.type === "lowerThird") {
+      const l = lowerThirds.find(x => x.id === selectedElement.id);
+      if (!l) return;
+      pushHistory(); trimLowerThirdLeft(l, p);
     }
   };
   const trimSelectedEndToPlayhead = () => {
@@ -2752,6 +2969,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const o = mediaOverlays.find(x => x.id === selectedElement.id);
       if (!o) return;
       pushHistory(); trimOverlayRight(o, p);
+    } else if (selectedElement.type === "lowerThird") {
+      const l = lowerThirds.find(x => x.id === selectedElement.id);
+      if (!l) return;
+      pushHistory(); trimLowerThirdRight(l, p);
     }
   };
 
@@ -2769,6 +2990,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     | { kind: "audio"; data: AudioTrack }
     | { kind: "text"; data: TextOverlay }
     | { kind: "overlay"; data: MediaOverlay }
+    | { kind: "lowerThird"; data: LowerThird }
     | null
   >(null);
   const copySelected = () => {
@@ -2788,6 +3010,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     } else if (selectedElement.type === "overlay") {
       const o = mediaOverlays.find(x => x.id === selectedElement.id);
       if (o) clipboardRef.current = { kind: "overlay", data: o };
+    } else if (selectedElement.type === "lowerThird") {
+      const l = lowerThirds.find(x => x.id === selectedElement.id);
+      if (l) clipboardRef.current = { kind: "lowerThird", data: l };
     }
   };
   const pasteClipboard = () => {
@@ -2818,6 +3043,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = cb.data.endTime - cb.data.startTime;
       addMediaOverlay({ ...cb.data, id, startTime: p, endTime: p + dur });
       setSelectedElement({ type: "overlay", id });
+    } else if (cb.kind === "lowerThird") {
+      const dur = (cb.data.endTime ?? cb.data.startTime + 5) - cb.data.startTime;
+      addLowerThird({ ...cb.data, id, startTime: p, endTime: p + dur });
+      setSelectedElement({ type: "lowerThird", id });
     }
   };
   const duplicateSelected = () => {
@@ -2856,6 +3085,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = o.endTime - o.startTime;
       addMediaOverlay({ ...o, id, startTime: o.endTime, endTime: o.endTime + dur });
       setSelectedElement({ type: "overlay", id });
+    } else if (selectedElement.type === "lowerThird") {
+      const l = lowerThirds.find(x => x.id === selectedElement.id);
+      if (!l || l.endTime === undefined) return;
+      const dur = l.endTime - l.startTime;
+      addLowerThird({ ...l, id, startTime: l.endTime, endTime: l.endTime + dur });
+      setSelectedElement({ type: "lowerThird", id });
     }
   };
 
@@ -2881,6 +3116,18 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const maxX = Math.max(0, 100 - o.width);
       const maxY = Math.max(0, 100 - o.height);
       updateMediaOverlay(o.id, { x: Math.min(maxX, Math.max(0, o.x + dx)), y: Math.min(maxY, Math.max(0, o.y + dy)) });
+    } else if (selectedElement?.type === "lowerThird") {
+      // Phase 2: same clamp shape as Overlay's own above — LowerThird has real width/height too.
+      const l = lowerThirds.find(x => x.id === selectedElement.id);
+      if (!l) return;
+      const w = l.width ?? DEFAULT_LOWER_THIRD_BOX.width;
+      const h = l.height ?? DEFAULT_LOWER_THIRD_BOX.height;
+      const maxX = Math.max(0, 100 - w);
+      const maxY = Math.max(0, 100 - h);
+      updateLowerThird(l.id, {
+        x: Math.min(maxX, Math.max(0, (l.x ?? DEFAULT_LOWER_THIRD_BOX.x) + dx)),
+        y: Math.min(maxY, Math.max(0, (l.y ?? DEFAULT_LOWER_THIRD_BOX.y) + dy)),
+      });
     }
   };
   // STEP 7 (Keyboard Shortcuts): Left/Right step by exactly one frame when there's no movable
@@ -2983,7 +3230,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         case "ArrowRight":
         case "ArrowUp":
         case "ArrowDown": {
-          const isMovableCanvasSelection = selectedElement?.type === "text" || selectedElement?.type === "overlay";
+          const isMovableCanvasSelection = selectedElement?.type === "text" || selectedElement?.type === "overlay" || selectedElement?.type === "lowerThird";
           if (isMovableCanvasSelection) {
             e.preventDefault();
             const nudge = e.shiftKey ? CANVAS_NUDGE_LARGE_PCT : CANVAS_NUDGE_SMALL_PCT;
@@ -3065,6 +3312,23 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             </div>
           ))}
           <button className="add-media" type="button" onClick={() => overlayFileInputRef.current?.click()}>+<br />Add Overlay</button>
+        </div>
+      ) : mediaTab === "Lower Thirds" ? (
+        // Phase 2 (Video Studio V2 — Lower Thirds): same "no upload, create + list + select"
+        // shape as the Text tab above — a lower third is authored content, not an uploaded file.
+        <div className="media-grid">
+          {lowerThirds.map(l => (
+            <div
+              key={l.id}
+              className={`media-card text-card ${selectedElement?.type === "lowerThird" && selectedElement.id === l.id ? "canvas-el-selected" : ""}`}
+              onClick={() => setSelectedElement({ type: "lowerThird", id: l.id })}
+              title="Click to select — edit it in the Properties panel"
+            >
+              <div className="fake-media text-swatch">{l.name || "Lower Third"}</div>
+              <small>{l.title || "Lower third"}</small>
+            </div>
+          ))}
+          <button className="add-media" type="button" onClick={handleAddLowerThird}>+<br />Add Lower Third</button>
         </div>
       ) : mediaTab === "Audio" ? (
         <div className="media-grid">
@@ -3755,6 +4019,44 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             )}
             <p className="empty-hint">Detailed Overlay properties (crop, opacity) aren't built yet — selection only, for now.</p>
           </>
+        ) : selectedLowerThird ? (
+          <>
+            {/* Phase 2 (Video Studio V2 — Lower Thirds) — real, editable settings, same
+                live-binding convention as every other selected type. Name/Title/animation are
+                the exact same fields legacy /studio's LowerThirdBuilder.tsx already writes —
+                this Properties panel is a second, real editor over that same data, not a
+                parallel model. */}
+            <h4>Lower Third</h4>
+            <label className="stack-field"><span>Name / Speaker</span>
+              <input value={selectedLowerThird.name} onFocus={pushHistory}
+                onChange={e => rawUpdateLowerThird(selectedLowerThird.id, { name: e.target.value })} placeholder="e.g. Sameena Khan" />
+            </label>
+            <label className="stack-field"><span>Title / Role</span>
+              <input value={selectedLowerThird.title} onFocus={pushHistory}
+                onChange={e => rawUpdateLowerThird(selectedLowerThird.id, { title: e.target.value })} placeholder="e.g. Marketing Director" />
+            </label>
+            <label className="stack-field"><span>Animation</span>
+              <select value={selectedLowerThird.animation} onChange={e => updateLowerThird(selectedLowerThird.id, { animation: e.target.value as LowerThird["animation"] })}>
+                <option value="slide_left">← Slide In</option>
+                <option value="fade_in">Fade In</option>
+                <option value="pop_up">↑ Pop Up</option>
+              </select>
+            </label>
+            <label className="stack-field" style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: "row" }}>
+              <input type="checkbox" checked={selectedLowerThird.showLogo}
+                onChange={e => updateLowerThird(selectedLowerThird.id, { showLogo: e.target.checked })} />
+              <span>Show brand logo</span>
+            </label>
+            <h4>Transform</h4>
+            <div className="row">
+              <input value={`X ${Math.round(selectedLowerThird.x ?? DEFAULT_LOWER_THIRD_BOX.x)}%`} readOnly />
+              <input value={`Y ${Math.round(selectedLowerThird.y ?? DEFAULT_LOWER_THIRD_BOX.y)}%`} readOnly />
+            </div>
+            <div className="row">
+              <input value={`W ${Math.round(selectedLowerThird.width ?? DEFAULT_LOWER_THIRD_BOX.width)}%`} readOnly />
+              <input value={`H ${Math.round(selectedLowerThird.height ?? DEFAULT_LOWER_THIRD_BOX.height)}%`} readOnly />
+            </div>
+          </>
         ) : selectedAudio ? (
           <>
             <h4>Audio</h4>
@@ -3842,7 +4144,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             <li key={a.id} className={selectedElement?.type === "audio" && selectedElement.id === a.id ? "active" : ""}
               onClick={() => setSelectedElement({ type: "audio", id: a.id })}>🎵 {a.name}</li>
           ))}
-          {videoClips.length + textOverlays.length + audioTracks.length + mediaOverlays.length === 0 && (
+          {videoClips.length + additionalVideoClips.length + textOverlays.length + audioTracks.length + mediaOverlays.length + lowerThirds.length === 0 && (
             <p className="empty-hint">No layers yet.</p>
           )}
         </ul>
@@ -4381,6 +4683,21 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 onMove={newStart => rawUpdateMediaOverlay(o.id, { startTime: newStart, endTime: newStart + (o.endTime - o.startTime) })}
                 onTrimLeft={p => trimOverlayLeft(o, p)} onTrimRight={p => trimOverlayRight(o, p)} onGestureStart={pushHistory}
                 color="pink" label="Overlay" />
+            ))}
+          </TrackRow>
+          {/* Phase 2 (Video Studio V2 — Lower Thirds): same ClipBlock/select/move/trim mechanics
+              every other real lane already has. Only lower thirds with a real endTime (i.e.
+              every one created in Video Studio V2 — see handleAddLowerThird) render here; a
+              legacy-shaped one from /studio's own LowerThirdBuilder (no endTime) has no defined
+              duration for a timeline clip and is correctly left off this row rather than guessed. */}
+          <TrackRow label="LT1 Lower Third">
+            {lowerThirds.filter((l): l is LowerThird & { endTime: number } => l.endTime !== undefined).map(l => (
+              <ClipBlock key={l.id} start={l.startTime} end={l.endTime} total={effectiveDuration}
+                selected={selectedElement?.type === "lowerThird" && selectedElement.id === l.id}
+                onClick={() => setSelectedElement({ type: "lowerThird", id: l.id })}
+                onMove={newStart => rawUpdateLowerThird(l.id, { startTime: newStart, endTime: newStart + (l.endTime - l.startTime) })}
+                onTrimLeft={p => trimLowerThirdLeft(l, p)} onTrimRight={p => trimLowerThirdRight(l, p)} onGestureStart={pushHistory}
+                color="teal" label={l.name || "Lower Third"} />
             ))}
           </TrackRow>
           <TrackRow label="A1 Audio" highlight={dragOverKind === "audio"}>

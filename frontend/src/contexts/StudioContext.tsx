@@ -57,6 +57,10 @@ export type SelectedElement =
   // (previously the only gap: MediaOverlay had a full data model but no SelectedElement
   // variant at all, so nothing could ever select one).
   | { type: 'overlay'; id: string }
+  // Phase 2 (Video Studio V2 — Lower Thirds): same real-backing-data-model pattern as
+  // 'overlay' above, over LowerThird instead of MediaOverlay. Additive only; legacy /studio's
+  // own LowerThirdBuilder.tsx has no canvas selection concept and never produces this variant.
+  | { type: 'lowerThird'; id: string }
   // A canvas element with no backing data-model entry yet (Video Studio V2's placeholder
   // mock content — headline, badge, CTA, etc.) — carries just enough for Properties'
   // "Type / Name" identification. Additive only; legacy /studio never produces this variant.

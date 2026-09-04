@@ -482,10 +482,28 @@ export interface LowerThird {
   name: string
   title: string
   animation: 'slide_left' | 'fade_in' | 'pop_up'
+  // duration/positionY predate Video Studio V2 and are what legacy /studio's own
+  // LowerThirdBuilder.tsx still reads/writes — kept exactly as-is, untouched, so that
+  // component (out of scope for this work) keeps working unchanged. Video Studio V2's own
+  // canvas/timeline logic uses endTime/x/y/width/height below instead, the same real
+  // startTime+endTime+box-position shape every other V2 visual element (TextOverlay,
+  // MediaOverlay) already has — additive only, nothing here replaces or removes the above.
   duration: number
   positionY: number
   showLogo: boolean
   startTime: number
+  // Phase 2 (Video Studio V2 — Lower Thirds): optional so any LowerThird predating this field
+  // (there are none in practice — no UI ever created one before Phase 2 — but the type stays
+  // structurally consistent with how every other additive V2 field in this file is declared)
+  // never needs a migration. A V2 lower third always sets all four on creation.
+  endTime?: number
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  // Joins the same shared paint-order numeric space TextOverlay.order/MediaOverlay.order
+  // already use, so Lower Thirds interleave correctly in the Layers list and on canvas.
+  order?: number
 }
 
 export interface IntroOutro {
