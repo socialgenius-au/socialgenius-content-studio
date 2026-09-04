@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { findActiveClip, computeEndTimeForSpeed } from "./videoPreviewUtils";
+import {
+  findActiveClip, computeEndTimeForSpeed,
+  computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode,
+} from "./videoPreviewUtils";
 import type { VideoClip } from "../../types";
 
 // Video Editor Playback Regression (found via Sameena's Stage-4 manual test) — regression suite
@@ -146,5 +149,50 @@ describe("findActiveClip — clips not stored in chronological array order", () 
     ];
     expect(findActiveClip(clips, 2)?.id).toBe("first");
     expect(findActiveClip(clips, 8)?.id).toBe("second");
+  });
+});
+
+// Phase 1 (V2 Inserts/B-roll) — same "V1 must remain unchanged" spirit as this suite's existing
+// coverage: findActiveClip above is reused as-is for additionalVideoClips (V2), so it needs no
+// new tests of its own here; what's genuinely new is the trim-clamp math and the B-roll-audio
+// default, both extracted as pure functions specifically so they're independently verifiable.
+
+describe("computeInsertTrimLeft / computeInsertTrimRight — V2 trim clamp math", () => {
+  const MIN = 0.2; // mirrors CreateEditTab.tsx's own MIN_CLIP_DURATION
+
+  it("moves the start forward/back within the un-trimmed source range", () => {
+    const clip = { startTime: 5, endTime: 15, trimIn: 2 }; // 2s already trimmed off the front
+    expect(computeInsertTrimLeft(clip, 8, MIN)).toEqual({ startTime: 8, trimIn: 5 });
+    expect(computeInsertTrimLeft(clip, 4, MIN)).toEqual({ startTime: 4, trimIn: 1 });
+  });
+
+  it("never reveals source material earlier than the file actually has", () => {
+    // trimIn=2 means the earliest legal startTime is 5 - 2 = 3, however far left proposedStart asks.
+    const clip = { startTime: 5, endTime: 15, trimIn: 2 };
+    expect(computeInsertTrimLeft(clip, -50, MIN)).toEqual({ startTime: 3, trimIn: 0 });
+  });
+
+  it("never trims a clip down to less than MIN_CLIP_DURATION", () => {
+    const clip = { startTime: 5, endTime: 15, trimIn: 0 };
+    const result = computeInsertTrimLeft(clip, 14.9, MIN);
+    expect(result.startTime).toBeCloseTo(15 - MIN, 6);
+  });
+
+  it("mirrors the same three rules on the right/end edge", () => {
+    const clip = { startTime: 5, endTime: 15, trimOut: 3 }; // 3s of source still available past endTime
+    expect(computeInsertTrimRight(clip, 12, MIN)).toEqual({ endTime: 12, trimOut: 6 });
+    expect(computeInsertTrimRight(clip, 999, MIN)).toEqual({ endTime: 18, trimOut: 0 }); // can't exceed endTime+trimOut
+    const floored = computeInsertTrimRight(clip, 5.05, MIN);
+    expect(floored.endTime).toBeCloseTo(5 + MIN, 6);
+  });
+});
+
+describe("defaultBrollAudioMode — Requirement 9 ('do NOT blindly mix unwanted audio')", () => {
+  it("a V2 clip with detected embedded audio starts muted, never auto-audible", () => {
+    expect(defaultBrollAudioMode(true)).toBe("muted");
+  });
+
+  it("a silent V2 clip gets no B-roll audio state at all — nothing to choose", () => {
+    expect(defaultBrollAudioMode(false)).toBeUndefined();
   });
 });

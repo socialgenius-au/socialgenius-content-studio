@@ -339,6 +339,35 @@ export interface VideoClip {
   fitMode?: 'fit' | 'fill'
   cropOffsetX?: number
   cropOffsetY?: number
+  // Phase 1 (V2 Inserts/B-roll): canvas placement, meaningful ONLY on an entry in
+  // StudioContext's additionalVideoClips array (V2) — a V1 clip never sets these and stays
+  // full-frame exactly as before. Percent-of-canvas, same convention as MediaOverlay's own
+  // x/y/width/height, so the same drag/resize math already used for Overlay applies unchanged.
+  // Undefined on any V2 clip until it's actually moved/resized — insertAdditionalVideoClipAt
+  // gives every new V2 clip an explicit starting box, so this is never read as "undefined" in
+  // practice, just optional for type-safety/backward-compat.
+  insertX?: number
+  insertY?: number
+  insertWidth?: number
+  insertHeight?: number
+  // Phase 1 — Requirement 5 ("opacity where appropriate"): meaningful only on a V2 clip, same
+  // 0-100 convention MediaOverlay's own `opacity` field would use if it were on that scale
+  // (MediaOverlay's is actually 0-1 — VideoClip's other %-based fields here are all 0-100, so
+  // this follows THIS type's own convention instead). Undefined/100 = fully opaque.
+  opacity?: number
+  // Phase 1: how a V2 clip's own embedded audio is handled — meaningful ONLY when the source
+  // video actually has an embedded audio track (probeHasAudioTrack). 'keep' mirrors it onto an
+  // independent AudioTrack (A1), exactly like V1's own embedded-audio separation. 'muted' and
+  // 'removed' both mean "play back silent, no AudioTrack created" at this layer — genuinely
+  // stripping the audio stream from the file is an export-time (ffmpeg) concern, out of Phase
+  // 1's scope (preview/canvas/timeline only) — the distinct value is still stored so a later
+  // export phase can act on the user's real choice rather than only ever seeing "muted".
+  brollAudio?: 'keep' | 'muted' | 'removed'
+  // Phase 1: id of the AudioTrack (in StudioContext's audioTracks/A1) created when brollAudio
+  // was set to 'keep' — lets switching back to 'muted'/'removed' clean up that exact track
+  // (and switching to 'keep' again be a no-op if it's still there) instead of stacking
+  // duplicate tracks on repeated toggling. Undefined whenever brollAudio isn't 'keep'.
+  brollAudioTrackId?: string
 }
 
 export interface TextOverlay {

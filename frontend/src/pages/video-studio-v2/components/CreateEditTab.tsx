@@ -6,7 +6,10 @@ import {
   MEDIA_ASSET_DRAG_TYPE, dragKindMimeType,
   type MediaAssetDragPayload, type MediaAssetDragKind,
 } from "../../../components/studio/dragTypes";
-import { findActiveClip, probeVideoDuration, probeHasAudioTrack, computeEndTimeForSpeed } from "../../../components/studio/videoPreviewUtils";
+import {
+  findActiveClip, probeVideoDuration, probeHasAudioTrack, computeEndTimeForSpeed,
+  computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode,
+} from "../../../components/studio/videoPreviewUtils";
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
 import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, ReferenceVideo } from "../../../types";
 import {
@@ -47,6 +50,11 @@ const PROJECT_CLIENT_IDENTITY = { client: "ABC Tiles", campaign: "Builders Footf
 const MIN_ELEMENT_SIZE_PCT = 4;
 type ResizeCorner = "nw" | "ne" | "sw" | "se";
 
+// Phase 1 (V2 Inserts/B-roll): starting canvas box for a newly-inserted V2 clip — a
+// picture-in-picture-sized box in the bottom-right quadrant, the conventional B-roll/PiP
+// starting position. Percent-of-canvas, same convention as MediaOverlay's own x/y/width/height.
+const DEFAULT_INSERT_BOX = { insertX: 56, insertY: 56, insertWidth: 38, insertHeight: 38 };
+
 // STEP 7.9 (Save Draft + My Drafts): the complete, intentionally-saved project — everything
 // listed in the Step 7.9 requirement (video/audio/text/overlay/timeline/canvas/format state)
 // plus a lightweight "client/project identity" label. `clientIdentity` mirrors the two strings
@@ -56,6 +64,8 @@ type ResizeCorner = "nw" | "ne" | "sw" | "se";
 // state, both places would read from it together.
 interface DraftProjectSnapshot {
   videoClips: VideoClip[];
+  // Phase 1 (V2 Inserts/B-roll) — Requirement 7: V2 clips must survive Save/Refresh/Reopen.
+  additionalVideoClips: VideoClip[];
   textOverlays: TextOverlay[];
   mediaOverlays: MediaOverlay[];
   audioTracks: AudioTrack[];
@@ -129,6 +139,11 @@ function formatShotTimecode(t: number): string {
 export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
   const {
     videoClips, addVideoClip: rawAddVideoClip, updateVideoClip: rawUpdateVideoClip, removeVideoClip: rawRemoveVideoClip,
+    // Phase 1 (V2 Inserts/B-roll): additionalVideoClips already existed on StudioContext with
+    // full CRUD (see StudioContext.tsx) but had no consumer anywhere in Video Studio V2 until
+    // now — reused as-is, same "raw + history-wrapped" pattern as every other lane below.
+    additionalVideoClips, addAdditionalVideoClip: rawAddAdditionalVideoClip,
+    updateAdditionalVideoClip: rawUpdateAdditionalVideoClip, removeAdditionalVideoClip: rawRemoveAdditionalVideoClip,
     textOverlays, addTextOverlay: rawAddTextOverlay, updateTextOverlay: rawUpdateTextOverlay, removeTextOverlay: rawRemoveTextOverlay,
     audioTracks, addAudioTrack: rawAddAudioTrack, updateAudioTrack: rawUpdateAudioTrack, removeAudioTrack: rawRemoveAudioTrack,
     mediaOverlays, addMediaOverlay: rawAddMediaOverlay, updateMediaOverlay: rawUpdateMediaOverlay, removeMediaOverlay: rawRemoveMediaOverlay,
@@ -152,13 +167,16 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // RAW (non-history-pushing) add/remove actions — a deliberate choice over adding a new bulk-
   // "replace the whole array" action to the shared StudioContext, so this step touches zero
   // lines of StudioContext.tsx (used by legacy /studio too) and can't regress it.
-  type EditorSnapshot = { videoClips: VideoClip[]; textOverlays: TextOverlay[]; mediaOverlays: MediaOverlay[]; audioTracks: AudioTrack[] };
+  // Phase 1: additionalVideoClips (V2) joins the four content arrays Undo/Redo already covers —
+  // same rules, same reasoning (playhead/selection stay excluded), just a fifth array.
+  type EditorSnapshot = { videoClips: VideoClip[]; additionalVideoClips: VideoClip[]; textOverlays: TextOverlay[]; mediaOverlays: MediaOverlay[]; audioTracks: AudioTrack[] };
   const MAX_HISTORY = 50;
   const undoStackRef = useRef<EditorSnapshot[]>([]);
   const redoStackRef = useRef<EditorSnapshot[]>([]);
   const [historyTick, setHistoryTick] = useState(0);
   const currentEditorState = (): EditorSnapshot => ({
-    videoClips: [...videoClips], textOverlays: [...textOverlays], mediaOverlays: [...mediaOverlays], audioTracks: [...audioTracks],
+    videoClips: [...videoClips], additionalVideoClips: [...additionalVideoClips],
+    textOverlays: [...textOverlays], mediaOverlays: [...mediaOverlays], audioTracks: [...audioTracks],
   });
   // Called at the start of every mutating action (via the wrapped add/update/remove functions
   // below) — captures what the content looked like right BEFORE this action, so Undo can put it
@@ -172,6 +190,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const applyEditorSnapshot = (snap: EditorSnapshot) => {
     videoClips.forEach(c => rawRemoveVideoClip(c.id));
     snap.videoClips.forEach(c => rawAddVideoClip(c));
+    additionalVideoClips.forEach(c => rawRemoveAdditionalVideoClip(c.id));
+    snap.additionalVideoClips.forEach(c => rawAddAdditionalVideoClip(c));
     textOverlays.forEach(t => rawRemoveTextOverlay(t.id));
     snap.textOverlays.forEach(t => rawAddTextOverlay(t));
     mediaOverlays.forEach(o => rawRemoveMediaOverlay(o.id));
@@ -183,6 +203,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (selectedElement) {
       const stillExists =
         (selectedElement.type === "clip" && selectedElement.lane === "video" && snap.videoClips.some(c => c.id === selectedElement.id)) ||
+        (selectedElement.type === "clip" && selectedElement.lane === "additional" && snap.additionalVideoClips.some(c => c.id === selectedElement.id)) ||
         (selectedElement.type === "text" && snap.textOverlays.some(t => t.id === selectedElement.id)) ||
         (selectedElement.type === "overlay" && snap.mediaOverlays.some(o => o.id === selectedElement.id)) ||
         (selectedElement.type === "audio" && snap.audioTracks.some(a => a.id === selectedElement.id)) ||
@@ -210,6 +231,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const addVideoClip = (c: VideoClip) => { pushHistory(); rawAddVideoClip(c); };
   const updateVideoClip = (id: string, upd: Partial<VideoClip>) => { pushHistory(); rawUpdateVideoClip(id, upd); };
   const removeVideoClip = (id: string) => { pushHistory(); rawRemoveVideoClip(id); };
+  const addAdditionalVideoClip = (c: VideoClip) => { pushHistory(); rawAddAdditionalVideoClip(c); };
+  const updateAdditionalVideoClip = (id: string, upd: Partial<VideoClip>) => { pushHistory(); rawUpdateAdditionalVideoClip(id, upd); };
+  const removeAdditionalVideoClip = (id: string) => { pushHistory(); rawRemoveAdditionalVideoClip(id); };
   const addTextOverlay = (t: TextOverlay) => { pushHistory(); rawAddTextOverlay(t); };
   const updateTextOverlay = (id: string, upd: Partial<TextOverlay>) => { pushHistory(); rawUpdateTextOverlay(id, upd); };
   const removeTextOverlay = (id: string) => { pushHistory(); rawRemoveTextOverlay(id); };
@@ -253,6 +277,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // they only gate which handlers respond to canvas interaction and which menu renders.
   const [cropMenuOpen, setCropMenuOpen] = useState(false);
   const [repositionClipId, setRepositionClipId] = useState<string | null>(null);
+  // Phase 1 (V2 Inserts/B-roll): same "crop-reposition handle armed" flag as repositionClipId
+  // above, for whichever V2 clip (if any) currently has it armed.
+  const [insertRepositionId, setInsertRepositionId] = useState<string | null>(null);
   // STEP 7 (Keyboard Shortcuts): reference panel visibility — purely local UI state, same as
   // the two above.
   const [shortcutsPanelOpen, setShortcutsPanelOpen] = useState(false);
@@ -394,7 +421,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [draftsError, setDraftsError] = useState<string | null>(null);
 
   const buildProjectSnapshot = (): DraftProjectSnapshot => ({
-    videoClips, textOverlays, mediaOverlays, audioTracks, mediaAssets,
+    videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, mediaAssets,
     canvasFormat, timeline, canvasItemPositions,
     clientIdentity: PROJECT_CLIENT_IDENTITY,
   });
@@ -407,6 +434,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // before it would be more confusing than useful, so both stacks start clean.
   const clearLiveProject = () => {
     videoClips.forEach(c => rawRemoveVideoClip(c.id));
+    additionalVideoClips.forEach(c => rawRemoveAdditionalVideoClip(c.id));
     textOverlays.forEach(t => rawRemoveTextOverlay(t.id));
     mediaOverlays.forEach(o => rawRemoveMediaOverlay(o.id));
     audioTracks.forEach(a => rawRemoveAudioTrack(a.id));
@@ -419,6 +447,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const applyDraftSnapshot = (snap: DraftProjectSnapshot) => {
     clearLiveProject();
     (snap.videoClips ?? []).forEach(c => rawAddVideoClip(c));
+    (snap.additionalVideoClips ?? []).forEach(c => rawAddAdditionalVideoClip(c));
     (snap.textOverlays ?? []).forEach(t => rawAddTextOverlay(t));
     (snap.mediaOverlays ?? []).forEach(o => rawAddMediaOverlay(o));
     (snap.audioTracks ?? []).forEach(a => rawAddAudioTrack(a));
@@ -541,6 +570,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const previewRegionRef = useRef<HTMLDivElement>(null);
   const [regionSize, setRegionSize] = useState({ w: 320, h: 400 });
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Phase 1 (V2 Inserts/B-roll): the second, real, independently-playing <video> element — see
+  // its own sync effects below, which follow the exact same reactive pattern Audio already uses
+  // (react to timeline.currentTime/playing, never drive them; only V1's own clock does that).
+  const insertVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   // Step 5 follow-up (Overlay audio): multiple video-backed Overlays could exist at once (even
   // if only one is in its active timeline window at a time), so this is a live id→element map
@@ -588,6 +621,26 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     id: string; boxW: number; boxH: number; startClientX: number; startClientY: number; corner: ResizeCorner;
     origX: number; origY: number; origWidth: number; origHeight: number;
   } | null>(null);
+  // Phase 1 (V2 Inserts/B-roll): identical drag/resize session shapes to Overlay's own above,
+  // writing into VideoClip's new insertX/Y/Width/Height fields instead of MediaOverlay's x/y/
+  // width/height — same free-form resize (no aspect lock), same reasoning as Overlay's own.
+  const dragInsertSessionRef = useRef<{
+    id: string; boxW: number; boxH: number; elW: number; elH: number;
+    startClientX: number; startClientY: number; origX: number; origY: number;
+  } | null>(null);
+  const resizeInsertSessionRef = useRef<{
+    id: string; boxW: number; boxH: number; startClientX: number; startClientY: number; corner: ResizeCorner;
+    origX: number; origY: number; origWidth: number; origHeight: number;
+  } | null>(null);
+  const insertDragMovedRef = useRef(false);
+  const insertResizeMovedRef = useRef(false);
+  // Same "crop reposition" session as V1's cropDragSessionRef, writing into the SAME
+  // cropOffsetX/Y fields (VideoClip already has them) on an additionalVideoClips entry instead.
+  const insertCropDragSessionRef = useRef<{
+    id: string; boxW: number; boxH: number; startClientX: number; startClientY: number;
+    origOffsetX: number; origOffsetY: number;
+  } | null>(null);
+  const insertCropDragMovedRef = useRef(false);
   // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): drag-to-reposition session for a
   // clip in Fill mode — same "session ref + boxW/boxH + origin" shape as dragOverlaySessionRef
   // above, just writing into VideoClip's cropOffsetX/Y instead of MediaOverlay's x/y.
@@ -659,6 +712,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   activeVideoClipRef.current = activeVideoClip;
   const hasRealSrc = !!activeVideoClip?.url;
   const activeClipId = activeVideoClip?.id ?? null;
+  // Phase 1 (V2 Inserts/B-roll): same findActiveClip utility V1 uses, over additionalVideoClips
+  // — a real second "which clip is showing right now" computation, not a stand-in.
+  const activeAdditionalClip = findActiveClip(additionalVideoClips, timeline.currentTime);
+  const activeAdditionalClipId = activeAdditionalClip?.id ?? null;
 
   // Instruction 9: which AudioTrack (if any) is within its own active window right now — a
   // plain range check, same shape as findActiveClip's core check, but deliberately WITHOUT its
@@ -916,6 +973,45 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
 
   useEffect(() => {
     const vid = videoRef.current;
+    if (!vid) return;
+    if (timeline.playing) vid.play().catch(() => {});
+    else vid.pause();
+  }, [timeline.playing]);
+
+  // ---- Phase 1 (V2 Inserts/B-roll): real playback for the second video layer — purely
+  // reactive to timeline.currentTime/playing, exactly like Audio's own sync effects just below
+  // (never V1's own master rAF clock, which stays untouched — Requirement 10/11: V1 must remain
+  // unchanged). This is what keeps V2 genuinely independent of V1: it plays only inside its own
+  // [startTime, endTime) window, wherever that sits relative to V1, and V1's own stop-point
+  // (end of its last clip) is unaffected by whatever V2 is doing. ----
+  useEffect(() => {
+    const vid = insertVideoRef.current;
+    if (!vid || !activeAdditionalClip) return;
+    const clip = activeAdditionalClip;
+    const speed = clip.speed || 1;
+    const applyOffset = () => {
+      const offset = Math.max(0, timeline.currentTime - clip.startTime) * speed + clip.trimIn;
+      if (Math.abs(vid.currentTime - offset) > 0.05) vid.currentTime = offset;
+      vid.playbackRate = speed;
+      if (timeline.playing) vid.play().catch(() => {});
+    };
+    if (vid.readyState >= 1) applyOffset();
+    else vid.addEventListener("loadedmetadata", applyOffset, { once: true });
+    return () => vid.removeEventListener("loadedmetadata", applyOffset);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAdditionalClipId, activeAdditionalClip?.speed]);
+
+  useEffect(() => {
+    const vid = insertVideoRef.current;
+    if (!vid || !activeAdditionalClip) return;
+    const speed = activeAdditionalClip.speed || 1;
+    const targetLocal = Math.max(0, timeline.currentTime - activeAdditionalClip.startTime) * speed + activeAdditionalClip.trimIn;
+    if (Math.abs(vid.currentTime - targetLocal) > 0.35 && vid.readyState >= 1) vid.currentTime = targetLocal;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeline.currentTime, activeAdditionalClipId]);
+
+  useEffect(() => {
+    const vid = insertVideoRef.current;
     if (!vid) return;
     if (timeline.playing) vid.play().catch(() => {});
     else vid.pause();
@@ -1251,6 +1347,27 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     }
   };
 
+  // Phase 1 (V2 Inserts/B-roll) — Requirement 9: unlike V1 (which auto-mirrors detected audio
+  // straight onto A1, no question asked — the source video IS the project's main audio), a V2
+  // insert's own embedded audio is never auto-mixed in. If audio is detected, this only ever
+  // records the SAFE DEFAULT (`brollAudio: 'muted'`) on the clip itself — the video plays back
+  // silently until the user explicitly chooses "Keep" in Properties (applyBrollAudioChoice
+  // above), which is the one and only place a B-roll AudioTrack ever gets created.
+  const insertAdditionalVideoClipAt = async (assetId: number, url: string, name: string, startTime: number) => {
+    const duration = await probeVideoDuration(url);
+    const hasAudio = await probeHasAudioTrack(url);
+    const clip: VideoClip = {
+      id: crypto.randomUUID(), assetId, url, name,
+      duration, startTime, endTime: startTime + duration,
+      trimIn: 0, trimOut: 0, colorGrade: "none", speed: 1,
+      brightness: 0, contrast: 0, saturation: 0, transition: "cut", transitionDuration: 0.5,
+      ...DEFAULT_INSERT_BOX,
+      brollAudio: defaultBrollAudioMode(hasAudio),
+    };
+    addAdditionalVideoClip(clip);
+    setSelectedElement({ type: "clip", lane: "additional", id: clip.id });
+  };
+
   // A1 Audio (Instruction 9's original model, now taking an explicit startTime instead of
   // always appending after the last audio track).
   const insertAudioTrackAt = async (assetId: number, url: string, name: string, startTime: number) => {
@@ -1268,10 +1385,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // O1 Overlay — an uploaded image has no intrinsic duration, so this reuses the exact same
   // fixed 5s-or-until-project-end default handleAddOverlayFile already established for the
   // Overlays tab's own "+ Add Overlay" upload, just anchored at startTime instead of always
-  // "now". No dedicated V2 Inserts/B-roll video lane exists in this editor yet (StudioContext's
-  // additionalVideoClips has no UI at all — see the module-level note this instruction's report
-  // called out) — O1 Overlay is the one existing lane that already renders an image over the
-  // video in preview (visualLayers), so images route there rather than onto new architecture.
+  // "now". Images still route to O1 Overlay, not V2 — Phase 1 (V2 Inserts/B-roll) is VIDEO
+  // only, per its own spec ("A REAL second video layer... do not simulate V2 using an image").
   const insertImageOverlayAt = (assetId: number, url: string, startTime: number) => {
     const overlay: MediaOverlay = {
       id: crypto.randomUUID(), url, assetId,
@@ -1293,12 +1408,20 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     else insertImageOverlayAt(asset.id, url, startTime);
   };
 
+  // Phase 1 — "Canvas Intent" requirement: an explicit, unambiguous "Add as B-roll (V2)" choice
+  // for a Media Library video, distinct from handleAddAssetToTimeline's own Video path (which
+  // always means "Add as Main Video" -> V1). Never guesses intent from anything implicit.
+  const handleAddAssetAsBroll = async (asset: Asset) => {
+    await insertAdditionalVideoClipAt(asset.id, assetsApi.previewUrl(asset.file_path), asset.original_filename, timeline.currentTime);
+  };
+
   // ---- Media Library: Delete / Remove (new — the library grid previously had no way to
   // remove an uploaded item at all). Only ever removes this SESSION's local mediaAssets entry
   // (see StudioContext's own removeMediaAsset comment) — never the backend file/DB row, which
   // other saved drafts may still reference. ----
   const isAssetUsedOnTimeline = (assetId: number) =>
     videoClips.some(c => c.assetId === assetId) ||
+    additionalVideoClips.some(c => c.assetId === assetId) ||
     mediaOverlays.some(o => o.assetId === assetId) ||
     audioTracks.some(a => a.assetId === assetId);
 
@@ -1317,11 +1440,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       // layer-reorder already use for a single user action that touches several items at once.
       pushHistory();
       videoClips.filter(c => c.assetId === asset.id).forEach(c => rawRemoveVideoClip(c.id));
+      additionalVideoClips.filter(c => c.assetId === asset.id).forEach(c => rawRemoveAdditionalVideoClip(c.id));
       mediaOverlays.filter(o => o.assetId === asset.id).forEach(o => rawRemoveMediaOverlay(o.id));
       audioTracks.filter(a => a.assetId === asset.id).forEach(a => rawRemoveAudioTrack(a.id));
       if (
         selectedElement &&
-        ((selectedElement.type === "clip" && videoClips.find(c => c.id === selectedElement.id)?.assetId === asset.id) ||
+        ((selectedElement.type === "clip" && selectedElement.lane === "video" && videoClips.find(c => c.id === selectedElement.id)?.assetId === asset.id) ||
+          (selectedElement.type === "clip" && selectedElement.lane === "additional" && additionalVideoClips.find(c => c.id === selectedElement.id)?.assetId === asset.id) ||
           (selectedElement.type === "overlay" && mediaOverlays.find(o => o.id === selectedElement.id)?.assetId === asset.id) ||
           (selectedElement.type === "audio" && audioTracks.find(a => a.id === selectedElement.id)?.assetId === asset.id))
       ) {
@@ -1416,22 +1541,45 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     else await insertVideoClipAt(source.assetId, source.url, source.name, dropTime);
   };
 
-  // ---- Canvas Video Drop addendum: dropping a VIDEO directly onto the main preview/canvas is
-  // MAIN VIDEO insertion — V1 (+ its own embedded A1 audio, exactly like every other video
-  // insertion path) — never a disconnected canvas-only visual object. Deliberately video-only:
-  // this addendum is scoped to "MAIN VIDEO -> V1 + A1"; canvas drop for audio/image/B-roll
-  // belongs to the separate, not-yet-built canvas-composition work and is left alone here (an
-  // incompatible drag is simply not accepted, same "reject cleanly" behaviour Drop Target
-  // Feedback already established for the timeline). Insertion time is the current playhead, per
-  // the addendum's own "Insertion Time" section — the canvas has no drop-position-to-seconds
-  // axis the way the timeline's ruler does. ----
+  // Phase 1 — "Canvas Intent" requirement ("A video must be able to be intentionally added to
+  // V2 rather than V1... provide an explicit choice rather than guessing"): dropping specifically
+  // on the V2 Insert/B-roll timeline row is unambiguous by construction — a distinct row is the
+  // explicit choice the requirement asks for, no guessing involved. stopPropagation keeps this
+  // from ALSO triggering the section-level handleDrop above (which would otherwise insert the
+  // same drop onto V1 too). Only video is accepted here — same "V2 is video-only" rule as
+  // insertAdditionalVideoClipAt itself.
+  const handleDropOnV2Row = async (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropActive(false);
+    setDragOverKind(null);
+    const dropTime = computeDropTime(e);
+    let source;
+    try { source = await resolveDroppedMediaSource(e); } catch { return; }
+    if (!source || source.kind !== "video") return;
+    await insertAdditionalVideoClipAt(source.assetId, source.url, source.name, dropTime);
+  };
+
+  // ---- Canvas Video Drop addendum, extended for Phase 1's "Canvas -> V2" requirement: dropping
+  // a VIDEO directly onto the main preview/canvas is MAIN VIDEO insertion (V1 + its own embedded
+  // A1 audio) UNLESS a V1 clip is already active at the current playhead — in which case the
+  // canvas is visibly already showing a main video, so a second video dropped there can only
+  // sensibly mean B-roll/overlay footage layered over it, not "replace the main video" (which
+  // has its own explicit path: drop directly on the V1 timeline row). This is a deterministic
+  // read of existing, visible state, not a guess — the "Canvas Intent" requirement's own
+  // "explicit choice rather than guessing" is satisfied by TIMELINE ROW targeting (V1 row / V2
+  // row / the "+ Add as B-roll" button all remain unambiguous regardless of state); this rule is
+  // additionally what makes the CANVAS SURFACE itself behave the way a user would actually
+  // expect it to, without adding a modal or a modifier-key gesture nothing else in this editor
+  // uses. Audio/image canvas drop remains out of scope — see the addendum's own comment above. ----
   const handleCanvasVideoDrop = async (e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     setCanvasDropActive(false);
     let source;
     try { source = await resolveDroppedMediaSource(e); } catch { return; }
     if (!source || source.kind !== "video") return;
-    await insertVideoClipAt(source.assetId, source.url, source.name, timeline.currentTime);
+    if (activeVideoClip) await insertAdditionalVideoClipAt(source.assetId, source.url, source.name, timeline.currentTime);
+    else await insertVideoClipAt(source.assetId, source.url, source.name, timeline.currentTime);
   };
 
   const seekRatio = (ratio: number) => setTimeline({ currentTime: Math.max(0, Math.min(1, ratio)) * effectiveDuration });
@@ -1506,6 +1654,11 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
 
   const selectedClip = selectedElement?.type === "clip" && selectedElement.lane === "video"
     ? videoClips.find(c => c.id === selectedElement.id) ?? null
+    : null;
+  // Phase 1 (V2 Inserts/B-roll): same pattern as selectedClip above, over additionalVideoClips
+  // instead — the 'additional' lane StudioContext's SelectedElement type already reserved.
+  const selectedAdditionalClip = selectedElement?.type === "clip" && selectedElement.lane === "additional"
+    ? additionalVideoClips.find(c => c.id === selectedElement.id) ?? null
     : null;
   const selectedText = selectedElement?.type === "text"
     ? textOverlays.find(t => t.id === selectedElement.id) ?? null
@@ -1587,6 +1740,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // deeper editor for it yet.
   const selectionSummary = selectedClip
     ? { kind: "Video", name: selectedClip.name || "V1 Video" }
+    : selectedAdditionalClip
+    ? { kind: "B-roll", name: selectedAdditionalClip.name || "V2 Insert" }
     : selectedText
     ? { kind: "Text", name: selectedText.text.slice(0, 24) || "Headline" }
     : selectedOverlay
@@ -1941,6 +2096,179 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     </>
   );
 
+  // ==== Phase 1 (V2 Inserts/B-roll) — canvas move/resize/crop/fit ====
+  // Requirement 5 ("move anywhere on canvas", "resize"): identical percentage-delta-and-clamp
+  // drag/resize as MediaOverlay's own beginOverlayDrag/beginOverlayResize above, writing into
+  // VideoClip's new insertX/Y/Width/Height instead of MediaOverlay's x/y/width/height. Requirement
+  // 6 ("canvas position and size must persist"): these write through updateAdditionalVideoClip/
+  // rawUpdateAdditionalVideoClip — the same StudioContext-backed array Save Draft/export-prep
+  // already read (see buildProjectSnapshot above) — never a separate canvas-only position store.
+  const handleInsertDragMove = (e: MouseEvent) => {
+    const s = dragInsertSessionRef.current;
+    if (!s) return;
+    if (!insertDragMovedRef.current) { pushHistory(); insertDragMovedRef.current = true; }
+    const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
+    const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
+    const maxX = Math.max(0, 100 - (s.elW / s.boxW) * 100);
+    const maxY = Math.max(0, 100 - (s.elH / s.boxH) * 100);
+    const nextX = Math.min(maxX, Math.max(0, s.origX + dxPct));
+    const nextY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    rawUpdateAdditionalVideoClip(s.id, { insertX: nextX, insertY: nextY });
+  };
+  const handleInsertDragEnd = () => {
+    dragInsertSessionRef.current = null;
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 0);
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", handleInsertDragMove);
+    window.removeEventListener("mouseup", handleInsertDragEnd);
+  };
+  const beginInsertDrag = (id: string) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedElement({ type: "clip", lane: "additional", id });
+    const boxEl = videoPreviewBoxRef.current;
+    const el = e.currentTarget as HTMLElement;
+    const clip = additionalVideoClips.find(c => c.id === id);
+    if (!boxEl || !clip) return;
+    insertDragMovedRef.current = false;
+    const boxRect = boxEl.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    dragInsertSessionRef.current = {
+      id, boxW: boxRect.width, boxH: boxRect.height, elW: elRect.width, elH: elRect.height,
+      startClientX: e.clientX, startClientY: e.clientY,
+      origX: clip.insertX ?? DEFAULT_INSERT_BOX.insertX, origY: clip.insertY ?? DEFAULT_INSERT_BOX.insertY,
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleInsertDragMove);
+    window.addEventListener("mouseup", handleInsertDragEnd);
+  };
+  const handleInsertResizeMove = (e: MouseEvent) => {
+    const s = resizeInsertSessionRef.current;
+    if (!s) return;
+    if (!insertResizeMovedRef.current) { pushHistory(); insertResizeMovedRef.current = true; }
+    const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
+    const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
+    const isLeft = s.corner === "nw" || s.corner === "sw";
+    const isTop = s.corner === "nw" || s.corner === "ne";
+    let nextWidth = Math.max(MIN_ELEMENT_SIZE_PCT, isLeft ? s.origWidth - dxPct : s.origWidth + dxPct);
+    let nextHeight = Math.max(MIN_ELEMENT_SIZE_PCT, isTop ? s.origHeight - dyPct : s.origHeight + dyPct);
+    let nextX = isLeft ? s.origX + (s.origWidth - nextWidth) : s.origX;
+    let nextY = isTop ? s.origY + (s.origHeight - nextHeight) : s.origY;
+    if (isLeft && nextX < 0) { nextWidth += nextX; nextX = 0; }
+    if (isTop && nextY < 0) { nextHeight += nextY; nextY = 0; }
+    if (!isLeft && nextX + nextWidth > 100) nextWidth = 100 - nextX;
+    if (!isTop && nextY + nextHeight > 100) nextHeight = 100 - nextY;
+    rawUpdateAdditionalVideoClip(s.id, {
+      insertX: nextX, insertY: nextY,
+      insertWidth: Math.max(MIN_ELEMENT_SIZE_PCT, nextWidth), insertHeight: Math.max(MIN_ELEMENT_SIZE_PCT, nextHeight),
+    });
+  };
+  const handleInsertResizeEnd = () => {
+    resizeInsertSessionRef.current = null;
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 0);
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", handleInsertResizeMove);
+    window.removeEventListener("mouseup", handleInsertResizeEnd);
+  };
+  const beginInsertResize = (id: string, corner: ResizeCorner) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const boxEl = videoPreviewBoxRef.current;
+    const clip = additionalVideoClips.find(c => c.id === id);
+    if (!boxEl || !clip) return;
+    insertResizeMovedRef.current = false;
+    const boxRect = boxEl.getBoundingClientRect();
+    resizeInsertSessionRef.current = {
+      id, boxW: boxRect.width, boxH: boxRect.height, startClientX: e.clientX, startClientY: e.clientY, corner,
+      origX: clip.insertX ?? DEFAULT_INSERT_BOX.insertX, origY: clip.insertY ?? DEFAULT_INSERT_BOX.insertY,
+      origWidth: clip.insertWidth ?? DEFAULT_INSERT_BOX.insertWidth, origHeight: clip.insertHeight ?? DEFAULT_INSERT_BOX.insertHeight,
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleInsertResizeMove);
+    window.addEventListener("mouseup", handleInsertResizeEnd);
+  };
+  // Requirement 5 ("crop", "fit/fill"): identical to V1's own applyClipFitMode/enterCropReposition/
+  // beginCropDrag/handleCropDragMove above, over an additionalVideoClips entry — same
+  // cropOffsetX/Y fields VideoClip already has, just scoped to V2's own (smaller, positioned)
+  // box instead of the full canvas frame at render time (see the insert layer's own JSX below).
+  const applyInsertFitMode = (clip: VideoClip, mode: "fit" | "fill") => {
+    updateAdditionalVideoClip(clip.id, mode === "fit"
+      ? { fitMode: "fit" }
+      : { fitMode: "fill", cropOffsetX: clip.cropOffsetX ?? 50, cropOffsetY: clip.cropOffsetY ?? 50 });
+    setInsertRepositionId(null);
+  };
+  const enterInsertCropReposition = (clip: VideoClip) => {
+    if (clip.fitMode !== "fill") {
+      updateAdditionalVideoClip(clip.id, { fitMode: "fill", cropOffsetX: clip.cropOffsetX ?? 50, cropOffsetY: clip.cropOffsetY ?? 50 });
+    }
+    setInsertRepositionId(clip.id);
+  };
+  const handleInsertCropDragMove = (e: MouseEvent) => {
+    const s = insertCropDragSessionRef.current;
+    if (!s) return;
+    if (!insertCropDragMovedRef.current) { pushHistory(); insertCropDragMovedRef.current = true; }
+    const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
+    const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
+    const nextOffsetX = Math.min(100, Math.max(0, s.origOffsetX - dxPct));
+    const nextOffsetY = Math.min(100, Math.max(0, s.origOffsetY - dyPct));
+    rawUpdateAdditionalVideoClip(s.id, { cropOffsetX: nextOffsetX, cropOffsetY: nextOffsetY });
+  };
+  const handleInsertCropDragEnd = () => {
+    insertCropDragSessionRef.current = null;
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", handleInsertCropDragMove);
+    window.removeEventListener("mouseup", handleInsertCropDragEnd);
+  };
+  const beginInsertCropDrag = (clip: VideoClip) => (e: React.MouseEvent) => {
+    if (insertRepositionId !== clip.id) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const boxEl = videoPreviewBoxRef.current;
+    if (!boxEl) return;
+    insertCropDragMovedRef.current = false;
+    const boxRect = boxEl.getBoundingClientRect();
+    insertCropDragSessionRef.current = {
+      id: clip.id, boxW: boxRect.width, boxH: boxRect.height,
+      startClientX: e.clientX, startClientY: e.clientY,
+      origOffsetX: clip.cropOffsetX ?? 50, origOffsetY: clip.cropOffsetY ?? 50,
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleInsertCropDragMove);
+    window.addEventListener("mouseup", handleInsertCropDragEnd);
+  };
+  // Requirement 9 (B-roll audio): 'keep' mirrors the clip's audio onto a real, independent
+  // AudioTrack via the exact same architecture V1's own embedded-audio separation already uses
+  // (addAudioTrack) — never a bespoke "V2 audio" concept. Switching away from 'keep' removes
+  // that same track. brollAudioTrackId makes this idempotent: clicking "Keep" repeatedly (or
+  // after a refresh where it's already kept) never stacks duplicate tracks.
+  const applyBrollAudioChoice = (clip: VideoClip, mode: NonNullable<VideoClip["brollAudio"]>) => {
+    if (mode === "keep") {
+      if (clip.brollAudioTrackId && audioTracks.some(a => a.id === clip.brollAudioTrackId)) {
+        updateAdditionalVideoClip(clip.id, { brollAudio: "keep" });
+        return;
+      }
+      pushHistory();
+      const track: AudioTrack = {
+        id: crypto.randomUUID(), assetId: clip.assetId, url: clip.url,
+        name: `${clip.name || "B-roll"} (Audio)`,
+        volume: 1, startTime: clip.startTime, endTime: clip.endTime,
+        trimIn: clip.trimIn, trimOut: clip.trimOut, fadeIn: 0, fadeOut: 0, duck: false,
+      };
+      rawAddAudioTrack(track);
+      rawUpdateAdditionalVideoClip(clip.id, { brollAudio: "keep", brollAudioTrackId: track.id });
+    } else {
+      if (clip.brollAudioTrackId && audioTracks.some(a => a.id === clip.brollAudioTrackId)) {
+        pushHistory();
+        rawRemoveAudioTrack(clip.brollAudioTrackId);
+        rawUpdateAdditionalVideoClip(clip.id, { brollAudio: mode, brollAudioTrackId: undefined });
+      } else {
+        updateAdditionalVideoClip(clip.id, { brollAudio: mode, brollAudioTrackId: undefined });
+      }
+    }
+  };
+
   // Layers reorder: the Layers-tab list, unlike the canvas stack above, always lists every
   // Text/Overlay regardless of whether the playhead is currently inside its range — same
   // "list everything" convention the existing Layers tab already used before this change.
@@ -2106,6 +2434,54 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     .sort((a, b) => a.order - b.order)
     .map(e => e.node);
 
+  // Phase 1 (V2 Inserts/B-roll) — Requirement 4 ("V2 must be a REAL second video layer... The
+  // preview/canvas must render V1 + V2 + other visual layers... Do not simulate V2 using an
+  // image"): a genuine second <video> element (insertVideoRef, synced by its own effects above),
+  // positioned/sized by the clip's own insertX/Y/Width/Height, rendered as its own layer between
+  // V1 (the fixed base) and the O1/T1 stack above — matching the layering the specs' own example
+  // gives ("Main video -> B-roll/insert -> overlay -> text"). Rendered in BOTH preview branches
+  // (hasRealSrc true/false) exactly like visualLayers already is, right before it, so V2 shows
+  // even on a frame where V1 has no active clip (e.g. V1 trimmed shorter than a V2 insert).
+  // Always muted at the DOM level — its own embedded audio never plays directly; audibility only
+  // ever comes through a real, independent AudioTrack when brollAudio is 'keep' (Requirement 9).
+  const insertLayer = activeAdditionalClip ? (
+    <div
+      key={activeAdditionalClip.id}
+      className={`canvas-insert-item canvas-selectable canvas-movable ${selectedElement?.type === "clip" && selectedElement.lane === "additional" && selectedElement.id === activeAdditionalClip.id ? "canvas-el-selected" : ""}`}
+      style={{
+        left: `${activeAdditionalClip.insertX ?? DEFAULT_INSERT_BOX.insertX}%`,
+        top: `${activeAdditionalClip.insertY ?? DEFAULT_INSERT_BOX.insertY}%`,
+        width: `${activeAdditionalClip.insertWidth ?? DEFAULT_INSERT_BOX.insertWidth}%`,
+        height: `${activeAdditionalClip.insertHeight ?? DEFAULT_INSERT_BOX.insertHeight}%`,
+        opacity: (activeAdditionalClip.opacity ?? 100) / 100,
+      }}
+      onMouseDown={beginInsertDrag(activeAdditionalClip.id)}
+      onClick={e => e.stopPropagation()}
+      title={`${activeAdditionalClip.name || "B-roll"} — click and drag to move`}
+    >
+      <video
+        ref={insertVideoRef} src={activeAdditionalClip.url} className="canvas-insert-media" playsInline muted
+        draggable={false}
+        onMouseDown={beginInsertCropDrag(activeAdditionalClip)}
+        style={{
+          filter: getMediaFilter(activeAdditionalClip),
+          ...(activeAdditionalClip.fitMode === "fill"
+            ? { objectFit: "cover", objectPosition: `${activeAdditionalClip.cropOffsetX ?? 50}% ${activeAdditionalClip.cropOffsetY ?? 50}%` }
+            : {}),
+          cursor: insertRepositionId === activeAdditionalClip.id ? "move" : undefined,
+        }}
+      />
+      {insertRepositionId === activeAdditionalClip.id && (
+        <div className="crop-reposition-hint" onClick={e => e.stopPropagation()}>
+          Drag the video to choose what's cropped
+          <button type="button" onClick={() => setInsertRepositionId(null)}>Done</button>
+        </div>
+      )}
+      {selectedElement?.type === "clip" && selectedElement.lane === "additional" && selectedElement.id === activeAdditionalClip.id &&
+        resizeHandles(corner => beginInsertResize(activeAdditionalClip.id, corner))}
+    </div>
+  ) : null;
+
   // Instruction 10: trim handlers, one pair per lane type. Video/Audio use their existing
   // trimIn/trimOut fields — the clip's own probed `duration` (Video) is never touched, kept as
   // the immutable full-source reference, which is exactly what makes this non-destructive.
@@ -2125,6 +2501,15 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     const minEnd = c.startTime + MIN_CLIP_DURATION;
     const finalEnd = Math.max(minEnd, Math.min(maxEnd, proposedEnd));
     rawUpdateVideoClip(c.id, { endTime: finalEnd, trimOut: c.trimOut + (c.endTime - finalEnd) });
+  };
+  // Phase 1 (V2 Inserts/B-roll): identical trim math to trimVideoLeft/Right above, over an
+  // additionalVideoClips entry instead of a V1 clip — via the pure, independently-tested
+  // computeInsertTrimLeft/Right (videoPreviewUtils.ts) rather than a third inline duplicate.
+  const trimInsertLeft = (c: VideoClip, proposedStart: number) => {
+    rawUpdateAdditionalVideoClip(c.id, computeInsertTrimLeft(c, proposedStart, MIN_CLIP_DURATION));
+  };
+  const trimInsertRight = (c: VideoClip, proposedEnd: number) => {
+    rawUpdateAdditionalVideoClip(c.id, computeInsertTrimRight(c, proposedEnd, MIN_CLIP_DURATION));
   };
   const trimAudioLeft = (a: AudioTrack, proposedStart: number) => {
     const minStart = Math.max(0, a.startTime - a.trimIn);
@@ -2185,6 +2570,23 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       rawUpdateVideoClip(c.id, { endTime: p, trimOut: c.trimOut + (c.endTime - p) });
       rawAddVideoClip({ ...c, id: rightId, startTime: p, trimIn: c.trimIn + (p - c.startTime) });
       setSelectedElement({ type: "clip", lane: "video", id: rightId });
+    } else if (selectedElement.type === "clip" && selectedElement.lane === "additional") {
+      // Phase 1: identical split logic to V1's own clip branch above, over additionalVideoClips.
+      // A split right half never carries brollAudioTrackId forward — the right half is a NEW,
+      // independent clip; if the left half's audio was 'kept', that AudioTrack still only covers
+      // the left half's own (now-shorter) window (AudioTrack's own trim is untouched by this),
+      // and the right half starts back at its safe 'muted' default rather than silently implying
+      // it owns a track it doesn't.
+      const c = additionalVideoClips.find(v => v.id === selectedElement.id);
+      if (!c || p <= c.startTime + MIN_CLIP_DURATION || p >= c.endTime - MIN_CLIP_DURATION) return;
+      pushHistory();
+      const rightId = crypto.randomUUID();
+      rawUpdateAdditionalVideoClip(c.id, { endTime: p, trimOut: c.trimOut + (c.endTime - p) });
+      rawAddAdditionalVideoClip({
+        ...c, id: rightId, startTime: p, trimIn: c.trimIn + (p - c.startTime),
+        brollAudio: c.brollAudio === "keep" ? "muted" : c.brollAudio, brollAudioTrackId: undefined,
+      });
+      setSelectedElement({ type: "clip", lane: "additional", id: rightId });
     } else if (selectedElement.type === "audio") {
       const a = audioTracks.find(x => x.id === selectedElement.id);
       if (!a || p <= a.startTime + MIN_CLIP_DURATION || p >= a.endTime - MIN_CLIP_DURATION) return;
@@ -2218,6 +2620,22 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const handleDeleteSelected = () => {
     if (!selectedElement) return;
     if (selectedElement.type === "clip" && selectedElement.lane === "video") removeVideoClip(selectedElement.id);
+    else if (selectedElement.type === "clip" && selectedElement.lane === "additional") {
+      // Phase 1 — Requirement 10: deleting V2 must never touch V1; removeAdditionalVideoClip
+      // only ever writes to additionalVideoClips, same array-isolation every other lane already
+      // has. Also cleans up a 'kept' B-roll audio track — deleting the video is a delete of
+      // everything it owns, same "one user action, one pushHistory" pattern used elsewhere;
+      // an audio track the user separately kept independent by trimming/moving/renaming it away
+      // from this clip's own window is a normal A1 track by then, out of scope of this delete.
+      const c = additionalVideoClips.find(v => v.id === selectedElement.id);
+      if (c?.brollAudioTrackId && audioTracks.some(a => a.id === c.brollAudioTrackId)) {
+        pushHistory();
+        rawRemoveAdditionalVideoClip(selectedElement.id);
+        rawRemoveAudioTrack(c.brollAudioTrackId);
+      } else {
+        removeAdditionalVideoClip(selectedElement.id);
+      }
+    }
     else if (selectedElement.type === "audio") removeAudioTrack(selectedElement.id);
     else if (selectedElement.type === "text") removeTextOverlay(selectedElement.id);
     else if (selectedElement.type === "overlay") removeMediaOverlay(selectedElement.id);
@@ -2243,6 +2661,16 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = c.endTime - c.startTime;
       rawRemoveVideoClip(c.id);
       videoClips.forEach(v => { if (v.id !== c.id && v.startTime >= c.endTime - RIPPLE_EPSILON) rawUpdateVideoClip(v.id, { startTime: v.startTime - dur, endTime: v.endTime - dur }); });
+    } else if (selectedElement.type === "clip" && selectedElement.lane === "additional") {
+      // Phase 1: same ripple-delete shape as V1's own branch above, confined to
+      // additionalVideoClips only — other V2 clips shift, V1/A1/T1/O1 are untouched.
+      const c = additionalVideoClips.find(v => v.id === selectedElement.id);
+      if (!c) return;
+      pushHistory();
+      const dur = c.endTime - c.startTime;
+      rawRemoveAdditionalVideoClip(c.id);
+      if (c.brollAudioTrackId && audioTracks.some(a => a.id === c.brollAudioTrackId)) rawRemoveAudioTrack(c.brollAudioTrackId);
+      additionalVideoClips.forEach(v => { if (v.id !== c.id && v.startTime >= c.endTime - RIPPLE_EPSILON) rawUpdateAdditionalVideoClip(v.id, { startTime: v.startTime - dur, endTime: v.endTime - dur }); });
     } else if (selectedElement.type === "audio") {
       const a = audioTracks.find(x => x.id === selectedElement.id);
       if (!a) return;
@@ -2283,6 +2711,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const c = videoClips.find(v => v.id === selectedElement.id);
       if (!c) return;
       pushHistory(); trimVideoLeft(c, p);
+    } else if (selectedElement.type === "clip" && selectedElement.lane === "additional") {
+      const c = additionalVideoClips.find(v => v.id === selectedElement.id);
+      if (!c) return;
+      pushHistory(); trimInsertLeft(c, p);
     } else if (selectedElement.type === "audio") {
       const a = audioTracks.find(x => x.id === selectedElement.id);
       if (!a) return;
@@ -2304,6 +2736,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const c = videoClips.find(v => v.id === selectedElement.id);
       if (!c) return;
       pushHistory(); trimVideoRight(c, p);
+    } else if (selectedElement.type === "clip" && selectedElement.lane === "additional") {
+      const c = additionalVideoClips.find(v => v.id === selectedElement.id);
+      if (!c) return;
+      pushHistory(); trimInsertRight(c, p);
     } else if (selectedElement.type === "audio") {
       const a = audioTracks.find(x => x.id === selectedElement.id);
       if (!a) return;
@@ -2329,6 +2765,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // for the two being distinct actions rather than Duplicate just being Copy+Paste.
   const clipboardRef = useRef<
     | { kind: "clip"; data: VideoClip }
+    | { kind: "additional"; data: VideoClip }
     | { kind: "audio"; data: AudioTrack }
     | { kind: "text"; data: TextOverlay }
     | { kind: "overlay"; data: MediaOverlay }
@@ -2339,6 +2776,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (selectedElement.type === "clip" && selectedElement.lane === "video") {
       const c = videoClips.find(v => v.id === selectedElement.id);
       if (c) clipboardRef.current = { kind: "clip", data: c };
+    } else if (selectedElement.type === "clip" && selectedElement.lane === "additional") {
+      const c = additionalVideoClips.find(v => v.id === selectedElement.id);
+      if (c) clipboardRef.current = { kind: "additional", data: c };
     } else if (selectedElement.type === "audio") {
       const a = audioTracks.find(x => x.id === selectedElement.id);
       if (a) clipboardRef.current = { kind: "audio", data: a };
@@ -2359,6 +2799,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = cb.data.endTime - cb.data.startTime;
       addVideoClip({ ...cb.data, id, startTime: p, endTime: p + dur });
       setSelectedElement({ type: "clip", lane: "video", id });
+    } else if (cb.kind === "additional") {
+      // Phase 1: a pasted copy never inherits the original's 'kept' audio track — two clips
+      // can't share ownership of one AudioTrack (deleting/moving either would corrupt the
+      // other's). Paste always starts from the same safe default a brand-new V2 insert gets.
+      const dur = cb.data.endTime - cb.data.startTime;
+      addAdditionalVideoClip({ ...cb.data, id, startTime: p, endTime: p + dur, brollAudio: cb.data.brollAudio === "keep" ? "muted" : cb.data.brollAudio, brollAudioTrackId: undefined });
+      setSelectedElement({ type: "clip", lane: "additional", id });
     } else if (cb.kind === "audio") {
       const dur = cb.data.endTime - cb.data.startTime;
       addAudioTrack({ ...cb.data, id, startTime: p, endTime: p + dur });
@@ -2382,6 +2829,15 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = c.endTime - c.startTime;
       addVideoClip({ ...c, id, startTime: c.endTime, endTime: c.endTime + dur });
       setSelectedElement({ type: "clip", lane: "video", id });
+    } else if (selectedElement.type === "clip" && selectedElement.lane === "additional") {
+      // Phase 1 — Requirement 5 ("duplicate where existing architecture supports it"): same
+      // shape as V1's own duplicate above; same "never inherit the original's kept audio track"
+      // rule paste already established (see pasteClipboard).
+      const c = additionalVideoClips.find(v => v.id === selectedElement.id);
+      if (!c) return;
+      const dur = c.endTime - c.startTime;
+      addAdditionalVideoClip({ ...c, id, startTime: c.endTime, endTime: c.endTime + dur, brollAudio: c.brollAudio === "keep" ? "muted" : c.brollAudio, brollAudioTrackId: undefined });
+      setSelectedElement({ type: "clip", lane: "additional", id });
     } else if (selectedElement.type === "audio") {
       const a = audioTracks.find(x => x.id === selectedElement.id);
       if (!a) return;
@@ -2679,7 +3135,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               key={asset.id}
               draggable={kind === "Videos" || kind === "Images"}
               title={
-                kind === "Videos" ? `${asset.original_filename} — drag onto V1`
+                kind === "Videos" ? `${asset.original_filename} — drag onto V1 (Main Video) or V2 (B-roll)`
                   : kind === "Images" ? `${asset.original_filename} — drag onto O1`
                     : asset.original_filename
               }
@@ -2706,9 +3162,21 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                   type="button"
                   className="add-to-timeline-btn"
                   onClick={e => { e.stopPropagation(); void handleAddAssetToTimeline(asset, kind); }}
-                  title={kind === "Videos" ? "Add this video to V1 at the current playhead" : "Add this image to O1 at the current playhead"}
+                  title={kind === "Videos" ? "Add this video to V1 (Main Video) at the current playhead" : "Add this image to O1 at the current playhead"}
                 >
                   + Add to Timeline
+                </button>
+              )}
+              {/* Phase 1 — "Canvas Intent" requirement: an explicit, unambiguous alternative to
+                  the button above, so choosing V1 vs. V2 is never a guess. */}
+              {kind === "Videos" && (
+                <button
+                  type="button"
+                  className="add-to-timeline-btn"
+                  onClick={e => { e.stopPropagation(); void handleAddAssetAsBroll(asset); }}
+                  title="Add this video to V2 (B-roll / Insert) at the current playhead"
+                >
+                  + Add as B-roll (V2)
                 </button>
               )}
             </div>
@@ -3194,6 +3662,67 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 onChange={e => rawUpdateVideoClip(selectedClip.id, { volume: Number(e.target.value) / 100 })} />
             </label>
           </>
+        ) : selectedAdditionalClip ? (
+          <>
+            {/* Phase 1 (V2 Inserts/B-roll) — Requirement 8: the Properties panel showing this
+                clip's REAL settings, same live-binding convention as every other selected type
+                here (selectedClip/selectedOverlay/selectedAudio above) — nothing mocked. */}
+            <h4>V2 Insert / B-roll</h4>
+            <p className="clip-name">{selectedAdditionalClip.name || "Untitled clip"}</p>
+            <label className="stack-field"><span>Filter</span>
+              <select value={selectedAdditionalClip.colorGrade} onChange={e => updateAdditionalVideoClip(selectedAdditionalClip.id, { colorGrade: e.target.value as VideoClip["colorGrade"] })}>
+                <option value="none">None</option><option value="bw">Grayscale</option><option value="sepia">Sepia</option>
+                <option value="warm">Warm</option><option value="cool">Cool</option><option value="high_contrast">High Contrast</option>
+              </select>
+            </label>
+            {/* Requirement 5 ("opacity where appropriate") — a control V1 has no equivalent of
+                (V1 is always the fully-opaque base layer), meaningful for a B-roll insert
+                composited over V1. */}
+            <label className="stack-field"><span>Opacity — {Math.round(selectedAdditionalClip.opacity ?? 100)}%</span>
+              <input type="range" min={10} max={100} value={Math.round(selectedAdditionalClip.opacity ?? 100)}
+                onMouseDown={pushHistory}
+                onChange={e => rawUpdateAdditionalVideoClip(selectedAdditionalClip.id, { opacity: Number(e.target.value) })} />
+            </label>
+            <h4>Fit / Crop</h4>
+            <div className="row">
+              <button type="button" className={(selectedAdditionalClip.fitMode ?? "fit") === "fit" ? "active" : ""}
+                onClick={() => applyInsertFitMode(selectedAdditionalClip, "fit")}>Fit</button>
+              <button type="button" className={selectedAdditionalClip.fitMode === "fill" && insertRepositionId !== selectedAdditionalClip.id ? "active" : ""}
+                onClick={() => applyInsertFitMode(selectedAdditionalClip, "fill")}>Fill</button>
+              <button type="button" className={insertRepositionId === selectedAdditionalClip.id ? "active" : ""}
+                onClick={() => enterInsertCropReposition(selectedAdditionalClip)}>Crop &amp; Reposition</button>
+            </div>
+            <h4>Transform</h4>
+            <div className="row">
+              <input value={`X ${Math.round(selectedAdditionalClip.insertX ?? DEFAULT_INSERT_BOX.insertX)}%`} readOnly />
+              <input value={`Y ${Math.round(selectedAdditionalClip.insertY ?? DEFAULT_INSERT_BOX.insertY)}%`} readOnly />
+            </div>
+            <div className="row">
+              <input value={`W ${Math.round(selectedAdditionalClip.insertWidth ?? DEFAULT_INSERT_BOX.insertWidth)}%`} readOnly />
+              <input value={`H ${Math.round(selectedAdditionalClip.insertHeight ?? DEFAULT_INSERT_BOX.insertHeight)}%`} readOnly />
+            </div>
+            {/* Requirement 9 (B-roll audio): only shown once embedded audio was actually
+                detected (insertAdditionalVideoClipAt only ever sets brollAudio when
+                probeHasAudioTrack confirmed it) — a silent B-roll clip has nothing to choose. */}
+            {selectedAdditionalClip.brollAudio && (
+              <>
+                <h4>B-roll Audio</h4>
+                <label className="stack-field"><span>This clip's embedded audio</span>
+                  <select value={selectedAdditionalClip.brollAudio}
+                    onChange={e => applyBrollAudioChoice(selectedAdditionalClip, e.target.value as NonNullable<VideoClip["brollAudio"]>)}>
+                    <option value="keep">Keep — as an independent A1 track</option>
+                    <option value="muted">Mute — silent, embedded</option>
+                    <option value="removed">Removed — no audio</option>
+                  </select>
+                </label>
+                <p className="empty-hint">
+                  {selectedAdditionalClip.brollAudio === "keep"
+                    ? "This clip's audio is on A1 as its own track — trim, mute, or delete it there independently of this video."
+                    : "This clip plays back silent — its embedded audio is never mixed into the project."}
+                </p>
+              </>
+            )}
+          </>
         ) : selectedOverlay ? (
           <>
             <h4>Overlay</h4>
@@ -3277,8 +3806,15 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
           {/* Video stays the fixed background/base layer — not draggable, not part of
               layersListVisual's reorderable stack, per this step's requirement. */}
           {videoClips.map(c => (
-            <li key={c.id} className={selectedElement?.type === "clip" && selectedElement.id === c.id ? "active" : ""}
+            <li key={c.id} className={selectedElement?.type === "clip" && selectedElement.lane === "video" && selectedElement.id === c.id ? "active" : ""}
               onClick={() => setSelectedElement({ type: "clip", lane: "video", id: c.id })}>🎬 {c.name || "Clip"}</li>
+          ))}
+          {/* Phase 1 (V2 Inserts/B-roll): a second fixed layer, above Video and below the
+              reorderable Text/Overlay stack — same "not draggable, not part of the shared
+              `order` space" treatment Video itself gets above, one level up. */}
+          {additionalVideoClips.map(c => (
+            <li key={c.id} className={selectedElement?.type === "clip" && selectedElement.lane === "additional" && selectedElement.id === c.id ? "active" : ""}
+              onClick={() => setSelectedElement({ type: "clip", lane: "additional", id: c.id })}>🎞 {c.name || "B-roll"}</li>
           ))}
           {/* Layers reorder: Text and Overlay rows, interleaved by their shared `order` field,
               each draggable. Native HTML5 drag-and-drop — no new library. Dropping row A onto
@@ -3322,6 +3858,20 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 <input type="range" min={-50} max={50} value={selectedClip[k]}
                   onMouseDown={pushHistory}
                   onChange={e => rawUpdateVideoClip(selectedClip.id, { [k]: Number(e.target.value) } as Partial<VideoClip>)} />
+              </label>
+            ))}
+          </>
+        ) : selectedAdditionalClip ? (
+          // Phase 1: same three sliders/range/formula as V1's own above — getMediaFilter (used
+          // by the insert layer's own render) already reads these generically off any VideoClip,
+          // so this is purely exposing UI for a rendering path that already existed.
+          <>
+            {(["brightness", "contrast", "saturation"] as const).map(k => (
+              <label key={k} className="stack-field">
+                <span style={{ textTransform: "capitalize" }}>{k}</span>
+                <input type="range" min={-50} max={50} value={selectedAdditionalClip[k]}
+                  onMouseDown={pushHistory}
+                  onChange={e => rawUpdateAdditionalVideoClip(selectedAdditionalClip.id, { [k]: Number(e.target.value) } as Partial<VideoClip>)} />
               </label>
             ))}
           </>
@@ -3651,6 +4201,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                     <button type="button" onClick={() => setRepositionClipId(null)}>Done</button>
                   </div>
                 )}
+                {insertLayer}
                 {visualLayers}
               </div>
             ) : (
@@ -3696,6 +4247,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 >
                   {activeVideoClip ? activeVideoClip.name : "VISIT OUR SHOWROOM TODAY"}
                 </div>
+                {insertLayer}
                 {visualLayers}
               </div>
             )}
@@ -3785,11 +4337,30 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
           <TrackRow label="V1 Video" highlight={dragOverKind === "video"}>
             {videoClips.map(c => (
               <ClipBlock key={c.id} start={c.startTime} end={c.endTime} total={effectiveDuration}
-                selected={selectedElement?.type === "clip" && selectedElement.id === c.id}
+                selected={selectedElement?.type === "clip" && selectedElement.lane === "video" && selectedElement.id === c.id}
                 onClick={() => setSelectedElement({ type: "clip", lane: "video", id: c.id })}
                 onMove={newStart => rawUpdateVideoClip(c.id, { startTime: newStart, endTime: newStart + (c.endTime - c.startTime) })}
                 onTrimLeft={p => trimVideoLeft(c, p)} onTrimRight={p => trimVideoRight(c, p)} onGestureStart={pushHistory}
                 color="blue" label={c.name || "Clip"} />
+            ))}
+          </TrackRow>
+          {/* Phase 1 (V2 Inserts/B-roll) — Requirement 1: a real second video timeline track,
+              same ClipBlock/select/move/trim mechanics V1 already has, entirely independent
+              (own array, own history, own drop target — see handleDropOnV2Row). */}
+          <TrackRow
+            label="V2 Insert / B-roll"
+            highlight={dragOverKind === "video"}
+            onLaneDragOver={e => { if (detectDragKind(e) === "video") { e.preventDefault(); e.stopPropagation(); setDropActive(true); setDragOverKind("video"); } }}
+            onLaneDragLeave={() => { setDropActive(false); setDragOverKind(null); }}
+            onLaneDrop={handleDropOnV2Row}
+          >
+            {additionalVideoClips.map(c => (
+              <ClipBlock key={c.id} start={c.startTime} end={c.endTime} total={effectiveDuration}
+                selected={selectedElement?.type === "clip" && selectedElement.lane === "additional" && selectedElement.id === c.id}
+                onClick={() => setSelectedElement({ type: "clip", lane: "additional", id: c.id })}
+                onMove={newStart => rawUpdateAdditionalVideoClip(c.id, { startTime: newStart, endTime: newStart + (c.endTime - c.startTime) })}
+                onTrimLeft={p => trimInsertLeft(c, p)} onTrimRight={p => trimInsertRight(c, p)} onGestureStart={pushHistory}
+                color="amber" label={c.name || "B-roll"} />
             ))}
           </TrackRow>
           <TrackRow label="T1 Text">
@@ -4035,11 +4606,19 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
 // for whatever's currently being dragged over the timeline (see dragOverKind in
 // CreateEditTab). Optional and defaulting to no-highlight, so T1 Text (which nothing drags
 // onto — text is authored via "+ Add Text", not dragged from the library) needs no change.
-function TrackRow({ label, children, highlight }: { label: string; children: React.ReactNode; highlight?: boolean }) {
+function TrackRow({ label, children, highlight, onLaneDrop, onLaneDragOver, onLaneDragLeave }: {
+  label: string; children: React.ReactNode; highlight?: boolean;
+  // Phase 1 (V2 Inserts/B-roll): optional row-specific drop target — used ONLY by the V2 row,
+  // so a video dropped there is unambiguously "add as B-roll", never routed through the
+  // section-level handleDrop (which is what every other row still relies on, unchanged).
+  onLaneDrop?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onLaneDragOver?: (e: React.DragEvent<HTMLDivElement>) => void;
+  onLaneDragLeave?: () => void;
+}) {
   return (
     <div className={`track ${highlight ? "track-drop-target" : ""}`}>
       <div className="track-label">{label}<span>◉ 🔒</span></div>
-      <div className="track-lane">{children}</div>
+      <div className="track-lane" onDrop={onLaneDrop} onDragOver={onLaneDragOver} onDragLeave={onLaneDragLeave}>{children}</div>
     </div>
   );
 }

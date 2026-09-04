@@ -62,6 +62,45 @@ export function computeEndTimeForSpeed(clip: Pick<VideoClip, 'startTime' | 'dura
   return clip.startTime + sourceSpan / newSpeed;
 }
 
+// Phase 1 (V2 Inserts/B-roll): trim-left/trim-right clamp math for a V2 insert clip — identical
+// rules to V1's own trimVideoLeft/trimVideoRight in CreateEditTab.tsx (can never reveal source
+// material earlier/later than the file actually has via minStart/maxEnd; can never trim a clip
+// down to less than minClipDuration), extracted here as pure, independently-testable functions
+// — same "extract the fix so it's unit-testable, not just exercised through the UI" reasoning
+// computeEndTimeForSpeed above already established — rather than duplicating this inline only
+// inside the component closure.
+export function computeInsertTrimLeft(
+  clip: Pick<VideoClip, 'startTime' | 'endTime' | 'trimIn'>,
+  proposedStart: number,
+  minClipDuration: number
+): { startTime: number; trimIn: number } {
+  const minStart = Math.max(0, clip.startTime - clip.trimIn)
+  const maxStart = clip.endTime - minClipDuration
+  const finalStart = Math.min(maxStart, Math.max(minStart, proposedStart))
+  return { startTime: finalStart, trimIn: clip.trimIn + (finalStart - clip.startTime) }
+}
+
+export function computeInsertTrimRight(
+  clip: Pick<VideoClip, 'startTime' | 'endTime' | 'trimOut'>,
+  proposedEnd: number,
+  minClipDuration: number
+): { endTime: number; trimOut: number } {
+  const maxEnd = clip.endTime + clip.trimOut
+  const minEnd = clip.startTime + minClipDuration
+  const finalEnd = Math.max(minEnd, Math.min(maxEnd, proposedEnd))
+  return { endTime: finalEnd, trimOut: clip.trimOut + (clip.endTime - finalEnd) }
+}
+
+// Phase 1: which of a V2 insert's own embedded-audio choices is safe to apply automatically
+// on insertion, vs. requiring the user's explicit action. Pure decision extracted from
+// insertAdditionalVideoClipAt so the "do NOT blindly mix unwanted audio" rule (the whole point
+// of Requirement 9) is independently verifiable: a video with detected audio always starts
+// 'muted' (never auto-created as an audible AudioTrack), and a silent video gets no B-roll
+// audio state at all (undefined — nothing to choose).
+export function defaultBrollAudioMode(hasEmbeddedAudio: boolean): 'muted' | undefined {
+  return hasEmbeddedAudio ? 'muted' : undefined
+}
+
 // Reads real duration off an uploaded video file (no server-provided metadata exists yet) by
 // loading it into an offscreen <video> and waiting for its metadata to become available. Falls
 // back to a placeholder if the file can't be probed in time.
