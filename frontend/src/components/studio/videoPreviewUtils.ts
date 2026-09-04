@@ -245,3 +245,34 @@ export function autoSegmentPlainTranscript(raw: string, startAt: number, seconds
   if (current) chunks.push(current)
   return chunks.map((text, i) => ({ start: startAt + i * secondsPerChunk, end: startAt + (i + 1) * secondsPerChunk, text }))
 }
+
+// Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping) — Requirement: "Snapping should
+// help but should NOT prevent free positioning." Pure nearest-within-threshold snap: returns
+// the closest candidate in `guides` if it's within `thresholdPct`, otherwise `value` completely
+// unchanged — there is no clamping, no rejection, nothing that can ever stop a drag from landing
+// wherever the pointer actually is once it's outside every threshold. Picks the SINGLE nearest
+// candidate (not just the first below threshold) so two nearby guides never fight over the
+// result.
+export function snapToGuides(value: number, guides: number[], thresholdPct = 1.5): number {
+  let best = value
+  let bestDist = thresholdPct
+  for (const g of guides) {
+    const d = Math.abs(value - g)
+    if (d <= bestDist) { bestDist = d; best = g }
+  }
+  return best
+}
+
+// Turns a list of raw guide LINES (canvas percentages — e.g. 50 for the centre line, 10 for a
+// title-safe inset) into the list of EDGE-POSITION targets an element could snap to against
+// each one: its left edge on the line, its right edge on the line, or its centre on the line —
+// the same three-way snap every mainstream design tool (Figma, Canva) offers, rather than only
+// ever aligning one edge. `size` is the element's own width (or height, for the Y axis) in the
+// same percentage units; passing 0 (an element with no stored height, e.g. Text/Subtitle, whose
+// box height is implicit from content) degrades gracefully — all three targets collapse to the
+// bare guide value itself, i.e. a simple line-snap on that axis.
+export function buildSnapTargets(guides: number[], size: number): number[] {
+  const targets: number[] = []
+  for (const g of guides) targets.push(g, g - size, g - size / 2)
+  return targets
+}

@@ -9,7 +9,7 @@ import {
 import {
   findActiveClip, probeVideoDuration, probeHasAudioTrack, computeEndTimeForSpeed,
   computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode, composeTextBgColor, composeHexAlpha,
-  parseSrtTranscript, autoSegmentPlainTranscript,
+  parseSrtTranscript, autoSegmentPlainTranscript, snapToGuides, buildSnapTargets,
 } from "../../../components/studio/videoPreviewUtils";
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
 import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, Shape, SubtitleSegment, SubtitleStyle, ReferenceVideo } from "../../../types";
@@ -114,6 +114,27 @@ function defaultShapeBox(kind: Shape["kind"]): Pick<Shape, "x" | "y" | "width" |
     default: return { x: 20, y: 30, width: 40, height: 25, fillColor: "#12A656", opacity: 0.85, borderRadius: 4, fullWidth: false };
   }
 }
+
+// Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping). Insets are percent-of-canvas,
+// nested from tightest to loosest so all four read as distinct rectangles at once: Margins (a
+// simple practical "don't sit right at the edge" guide) inside Action-Safe inside Title-Safe —
+// Action-Safe/Title-Safe are the classic broadcast-safe convention (90%/80% of frame). Platform
+// Safe Zone is a clearly-labeled APPROXIMATION of where short-form vertical apps (Reels/TikTok/
+// Shorts) typically overlay their own UI (caption band, action-button rail) — not a value taken
+// from any single platform's published spec, since none of the three publish exact pixel specs
+// as part of a public API; it exists as a rough placement aid, not a guarantee.
+type GuideKey = "center" | "margins" | "actionSafe" | "titleSafe" | "platformSafeZone";
+const GUIDE_LABELS: Record<GuideKey, string> = {
+  center: "Centre lines", margins: "Margins", actionSafe: "Action-safe (90%)",
+  titleSafe: "Title-safe (80%)", platformSafeZone: "Platform UI zone (approx.)",
+};
+const MARGIN_INSET_PCT = 3;
+const ACTION_SAFE_INSET_PCT = 5;
+const TITLE_SAFE_INSET_PCT = 10;
+// Bottom caption/UI band + right action-button rail, shown only for vertical (9:16-ish) formats
+// — the ratio those three apps' own feeds actually use.
+const PLATFORM_SAFE_BOTTOM_PCT = 14;
+const PLATFORM_SAFE_RIGHT_PCT = 8;
 
 // STEP 7.9 (Save Draft + My Drafts): the complete, intentionally-saved project — everything
 // listed in the Step 7.9 requirement (video/audio/text/overlay/timeline/canvas/format state)
@@ -385,6 +406,17 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // Phase 1 (V2 Inserts/B-roll): same "crop-reposition handle armed" flag as repositionClipId
   // above, for whichever V2 clip (if any) currently has it armed.
   const [insertRepositionId, setInsertRepositionId] = useState<string | null>(null);
+  // Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping): purely local, view-only UI
+  // state, same category as cropMenuOpen above — which guide overlays are visible and whether
+  // dragging snaps to them. Deliberately not part of the saved project (a viewing aid, not
+  // project data — the same "settings, not content" treatment canvasFormat's own local UI
+  // toggles already get) and defaults to the two most broadly useful guides already on.
+  const [guidesMenuOpen, setGuidesMenuOpen] = useState(false);
+  const [guidesEnabled, setGuidesEnabled] = useState<Record<GuideKey, boolean>>({
+    center: true, margins: false, actionSafe: true, titleSafe: false, platformSafeZone: false,
+  });
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const toggleGuide = (key: GuideKey) => setGuidesEnabled(p => ({ ...p, [key]: !p[key] }));
   // STEP 7 (Keyboard Shortcuts): reference panel visibility — purely local UI state, same as
   // the two above.
   const [shortcutsPanelOpen, setShortcutsPanelOpen] = useState(false);
@@ -892,6 +924,33 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     ...mediaOverlays.map(o => o.endTime),
   ];
   const effectiveDuration = Math.max(timeline.duration || 0, ...authoredEnds, 15);
+
+  // Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping): the raw guide LINES currently
+  // enabled, in canvas percent — independent of aspect ratio for every guide except the
+  // platform safe zone, which only makes sense for the vertical (9:16-ish) formats those apps
+  // actually use. Shared by both the visual overlay render and the snap-target math below, so
+  // "what's drawn" and "what you snap to" can never drift apart.
+  const isVerticalFormat = canvasFormat.height > canvasFormat.width;
+  const guideXs: number[] = [
+    ...(guidesEnabled.center ? [50] : []),
+    ...(guidesEnabled.margins ? [MARGIN_INSET_PCT, 100 - MARGIN_INSET_PCT] : []),
+    ...(guidesEnabled.actionSafe ? [ACTION_SAFE_INSET_PCT, 100 - ACTION_SAFE_INSET_PCT] : []),
+    ...(guidesEnabled.titleSafe ? [TITLE_SAFE_INSET_PCT, 100 - TITLE_SAFE_INSET_PCT] : []),
+    ...(guidesEnabled.platformSafeZone && isVerticalFormat ? [100 - PLATFORM_SAFE_RIGHT_PCT] : []),
+  ];
+  const guideYs: number[] = [
+    ...(guidesEnabled.center ? [50] : []),
+    ...(guidesEnabled.margins ? [MARGIN_INSET_PCT, 100 - MARGIN_INSET_PCT] : []),
+    ...(guidesEnabled.actionSafe ? [ACTION_SAFE_INSET_PCT, 100 - ACTION_SAFE_INSET_PCT] : []),
+    ...(guidesEnabled.titleSafe ? [TITLE_SAFE_INSET_PCT, 100 - TITLE_SAFE_INSET_PCT] : []),
+    ...(guidesEnabled.platformSafeZone && isVerticalFormat ? [100 - PLATFORM_SAFE_BOTTOM_PCT] : []),
+  ];
+  // The one place every draggable canvas element's move-handler calls into the shared
+  // buildSnapTargets/snapToGuides pair — snapEnabled=false (or a drag that's landed outside
+  // every threshold) always falls through to the raw, un-snapped value untouched, exactly the
+  // "should help but should NOT prevent free positioning" requirement.
+  const snapAxis = (rawValue: number, size: number, guides: number[]): number =>
+    snapEnabled ? snapToGuides(rawValue, buildSnapTargets(guides, size)) : rawValue;
 
   // Measures the actual available preview region (not a guessed constant) so the canvas can
   // use however much real space the editor-shell grid gives it — the same amount regardless
@@ -2057,10 +2116,15 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (!textDragMovedRef.current) { pushHistory(); textDragMovedRef.current = true; }
     const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
     const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
-    const maxX = Math.max(0, 100 - (s.elW / s.boxW) * 100);
+    const widthPct = (s.elW / s.boxW) * 100;
+    const maxX = Math.max(0, 100 - widthPct);
     const maxY = Math.max(0, 100 - (s.elH / s.boxH) * 100);
-    const nextX = Math.min(maxX, Math.max(0, s.origX + dxPct));
-    const nextY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    const rawX = Math.min(maxX, Math.max(0, s.origX + dxPct));
+    const rawY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    // Phase 6: Text has no stored height, so its Y axis snaps as a bare line (size=0 — see
+    // buildSnapTargets' own comment on that degrade-gracefully case).
+    const nextX = snapAxis(rawX, widthPct, guideXs);
+    const nextY = snapAxis(rawY, 0, guideYs);
     rawUpdateTextOverlay(s.id, { x: nextX, y: nextY }); // Step 6: raw — history snapshot taken above, once, on the first tick of this gesture
   };
   const handleTextDragEnd = () => {
@@ -2154,10 +2218,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (!overlayDragMovedRef.current) { pushHistory(); overlayDragMovedRef.current = true; }
     const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
     const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
-    const maxX = Math.max(0, 100 - (s.elW / s.boxW) * 100);
-    const maxY = Math.max(0, 100 - (s.elH / s.boxH) * 100);
-    const nextX = Math.min(maxX, Math.max(0, s.origX + dxPct));
-    const nextY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    const widthPct = (s.elW / s.boxW) * 100;
+    const heightPct = (s.elH / s.boxH) * 100;
+    const maxX = Math.max(0, 100 - widthPct);
+    const maxY = Math.max(0, 100 - heightPct);
+    const rawX = Math.min(maxX, Math.max(0, s.origX + dxPct));
+    const rawY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    const nextX = snapAxis(rawX, widthPct, guideXs);
+    const nextY = snapAxis(rawY, heightPct, guideYs);
     rawUpdateMediaOverlay(s.id, { x: nextX, y: nextY }); // Step 6: raw, see handleTextDragMove above
   };
   const handleOverlayDragEnd = () => {
@@ -2330,10 +2398,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (!lowerThirdDragMovedRef.current) { pushHistory(); lowerThirdDragMovedRef.current = true; }
     const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
     const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
-    const maxX = Math.max(0, 100 - (s.elW / s.boxW) * 100);
-    const maxY = Math.max(0, 100 - (s.elH / s.boxH) * 100);
-    const nextX = Math.min(maxX, Math.max(0, s.origX + dxPct));
-    const nextY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    const widthPct = (s.elW / s.boxW) * 100;
+    const heightPct = (s.elH / s.boxH) * 100;
+    const maxX = Math.max(0, 100 - widthPct);
+    const maxY = Math.max(0, 100 - heightPct);
+    const rawX = Math.min(maxX, Math.max(0, s.origX + dxPct));
+    const rawY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    const nextX = snapAxis(rawX, widthPct, guideXs);
+    const nextY = snapAxis(rawY, heightPct, guideYs);
     rawUpdateLowerThird(s.id, { x: nextX, y: nextY });
   };
   const handleLowerThirdDragEnd = () => {
@@ -2451,10 +2523,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (!shapeDragMovedRef.current) { pushHistory(); shapeDragMovedRef.current = true; }
     const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
     const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
-    const maxX = Math.max(0, 100 - (s.elW / s.boxW) * 100);
-    const maxY = Math.max(0, 100 - (s.elH / s.boxH) * 100);
-    const nextX = Math.min(maxX, Math.max(0, s.origX + dxPct));
-    const nextY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    const widthPct = (s.elW / s.boxW) * 100;
+    const heightPct = (s.elH / s.boxH) * 100;
+    const maxX = Math.max(0, 100 - widthPct);
+    const maxY = Math.max(0, 100 - heightPct);
+    const rawX = Math.min(maxX, Math.max(0, s.origX + dxPct));
+    const rawY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    const nextX = snapAxis(rawX, widthPct, guideXs);
+    const nextY = snapAxis(rawY, heightPct, guideYs);
     rawUpdateShape(s.id, { x: nextX, y: nextY });
   };
   const handleShapeDragEnd = () => {
@@ -2537,10 +2613,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (!subtitleDragMovedRef.current) { pushHistory(); subtitleDragMovedRef.current = true; }
     const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
     const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
-    const maxX = Math.max(0, 100 - (s.elW / s.boxW) * 100);
+    const widthPct = (s.elW / s.boxW) * 100;
+    const maxX = Math.max(0, 100 - widthPct);
     const maxY = Math.max(0, 100 - (s.elH / s.boxH) * 100);
-    const nextX = Math.min(maxX, Math.max(0, s.origX + dxPct));
-    const nextY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    const rawX = Math.min(maxX, Math.max(0, s.origX + dxPct));
+    const rawY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    // Phase 6: Subtitle has no stored height either (see Text's own handler) — bare line-snap.
+    const nextX = snapAxis(rawX, widthPct, guideXs);
+    const nextY = snapAxis(rawY, 0, guideYs);
     rawUpdateSubtitle(s.id, { x: nextX, y: nextY });
   };
   const handleSubtitleDragEnd = () => {
@@ -2706,10 +2786,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (!insertDragMovedRef.current) { pushHistory(); insertDragMovedRef.current = true; }
     const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
     const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
-    const maxX = Math.max(0, 100 - (s.elW / s.boxW) * 100);
-    const maxY = Math.max(0, 100 - (s.elH / s.boxH) * 100);
-    const nextX = Math.min(maxX, Math.max(0, s.origX + dxPct));
-    const nextY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    const widthPct = (s.elW / s.boxW) * 100;
+    const heightPct = (s.elH / s.boxH) * 100;
+    const maxX = Math.max(0, 100 - widthPct);
+    const maxY = Math.max(0, 100 - heightPct);
+    const rawX = Math.min(maxX, Math.max(0, s.origX + dxPct));
+    const rawY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    const nextX = snapAxis(rawX, widthPct, guideXs);
+    const nextY = snapAxis(rawY, heightPct, guideYs);
     rawUpdateAdditionalVideoClip(s.id, { insertX: nextX, insertY: nextY });
   };
   const handleInsertDragEnd = () => {
@@ -3137,6 +3221,25 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const visualLayers = [...overlayEntries, ...textEntries, ...lowerThirdEntries, ...shapeEntries, ...subtitleEntries]
     .sort((a, b) => a.order - b.order)
     .map(e => e.node);
+
+  // Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping) — the visual guide overlay
+  // itself: pure display, pointer-events:none throughout so it can never intercept a click or
+  // drag meant for a real canvas element beneath it, rendered as the topmost layer (above
+  // visualLayers) so a guide is never hidden behind whatever it's helping to align. Draws
+  // exactly the same lines guideXs/guideYs already compute for snapping — what's drawn and
+  // what's snapped-to can never drift apart, since both read the same two arrays.
+  const guideOverlay = (guideXs.length > 0 || guideYs.length > 0 || (guidesEnabled.platformSafeZone && isVerticalFormat)) && (
+    <div className="canvas-guides" aria-hidden="true">
+      {guideXs.map((g, i) => <div key={`x${i}`} className="canvas-guide-line vertical" style={{ left: `${g}%` }} />)}
+      {guideYs.map((g, i) => <div key={`y${i}`} className="canvas-guide-line horizontal" style={{ top: `${g}%` }} />)}
+      {guidesEnabled.platformSafeZone && isVerticalFormat && (
+        <>
+          <div className="canvas-guide-band bottom" style={{ height: `${PLATFORM_SAFE_BOTTOM_PCT}%` }} title="Platform UI zone (approx.)" />
+          <div className="canvas-guide-band right" style={{ width: `${PLATFORM_SAFE_RIGHT_PCT}%` }} title="Platform UI zone (approx.)" />
+        </>
+      )}
+    </div>
+  );
 
   // Phase 1 (V2 Inserts/B-roll) — Requirement 4 ("V2 must be a REAL second video layer... The
   // preview/canvas must render V1 + V2 + other visual layers... Do not simulate V2 using an
@@ -5408,6 +5511,27 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 </div>
               )}
             </span>
+            {/* Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping): optional visual
+                guides + a snap toggle — "Snapping should help but should NOT prevent free
+                positioning", so this only ever offers ON/OFF for a soft, threshold-based
+                magnetism (see snapAxis's own comment), never a hard constraint. */}
+            <span className="crop-mode-menu">
+              <button type="button" className={guidesMenuOpen ? "active" : ""} onClick={() => setGuidesMenuOpen(v => !v)} title="Safe-area guides and snapping">
+                Guides⌄
+              </button>
+              {guidesMenuOpen && (
+                <div className="crop-mode-dropdown">
+                  {(Object.keys(GUIDE_LABELS) as GuideKey[]).map(key => (
+                    <button key={key} type="button" className={guidesEnabled[key] ? "active" : ""} onClick={() => toggleGuide(key)}>
+                      {guidesEnabled[key] ? "☑" : "☐"} {GUIDE_LABELS[key]}
+                    </button>
+                  ))}
+                  <button type="button" className={snapEnabled ? "active" : ""} onClick={() => setSnapEnabled(v => !v)}>
+                    {snapEnabled ? "☑" : "☐"} Snap to guides
+                  </button>
+                </div>
+              )}
+            </span>
             <button
               type="button"
               className={focusMode ? "active" : ""}
@@ -5489,6 +5613,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 )}
                 {insertLayer}
                 {visualLayers}
+                {guideOverlay}
               </div>
             ) : (
               <div ref={videoPreviewBoxRef} className="video-preview" style={{ width: canvasBox.w, height: canvasBox.h }} onClick={deselectCanvas}>
@@ -5535,6 +5660,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 </div>
                 {insertLayer}
                 {visualLayers}
+                {guideOverlay}
               </div>
             )}
           </div>

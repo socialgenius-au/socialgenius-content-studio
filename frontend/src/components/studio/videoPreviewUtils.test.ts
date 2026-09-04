@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   findActiveClip, computeEndTimeForSpeed,
   computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode, composeTextBgColor, composeHexAlpha,
-  parseSrtTranscript, autoSegmentPlainTranscript,
+  parseSrtTranscript, autoSegmentPlainTranscript, snapToGuides, buildSnapTargets,
 } from "./videoPreviewUtils";
 import type { VideoClip } from "../../types";
 
@@ -306,5 +306,47 @@ describe("autoSegmentPlainTranscript — Paste Transcript Option B (no timestamp
   it("reassembles to the original words with normalized whitespace", () => {
     const segments = autoSegmentPlainTranscript("  one   two three  ", 0, 3, 100);
     expect(segments.map(s => s.text).join(" ")).toBe("one two three");
+  });
+});
+
+// Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping)
+describe("snapToGuides — 'should help but should NOT prevent free positioning'", () => {
+  it("snaps to a guide within the threshold", () => {
+    expect(snapToGuides(49.2, [50], 1.5)).toBe(50);
+  });
+
+  it("passes the value through completely unchanged once it's outside every threshold — never clamps", () => {
+    expect(snapToGuides(37.4, [50, 0, 100], 1.5)).toBe(37.4);
+  });
+
+  it("picks the single NEAREST candidate when several are within threshold, not just the first", () => {
+    expect(snapToGuides(50.4, [49, 50, 51.5], 2)).toBe(50);
+  });
+
+  it("is exact at precisely the threshold boundary", () => {
+    expect(snapToGuides(48.5, [50], 1.5)).toBe(50);
+    expect(snapToGuides(48.49, [50], 1.5)).toBe(48.49);
+  });
+
+  it("with no guides at all, is a no-op", () => {
+    expect(snapToGuides(12.3, [], 1.5)).toBe(12.3);
+  });
+});
+
+describe("buildSnapTargets — left-edge / right-edge / centre snap targets per guide line", () => {
+  it("generates all three alignment targets for a single centre-line guide", () => {
+    // A 20%-wide element against the canvas centre line (50): left edge on 50, right edge on
+    // 50 (i.e. left = 50-20 = 30), or centred on 50 (left = 50-10 = 40).
+    expect(buildSnapTargets([50], 20).sort((a, b) => a - b)).toEqual([30, 40, 50]);
+  });
+
+  it("degrades to a bare line-snap when size is 0 (Text/Subtitle's implicit-height axis)", () => {
+    expect(buildSnapTargets([50, 10], 0)).toEqual([50, 50, 50, 10, 10, 10]);
+  });
+
+  it("combines multiple guide lines (e.g. margins + centre) into one target list", () => {
+    const targets = buildSnapTargets([0, 50, 100], 10);
+    // left edge on 0, right edge on 0 (-10), centred on 0 (-5); same for 50 and 100.
+    expect(targets).toEqual([0, -10, -5, 50, 40, 45, 100, 90, 95]);
   });
 });

@@ -191,6 +191,18 @@
    (resolveSubtitleStyle's own output), this is purely the box mechanics. */
 .canvas-subtitle-item{position:absolute;box-sizing:border-box;white-space:pre-wrap;line-height:1.25;padding:4px 10px;border-radius:4px}
 .canvas-subtitle-item.canvas-movable{cursor:move}
+/* Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping): display-only, never intercepts a
+   click or drag — pointer-events:none on the whole layer means every real canvas element
+   beneath it stays fully interactive. Lines/bands are positioned purely by inline style (the
+   same guideXs/guideYs percentages the snap math itself reads), so what's drawn always matches
+   what's snapped to. */
+.canvas-guides{position:absolute;inset:0;pointer-events:none;z-index:25;overflow:hidden}
+.canvas-guide-line{position:absolute;background:repeating-linear-gradient(to bottom,var(--v-accent) 0 4px,transparent 4px 8px)}
+.canvas-guide-line.vertical{top:0;bottom:0;width:1px}
+.canvas-guide-line.horizontal{left:0;right:0;height:1px;background:repeating-linear-gradient(to right,var(--v-accent) 0 4px,transparent 4px 8px)}
+.canvas-guide-band{position:absolute;background:repeating-linear-gradient(45deg,rgba(255,120,80,.14) 0 6px,rgba(255,120,80,.05) 6px 12px);border:1px dashed rgba(255,120,80,.5)}
+.canvas-guide-band.bottom{left:0;right:0;bottom:0;border-bottom:0}
+.canvas-guide-band.right{top:0;bottom:0;right:0;border-right:0}
 /* Step 5 follow-up (Defect 3): the real uploaded image/video asset, filling the Overlay's own
    box exactly — resizing/moving the .canvas-overlay-item parent (Defect 2's drag/resize) moves
    and resizes this with it for free, since it's just 100% of the parent. object-fit:contain
