@@ -175,6 +175,12 @@ function MediaLibrary() {
                   url: assetsApi.previewUrl(asset.file_path),
                   name: asset.original_filename,
                   mimeType: asset.mime_type,
+                  // This legacy /studio drag source only ever sets draggableVideo for
+                  // m.kind === 'Video' (see above) — 'video' is the only kind that can ever
+                  // reach here. Added purely to satisfy MediaAssetDragPayload's shared shape
+                  // (now also used by Video Studio V2's own audio/image drag sources); no
+                  // behavioural change to this legacy panel.
+                  kind: 'video',
                 }
                 e.dataTransfer.setData(MEDIA_ASSET_DRAG_TYPE, JSON.stringify(payload))
                 e.dataTransfer.effectAllowed = 'copy'

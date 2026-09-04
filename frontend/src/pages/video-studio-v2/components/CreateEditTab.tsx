@@ -2,7 +2,10 @@
 import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useStudio } from "../../../contexts/StudioContext";
 import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi } from "../../../api/client";
-import { MEDIA_ASSET_DRAG_TYPE, type MediaAssetDragPayload } from "../../../components/studio/dragTypes";
+import {
+  MEDIA_ASSET_DRAG_TYPE, dragKindMimeType,
+  type MediaAssetDragPayload, type MediaAssetDragKind,
+} from "../../../components/studio/dragTypes";
 import { findActiveClip, probeVideoDuration, probeHasAudioTrack, computeEndTimeForSpeed } from "../../../components/studio/videoPreviewUtils";
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
 import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, ReferenceVideo } from "../../../types";
@@ -77,6 +80,24 @@ function assetKind(fileType: string): "Videos" | "Images" | "Audio" | null {
   if (fileType === "video") return "Videos";
   if (fileType === "image") return "Images";
   if (fileType === "audio") return "Audio";
+  return null;
+}
+
+// Media-to-timeline routing requirement: which track a media-library asset targets, derived
+// from the same file_type classification assetKind already uses — one source of truth for
+// "what kind of thing is this" shared by the drag-source grid and the drop-target routing.
+function dragKindForAssetKind(kind: "Videos" | "Images" | "Audio"): MediaAssetDragKind {
+  return kind === "Videos" ? "video" : kind === "Audio" ? "audio" : "image";
+}
+
+// Computer -> Timeline direct drop: a real OS file carries a browser-reported MIME type (e.g.
+// "video/mp4"), not a file_type — same three-way split as _classify() on the backend
+// (backend/app/routers/upload.py), kept independent since this only ever needs to decide
+// which timeline track a *dropped* file should become, not persist a classification.
+function dragKindForMime(mime: string): MediaAssetDragKind | null {
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime.startsWith("image/")) return "image";
   return null;
 }
 
@@ -205,6 +226,15 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [rightTab, setRightTab] = useState<"Properties" | "Layers" | "Adjustments">("Properties");
   const [chatInput, setChatInput] = useState("");
   const [dropActive, setDropActive] = useState(false);
+  // Media-to-timeline routing requirement (Drop Target Feedback): which track is the valid
+  // destination for whatever's currently being dragged over the timeline — video/audio/image
+  // route to exactly one track each (V1/A1/O1), so knowing the kind is enough to know, and
+  // highlight, the one correct track; there's no per-pixel "which row is the pointer over"
+  // hit-testing to do. null while nothing compatible is being dragged over the timeline.
+  const [dragOverKind, setDragOverKind] = useState<MediaAssetDragKind | null>(null);
+  // Canvas Video Drop addendum: same "is a compatible drag currently over this drop target"
+  // feedback flag as the timeline's own dropActive, scoped to the canvas/preview region.
+  const [canvasDropActive, setCanvasDropActive] = useState(false);
   const [customW, setCustomW] = useState(canvasFormat.width);
   const [customH, setCustomH] = useState(canvasFormat.height);
   const [resizePicker, setResizePicker] = useState(false);
@@ -1189,25 +1219,78 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     }
   };
 
-  // ---- Audio → A1 timeline (Instruction 9): reuses the exact existing AudioTrack model and
-  // addAudioTrack action already used by legacy /studio's AudioTrackControls, including its
-  // startTime insertion convention (append after the last existing audio track's endTime —
-  // the same convention V1 video clips already use for themselves). Duration comes from the
-  // real file via probeVideoDuration — already used for V1 video clips, and generic enough to
-  // read real duration off an audio-only file too (HTMLMediaElement.duration isn't video-
-  // specific), so no new probing logic was needed. ----
-  const handleAddAudioToTimeline = async (asset: Asset) => {
-    const url = assetsApi.previewUrl(asset.file_path);
+  // ---- Media-to-timeline insertion (Media Library / OS file → V1 Video / A1 Audio / O1
+  // Overlay): the one real "turn an asset into a timeline clip" implementation, shared by
+  // drag-and-drop (dropTime = drop position), click-to-add ("+ Add to Timeline" — startTime =
+  // playhead), and Computer → Timeline direct drop (Instruction 2 — upload then insert). Each
+  // helper takes an explicit startTime rather than assuming "append at the end" or "always
+  // 0:00", exactly per the "insert at the corresponding time, never force 00:00" requirement. ----
+
+  // V1 Video. Reuses the exact same probeVideoDuration/probeHasAudioTrack + "mirror embedded
+  // audio onto A1" behaviour the original drag-only handleDrop already had (Instruction 12) —
+  // that logic is unchanged, just extracted so click-to-add gets it too.
+  const insertVideoClipAt = async (assetId: number, url: string, name: string, startTime: number) => {
     const duration = await probeVideoDuration(url);
-    const start = audioTracks.reduce((a, t) => Math.max(a, t.endTime), 0);
+    const clip: VideoClip = {
+      id: crypto.randomUUID(), assetId, url, name,
+      duration, startTime, endTime: startTime + duration,
+      trimIn: 0, trimOut: 0, colorGrade: "none", speed: 1,
+      brightness: 0, contrast: 0, saturation: 0, transition: "cut", transitionDuration: 0.5,
+    };
+    addVideoClip(clip);
+    setSelectedElement({ type: "clip", lane: "video", id: clip.id });
+
+    const hasAudio = await probeHasAudioTrack(url);
+    if (hasAudio) {
+      const audioTrack: AudioTrack = {
+        id: crypto.randomUUID(), assetId, url, name: `${name} (Audio)`,
+        volume: 1, startTime, endTime: startTime + duration,
+        trimIn: 0, trimOut: 0, fadeIn: 0, fadeOut: 0, duck: false,
+      };
+      addAudioTrack(audioTrack);
+    }
+  };
+
+  // A1 Audio (Instruction 9's original model, now taking an explicit startTime instead of
+  // always appending after the last audio track).
+  const insertAudioTrackAt = async (assetId: number, url: string, name: string, startTime: number) => {
+    const duration = await probeVideoDuration(url);
     const track: AudioTrack = {
-      id: crypto.randomUUID(), assetId: asset.id, url,
-      name: asset.original_filename.replace(/\.[^.]+$/, ""),
-      volume: 1, startTime: start, endTime: start + duration,
+      id: crypto.randomUUID(), assetId, url,
+      name: name.replace(/\.[^.]+$/, ""),
+      volume: 1, startTime, endTime: startTime + duration,
       trimIn: 0, trimOut: 0, fadeIn: 0, fadeOut: 0, duck: false,
     };
     addAudioTrack(track);
     setSelectedElement({ type: "audio", id: track.id });
+  };
+
+  // O1 Overlay — an uploaded image has no intrinsic duration, so this reuses the exact same
+  // fixed 5s-or-until-project-end default handleAddOverlayFile already established for the
+  // Overlays tab's own "+ Add Overlay" upload, just anchored at startTime instead of always
+  // "now". No dedicated V2 Inserts/B-roll video lane exists in this editor yet (StudioContext's
+  // additionalVideoClips has no UI at all — see the module-level note this instruction's report
+  // called out) — O1 Overlay is the one existing lane that already renders an image over the
+  // video in preview (visualLayers), so images route there rather than onto new architecture.
+  const insertImageOverlayAt = (assetId: number, url: string, startTime: number) => {
+    const overlay: MediaOverlay = {
+      id: crypto.randomUUID(), url, assetId,
+      x: 10, y: 10, width: 30, height: 30, opacity: 1,
+      startTime, endTime: Math.min(startTime + 5, effectiveDuration || startTime + 5),
+    };
+    addMediaOverlay(overlay);
+    setSelectedElement({ type: "overlay", id: overlay.id });
+  };
+
+  // Click-to-Add fallback (Instruction 3): no drop position exists for a click, so it inserts
+  // at the current playhead (timeline.currentTime) — the track is chosen automatically from
+  // the asset's own kind, exactly like drag-and-drop routes by the same kind.
+  const handleAddAssetToTimeline = async (asset: Asset, kind: "Videos" | "Images" | "Audio") => {
+    const url = assetsApi.previewUrl(asset.file_path);
+    const startTime = timeline.currentTime;
+    if (kind === "Videos") await insertVideoClipAt(asset.id, url, asset.original_filename, startTime);
+    else if (kind === "Audio") await insertAudioTrackAt(asset.id, url, asset.original_filename, startTime);
+    else insertImageOverlayAt(asset.id, url, startTime);
   };
 
   // ---- Media Library: Delete / Remove (new — the library grid previously had no way to
@@ -1259,42 +1342,96 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       .filter(m => !search || m.asset.original_filename.toLowerCase().includes(search.toLowerCase()));
   }, [mediaAssets, mediaTab, search]);
 
-  // ---- Timeline: real V1 drop target (Media Library → V1), same mechanism as /studio ----
-  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
+  // ---- Timeline: real drop target for Media Library assets AND raw OS files (Instructions 1
+  // & 2), routed to whichever of V1 Video / A1 Audio / O1 Overlay matches the dragged kind. ----
+
+  // Instruction 7 (Timeline Positioning): converts a drop's horizontal client position into a
+  // timeline second, against the SAME ruler element (and identical left/width math) the
+  // existing playhead scrub/seek already uses — so a drop lines up with the ruler's own
+  // timecodes exactly as displayed, with no separate/drifting position system. This timeline
+  // has no zoom or horizontal scroll of its own (the ruler always spans the full
+  // 0..effectiveDuration range), so that's the entire calculation — nothing to additionally
+  // account for.
+  const computeDropTime = (e: DragEvent<HTMLElement>): number => {
+    const rulerEl = rulerRef.current;
+    if (!rulerEl || effectiveDuration <= 0) return 0;
+    const rect = rulerEl.getBoundingClientRect();
+    return Math.max(0, ((e.clientX - rect.left) / rect.width) * effectiveDuration);
+  };
+
+  // Instruction 6 (Drop Target Feedback): identifies what's being dragged WITHOUT reading
+  // dataTransfer's actual payload (browsers only allow getData() on the real 'drop' event, not
+  // during 'dragover') — a Media Library asset advertises its kind as its own MIME type (see
+  // dragKindMimeType in dragTypes.ts), and a real OS file drag exposes each file's type on
+  // dataTransfer.items even mid-drag, in every browser this editor targets.
+  const detectDragKind = (e: DragEvent<HTMLElement>): MediaAssetDragKind | null => {
+    const types = e.dataTransfer.types;
+    if (types.includes(dragKindMimeType("video"))) return "video";
+    if (types.includes(dragKindMimeType("audio"))) return "audio";
+    if (types.includes(dragKindMimeType("image"))) return "image";
+    if (types.includes("Files")) {
+      const mime = e.dataTransfer.items?.[0]?.type;
+      if (mime) return dragKindForMime(mime);
+    }
+    return null;
+  };
+
+  // Canvas Video Drop addendum ("Reuse Existing Implementation"): the one shared "what was
+  // actually dropped" resolver for every drop target in this editor (Timeline AND Canvas) —
+  // reused rather than duplicated, per that requirement. Reads an already-uploaded Media
+  // Library payload as-is (Media Library → Canvas/Timeline: "do NOT upload it again, reuse the
+  // existing Asset"), or uploads+libraries a raw OS file first (Computer → Canvas/Timeline).
+  // Returns null for anything neither path recognises (e.g. a non-media OS file) — each caller
+  // decides what "no match" (or "wrong kind for this drop target") means for itself.
+  const resolveDroppedMediaSource = async (
+    e: DragEvent<HTMLElement>
+  ): Promise<{ assetId: number; url: string; name: string; kind: MediaAssetDragKind } | null> => {
+    const raw = e.dataTransfer.getData(MEDIA_ASSET_DRAG_TYPE);
+    if (raw) {
+      let payload: MediaAssetDragPayload;
+      try { payload = JSON.parse(raw); } catch { return null; }
+      return { assetId: payload.assetId, url: payload.url, name: payload.name, kind: payload.kind };
+    }
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return null;
+    const kind = dragKindForMime(file.type || "");
+    if (!kind) return null; // unsupported file type for a direct drop (e.g. a PDF) — silently ignored, same as an unrecognised drag today
+    const asset = await uploadAsset(file); // may throw — uploadAsset already surfaces a chat error message; callers just stop on catch
+    addMediaAsset(asset);
+    return { assetId: asset.id, url: assetsApi.previewUrl(asset.file_path), name: asset.original_filename, kind };
+  };
+
+  // ---- Timeline: real drop target for Media Library assets AND raw OS files (Instructions 1
+  // & 2), routed to whichever of V1 Video / A1 Audio / O1 Overlay matches the dragged kind. ----
+  const handleDrop = async (e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     setDropActive(false);
-    const raw = e.dataTransfer.getData(MEDIA_ASSET_DRAG_TYPE);
-    if (!raw) return;
-    let payload: MediaAssetDragPayload;
-    try { payload = JSON.parse(raw); } catch { return; }
-    const duration = await probeVideoDuration(payload.url);
-    const start = videoClips.reduce((a, c) => Math.max(a, c.endTime), 0);
-    const clip: VideoClip = {
-      id: crypto.randomUUID(), assetId: payload.assetId, url: payload.url, name: payload.name,
-      duration, startTime: start, endTime: start + duration,
-      trimIn: 0, trimOut: 0, colorGrade: "none", speed: 1,
-      brightness: 0, contrast: 0, saturation: 0, transition: "cut", transitionDuration: 0.5,
-    };
-    addVideoClip(clip);
+    setDragOverKind(null);
+    const dropTime = computeDropTime(e);
+    let source;
+    try { source = await resolveDroppedMediaSource(e); } catch { return; }
+    if (!source) return;
+    if (source.kind === "audio") await insertAudioTrackAt(source.assetId, source.url, source.name, dropTime);
+    else if (source.kind === "image") insertImageOverlayAt(source.assetId, source.url, dropTime);
+    else await insertVideoClipAt(source.assetId, source.url, source.name, dropTime);
+  };
 
-    // Instruction 12: if the video carries its own audio, mirror it onto A1 as a genuine,
-    // independent AudioTrack — same startTime/endTime as the video initially (so they start
-    // together and stay in sync until either is moved/trimmed independently), same assetId as
-    // the video clip (the existing, lightweight "came from this source" link the data model
-    // already supports — no new field, no grouping system), and the SAME file url: an <audio>
-    // element given a video file's url already decodes just its audio track natively, so no
-    // separate extraction/transcoding step exists or is needed. A silent video (probe resolves
-    // false) creates nothing here — no empty/fake Audio clip.
-    const hasAudio = await probeHasAudioTrack(payload.url);
-    if (hasAudio) {
-      const audioTrack: AudioTrack = {
-        id: crypto.randomUUID(), assetId: payload.assetId, url: payload.url,
-        name: `${payload.name} (Audio)`,
-        volume: 1, startTime: start, endTime: start + duration,
-        trimIn: 0, trimOut: 0, fadeIn: 0, fadeOut: 0, duck: false,
-      };
-      addAudioTrack(audioTrack);
-    }
+  // ---- Canvas Video Drop addendum: dropping a VIDEO directly onto the main preview/canvas is
+  // MAIN VIDEO insertion — V1 (+ its own embedded A1 audio, exactly like every other video
+  // insertion path) — never a disconnected canvas-only visual object. Deliberately video-only:
+  // this addendum is scoped to "MAIN VIDEO -> V1 + A1"; canvas drop for audio/image/B-roll
+  // belongs to the separate, not-yet-built canvas-composition work and is left alone here (an
+  // incompatible drag is simply not accepted, same "reject cleanly" behaviour Drop Target
+  // Feedback already established for the timeline). Insertion time is the current playhead, per
+  // the addendum's own "Insertion Time" section — the canvas has no drop-position-to-seconds
+  // axis the way the timeline's ruler does. ----
+  const handleCanvasVideoDrop = async (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    setCanvasDropActive(false);
+    let source;
+    try { source = await resolveDroppedMediaSource(e); } catch { return; }
+    if (!source || source.kind !== "video") return;
+    await insertVideoClipAt(source.assetId, source.url, source.name, timeline.currentTime);
   };
 
   const seekRatio = (ratio: number) => setTimeline({ currentTime: Math.max(0, Math.min(1, ratio)) * effectiveDuration });
@@ -2476,7 +2613,21 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       ) : mediaTab === "Audio" ? (
         <div className="media-grid">
           {mediaItems.map(({ asset }, i) => (
-            <div className="media-card" key={asset.id} title={asset.original_filename}>
+            <div
+              className="media-card"
+              key={asset.id}
+              draggable
+              title={`${asset.original_filename} — drag onto A1`}
+              onDragStart={e => {
+                const payload: MediaAssetDragPayload = {
+                  assetId: asset.id, url: assetsApi.previewUrl(asset.file_path),
+                  name: asset.original_filename, mimeType: asset.mime_type, kind: "audio",
+                };
+                e.dataTransfer.setData(MEDIA_ASSET_DRAG_TYPE, JSON.stringify(payload));
+                e.dataTransfer.setData(dragKindMimeType("audio"), "1");
+                e.dataTransfer.effectAllowed = "copy";
+              }}
+            >
               <button
                 type="button" className="media-card-delete"
                 onClick={e => { e.stopPropagation(); handleDeleteMediaAsset(asset); }}
@@ -2487,8 +2638,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               <button
                 type="button"
                 className="add-to-timeline-btn"
-                onClick={e => { e.stopPropagation(); void handleAddAudioToTimeline(asset); }}
-                title="Add this audio to the A1 timeline"
+                onClick={e => { e.stopPropagation(); void handleAddAssetToTimeline(asset, "Audio"); }}
+                title="Add this audio to the A1 timeline at the current playhead"
               >
                 + Add to Timeline
               </button>
@@ -2526,14 +2677,20 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             <div
               className="media-card"
               key={asset.id}
-              draggable={kind === "Videos"}
-              title={kind === "Videos" ? `${asset.original_filename} — drag onto V1` : asset.original_filename}
-              onDragStart={kind === "Videos" ? (e) => {
+              draggable={kind === "Videos" || kind === "Images"}
+              title={
+                kind === "Videos" ? `${asset.original_filename} — drag onto V1`
+                  : kind === "Images" ? `${asset.original_filename} — drag onto O1`
+                    : asset.original_filename
+              }
+              onDragStart={kind === "Videos" || kind === "Images" ? (e) => {
+                const dragKind = dragKindForAssetKind(kind);
                 const payload: MediaAssetDragPayload = {
                   assetId: asset.id, url: assetsApi.previewUrl(asset.file_path),
-                  name: asset.original_filename, mimeType: asset.mime_type,
+                  name: asset.original_filename, mimeType: asset.mime_type, kind: dragKind,
                 };
                 e.dataTransfer.setData(MEDIA_ASSET_DRAG_TYPE, JSON.stringify(payload));
+                e.dataTransfer.setData(dragKindMimeType(dragKind), "1");
                 e.dataTransfer.effectAllowed = "copy";
               } : undefined}
             >
@@ -2544,6 +2701,16 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               >🗑</button>
               <div className="fake-media" data-index={i + 1} />
               <small>{asset.original_filename}</small>
+              {(kind === "Videos" || kind === "Images") && (
+                <button
+                  type="button"
+                  className="add-to-timeline-btn"
+                  onClick={e => { e.stopPropagation(); void handleAddAssetToTimeline(asset, kind); }}
+                  title={kind === "Videos" ? "Add this video to V1 at the current playhead" : "Add this image to O1 at the current playhead"}
+                >
+                  + Add to Timeline
+                </button>
+              )}
             </div>
           ))}
           <button className="add-media" type="button" onClick={() => fileInputRef.current?.click()}>+<br />Add Media</button>
@@ -3429,7 +3596,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             </div>
           )}
 
-          <div className={`preview-canvas-region orientation-${orientation}`} ref={previewRegionRef} onClick={deselectCanvas}>
+          <div
+            className={`preview-canvas-region orientation-${orientation} ${canvasDropActive ? "drop-active" : ""}`}
+            ref={previewRegionRef}
+            onClick={deselectCanvas}
+            onDragOver={e => { if (detectDragKind(e) === "video") { e.preventDefault(); setCanvasDropActive(true); } }}
+            onDragLeave={() => setCanvasDropActive(false)}
+            onDrop={handleCanvasVideoDrop}
+          >
             {hasRealSrc ? (
               <div
                 ref={videoPreviewBoxRef}
@@ -3590,8 +3764,11 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         <section
           className={`timeline ${dropActive ? "drop-active" : ""}`}
           ref={timelineSectionRef}
-          onDragOver={e => { if (e.dataTransfer.types.includes(MEDIA_ASSET_DRAG_TYPE)) { e.preventDefault(); setDropActive(true); } }}
-          onDragLeave={() => setDropActive(false)}
+          onDragOver={e => {
+            const kind = detectDragKind(e);
+            if (kind) { e.preventDefault(); setDropActive(true); setDragOverKind(kind); }
+          }}
+          onDragLeave={() => { setDropActive(false); setDragOverKind(null); }}
           onDrop={handleDrop}
         >
           <div className="timeline-toolbar">
@@ -3605,7 +3782,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             {Array.from({ length: 6 }).map((_, i) => <span key={i}>{formatTimecode((i / 5) * effectiveDuration)}</span>)}
           </div>
 
-          <TrackRow label="V1 Video">
+          <TrackRow label="V1 Video" highlight={dragOverKind === "video"}>
             {videoClips.map(c => (
               <ClipBlock key={c.id} start={c.startTime} end={c.endTime} total={effectiveDuration}
                 selected={selectedElement?.type === "clip" && selectedElement.id === c.id}
@@ -3625,7 +3802,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 color="purple" label={t.text} />
             ))}
           </TrackRow>
-          <TrackRow label="O1 Overlay">
+          <TrackRow label="O1 Overlay" highlight={dragOverKind === "image"}>
             {mediaOverlays.map(o => (
               <ClipBlock key={o.id} start={o.startTime} end={o.endTime} total={effectiveDuration}
                 selected={selectedElement?.type === "overlay" && selectedElement.id === o.id}
@@ -3635,7 +3812,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 color="pink" label="Overlay" />
             ))}
           </TrackRow>
-          <TrackRow label="A1 Audio">
+          <TrackRow label="A1 Audio" highlight={dragOverKind === "audio"}>
             {audioTracks.map(a => (
               <ClipBlock key={a.id} start={a.startTime} end={a.endTime} total={effectiveDuration}
                 selected={selectedElement?.type === "audio" && selectedElement.id === a.id}
@@ -3854,8 +4031,17 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   );
 }
 
-function TrackRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="track"><div className="track-label">{label}<span>◉ 🔒</span></div><div className="track-lane">{children}</div></div>;
+// Drop Target Feedback requirement: `highlight` marks this row as the one valid destination
+// for whatever's currently being dragged over the timeline (see dragOverKind in
+// CreateEditTab). Optional and defaulting to no-highlight, so T1 Text (which nothing drags
+// onto — text is authored via "+ Add Text", not dragged from the library) needs no change.
+function TrackRow({ label, children, highlight }: { label: string; children: React.ReactNode; highlight?: boolean }) {
+  return (
+    <div className={`track ${highlight ? "track-drop-target" : ""}`}>
+      <div className="track-label">{label}<span>◉ 🔒</span></div>
+      <div className="track-lane">{children}</div>
+    </div>
+  );
 }
 
 // Instruction 8: horizontal drag-to-reposition, generic across all four lanes — the caller
