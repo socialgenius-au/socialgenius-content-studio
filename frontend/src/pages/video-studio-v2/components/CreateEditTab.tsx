@@ -8,10 +8,10 @@ import {
 } from "../../../components/studio/dragTypes";
 import {
   findActiveClip, probeVideoDuration, probeHasAudioTrack, computeEndTimeForSpeed,
-  computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode, composeTextBgColor,
+  computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode, composeTextBgColor, composeHexAlpha,
 } from "../../../components/studio/videoPreviewUtils";
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
-import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, ReferenceVideo } from "../../../types";
+import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, Shape, ReferenceVideo } from "../../../types";
 import {
   CANVAS_PLATFORMS, findPlacement, fitCanvasBox, PENDING_REFRAME_NOTE, RESIZE_TARGET_PLATFORMS,
   defaultPlacementForPlatform, type CanvasPlacement,
@@ -23,7 +23,7 @@ const CREATION_MODES = ["AI Create (Text to Video)", "Templates", "Import Extern
 // its tab button was, so it falls straight into the same existing asset-grid branch that
 // already renders Videos/Images via the untouched mediaItems/fileInputRef/"+ Add Media" path.
 // "GIFs" stays out per this instruction ("Do not add GIFs yet").
-const MEDIA_TABS = ["All", "Videos", "Images", "Text", "Overlays", "Lower Thirds", "Audio"] as const;
+const MEDIA_TABS = ["All", "Videos", "Images", "Text", "Overlays", "Lower Thirds", "Shapes", "Audio"] as const;
 
 // Instruction 3 scope: only canvas elements whose data model already carries (or can trivially
 // carry, via CanvasItemPosition) a position are made draggable — the headline text and the
@@ -96,6 +96,24 @@ const TEXT_STYLE_PRESETS: { name: string; apply: Partial<TextOverlay> }[] = [
   },
 ];
 
+// Phase 4 (Video Studio V2 — Independent Shapes): one starting box + style per named kind the
+// spec asks for — "rounded rectangle" isn't its own kind (see Shape's own type comment), so it
+// isn't listed separately here either; picking it is Rectangle + dragging the Radius slider up.
+const SHAPE_KIND_LABELS: Record<Shape["kind"], string> = {
+  rectangle: "Rectangle", circle: "Circle", line: "Line", banner: "Banner", highlight: "Highlight",
+};
+function defaultShapeBox(kind: Shape["kind"]): Pick<Shape, "x" | "y" | "width" | "height" | "fillColor" | "opacity" | "borderRadius" | "fullWidth"> {
+  switch (kind) {
+    case "circle": return { x: 40, y: 35, width: 20, height: 20, fillColor: "#12A656", opacity: 1, borderRadius: undefined, fullWidth: false };
+    case "line": return { x: 10, y: 50, width: 80, height: 0.6, fillColor: "#FFFFFF", opacity: 1, borderRadius: 0, fullWidth: false };
+    case "banner": return { x: 0, y: 45, width: 100, height: 10, fillColor: "#000000", opacity: 0.7, borderRadius: 0, fullWidth: true };
+    // "Highlight block" — a lower-opacity marker block meant to sit behind text (its default
+    // `order`, set at creation below, already places it at the back of the layer stack).
+    case "highlight": return { x: 10, y: 40, width: 60, height: 12, fillColor: "#FFE066", opacity: 0.55, borderRadius: 2, fullWidth: false };
+    default: return { x: 20, y: 30, width: 40, height: 25, fillColor: "#12A656", opacity: 0.85, borderRadius: 4, fullWidth: false };
+  }
+}
+
 // STEP 7.9 (Save Draft + My Drafts): the complete, intentionally-saved project — everything
 // listed in the Step 7.9 requirement (video/audio/text/overlay/timeline/canvas/format state)
 // plus a lightweight "client/project identity" label. `clientIdentity` mirrors the two strings
@@ -113,6 +131,8 @@ interface DraftProjectSnapshot {
   // Phase 2 (Video Studio V2 — Lower Thirds): survives Save/Refresh/Reopen, same as every
   // other real V2 timeline content array.
   lowerThirds: LowerThird[];
+  // Phase 4 (Video Studio V2 — Independent Shapes): survives Save/Refresh/Reopen too.
+  shapes: Shape[];
   mediaAssets: Asset[];
   canvasFormat: CanvasFormatState;
   timeline: ReturnType<typeof useStudio>["timeline"];
@@ -196,6 +216,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     // canvas/timeline presence in Video Studio V2 until now — same "raw + history-wrapped"
     // pattern as every other lane below.
     lowerThirds, addLowerThird: rawAddLowerThird, updateLowerThird: rawUpdateLowerThird, removeLowerThird: rawRemoveLowerThird,
+    // Phase 4 (Video Studio V2 — Independent Shapes): brand-new on StudioContext (added
+    // alongside this phase) — same "raw + history-wrapped" pattern as every other lane.
+    shapes, addShape: rawAddShape, updateShape: rawUpdateShape, removeShape: rawRemoveShape,
     mediaAssets, addMediaAsset, removeMediaAsset, uploadAsset,
     timeline, setTimeline,
     selectedElement, setSelectedElement,
@@ -220,7 +243,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // same rules, same reasoning (playhead/selection stay excluded), just a fifth array.
   // Phase 2: lowerThirds joins the content arrays Undo/Redo covers — same rules as V2's own
   // additionalVideoClips addition before it.
-  type EditorSnapshot = { videoClips: VideoClip[]; additionalVideoClips: VideoClip[]; textOverlays: TextOverlay[]; mediaOverlays: MediaOverlay[]; audioTracks: AudioTrack[]; lowerThirds: LowerThird[] };
+  type EditorSnapshot = { videoClips: VideoClip[]; additionalVideoClips: VideoClip[]; textOverlays: TextOverlay[]; mediaOverlays: MediaOverlay[]; audioTracks: AudioTrack[]; lowerThirds: LowerThird[]; shapes: Shape[] };
   const MAX_HISTORY = 50;
   const undoStackRef = useRef<EditorSnapshot[]>([]);
   const redoStackRef = useRef<EditorSnapshot[]>([]);
@@ -228,7 +251,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const currentEditorState = (): EditorSnapshot => ({
     videoClips: [...videoClips], additionalVideoClips: [...additionalVideoClips],
     textOverlays: [...textOverlays], mediaOverlays: [...mediaOverlays], audioTracks: [...audioTracks],
-    lowerThirds: [...lowerThirds],
+    lowerThirds: [...lowerThirds], shapes: [...shapes],
   });
   // Called at the start of every mutating action (via the wrapped add/update/remove functions
   // below) — captures what the content looked like right BEFORE this action, so Undo can put it
@@ -252,6 +275,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     snap.audioTracks.forEach(a => rawAddAudioTrack(a));
     lowerThirds.forEach(l => rawRemoveLowerThird(l.id));
     snap.lowerThirds.forEach(l => rawAddLowerThird(l));
+    shapes.forEach(s => rawRemoveShape(s.id));
+    snap.shapes.forEach(s => rawAddShape(s));
     // If whatever was selected no longer exists in the restored state, fall back to no
     // selection rather than leave Properties/Layers pointing at a stale id.
     if (selectedElement) {
@@ -262,6 +287,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         (selectedElement.type === "overlay" && snap.mediaOverlays.some(o => o.id === selectedElement.id)) ||
         (selectedElement.type === "audio" && snap.audioTracks.some(a => a.id === selectedElement.id)) ||
         (selectedElement.type === "lowerThird" && snap.lowerThirds.some(l => l.id === selectedElement.id)) ||
+        (selectedElement.type === "shape" && snap.shapes.some(s => s.id === selectedElement.id)) ||
         selectedElement.type === "canvasItem"; // has no backing array to check against — leave as-is
       if (!stillExists) setSelectedElement(null);
     }
@@ -298,6 +324,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const addLowerThird = (l: LowerThird) => { pushHistory(); rawAddLowerThird(l); };
   const updateLowerThird = (id: string, upd: Partial<LowerThird>) => { pushHistory(); rawUpdateLowerThird(id, upd); };
   const removeLowerThird = (id: string) => { pushHistory(); rawRemoveLowerThird(id); };
+  const addShape = (s: Shape) => { pushHistory(); rawAddShape(s); };
+  const updateShape = (id: string, upd: Partial<Shape>) => { pushHistory(); rawUpdateShape(id, upd); };
+  const removeShape = (id: string) => { pushHistory(); rawRemoveShape(id); };
   const addAudioTrack = (a: AudioTrack) => { pushHistory(); rawAddAudioTrack(a); };
   const updateAudioTrack = (id: string, upd: Partial<AudioTrack>) => { pushHistory(); rawUpdateAudioTrack(id, upd); };
   const removeAudioTrack = (id: string) => { pushHistory(); rawRemoveAudioTrack(id); };
@@ -479,7 +508,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [draftsError, setDraftsError] = useState<string | null>(null);
 
   const buildProjectSnapshot = (): DraftProjectSnapshot => ({
-    videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, mediaAssets,
+    videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, mediaAssets,
     canvasFormat, timeline, canvasItemPositions,
     clientIdentity: PROJECT_CLIENT_IDENTITY,
   });
@@ -497,6 +526,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     mediaOverlays.forEach(o => rawRemoveMediaOverlay(o.id));
     audioTracks.forEach(a => rawRemoveAudioTrack(a.id));
     lowerThirds.forEach(l => rawRemoveLowerThird(l.id));
+    shapes.forEach(s => rawRemoveShape(s.id));
     setSelectedElement(null);
     undoStackRef.current = [];
     redoStackRef.current = [];
@@ -511,6 +541,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     (snap.mediaOverlays ?? []).forEach(o => rawAddMediaOverlay(o));
     (snap.audioTracks ?? []).forEach(a => rawAddAudioTrack(a));
     (snap.lowerThirds ?? []).forEach(l => rawAddLowerThird(l));
+    (snap.shapes ?? []).forEach(s => rawAddShape(s));
     // mediaAssets only has an additive action (no bulk replace) — skip any id already present
     // rather than duplicate entries already in the Media panel.
     const existingAssetIds = new Set(mediaAssets.map(a => a.id));
@@ -713,6 +744,18 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   } | null>(null);
   const lowerThirdDragMovedRef = useRef(false);
   const lowerThirdResizeMovedRef = useRef(false);
+  // Phase 4 (Video Studio V2 — Independent Shapes): identical drag/resize session shapes again,
+  // writing into Shape's x/y/width/height.
+  const dragShapeSessionRef = useRef<{
+    id: string; boxW: number; boxH: number; elW: number; elH: number;
+    startClientX: number; startClientY: number; origX: number; origY: number;
+  } | null>(null);
+  const resizeShapeSessionRef = useRef<{
+    id: string; boxW: number; boxH: number; startClientX: number; startClientY: number; corner: ResizeCorner;
+    origX: number; origY: number; origWidth: number; origHeight: number;
+  } | null>(null);
+  const shapeDragMovedRef = useRef(false);
+  const shapeResizeMovedRef = useRef(false);
   // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): drag-to-reposition session for a
   // clip in Fill mode — same "session ref + boxW/boxH + origin" shape as dragOverlaySessionRef
   // above, just writing into VideoClip's cropOffsetX/Y instead of MediaOverlay's x/y.
@@ -1744,6 +1787,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const selectedLowerThird = selectedElement?.type === "lowerThird"
     ? lowerThirds.find(l => l.id === selectedElement.id) ?? null
     : null;
+  // Phase 4 (Video Studio V2 — Independent Shapes): same pattern.
+  const selectedShape = selectedElement?.type === "shape"
+    ? shapes.find(s => s.id === selectedElement.id) ?? null
+    : null;
   // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): which clip the toolbar's Fit/Fill/
   // Crop & Reposition dropdown acts on — the explicitly selected clip if there is one (matching
   // every other per-clip control's precedence in this file), otherwise whichever clip the
@@ -1878,6 +1925,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     ? { kind: "Overlay", name: overlayLabel(selectedOverlay) }
     : selectedLowerThird
     ? { kind: "Lower Third", name: selectedLowerThird.name || "Lower Third" }
+    : selectedShape
+    ? { kind: "Shape", name: SHAPE_KIND_LABELS[selectedShape.kind] }
     : selectedAudio
     ? { kind: "Audio", name: selectedAudio.name }
     : selectedCanvasItem
@@ -2335,6 +2384,111 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setSelectedElement({ type: "lowerThird", id: lt.id });
   };
 
+  // Phase 4 (Video Studio V2 — Independent Shapes): "the user can place a shape BEHIND text" —
+  // a new shape's default `order` is one less than the current back-most layer across the whole
+  // shared stack (Text/Overlay/LowerThird/Shape), so it starts out-of-the-box behind everything
+  // already on canvas, directly serving that use case — still freely reorderable afterward via
+  // the Layers tab, same as any other layer.
+  const handleAddShape = (kind: Shape["kind"]) => {
+    const allOrders = [...textOverlays, ...mediaOverlays, ...lowerThirds, ...shapes].map(l => l.order ?? 0);
+    const backOrder = allOrders.length ? Math.min(...allOrders) - 1 : 0;
+    const box = defaultShapeBox(kind);
+    const shape: Shape = {
+      id: crypto.randomUUID(), kind, ...box,
+      startTime: timeline.currentTime,
+      endTime: Math.min(timeline.currentTime + 5, effectiveDuration || timeline.currentTime + 5),
+      order: backOrder,
+    };
+    addShape(shape);
+    setSelectedElement({ type: "shape", id: shape.id });
+  };
+
+  // ==== Phase 4 (Video Studio V2 — Independent Shapes) — canvas move/resize ====
+  const handleShapeDragMove = (e: MouseEvent) => {
+    const s = dragShapeSessionRef.current;
+    if (!s) return;
+    if (!shapeDragMovedRef.current) { pushHistory(); shapeDragMovedRef.current = true; }
+    const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
+    const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
+    const maxX = Math.max(0, 100 - (s.elW / s.boxW) * 100);
+    const maxY = Math.max(0, 100 - (s.elH / s.boxH) * 100);
+    const nextX = Math.min(maxX, Math.max(0, s.origX + dxPct));
+    const nextY = Math.min(maxY, Math.max(0, s.origY + dyPct));
+    rawUpdateShape(s.id, { x: nextX, y: nextY });
+  };
+  const handleShapeDragEnd = () => {
+    dragShapeSessionRef.current = null;
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 0);
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", handleShapeDragMove);
+    window.removeEventListener("mouseup", handleShapeDragEnd);
+  };
+  const beginShapeDrag = (id: string) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedElement({ type: "shape", id });
+    const boxEl = videoPreviewBoxRef.current;
+    const el = e.currentTarget as HTMLElement;
+    const shape = shapes.find(s => s.id === id);
+    if (!boxEl || !shape) return;
+    shapeDragMovedRef.current = false;
+    const boxRect = boxEl.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    dragShapeSessionRef.current = {
+      id, boxW: boxRect.width, boxH: boxRect.height, elW: elRect.width, elH: elRect.height,
+      startClientX: e.clientX, startClientY: e.clientY, origX: shape.x, origY: shape.y,
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleShapeDragMove);
+    window.addEventListener("mouseup", handleShapeDragEnd);
+  };
+  const handleShapeResizeMove = (e: MouseEvent) => {
+    const s = resizeShapeSessionRef.current;
+    if (!s) return;
+    if (!shapeResizeMovedRef.current) { pushHistory(); shapeResizeMovedRef.current = true; }
+    const dxPct = ((e.clientX - s.startClientX) / s.boxW) * 100;
+    const dyPct = ((e.clientY - s.startClientY) / s.boxH) * 100;
+    const isLeft = s.corner === "nw" || s.corner === "sw";
+    const isTop = s.corner === "nw" || s.corner === "ne";
+    let nextWidth = Math.max(MIN_ELEMENT_SIZE_PCT, isLeft ? s.origWidth - dxPct : s.origWidth + dxPct);
+    let nextHeight = Math.max(MIN_ELEMENT_SIZE_PCT, isTop ? s.origHeight - dyPct : s.origHeight + dyPct);
+    let nextX = isLeft ? s.origX + (s.origWidth - nextWidth) : s.origX;
+    let nextY = isTop ? s.origY + (s.origHeight - nextHeight) : s.origY;
+    if (isLeft && nextX < 0) { nextWidth += nextX; nextX = 0; }
+    if (isTop && nextY < 0) { nextHeight += nextY; nextY = 0; }
+    if (!isLeft && nextX + nextWidth > 100) nextWidth = 100 - nextX;
+    if (!isTop && nextY + nextHeight > 100) nextHeight = 100 - nextY;
+    rawUpdateShape(s.id, {
+      x: nextX, y: nextY,
+      width: Math.max(MIN_ELEMENT_SIZE_PCT, nextWidth), height: Math.max(MIN_ELEMENT_SIZE_PCT, nextHeight),
+    });
+  };
+  const handleShapeResizeEnd = () => {
+    resizeShapeSessionRef.current = null;
+    justDraggedRef.current = true;
+    setTimeout(() => { justDraggedRef.current = false; }, 0);
+    document.body.style.userSelect = "";
+    window.removeEventListener("mousemove", handleShapeResizeMove);
+    window.removeEventListener("mouseup", handleShapeResizeEnd);
+  };
+  const beginShapeResize = (id: string, corner: ResizeCorner) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const boxEl = videoPreviewBoxRef.current;
+    const shape = shapes.find(s => s.id === id);
+    if (!boxEl || !shape) return;
+    shapeResizeMovedRef.current = false;
+    const boxRect = boxEl.getBoundingClientRect();
+    resizeShapeSessionRef.current = {
+      id, boxW: boxRect.width, boxH: boxRect.height, startClientX: e.clientX, startClientY: e.clientY, corner,
+      origX: shape.x, origY: shape.y, origWidth: shape.width, origHeight: shape.height,
+    };
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleShapeResizeMove);
+    window.addEventListener("mouseup", handleShapeResizeEnd);
+  };
+
   // ==== Phase 1 (V2 Inserts/B-roll) — canvas move/resize/crop/fit ====
   // Requirement 5 ("move anywhere on canvas", "resize"): identical percentage-delta-and-clamp
   // drag/resize as MediaOverlay's own beginOverlayDrag/beginOverlayResize above, writing into
@@ -2517,19 +2671,23 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // Phase 2: "lowerThird" joins the same shared paint-order space text/overlay already use —
   // interleaves freely with either, matching the spec's own layering example ("...overlay image
   // -> lower third -> text -> logo/watermark").
-  type VisualLayerRef = { type: "text" | "overlay" | "lowerThird"; id: string; order: number; label: string };
+  // Phase 4: "shape" joins the same shared paint-order space too — satisfies "place a shape
+  // behind text" as a normal drag in this exact list (its default order, set at creation, only
+  // decides where it STARTS; this reorder mechanism is what lets it move afterward).
+  type VisualLayerRef = { type: "text" | "overlay" | "lowerThird" | "shape"; id: string; order: number; label: string };
   const layersListVisual: VisualLayerRef[] = [
     ...textOverlays.map(t => ({ type: "text" as const, id: t.id, order: t.order ?? 0, label: `🔤 ${t.text.slice(0, 20)}` })),
     ...mediaOverlays.map(o => ({ type: "overlay" as const, id: o.id, order: o.order ?? 0, label: `🖼 ${overlayLabel(o)}` })),
     ...lowerThirds.map(l => ({ type: "lowerThird" as const, id: l.id, order: l.order ?? 0, label: `▭ ${l.name || "Lower Third"}` })),
+    ...shapes.map(sh => ({ type: "shape" as const, id: sh.id, order: sh.order ?? 0, label: `◆ ${SHAPE_KIND_LABELS[sh.kind]}` })),
   ].sort((a, b) => b.order - a.order);
 
-  const dragLayerRef = useRef<{ type: "text" | "overlay" | "lowerThird"; id: string } | null>(null);
+  const dragLayerRef = useRef<{ type: "text" | "overlay" | "lowerThird" | "shape"; id: string } | null>(null);
   // Dropping onto a row reassigns every visual layer's `order` in one pass — simplest way to
   // guarantee no two elements ever collide on the same order value after a reorder, and it
   // never touches anything else on either object (timing, position, size, media, filters, etc
   // are all separate fields, untouched here).
-  const reorderVisualLayers = (dragged: { type: "text" | "overlay" | "lowerThird"; id: string }, targetIndex: number) => {
+  const reorderVisualLayers = (dragged: { type: "text" | "overlay" | "lowerThird" | "shape"; id: string }, targetIndex: number) => {
     const withoutDragged = layersListVisual.filter(l => !(l.type === dragged.type && l.id === dragged.id));
     const draggedEntry = layersListVisual.find(l => l.type === dragged.type && l.id === dragged.id);
     if (!draggedEntry) return;
@@ -2542,7 +2700,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const order = n - i; // index 0 (top of list) gets the highest order = front-most on canvas
       if (l.type === "text") rawUpdateTextOverlay(l.id, { order });
       else if (l.type === "overlay") rawUpdateMediaOverlay(l.id, { order });
-      else rawUpdateLowerThird(l.id, { order });
+      else if (l.type === "lowerThird") rawUpdateLowerThird(l.id, { order });
+      else rawUpdateShape(l.id, { order });
     });
   };
 
@@ -2702,11 +2861,41 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       ),
     }));
 
+  // Phase 4 (Video Studio V2 — Independent Shapes): real Shape items on canvas — same
+  // gated-to-startTime/endTime, draggable/resizable pattern as every other real visual layer.
+  // 'circle' overrides borderRadius with a hard 50%; 'banner'/fullWidth extends the box to the
+  // full canvas width via negative margins, same technique TextOverlay.bgFullWidth uses.
+  const shapeEntries = shapes
+    .filter(sh => timeline.currentTime >= sh.startTime && timeline.currentTime < sh.endTime)
+    .map(sh => {
+      return {
+        order: sh.order ?? 0,
+        node: (
+    <div
+      key={sh.id}
+      className={`canvas-shape-item canvas-selectable canvas-movable ${selectedElement?.type === "shape" && selectedElement.id === sh.id ? "canvas-el-selected" : ""}`}
+      style={{
+        left: `${sh.x}%`, top: `${sh.y}%`, width: `${sh.width}%`, height: `${sh.height}%`,
+        background: composeHexAlpha(sh.fillColor, sh.opacity),
+        borderRadius: sh.kind === "circle" ? "50%" : sh.borderRadius ?? 0,
+        border: sh.borderWidth ? `${sh.borderWidth}px solid ${sh.borderColor ?? "#000000"}` : undefined,
+        ...(sh.fullWidth ? { marginLeft: `-${sh.x}%`, marginRight: `-${100 - sh.x - sh.width}%` } : {}),
+      }}
+      onMouseDown={beginShapeDrag(sh.id)}
+      onClick={e => e.stopPropagation()}
+      title={`${SHAPE_KIND_LABELS[sh.kind]} — click and drag to move`}
+    >
+      {selectedElement?.type === "shape" && selectedElement.id === sh.id && resizeHandles(corner => beginShapeResize(sh.id, corner))}
+    </div>
+        ),
+      };
+    });
+
   // Ascending sort: lowest `order` paints first (furthest back), highest paints last (furthest
   // front) — plain DOM paint order, no z-index needed. Ties (both default to 0, e.g. before any
   // reorder has ever happened) keep Array.sort's stable ordering, which preserves the exact
   // pre-existing "all Overlays behind all Text" look until the user actually reorders something.
-  const visualLayers = [...overlayEntries, ...textEntries, ...lowerThirdEntries]
+  const visualLayers = [...overlayEntries, ...textEntries, ...lowerThirdEntries, ...shapeEntries]
     .sort((a, b) => a.order - b.order)
     .map(e => e.node);
 
@@ -2813,6 +3002,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     rawUpdateLowerThird(l.id, { startTime: Math.max(0, Math.min(proposedStart, (l.endTime ?? proposedStart) - MIN_CLIP_DURATION)) });
   const trimLowerThirdRight = (l: LowerThird, proposedEnd: number) =>
     rawUpdateLowerThird(l.id, { endTime: Math.max(l.startTime + MIN_CLIP_DURATION, proposedEnd) });
+  // Phase 4: same shape again, for Shape (no legacy-shape optionality to guard against — Shape
+  // is new, endTime is always required).
+  const trimShapeLeft = (sh: Shape, proposedStart: number) =>
+    rawUpdateShape(sh.id, { startTime: Math.max(0, Math.min(proposedStart, sh.endTime - MIN_CLIP_DURATION)) });
+  const trimShapeRight = (sh: Shape, proposedEnd: number) =>
+    rawUpdateShape(sh.id, { endTime: Math.max(sh.startTime + MIN_CLIP_DURATION, proposedEnd) });
 
   // Step 5: Split / Delete / Ripple Delete. The scissors (✂), delete (⌫) and one of the two
   // previously-inert mock icons (◫, repurposed for Ripple Delete — ◩ and ⧉ stay untouched/
@@ -2901,6 +3096,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       rawUpdateLowerThird(l.id, { endTime: p });
       rawAddLowerThird({ ...l, id: rightId, startTime: p });
       setSelectedElement({ type: "lowerThird", id: rightId });
+    } else if (selectedElement.type === "shape") {
+      const sh = shapes.find(x => x.id === selectedElement.id);
+      if (!sh || p <= sh.startTime + MIN_CLIP_DURATION || p >= sh.endTime - MIN_CLIP_DURATION) return;
+      pushHistory();
+      const rightId = crypto.randomUUID();
+      rawUpdateShape(sh.id, { endTime: p });
+      rawAddShape({ ...sh, id: rightId, startTime: p });
+      setSelectedElement({ type: "shape", id: rightId });
     }
   };
 
@@ -2930,6 +3133,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     else if (selectedElement.type === "text") removeTextOverlay(selectedElement.id);
     else if (selectedElement.type === "overlay") removeMediaOverlay(selectedElement.id);
     else if (selectedElement.type === "lowerThird") removeLowerThird(selectedElement.id);
+    else if (selectedElement.type === "shape") removeShape(selectedElement.id);
     else return;
     setSelectedElement(null); // Properties/Layers fall back to their existing "nothing selected" state
   };
@@ -2991,6 +3195,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = lEndTime - l.startTime;
       rawRemoveLowerThird(l.id);
       lowerThirds.forEach(x => { if (x.id !== l.id && x.endTime !== undefined && x.startTime >= lEndTime - RIPPLE_EPSILON) rawUpdateLowerThird(x.id, { startTime: x.startTime - dur, endTime: x.endTime - dur }); });
+    } else if (selectedElement.type === "shape") {
+      const sh = shapes.find(x => x.id === selectedElement.id);
+      if (!sh) return;
+      pushHistory();
+      const dur = sh.endTime - sh.startTime;
+      rawRemoveShape(sh.id);
+      shapes.forEach(x => { if (x.id !== sh.id && x.startTime >= sh.endTime - RIPPLE_EPSILON) rawUpdateShape(x.id, { startTime: x.startTime - dur, endTime: x.endTime - dur }); });
     } else {
       return;
     }
@@ -3030,6 +3241,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const l = lowerThirds.find(x => x.id === selectedElement.id);
       if (!l) return;
       pushHistory(); trimLowerThirdLeft(l, p);
+    } else if (selectedElement.type === "shape") {
+      const sh = shapes.find(x => x.id === selectedElement.id);
+      if (!sh) return;
+      pushHistory(); trimShapeLeft(sh, p);
     }
   };
   const trimSelectedEndToPlayhead = () => {
@@ -3059,6 +3274,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const l = lowerThirds.find(x => x.id === selectedElement.id);
       if (!l) return;
       pushHistory(); trimLowerThirdRight(l, p);
+    } else if (selectedElement.type === "shape") {
+      const sh = shapes.find(x => x.id === selectedElement.id);
+      if (!sh) return;
+      pushHistory(); trimShapeRight(sh, p);
     }
   };
 
@@ -3077,6 +3296,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     | { kind: "text"; data: TextOverlay }
     | { kind: "overlay"; data: MediaOverlay }
     | { kind: "lowerThird"; data: LowerThird }
+    | { kind: "shape"; data: Shape }
     | null
   >(null);
   const copySelected = () => {
@@ -3099,6 +3319,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     } else if (selectedElement.type === "lowerThird") {
       const l = lowerThirds.find(x => x.id === selectedElement.id);
       if (l) clipboardRef.current = { kind: "lowerThird", data: l };
+    } else if (selectedElement.type === "shape") {
+      const sh = shapes.find(x => x.id === selectedElement.id);
+      if (sh) clipboardRef.current = { kind: "shape", data: sh };
     }
   };
   const pasteClipboard = () => {
@@ -3133,6 +3356,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = (cb.data.endTime ?? cb.data.startTime + 5) - cb.data.startTime;
       addLowerThird({ ...cb.data, id, startTime: p, endTime: p + dur });
       setSelectedElement({ type: "lowerThird", id });
+    } else if (cb.kind === "shape") {
+      const dur = cb.data.endTime - cb.data.startTime;
+      addShape({ ...cb.data, id, startTime: p, endTime: p + dur });
+      setSelectedElement({ type: "shape", id });
     }
   };
   const duplicateSelected = () => {
@@ -3177,6 +3404,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       const dur = l.endTime - l.startTime;
       addLowerThird({ ...l, id, startTime: l.endTime, endTime: l.endTime + dur });
       setSelectedElement({ type: "lowerThird", id });
+    } else if (selectedElement.type === "shape") {
+      const sh = shapes.find(x => x.id === selectedElement.id);
+      if (!sh) return;
+      const dur = sh.endTime - sh.startTime;
+      addShape({ ...sh, id, startTime: sh.endTime, endTime: sh.endTime + dur });
+      setSelectedElement({ type: "shape", id });
     }
   };
 
@@ -3214,6 +3447,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         x: Math.min(maxX, Math.max(0, (l.x ?? DEFAULT_LOWER_THIRD_BOX.x) + dx)),
         y: Math.min(maxY, Math.max(0, (l.y ?? DEFAULT_LOWER_THIRD_BOX.y) + dy)),
       });
+    } else if (selectedElement?.type === "shape") {
+      // Phase 4: same clamp shape again — Shape always has real width/height (never optional).
+      const sh = shapes.find(x => x.id === selectedElement.id);
+      if (!sh) return;
+      const maxX = Math.max(0, 100 - sh.width);
+      const maxY = Math.max(0, 100 - sh.height);
+      updateShape(sh.id, { x: Math.min(maxX, Math.max(0, sh.x + dx)), y: Math.min(maxY, Math.max(0, sh.y + dy)) });
     }
   };
   // STEP 7 (Keyboard Shortcuts): Left/Right step by exactly one frame when there's no movable
@@ -3316,7 +3556,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         case "ArrowRight":
         case "ArrowUp":
         case "ArrowDown": {
-          const isMovableCanvasSelection = selectedElement?.type === "text" || selectedElement?.type === "overlay" || selectedElement?.type === "lowerThird";
+          const isMovableCanvasSelection = selectedElement?.type === "text" || selectedElement?.type === "overlay" || selectedElement?.type === "lowerThird" || selectedElement?.type === "shape";
           if (isMovableCanvasSelection) {
             e.preventDefault();
             const nudge = e.shiftKey ? CANVAS_NUDGE_LARGE_PCT : CANVAS_NUDGE_SMALL_PCT;
@@ -3415,6 +3655,30 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             </div>
           ))}
           <button className="add-media" type="button" onClick={handleAddLowerThird}>+<br />Add Lower Third</button>
+        </div>
+      ) : mediaTab === "Shapes" ? (
+        // Phase 4 (Video Studio V2 — Independent Shapes): same "no upload, create + list +
+        // select" shape as Text/Lower Thirds above — a shape is authored content too. One
+        // add-button per named kind (Rectangle/Circle/Line/Banner/Highlight — see Shape's own
+        // type comment for why "rounded rectangle" isn't a separate one) rather than a single
+        // generic "+ Add Shape" that would then need a second picker step.
+        <div className="media-grid">
+          {shapes.map(sh => (
+            <div
+              key={sh.id}
+              className={`media-card ${selectedElement?.type === "shape" && selectedElement.id === sh.id ? "canvas-el-selected" : ""}`}
+              onClick={() => setSelectedElement({ type: "shape", id: sh.id })}
+              title="Click to select — edit it in the Properties panel"
+            >
+              <div className="fake-media overlay-swatch" style={{ background: sh.fillColor }}>
+                {sh.kind === "circle" ? "●" : sh.kind === "line" ? "▬" : sh.kind === "banner" ? "▭" : sh.kind === "highlight" ? "▧" : "▮"}
+              </div>
+              <small>{SHAPE_KIND_LABELS[sh.kind]}</small>
+            </div>
+          ))}
+          {(Object.keys(SHAPE_KIND_LABELS) as Shape["kind"][]).map(kind => (
+            <button key={kind} className="add-media" type="button" onClick={() => handleAddShape(kind)}>+<br />{SHAPE_KIND_LABELS[kind]}</button>
+          ))}
         </div>
       ) : mediaTab === "Audio" ? (
         <div className="media-grid">
@@ -4295,6 +4559,53 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               <input value={`H ${Math.round(selectedLowerThird.height ?? DEFAULT_LOWER_THIRD_BOX.height)}%`} readOnly />
             </div>
           </>
+        ) : selectedShape ? (
+          <>
+            {/* Phase 4 (Video Studio V2 — Independent Shapes) — real fill/opacity/border/size/
+                position/z-order controls (z-order is the shared Layers tab, same as Text/
+                Overlay/Lower Third — no separate control needed here). */}
+            <h4>{SHAPE_KIND_LABELS[selectedShape.kind]}</h4>
+            <label className="stack-field"><span>Fill colour</span>
+              <input type="color" value={selectedShape.fillColor}
+                onChange={e => updateShape(selectedShape.id, { fillColor: e.target.value })} />
+            </label>
+            <label className="stack-field"><span>Opacity — {Math.round(selectedShape.opacity * 100)}%</span>
+              <input type="range" min={0} max={100} value={Math.round(selectedShape.opacity * 100)}
+                onMouseDown={pushHistory}
+                onChange={e => rawUpdateShape(selectedShape.id, { opacity: Number(e.target.value) / 100 })} />
+            </label>
+            {selectedShape.kind !== "circle" && selectedShape.kind !== "line" && (
+              <label className="stack-field"><span>Corner radius — {selectedShape.borderRadius ?? 0}px</span>
+                <input type="range" min={0} max={60} value={selectedShape.borderRadius ?? 0}
+                  onMouseDown={pushHistory}
+                  onChange={e => rawUpdateShape(selectedShape.id, { borderRadius: Number(e.target.value) })} />
+              </label>
+            )}
+            <label className="stack-field"><span>Border</span>
+              <div className="row">
+                <input type="color" value={selectedShape.borderColor ?? "#000000"}
+                  onChange={e => updateShape(selectedShape.id, { borderColor: e.target.value })} />
+                <input type="range" min={0} max={10} value={selectedShape.borderWidth ?? 0}
+                  onMouseDown={pushHistory}
+                  onChange={e => rawUpdateShape(selectedShape.id, { borderWidth: Number(e.target.value) })} />
+              </div>
+            </label>
+            <label className="stack-field" style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: "row" }}>
+              <input type="checkbox" checked={selectedShape.fullWidth ?? false}
+                onChange={e => updateShape(selectedShape.id, { fullWidth: e.target.checked })} />
+              <span>Full width (banner)</span>
+            </label>
+            <h4>Transform</h4>
+            <div className="row">
+              <input value={`X ${Math.round(selectedShape.x)}%`} readOnly />
+              <input value={`Y ${Math.round(selectedShape.y)}%`} readOnly />
+            </div>
+            <div className="row">
+              <input value={`W ${Math.round(selectedShape.width)}%`} readOnly />
+              <input value={`H ${Math.round(selectedShape.height)}%`} readOnly />
+            </div>
+            <p className="empty-hint">Layer order (front/behind text) is set in the Layers tab, same as every other visual element.</p>
+          </>
         ) : selectedAudio ? (
           <>
             <h4>Audio</h4>
@@ -4382,7 +4693,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             <li key={a.id} className={selectedElement?.type === "audio" && selectedElement.id === a.id ? "active" : ""}
               onClick={() => setSelectedElement({ type: "audio", id: a.id })}>🎵 {a.name}</li>
           ))}
-          {videoClips.length + additionalVideoClips.length + textOverlays.length + audioTracks.length + mediaOverlays.length + lowerThirds.length === 0 && (
+          {videoClips.length + additionalVideoClips.length + textOverlays.length + audioTracks.length + mediaOverlays.length + lowerThirds.length + shapes.length === 0 && (
             <p className="empty-hint">No layers yet.</p>
           )}
         </ul>
@@ -4936,6 +5247,17 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 onMove={newStart => rawUpdateLowerThird(l.id, { startTime: newStart, endTime: newStart + (l.endTime - l.startTime) })}
                 onTrimLeft={p => trimLowerThirdLeft(l, p)} onTrimRight={p => trimLowerThirdRight(l, p)} onGestureStart={pushHistory}
                 color="teal" label={l.name || "Lower Third"} />
+            ))}
+          </TrackRow>
+          {/* Phase 4 (Video Studio V2 — Independent Shapes): same ClipBlock mechanics again. */}
+          <TrackRow label="SH1 Shapes">
+            {shapes.map(sh => (
+              <ClipBlock key={sh.id} start={sh.startTime} end={sh.endTime} total={effectiveDuration}
+                selected={selectedElement?.type === "shape" && selectedElement.id === sh.id}
+                onClick={() => setSelectedElement({ type: "shape", id: sh.id })}
+                onMove={newStart => rawUpdateShape(sh.id, { startTime: newStart, endTime: newStart + (sh.endTime - sh.startTime) })}
+                onTrimLeft={p => trimShapeLeft(sh, p)} onTrimRight={p => trimShapeRight(sh, p)} onGestureStart={pushHistory}
+                color="lime" label={SHAPE_KIND_LABELS[sh.kind]} />
             ))}
           </TrackRow>
           <TrackRow label="A1 Audio" highlight={dragOverKind === "audio"}>

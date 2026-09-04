@@ -6,7 +6,7 @@ import type {
   Brand, Asset, Template, Job,
   Platform, ContentType,
   VideoClip, TextOverlay, MediaOverlay, AudioTrack, ImageSlide,
-  ChatMessage, SEOPackage, LowerThird, IntroOutro, ApprovalGate,
+  ChatMessage, SEOPackage, LowerThird, IntroOutro, ApprovalGate, Shape,
 } from '../types'
 import { generateApi, uploadApi } from '../api/client'
 
@@ -61,6 +61,9 @@ export type SelectedElement =
   // 'overlay' above, over LowerThird instead of MediaOverlay. Additive only; legacy /studio's
   // own LowerThirdBuilder.tsx has no canvas selection concept and never produces this variant.
   | { type: 'lowerThird'; id: string }
+  // Phase 4 (Video Studio V2 — Independent Shapes): same pattern again, over the brand-new
+  // Shape type (no legacy /studio equivalent exists at all).
+  | { type: 'shape'; id: string }
   // A canvas element with no backing data-model entry yet (Video Studio V2's placeholder
   // mock content — headline, badge, CTA, etc.) — carries just enough for Properties'
   // "Type / Name" identification. Additive only; legacy /studio never produces this variant.
@@ -86,6 +89,8 @@ interface StudioState {
   mediaOverlays: MediaOverlay[]
   audioTracks: AudioTrack[]
   lowerThirds: LowerThird[]
+  // Phase 4 (Video Studio V2 — Independent Shapes)
+  shapes: Shape[]
   intro: IntroOutro | null
   outro: IntroOutro | null
 
@@ -181,6 +186,11 @@ interface StudioState {
   updateMediaOverlay: (id: string, upd: Partial<MediaOverlay>) => void
   removeMediaOverlay: (id: string) => void
 
+  // Phase 4 (Video Studio V2 — Independent Shapes)
+  addShape: (s: Shape) => void
+  updateShape: (id: string, upd: Partial<Shape>) => void
+  removeShape: (id: string) => void
+
   // Audio
   addAudioTrack: (t: AudioTrack) => void
   updateAudioTrack: (id: string, upd: Partial<AudioTrack>) => void
@@ -228,6 +238,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [mediaOverlays, setMediaOverlays] = useState<MediaOverlay[]>([])
   const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([])
   const [lowerThirds, setLowerThirds] = useState<LowerThird[]>([])
+  const [shapes, setShapes] = useState<Shape[]>([])
   const [intro, setIntro] = useState<IntroOutro | null>(null)
   const [outro, setOutro] = useState<IntroOutro | null>(null)
 
@@ -308,6 +319,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setMediaOverlays(p => p.map(o => o.id === id ? { ...o, ...upd } : o)), [])
   const removeMediaOverlay = useCallback((id: string) =>
     setMediaOverlays(p => p.filter(o => o.id !== id)), [])
+
+  // Phase 4 (Video Studio V2 — Independent Shapes)
+  const addShape = useCallback((s: Shape) => setShapes(p => [...p, s]), [])
+  const updateShape = useCallback((id: string, upd: Partial<Shape>) =>
+    setShapes(p => p.map(s => s.id === id ? { ...s, ...upd } : s)), [])
+  const removeShape = useCallback((id: string) =>
+    setShapes(p => p.filter(s => s.id !== id)), [])
 
   // Audio actions
   const addAudioTrack = useCallback((t: AudioTrack) => setAudioTracks(p => [...p, t]), [])
@@ -432,7 +450,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const value: StudioState = {
     activeBrand, activeJob, brands, recentJobs,
     contentType, platform,
-    videoClips, additionalVideoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, lowerThirds, intro, outro,
+    videoClips, additionalVideoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, intro, outro,
     previewUrl, previewHtml, previewText,
     timeline,
     chatMessages, chatLoading,
@@ -455,6 +473,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     addImageSlide, updateImageSlide, removeImageSlide,
     addTextOverlay, updateTextOverlay, removeTextOverlay,
     addMediaOverlay, updateMediaOverlay, removeMediaOverlay,
+    addShape, updateShape, removeShape,
     addAudioTrack, updateAudioTrack, removeAudioTrack,
     addLowerThird, updateLowerThird, removeLowerThird,
     setIntro, setOutro,

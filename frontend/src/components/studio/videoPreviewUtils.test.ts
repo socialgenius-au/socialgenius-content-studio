@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   findActiveClip, computeEndTimeForSpeed,
-  computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode, composeTextBgColor,
+  computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode, composeTextBgColor, composeHexAlpha,
 } from "./videoPreviewUtils";
 import type { VideoClip } from "../../types";
 
@@ -218,5 +218,25 @@ describe("composeTextBgColor — must match legacy /studio's PreviewCanvas.tsx e
   it("reproduces the exact legacy /studio composition for a real saved value (0.65 opacity)", () => {
     // legacy: Math.round(0.65 * 255).toString(16).padStart(2, '0') === 'a6'
     expect(composeTextBgColor("#1E3D2A", 0.65)).toBe("#1E3D2Aa6");
+  });
+});
+
+// Phase 4 (Video Studio V2 — Independent Shapes): composeTextBgColor's own alpha math,
+// generalized so Shape.fillColor/opacity reuses it too instead of a third copy of this formula.
+describe("composeHexAlpha — shared by Text backgrounds and Shape fills", () => {
+  it("has no 'transparent' special case — that stays in composeTextBgColor, the caller that needs it", () => {
+    // A colour that happens to be the literal string 'transparent' is NOT a valid 6-digit hex,
+    // so this just appends the alpha suffix like any other input — proving the sentinel check
+    // was deliberately left out of this lower-level function, not forgotten.
+    expect(composeHexAlpha("transparent", 1)).toBe("transparentff");
+  });
+
+  it("matches composeTextBgColor exactly for a real hex colour (same formula, same output)", () => {
+    expect(composeHexAlpha("#1E3D2A", 0.65)).toBe(composeTextBgColor("#1E3D2A", 0.65));
+  });
+
+  it("clamps out-of-range opacity", () => {
+    expect(composeHexAlpha("#FFE066", 2)).toBe("#FFE066ff");
+    expect(composeHexAlpha("#FFE066", -1)).toBe("#FFE06600");
   });
 });

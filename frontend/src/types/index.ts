@@ -454,6 +454,39 @@ export interface MediaOverlay {
   order?: number
 }
 
+// Phase 4 (Video Studio V2 — Independent Shapes). A brand-new type — no legacy /studio
+// equivalent exists (confirmed by inspection), so unlike VideoClip/LowerThird/TextOverlay this
+// needed no backward-compatibility constraint at all; every field below is real from the start.
+//
+// "rounded rectangle" is deliberately not its own `kind` — it's 'rectangle' + borderRadius > 0,
+// the same continuous-control-over-rigid-enum choice TextOverlay's own background shape
+// (Rectangle/Pill/Banner, Phase 3) already made. 'circle' renders via CSS 50% radius,
+// independent of borderRadius. 'line' and 'highlight' share the rectangle primitive with
+// different creation defaults (thin/full-height respectively) — real, distinctly offered shapes
+// per the spec, not silently merged away, even though they share one render path.
+export interface Shape {
+  id: string
+  kind: 'rectangle' | 'circle' | 'line' | 'banner' | 'highlight'
+  x: number
+  y: number
+  width: number
+  height: number
+  fillColor: string
+  opacity: number // 0-1, matching MediaOverlay's own convention
+  borderColor?: string
+  borderWidth?: number  // px
+  borderRadius?: number // px — meaningful for 'rectangle'/'highlight' only ('circle' ignores it)
+  // 'banner': the shape spans the full canvas width regardless of its own width — same
+  // full-width convention TextOverlay.bgFullWidth already established in Phase 3.
+  fullWidth?: boolean
+  startTime: number
+  endTime: number
+  // Joins the same shared paint-order space Text/Overlay/LowerThird already use, so a shape can
+  // be dragged behind (or in front of) any of them in the Layers list — directly satisfying
+  // "place a shape behind text" as a normal reorder, not a special case.
+  order?: number
+}
+
 export interface AudioTrack {
   id: string
   assetId?: number

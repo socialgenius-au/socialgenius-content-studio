@@ -101,17 +101,26 @@ export function defaultBrollAudioMode(hasEmbeddedAudio: boolean): 'muted' | unde
   return hasEmbeddedAudio ? 'muted' : undefined
 }
 
+// Composes a hex colour + a 0-1 opacity into one 8-digit hex-with-alpha CSS colour string —
+// the one place this math lives, shared by every Video Studio V2 element that stores fill/
+// background as a plain hex colour + a separate opacity field (TextOverlay's bgColor/bgOpacity,
+// Phase 4's Shape.fillColor/opacity) rather than baking alpha into the colour itself.
+export function composeHexAlpha(hexColor: string, opacity: number): string {
+  const alphaHex = Math.round(Math.max(0, Math.min(1, opacity)) * 255).toString(16).padStart(2, '0')
+  return `${hexColor}${alphaHex}`
+}
+
 // Phase 3 (Video Studio V2 — Advanced Text Properties): composes a TextOverlay's bgColor +
-// bgOpacity into one CSS colour, as an 8-digit hex string — extracted as a pure function so it's
-// independently verifiable that this matches, byte-for-byte, legacy /studio's own
-// PreviewCanvas.tsx composition (`${bgColor}${Math.round(bgOpacity*255).toString(16).padStart(2,'0')}`),
-// which is what makes a project's text background render identically in both editors.
-// 'transparent' passes through unchanged — there is no alpha-suffixed form of the transparent
-// keyword, and this is legacy /studio's own explicit "no background" sentinel value.
+// bgOpacity into one CSS colour — independently verifiable that this matches, byte-for-byte,
+// legacy /studio's own PreviewCanvas.tsx composition
+// (`${bgColor}${Math.round(bgOpacity*255).toString(16).padStart(2,'0')}`), which is what makes a
+// project's text background render identically in both editors. 'transparent' passes through
+// unchanged — there is no alpha-suffixed form of the transparent keyword, and this is legacy
+// /studio's own explicit "no background" sentinel value; composeHexAlpha itself has no opinion
+// on that sentinel, so the check stays here rather than being pushed down into it.
 export function composeTextBgColor(bgColor: string, bgOpacity: number): string {
   if (bgColor === 'transparent') return 'transparent'
-  const alphaHex = Math.round(Math.max(0, Math.min(1, bgOpacity)) * 255).toString(16).padStart(2, '0')
-  return `${bgColor}${alphaHex}`
+  return composeHexAlpha(bgColor, bgOpacity)
 }
 
 // Reads real duration off an uploaded video file (no server-provided metadata exists yet) by
