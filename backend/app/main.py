@@ -17,6 +17,7 @@ logger = logging.getLogger("app")
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.limiter import limiter
+from app.schema_patches import apply_additive_schema_patches
 from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos
 
 # Import all models so Base.metadata is fully populated before create_all
@@ -51,6 +52,9 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("DROP SCHEMA public CASCADE"))
             await conn.execute(text("CREATE SCHEMA public"))
         await conn.run_sync(Base.metadata.create_all)
+        # Additive column/index patches create_all() itself cannot apply to an already-existing
+        # table — see app/schema_patches.py's own docstring for exactly what this covers and why.
+        await apply_additive_schema_patches(conn)
     await _seed_users()
     yield
     if settings.REDIS_URL:
