@@ -119,6 +119,8 @@ app.add_middleware(
         "https://content-studio-frontend-production-84fe.up.railway.app",
         # Ayub staging test frontend (snapshot branch only) — see staging/ayub-video-studio-test-03-sep-2026.
         "https://frontend-ayubtest-contentstudio-production.up.railway.app",
+        # Ayub staging test frontend, Netlify deploy — see staging/ayub-video-studio-test-03-sep-2026.
+        "https://socialgenius-video-studio-test.netlify.app",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ],
