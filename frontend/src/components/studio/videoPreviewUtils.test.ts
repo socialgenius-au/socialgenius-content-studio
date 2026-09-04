@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   findActiveClip, computeEndTimeForSpeed,
-  computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode,
+  computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode, composeTextBgColor,
 } from "./videoPreviewUtils";
 import type { VideoClip } from "../../types";
 
@@ -194,5 +194,29 @@ describe("defaultBrollAudioMode — Requirement 9 ('do NOT blindly mix unwanted 
 
   it("a silent V2 clip gets no B-roll audio state at all — nothing to choose", () => {
     expect(defaultBrollAudioMode(false)).toBeUndefined();
+  });
+});
+
+// Phase 3 (Video Studio V2 — Advanced Text Properties)
+describe("composeTextBgColor — must match legacy /studio's PreviewCanvas.tsx exactly", () => {
+  it("passes 'transparent' straight through, never alpha-suffixed", () => {
+    expect(composeTextBgColor("transparent", 0.7)).toBe("transparent");
+    expect(composeTextBgColor("transparent", 0)).toBe("transparent");
+  });
+
+  it("appends a 2-digit hex alpha suffix computed from 0-1 opacity", () => {
+    expect(composeTextBgColor("#000000", 0.7)).toBe("#000000b3"); // round(0.7*255)=179=0xb3
+    expect(composeTextBgColor("#FFFFFF", 1)).toBe("#FFFFFFff");
+    expect(composeTextBgColor("#123456", 0)).toBe("#12345600");
+  });
+
+  it("clamps out-of-range opacity rather than producing an invalid hex byte", () => {
+    expect(composeTextBgColor("#000000", 1.5)).toBe("#000000ff");
+    expect(composeTextBgColor("#000000", -0.5)).toBe("#00000000");
+  });
+
+  it("reproduces the exact legacy /studio composition for a real saved value (0.65 opacity)", () => {
+    // legacy: Math.round(0.65 * 255).toString(16).padStart(2, '0') === 'a6'
+    expect(composeTextBgColor("#1E3D2A", 0.65)).toBe("#1E3D2Aa6");
   });
 });

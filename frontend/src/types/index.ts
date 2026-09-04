@@ -391,6 +391,41 @@ export interface TextOverlay {
   // types can freely interleave. Optional/undefined (treated as 0) for any element created
   // before this field existed, so it never needs a migration.
   order?: number
+
+  // Phase 3 (Video Studio V2 — Advanced Text Properties). All additive/optional so nothing
+  // predating this field (including anything legacy /studio's TextOverlayEditor.tsx has ever
+  // created, or already-saved V2 drafts) needs a migration — every reader treats undefined as
+  // "off"/"default", never as an error.
+  align?: 'left' | 'center' | 'right'
+  underline?: boolean
+  letterSpacing?: number // px
+  lineSpacing?: number   // unitless line-height multiplier (CSS line-height convention)
+  // 0-1, matching MediaOverlay.opacity's own existing convention (not VideoClip's 0-100 one —
+  // Text and Overlay are the closer siblings here).
+  opacity?: number
+  strokeColor?: string
+  strokeWidth?: number // px
+  // "Glow" is deliberately not a separate field — a glow is a shadow with zero offset and a
+  // larger blur; the Shadow controls below already reach it without inventing a parallel model.
+  shadowColor?: string
+  shadowBlur?: number    // px
+  shadowOffsetX?: number // px
+  shadowOffsetY?: number // px
+  useGradient?: boolean
+  gradientFrom?: string
+  gradientTo?: string
+  // Background/readability. bgColor/bgOpacity already existed (and are already real — legacy
+  // /studio's PreviewCanvas.tsx already composites them as `${bgColor}${alphaHex}`); the fields
+  // below extend that same background box rather than replacing it. bgBorderRadius doubles as
+  // the "pill / rectangle / banner" shape control (0 = rectangle, a large value = pill);
+  // bgFullWidth is "banner" specifically — the background spans the full canvas width regardless
+  // of the text's own width.
+  bgPadding?: number // px
+  bgBorderRadius?: number // px
+  bgBorderColor?: string
+  bgBorderWidth?: number // px
+  bgBlur?: boolean
+  bgFullWidth?: boolean
 }
 
 export interface MediaOverlay {

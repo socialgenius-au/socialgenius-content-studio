@@ -8,7 +8,7 @@ import {
 } from "../../../components/studio/dragTypes";
 import {
   findActiveClip, probeVideoDuration, probeHasAudioTrack, computeEndTimeForSpeed,
-  computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode,
+  computeInsertTrimLeft, computeInsertTrimRight, defaultBrollAudioMode, composeTextBgColor,
 } from "../../../components/studio/videoPreviewUtils";
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
 import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, ReferenceVideo } from "../../../types";
@@ -59,6 +59,42 @@ const DEFAULT_INSERT_BOX = { insertX: 56, insertY: 56, insertWidth: 38, insertHe
 // the conventional broadcast lower-third shape/position (a wide, short band low on the frame,
 // left-aligned). Percent-of-canvas, same convention as MediaOverlay's own x/y/width/height.
 const DEFAULT_LOWER_THIRD_BOX = { x: 5, y: 78, width: 55, height: 14 };
+
+// Phase 3 (Video Studio V2 — Advanced Text Properties) — "TextArt / preset styles": each preset
+// is a real bundle of the same fields the Properties controls above already write, applied in
+// one click; there is no separate preset-rendering system. Every preset explicitly sets every
+// field it cares about (including zeroing out ones a DIFFERENT preset would have set) so presets
+// never partially layer on top of each other's leftovers.
+const TEXT_STYLE_PRESETS: { name: string; apply: Partial<TextOverlay> }[] = [
+  {
+    name: "Bold Impact",
+    apply: {
+      strokeColor: "#000000", strokeWidth: 3, shadowColor: "#000000", shadowBlur: 4, shadowOffsetX: 2, shadowOffsetY: 2,
+      bgColor: "transparent", useGradient: false,
+    },
+  },
+  {
+    name: "Clean Caption",
+    apply: {
+      strokeWidth: 0, shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, useGradient: false,
+      bgColor: "#000000", bgOpacity: 0.65, bgBorderRadius: 6, bgFullWidth: false, bgBlur: false,
+    },
+  },
+  {
+    name: "Neon Glow",
+    apply: {
+      strokeColor: "#12A656", strokeWidth: 1, shadowColor: "#2FE0E0", shadowBlur: 18, shadowOffsetX: 0, shadowOffsetY: 0,
+      bgColor: "transparent", useGradient: false,
+    },
+  },
+  {
+    name: "Subtitle Bar",
+    apply: {
+      strokeWidth: 0, shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, useGradient: false,
+      bgColor: "#000000", bgOpacity: 0.75, bgFullWidth: true, bgBorderRadius: 0, bgBlur: false,
+    },
+  },
+];
 
 // STEP 7.9 (Save Draft + My Drafts): the complete, intentionally-saved project — everything
 // listed in the Step 7.9 requirement (video/audio/text/overlay/timeline/canvas/format state)
@@ -1756,6 +1792,60 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     return filters.length ? filters.join(" ") : undefined;
   };
 
+  // Phase 3 (Video Studio V2 — Advanced Text Properties): the full canvas render style for a
+  // TextOverlay, computed from every field this phase adds plus the two that already existed
+  // but were previously dead on canvas (bgColor/bgOpacity) — matching, byte-for-byte, the exact
+  // hex+alpha composition legacy /studio's own PreviewCanvas.tsx already uses for those two
+  // fields (`${bgColor}${Math.round(bgOpacity*255).toString(16).padStart(2,'0')}`), so a project
+  // opened in either editor renders the same background chip.
+  //
+  // Gradient text fill and the background chip are mutually exclusive on this one element: both
+  // would need the CSS `background` property (gradient uses background-clip:text; the chip uses
+  // a plain background-color), and this architecture renders the chip and the text as the same
+  // element (contentEditable targets it directly), not text-in-a-wrapping-span. Choosing a
+  // gradient fill intentionally skips the background chip rather than silently fighting it —
+  // documented here and in the Properties panel, not a silent gap.
+  const getTextRenderStyle = (t: TextOverlay): React.CSSProperties => {
+    const gradientActive = !!(t.useGradient && t.gradientFrom && t.gradientTo);
+    const base: React.CSSProperties = {
+      left: `${t.x}%`, top: `${t.y}%`, width: `${t.width}%`,
+      fontFamily: t.fontFamily, fontSize: t.fontSize,
+      fontWeight: t.bold ? 700 : 400, fontStyle: t.italic ? "italic" : "normal",
+      textDecoration: t.underline ? "underline" : "none",
+      textAlign: t.align ?? "left",
+      letterSpacing: t.letterSpacing ? `${t.letterSpacing}px` : undefined,
+      lineHeight: t.lineSpacing ?? undefined,
+      opacity: t.opacity ?? 1,
+      WebkitTextStroke: t.strokeWidth ? `${t.strokeWidth}px ${t.strokeColor ?? "#000000"}` : undefined,
+      textShadow: (t.shadowBlur || t.shadowOffsetX || t.shadowOffsetY)
+        ? `${t.shadowOffsetX ?? 0}px ${t.shadowOffsetY ?? 0}px ${Math.max(0, t.shadowBlur ?? 0)}px ${t.shadowColor ?? "#000000"}`
+        : undefined,
+      padding: `${t.bgPadding ?? 2}px ${(t.bgPadding ?? 2) + 4}px`,
+      borderRadius: t.bgBorderRadius ?? 3,
+      border: t.bgBorderWidth ? `${t.bgBorderWidth}px solid ${t.bgBorderColor ?? "#000000"}` : undefined,
+      backdropFilter: t.bgBlur ? "blur(6px)" : undefined,
+      WebkitBackdropFilter: t.bgBlur ? "blur(6px)" : undefined,
+      // "Banner" shape (Requirement: pill / rectangle / banner): the background spans the full
+      // canvas width regardless of the text's own (narrower) width — left/right pulled back to
+      // the canvas edges via negative margins matched to the box's own left offset.
+      ...(t.bgFullWidth ? { marginLeft: `-${t.x}%`, marginRight: `-${100 - t.x - t.width}%`, textAlign: t.align ?? "center" } : {}),
+    };
+    if (gradientActive) {
+      return {
+        ...base,
+        color: "transparent",
+        backgroundImage: `linear-gradient(90deg, ${t.gradientFrom}, ${t.gradientTo})`,
+        WebkitBackgroundClip: "text",
+        backgroundClip: "text",
+      };
+    }
+    return {
+      ...base,
+      color: t.color,
+      background: composeTextBgColor(t.bgColor, t.bgOpacity ?? 1),
+    };
+  };
+
   // Step 5 follow-up (Transitions): "Fade" only — a plain fade-to/from-black at a clip's own
   // cut points, driven purely by the existing timeline clock (no second playback engine, no new
   // clip overlap). `.video-preview.real`'s own background is already solid black, so fading the
@@ -2548,11 +2638,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       key={t.id}
       ref={el => { if (el) textEditRefs.current.set(t.id, el); else textEditRefs.current.delete(t.id); }}
       className={`canvas-text-item canvas-selectable canvas-movable ${selectedElement?.type === "text" && selectedElement.id === t.id ? "canvas-el-selected" : ""} ${editingTextId === t.id ? "canvas-text-editing" : ""}`}
-      style={{
-        left: `${t.x}%`, top: `${t.y}%`, width: `${t.width}%`,
-        color: t.color, fontFamily: t.fontFamily, fontSize: t.fontSize,
-        fontWeight: t.bold ? 700 : 400, fontStyle: t.italic ? "italic" : "normal",
-      }}
+      style={getTextRenderStyle(t)}
       contentEditable={editingTextId === t.id}
       suppressContentEditableWarning
       // Instruction 10: while editing, mousedown must do nothing but let the browser's own
@@ -3862,8 +3948,160 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               <select value={String(selectedText.fontSize)} onChange={e => updateTextOverlay(selectedText.id, { fontSize: Number(e.target.value) })}>
                 {[24, 32, 48, 56, 72, 96].map(s => <option key={s}>{s}</option>)}
               </select>
-              <input type="color" value={selectedText.color} onChange={e => updateTextOverlay(selectedText.id, { color: e.target.value })} />
+              <input type="color" value={selectedText.color} onChange={e => updateTextOverlay(selectedText.id, { color: e.target.value })} disabled={!!selectedText.useGradient}
+                title={selectedText.useGradient ? "Solid colour is unused while Gradient Fill is on" : "Text colour"} />
             </div>
+
+            {/* Phase 3 — Requirement (TYPOGRAPHY): italic already rendered on canvas but had no
+                control here (a real gap the audit called out); underline/alignment/letter and
+                line spacing are new fields entirely. */}
+            <h4>Typography</h4>
+            <div className="row align-row">
+              {(["left", "center", "right"] as const).map(a => (
+                <button key={a} type="button" className={(selectedText.align ?? "left") === a ? "active" : ""}
+                  onClick={() => updateTextOverlay(selectedText.id, { align: a })}>{a === "left" ? "⯇" : a === "center" ? "≡" : "⯈"}</button>
+              ))}
+              <button type="button" className={selectedText.italic ? "active" : ""}
+                onClick={() => updateTextOverlay(selectedText.id, { italic: !selectedText.italic })} title="Italic"><i>I</i></button>
+              <button type="button" className={selectedText.underline ? "active" : ""}
+                onClick={() => updateTextOverlay(selectedText.id, { underline: !selectedText.underline })} title="Underline"><u>U</u></button>
+            </div>
+            <div className="row">
+              <label className="stack-field"><span>Letter spacing — {selectedText.letterSpacing ?? 0}px</span>
+                <input type="range" min={-2} max={20} value={selectedText.letterSpacing ?? 0}
+                  onMouseDown={pushHistory}
+                  onChange={e => rawUpdateTextOverlay(selectedText.id, { letterSpacing: Number(e.target.value) })} />
+              </label>
+              <label className="stack-field"><span>Line spacing — {(selectedText.lineSpacing ?? 1.15).toFixed(2)}</span>
+                <input type="range" min={0.8} max={2.5} step={0.05} value={selectedText.lineSpacing ?? 1.15}
+                  onMouseDown={pushHistory}
+                  onChange={e => rawUpdateTextOverlay(selectedText.id, { lineSpacing: Number(e.target.value) })} />
+              </label>
+            </div>
+            <label className="stack-field"><span>Opacity — {Math.round((selectedText.opacity ?? 1) * 100)}%</span>
+              <input type="range" min={10} max={100} value={Math.round((selectedText.opacity ?? 1) * 100)}
+                onMouseDown={pushHistory}
+                onChange={e => rawUpdateTextOverlay(selectedText.id, { opacity: Number(e.target.value) / 100 })} />
+            </label>
+
+            {/* Requirement (TEXT EFFECTS): outline/stroke, shadow ("glow" reached via a 0-offset,
+                larger-blur shadow — see getTextRenderStyle's own comment), gradient fill. */}
+            <h4>Text Effects</h4>
+            <label className="stack-field"><span>Outline / Stroke</span>
+              <div className="row">
+                <input type="color" value={selectedText.strokeColor ?? "#000000"}
+                  onChange={e => updateTextOverlay(selectedText.id, { strokeColor: e.target.value })} />
+                <input type="range" min={0} max={6} step={0.5} value={selectedText.strokeWidth ?? 0}
+                  onMouseDown={pushHistory}
+                  onChange={e => rawUpdateTextOverlay(selectedText.id, { strokeWidth: Number(e.target.value) })} />
+              </div>
+            </label>
+            <label className="stack-field"><span>Shadow / Glow</span>
+              <div className="row">
+                <input type="color" value={selectedText.shadowColor ?? "#000000"}
+                  onChange={e => updateTextOverlay(selectedText.id, { shadowColor: e.target.value })} title="Shadow colour" />
+                <input type="range" min={0} max={30} value={selectedText.shadowBlur ?? 0}
+                  onMouseDown={pushHistory}
+                  onChange={e => rawUpdateTextOverlay(selectedText.id, { shadowBlur: Number(e.target.value) })} title="Blur — 0 offset + high blur reads as a glow" />
+              </div>
+              <div className="row">
+                <input type="range" min={-15} max={15} value={selectedText.shadowOffsetX ?? 0}
+                  onMouseDown={pushHistory}
+                  onChange={e => rawUpdateTextOverlay(selectedText.id, { shadowOffsetX: Number(e.target.value) })} title="Offset X" />
+                <input type="range" min={-15} max={15} value={selectedText.shadowOffsetY ?? 0}
+                  onMouseDown={pushHistory}
+                  onChange={e => rawUpdateTextOverlay(selectedText.id, { shadowOffsetY: Number(e.target.value) })} title="Offset Y" />
+              </div>
+            </label>
+            <label className="stack-field" style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: "row" }}>
+              <input type="checkbox" checked={selectedText.useGradient ?? false}
+                onChange={e => updateTextOverlay(selectedText.id, { useGradient: e.target.checked, gradientFrom: selectedText.gradientFrom ?? selectedText.color, gradientTo: selectedText.gradientTo ?? "#12A656" })} />
+              <span>Gradient Fill</span>
+            </label>
+            {selectedText.useGradient && (
+              <div className="row">
+                <input type="color" value={selectedText.gradientFrom ?? selectedText.color} onChange={e => updateTextOverlay(selectedText.id, { gradientFrom: e.target.value })} />
+                <input type="color" value={selectedText.gradientTo ?? "#12A656"} onChange={e => updateTextOverlay(selectedText.id, { gradientTo: e.target.value })} />
+              </div>
+            )}
+
+            {/* Requirement (BACKGROUND / READABILITY): bgColor/bgOpacity already existed and are
+                already real on canvas (see getTextRenderStyle) — this is their first Properties
+                UI. bgBorderRadius doubles as the pill/rectangle/banner shape control. */}
+            <h4>Background</h4>
+            <div className="row">
+              <input type="color" value={selectedText.bgColor === "transparent" ? "#000000" : selectedText.bgColor}
+                onChange={e => updateTextOverlay(selectedText.id, { bgColor: e.target.value })} />
+              <button type="button" className={selectedText.bgColor === "transparent" ? "active" : ""}
+                onClick={() => updateTextOverlay(selectedText.id, { bgColor: selectedText.bgColor === "transparent" ? "#000000" : "transparent" })}>
+                {selectedText.bgColor === "transparent" ? "Off" : "On"}
+              </button>
+            </div>
+            {selectedText.bgColor !== "transparent" && (
+              <>
+                <label className="stack-field"><span>Background opacity — {Math.round(selectedText.bgOpacity * 100)}%</span>
+                  <input type="range" min={0} max={100} value={Math.round(selectedText.bgOpacity * 100)}
+                    onMouseDown={pushHistory}
+                    onChange={e => rawUpdateTextOverlay(selectedText.id, { bgOpacity: Number(e.target.value) / 100 })} />
+                </label>
+                <div className="row align-row">
+                  <button type="button" className={(selectedText.bgBorderRadius ?? 3) <= 4 && !selectedText.bgFullWidth ? "active" : ""}
+                    onClick={() => updateTextOverlay(selectedText.id, { bgBorderRadius: 3, bgFullWidth: false })}>Rectangle</button>
+                  <button type="button" className={(selectedText.bgBorderRadius ?? 3) >= 30 && !selectedText.bgFullWidth ? "active" : ""}
+                    onClick={() => updateTextOverlay(selectedText.id, { bgBorderRadius: 999, bgFullWidth: false })}>Pill</button>
+                  <button type="button" className={selectedText.bgFullWidth ? "active" : ""}
+                    onClick={() => updateTextOverlay(selectedText.id, { bgFullWidth: !selectedText.bgFullWidth })}>Banner</button>
+                </div>
+                <div className="row">
+                  <label className="stack-field"><span>Padding — {selectedText.bgPadding ?? 2}px</span>
+                    <input type="range" min={0} max={30} value={selectedText.bgPadding ?? 2}
+                      onMouseDown={pushHistory}
+                      onChange={e => rawUpdateTextOverlay(selectedText.id, { bgPadding: Number(e.target.value) })} />
+                  </label>
+                  <label className="stack-field"><span>Radius — {selectedText.bgBorderRadius ?? 3}px</span>
+                    <input type="range" min={0} max={40} value={Math.min(40, selectedText.bgBorderRadius ?? 3)}
+                      onMouseDown={pushHistory}
+                      onChange={e => rawUpdateTextOverlay(selectedText.id, { bgBorderRadius: Number(e.target.value) })} />
+                  </label>
+                </div>
+                <label className="stack-field"><span>Border</span>
+                  <div className="row">
+                    <input type="color" value={selectedText.bgBorderColor ?? "#000000"}
+                      onChange={e => updateTextOverlay(selectedText.id, { bgBorderColor: e.target.value })} />
+                    <input type="range" min={0} max={6} step={0.5} value={selectedText.bgBorderWidth ?? 0}
+                      onMouseDown={pushHistory}
+                      onChange={e => rawUpdateTextOverlay(selectedText.id, { bgBorderWidth: Number(e.target.value) })} />
+                  </div>
+                </label>
+                <label className="stack-field" style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: "row" }}>
+                  <input type="checkbox" checked={selectedText.bgBlur ?? false}
+                    onChange={e => updateTextOverlay(selectedText.id, { bgBlur: e.target.checked })} />
+                  <span>Blur / translucent background</span>
+                </label>
+              </>
+            )}
+
+            {/* "TextArt / preset styles" — real presets over the real fields above (not a
+                separate rendering system): one click sets a bundle of stroke/shadow/background
+                values, exactly as if set by hand through the controls above. */}
+            <h4>Style Presets</h4>
+            <div className="row">
+              {TEXT_STYLE_PRESETS.map(p => (
+                <button key={p.name} type="button" onClick={() => updateTextOverlay(selectedText.id, p.apply)} title={p.name}>{p.name}</button>
+              ))}
+            </div>
+
+            <h4>Animation</h4>
+            {/* Field is real and persists/exports-ready for a later phase; it does not yet drive
+                a live enter/exit animation on canvas — same scoping decision Lower Third's own
+                Animation select already made in Phase 2. */}
+            <select value={selectedText.animation} onChange={e => updateTextOverlay(selectedText.id, { animation: e.target.value as TextOverlay["animation"] })}>
+              <option value="none">None</option><option value="fade_in">Fade In</option>
+              <option value="slide_left">← Slide</option><option value="slide_right">→ Slide</option>
+              <option value="slide_top">↓ Drop</option><option value="slide_bottom">↑ Rise</option>
+              <option value="typewriter">Typewriter</option><option value="pop">Pop</option>
+            </select>
+
             <h4>Transform</h4>
             <div className="row">
               <input value={`X ${Math.round(selectedText.x)}`} readOnly /><input value={`Y ${Math.round(selectedText.y)}`} readOnly />

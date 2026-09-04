@@ -101,6 +101,19 @@ export function defaultBrollAudioMode(hasEmbeddedAudio: boolean): 'muted' | unde
   return hasEmbeddedAudio ? 'muted' : undefined
 }
 
+// Phase 3 (Video Studio V2 — Advanced Text Properties): composes a TextOverlay's bgColor +
+// bgOpacity into one CSS colour, as an 8-digit hex string — extracted as a pure function so it's
+// independently verifiable that this matches, byte-for-byte, legacy /studio's own
+// PreviewCanvas.tsx composition (`${bgColor}${Math.round(bgOpacity*255).toString(16).padStart(2,'0')}`),
+// which is what makes a project's text background render identically in both editors.
+// 'transparent' passes through unchanged — there is no alpha-suffixed form of the transparent
+// keyword, and this is legacy /studio's own explicit "no background" sentinel value.
+export function composeTextBgColor(bgColor: string, bgOpacity: number): string {
+  if (bgColor === 'transparent') return 'transparent'
+  const alphaHex = Math.round(Math.max(0, Math.min(1, bgOpacity)) * 255).toString(16).padStart(2, '0')
+  return `${bgColor}${alphaHex}`
+}
+
 // Reads real duration off an uploaded video file (no server-provided metadata exists yet) by
 // loading it into an offscreen <video> and waiting for its metadata to become available. Falls
 // back to a placeholder if the file can't be probed in time.
