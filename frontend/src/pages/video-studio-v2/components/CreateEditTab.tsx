@@ -283,6 +283,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [refAnalyzeFramesBusy, setRefAnalyzeFramesBusy] = useState(false);
   const [refAnalyzeFramesError, setRefAnalyzeFramesError] = useState<string | null>(null);
 
+  // Video Deconstructor — Stage 6 (OCR / On-Screen Text / Captions) ONLY. Same independent
+  // busy/error pair as Stage 4/5 above — read from pass_status.text_analysis, never hides
+  // Stage 3/4/5's already-complete results.
+  const [refAnalyzeTextBusy, setRefAnalyzeTextBusy] = useState(false);
+  const [refAnalyzeTextError, setRefAnalyzeTextError] = useState<string | null>(null);
+
   // Reference Preview defect fix (Shot rows reported not clickable / no visible feedback):
   // which Shot's row is currently selected (highlighted), purely local UI state — never written
   // to any Shot record, never affects the editor. refPreviewTime/refPreviewDuration mirror the
@@ -297,6 +303,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // selectedShotId above — clicking a specific frame highlights THAT frame, not just its parent
   // Shot row (both can be true at once: the Shot row and one of its own frames).
   const [selectedFrameId, setSelectedFrameId] = useState<number | null>(null);
+  // Stage 6 (Text Analysis): same independent-selection pattern as selectedFrameId above, for
+  // OCR text-occurrence rows.
+  const [selectedTextElementId, setSelectedTextElementId] = useState<number | null>(null);
 
   // Defect fix (post-Stage-3 Manual Test 1): refIngestResult above was ONLY ever set by a fresh
   // upload/analyze response — nothing ever read an already-ingested ReferenceVideo back from
@@ -1090,6 +1099,25 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     }
   };
 
+  // ---- Video Deconstructor — Stage 6 (OCR / On-Screen Text / Captions) ONLY. Same
+  // "always call, replace refIngestResult with whatever comes back" shape as handleAnalyzeFrames
+  // above — safe to call again after a failure (retries in place server-side) or after success
+  // (idempotent, returns the same completed text occurrences). ----
+  const handleAnalyzeText = async () => {
+    if (!refIngestResult) return;
+    setRefAnalyzeTextBusy(true);
+    setRefAnalyzeTextError(null);
+    try {
+      const { data } = await referenceVideosApi.analyzeText(refIngestResult.id);
+      setRefIngestResult(data as ReferenceVideo);
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setRefAnalyzeTextError(detail || "Could not analyse on-screen text for this reference video — please try again.");
+    } finally {
+      setRefAnalyzeTextBusy(false);
+    }
+  };
+
   // Reference Preview (post-Stage-4 UI gap fix): seeks ONLY the independent reference player —
   // never timeline.currentTime, never videoRef (the editor's own V1 element). Pauses at the
   // target so a boundary can be inspected frame-by-frame rather than immediately playing past
@@ -1113,6 +1141,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // parent Shot row's.
   const handleSeekReferencePreviewToFrame = (shotId: number, frameId: number, seconds: number) => {
     setSelectedFrameId(frameId);
+    handleSeekReferencePreview(shotId, seconds);
+  };
+
+  // Stage 6 (Text Analysis): same seek behaviour, tracking which text occurrence is selected.
+  const handleSeekReferencePreviewToText = (shotId: number, textElementId: number, seconds: number) => {
+    setSelectedTextElementId(textElementId);
     handleSeekReferencePreview(shotId, seconds);
   };
 
@@ -2562,6 +2596,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         const technicalProbeStatus = passStatus.technical_probe ?? "pending";
         const structureStatus = passStatus.scene_segmentation; // undefined until first attempted
         const frameStatus = passStatus.visual_evidence; // undefined until first attempted (Stage 5)
+        const textStatus = passStatus.text_analysis; // undefined until first attempted (Stage 6)
         const statusLabel: Record<string, string> = {
           pending: "Ready for Analysis",
           running: "Analysing…",
@@ -2754,6 +2789,48 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                             </div>
                           </div>
                         )}
+
+                        {/* Video Deconstructor — Stage 6 (OCR / On-Screen Text / Captions) ONLY.
+                            Same sibling-of-the-Shot-button nesting as Visual Evidence above.
+                            Each row's thumbnail is the exact frame the text was read from
+                            (Stage-5 frame reused, or a new Stage-6 supplementary frame) — same
+                            draggable={false}+pointer-events:none fix already learned once in
+                            Stage 5, applied here from the start rather than as a follow-up. */}
+                        {textStatus === "complete" && shot.text_elements.length > 0 && (
+                          <div style={{ padding: "4px 0 0 8px", marginTop: 4 }}>
+                            <p className="empty-hint" style={{ margin: "0 0 4px", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                              Text Analysis · {shot.text_elements.length} occurrence{shot.text_elements.length === 1 ? "" : "s"}
+                            </p>
+                            {shot.text_elements.map(te => (
+                              <button
+                                key={te.id}
+                                type="button"
+                                className={`shot-row${selectedTextElementId === te.id ? " active" : ""}`}
+                                onClick={() => handleSeekReferencePreviewToText(shot.id, te.id, te.start_time)}
+                                title={`Seek Reference Preview to ${formatShotTimecode(te.start_time)}`}
+                                style={{ fontSize: 11, display: "flex", gap: 8, alignItems: "center" }}
+                              >
+                                {te.source_frame_asset_file_path && (
+                                  <img
+                                    src={assetsApi.previewUrl(te.source_frame_asset_file_path)}
+                                    alt={`Evidence frame for detected text "${te.text.trim()}"`}
+                                    draggable={false}
+                                    style={{ width: 36, height: 24, objectFit: "cover", borderRadius: 3, flexShrink: 0, pointerEvents: "none" }}
+                                  />
+                                )}
+                                <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                    &ldquo;{te.text.trim()}&rdquo;
+                                  </div>
+                                  <div style={{ color: "var(--v-muted)", fontSize: 9 }}>
+                                    {formatShotTimecode(te.start_time)} → {formatShotTimecode(te.end_time)}
+                                    {te.confidence_score != null && ` · ${Math.round(te.confidence_score * 100)}% confidence`}
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
 
@@ -2783,6 +2860,38 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                         <p className="inline-status error">{refIngestResult.latest_analysis.error}</p>
                       )}
                     </div>
+
+                    {/* Video Deconstructor — Stage 6 (OCR / On-Screen Text / Captions) ONLY.
+                        Gated on frameStatus (Stage 5) being complete, same "requires the
+                        previous pass" pattern Stage 5's own section uses relative to Stage 4. */}
+                    {frameStatus === "complete" && (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--v-line)" }}>
+                        <p className="selection-summary-label">
+                          {textStatus === "complete" ? "Text Analysis Complete"
+                            : textStatus === "running" ? "Analysing Text…"
+                            : textStatus === "failed" ? "Text Analysis Failed"
+                            : "Text Analysis"}
+                        </p>
+                        {(textStatus === undefined || textStatus === "pending" || textStatus === "failed") && (
+                          <button
+                            className="primary wide" type="button"
+                            onClick={() => void handleAnalyzeText()}
+                            disabled={refAnalyzeTextBusy}
+                          >
+                            {refAnalyzeTextBusy ? "Analysing Text…" : textStatus === "failed" ? "Retry Text Analysis →" : "Analyse Text →"}
+                          </button>
+                        )}
+                        {textStatus === "running" && !refAnalyzeTextBusy && (
+                          <button className="secondary wide" type="button" disabled style={{ opacity: 0.6, cursor: "not-allowed" }}>
+                            Analysing Text…
+                          </button>
+                        )}
+                        {refAnalyzeTextError && <p className="inline-status error">{refAnalyzeTextError}</p>}
+                        {textStatus === "failed" && refIngestResult.latest_analysis.error && !refAnalyzeTextError && (
+                          <p className="inline-status error">{refIngestResult.latest_analysis.error}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -1413,3 +1413,96 @@ async def extract_representative_frames_for_shot(
             except OSError:
                 pass
         raise
+
+
+# ─── Stage 6 — OCR / On-Screen Text / Captions ──────────────────────────────────────────────
+#
+# Supplementary-frame sampling for text detection. The originally-approved design proposed
+# reusing Stage 4's own ffmpeg scene-difference detector (detect_shot_boundary_candidates) at a
+# lower threshold to find sub-shot local changes — empirically tested against this project's own
+# real reference video during implementation and found NOT to work: even at threshold=0.01 (as
+# low as meaningful), only the genuine 30.1s shot cut registered, zero additional candidates
+# within either real Shot. ffmpeg's `scene` metric is a GLOBAL, whole-frame dissimilarity score,
+# deliberately tuned to stay low during continuous motion and spike only at real discontinuities
+# — a caption occupying a small fraction of a frame is exactly the kind of localized change it's
+# designed to ignore. Replaced (with explicit approval) by a bounded fixed-interval sample
+# combined with Stage 5's own proven dHash change-filter (compute_dhash/hamming_distance above) —
+# local, deterministic, zero new dependency, reuses already-tested code instead of introducing a
+# second ffmpeg-threshold "magic number."
+
+TEXT_SUPPLEMENTARY_SAMPLE_INTERVAL_SECONDS = 1.5  # a sampling-RATE choice, not a detector
+# threshold — doesn't need the same kind of distribution analysis as SHOT_DETECTION_THRESHOLD;
+# bounded by the cap below regardless. Text on screen for less than this interval can still be
+# missed — an inherent trade-off of any finite sampling rate, not something to silently paper
+# over.
+TEXT_SUPPLEMENTARY_MAX_SAMPLES_PER_SHOT = 12  # bounds worst-case OCR cost on a long shot, same
+# capping philosophy as FRAME_MAX_PER_SHOT above.
+
+
+def plan_supplementary_text_sample_timestamps(shot_start: float, shot_end: float) -> list[float]:
+    """Fixed-interval candidate timestamps within one Shot for Stage 6's supplementary sampling —
+    see this module's own comment above for why a fixed interval (not a change detector) is used
+    here. Evenly spaced across the shot's own span, capped at
+    TEXT_SUPPLEMENTARY_MAX_SAMPLES_PER_SHOT regardless of duration. Deliberately does not try to
+    avoid Stage 5's own representative-frame timestamps — the caller merges both sets
+    chronologically and lets the shared dHash change-filter (see ocr_svc.select_frames_to_ocr)
+    decide what's actually worth OCR-ing, so a coincidental near-duplicate here is naturally
+    skipped there rather than needing special-cased exclusion logic.
+    """
+    duration = shot_end - shot_start
+    if duration <= 0:
+        return []
+    n = min(
+        TEXT_SUPPLEMENTARY_MAX_SAMPLES_PER_SHOT,
+        max(1, int(duration // TEXT_SUPPLEMENTARY_SAMPLE_INTERVAL_SECONDS)),
+    )
+    step = duration / (n + 1)
+    return [shot_start + step * i for i in range(1, n + 1)]
+
+
+# Text-region-crop foreground/background color sampling — same Pillow+numpy toolkit as
+# compute_frame_measurements above, zero new dependency. Deliberately a crude, honestly-labeled
+# heuristic (percentile luminance split), never a real text/background segmentation model — it
+# gives two representative colors from a region, nothing more, and never claims to know which one
+# is "the" text color vs "the" background if the heuristic's assumption (text and background
+# differ in luminance) doesn't hold for a given crop.
+TEXT_STYLE_MARGIN_FRACTION = 0.1  # small margin added around a bbox before cropping, so a tight
+# OCR box doesn't clip anti-aliased glyph edges out of the sample
+
+
+def compute_text_region_style(image_path: str, bbox_px: tuple[float, float, float, float]) -> dict:
+    """Deterministic, pixel-only style facts for one detected text region.
+
+    bbox_px: (x0, y0, x1, y1) in the SOURCE IMAGE's own pixel coordinates (not normalized) —
+    matches what ocr_svc.detect_text_in_frame returns before the caller normalizes it for storage.
+
+    Returns {"dominant_text_color_rgb": [r,g,b], "dominant_background_color_rgb": [r,g,b]} — the
+    darkest-25th-percentile and lightest-25th-percentile pixels' own mean RGB within the (margin-
+    padded) crop, a standard cheap heuristic for text-on-background regions. Which one is
+    genuinely the glyph color vs the background depends on the region actually being high-
+    contrast text (true for legible on-screen text; not guaranteed for a false-positive OCR
+    detection) — this function does not and cannot verify that, it only reports the two colors.
+    """
+    img = Image.open(image_path).convert("RGB")
+    width, height = img.size
+    x0, y0, x1, y1 = bbox_px
+    bw, bh = x1 - x0, y1 - y0
+    mx, my = bw * TEXT_STYLE_MARGIN_FRACTION, bh * TEXT_STYLE_MARGIN_FRACTION
+    crop_box = (
+        max(0, int(x0 - mx)), max(0, int(y0 - my)),
+        min(width, int(x1 + mx)), min(height, int(y1 + my)),
+    )
+    crop = img.crop(crop_box)
+    if crop.width == 0 or crop.height == 0:
+        return {"dominant_text_color_rgb": None, "dominant_background_color_rgb": None}
+
+    arr = np.asarray(crop, dtype=np.float64).reshape(-1, 3)
+    luminance = arr @ np.array([0.299, 0.587, 0.114])
+    order = np.argsort(luminance)
+    quartile = max(1, len(order) // 4)
+    darkest = arr[order[:quartile]].mean(axis=0)
+    lightest = arr[order[-quartile:]].mean(axis=0)
+    return {
+        "dominant_text_color_rgb": [round(v) for v in darkest.tolist()],
+        "dominant_background_color_rgb": [round(v) for v in lightest.tolist()],
+    }

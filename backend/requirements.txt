@@ -1,5 +1,13 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.13.0+cpu
+# Stage 6 (Video Deconstructor — OCR / On-Screen Text): torchvision is EasyOCR's own dependency,
+# not used directly by this project — pinned explicitly to the one release that already matches
+# the torch==2.13.0+cpu pinned above (verified via `pip install --dry-run` before installing:
+# easyocr's own unpinned "torchvision>=0.5" would otherwise let pip's resolver drag torch up to
+# 2.14.0, silently changing the exact build Whisper (openai-whisper, already pinned above) was
+# validated against). Must stay in lockstep with the torch version above if either is ever
+# upgraded — installing torchvision without pinning it again risks the same silent torch bump.
+torchvision==0.28.0
 
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
@@ -11,6 +19,12 @@ passlib[bcrypt]>=1.7.4
 python-jose[cryptography]>=3.3.0
 anthropic>=0.44.0
 openai-whisper
+# Stage 6 (Video Deconstructor — OCR / On-Screen Text) ONLY. Local/free — no API key, no per-call
+# cost; reuses the torch runtime already installed above rather than adding a second ML framework
+# (PaddleOCR was considered and rejected for exactly that reason — see the Stage-6 design review).
+# Pulls in its own opencv-python-headless/scipy/scikit-image/Shapely/etc — none of which conflict
+# with anything already pinned here (verified via `pip check` after install).
+easyocr==1.7.2
 ffmpeg-python>=0.2.0
 # STEP 7.15F: ffmpeg-python only builds argument lists — it never installs the actual ffmpeg
 # binary, and this environment has none on PATH. imageio-ffmpeg bundles a real static ffmpeg

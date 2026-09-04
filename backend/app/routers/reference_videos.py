@@ -81,16 +81,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import current_user
+from app.models.analysis_annotation import AnalysisAnnotation
 from app.models.asset import Asset
 from app.models.reference_video import ReferenceVideo
 from app.models.shot import Shot
 from app.models.shot_frame import ShotFrame
+from app.models.text_element import TextElement
 from app.models.user import User
 from app.models.video_analysis import VideoAnalysis
 from app.schemas.reference_video import (
-    ReferenceVideoIngestRequest, ReferenceVideoResponse, ShotFrameSummary, ShotSummary, VideoAnalysisSummary,
+    RecurringElementSummary, ReferenceVideoIngestRequest, ReferenceVideoResponse, ShotFrameSummary,
+    ShotSummary, TextElementSummary, TextObservationSummary, VideoAnalysisSummary,
 )
-from app.services import ffmpeg_svc
+from app.services import ffmpeg_svc, ocr_svc
 
 router = APIRouter()
 
@@ -117,7 +120,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         completed_at=latest.completed_at,
         error=(pass_status.get("error") if latest.status == "failed" else None)
         or pass_status.get("scene_segmentation_error")
-        or pass_status.get("visual_evidence_error"),
+        or pass_status.get("visual_evidence_error")
+        or pass_status.get("text_analysis_error"),
         pass_status=pass_status,
     )
 
@@ -126,22 +130,30 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
     )
     shot_rows = shots_result.scalars().all()
 
-    # Stage 5: each Shot's representative-frame evidence set, fetched in two batched queries
-    # (never once-per-shot/once-per-frame) — one for the ShotFrame rows themselves, one for the
-    # Asset rows their file paths live on (ShotFrame has no relationship() to either in this
-    # codebase's own explicit-query style, see this module's own docstring precedent).
+    # Stage 5/6: each Shot's representative-frame AND text-occurrence evidence sets, fetched in
+    # batched queries (never once-per-shot/once-per-frame) — ShotFrame/TextElement have no
+    # relationship() to Asset in this codebase's own explicit-query style (see this module's own
+    # docstring precedent). One shared `assets_by_id` lookup covers both, since a Stage-6
+    # TextElement may reuse an existing Stage-5 ShotFrame's own Asset.
     frames_result = await db.execute(
         select(ShotFrame).where(ShotFrame.video_analysis_id == latest.id).order_by(ShotFrame.shot_id, ShotFrame.order)
     )
     frame_rows = frames_result.scalars().all()
-    frame_assets: dict[int, Asset] = {}
-    if frame_rows:
-        assets_result = await db.execute(select(Asset).where(Asset.id.in_({f.asset_id for f in frame_rows})))
-        frame_assets = {a.id: a for a in assets_result.scalars().all()}
+
+    text_result = await db.execute(
+        select(TextElement).where(TextElement.video_analysis_id == latest.id).order_by(TextElement.shot_id, TextElement.start_time)
+    )
+    text_rows = text_result.scalars().all()
+
+    needed_asset_ids = {f.asset_id for f in frame_rows} | {t.source_frame_asset_id for t in text_rows if t.source_frame_asset_id is not None}
+    assets_by_id: dict[int, Asset] = {}
+    if needed_asset_ids:
+        assets_result = await db.execute(select(Asset).where(Asset.id.in_(needed_asset_ids)))
+        assets_by_id = {a.id: a for a in assets_result.scalars().all()}
 
     frames_by_shot: dict[int, list[ShotFrameSummary]] = {}
     for f in frame_rows:
-        frame_asset = frame_assets.get(f.asset_id)
+        frame_asset = assets_by_id.get(f.asset_id)
         if frame_asset is None:
             continue  # unreachable via RESTRICT FK — skip defensively rather than 500 a read
         frames_by_shot.setdefault(f.shot_id, []).append(ShotFrameSummary(
@@ -151,13 +163,74 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             asset_file_path=frame_asset.file_path,
         ))
 
+    def _observation_summary(t: TextElement) -> TextObservationSummary:
+        source_asset = assets_by_id.get(t.source_frame_asset_id) if t.source_frame_asset_id is not None else None
+        return TextObservationSummary(
+            id=t.id, text=t.text, timestamp=t.start_time,  # a raw observation is a single
+            # instant — start_time == end_time on every row this pass ever writes
+            x=t.x, y=t.y, width=t.width, height=t.height,
+            confidence_score=t.confidence_score, evidence_summary=t.evidence_summary,
+            source_frame_asset_file_path=source_asset.file_path if source_asset else None,
+        )
+
+    # Two-level grouping: every TextElement row is a raw observation; occurrence_group_id NULL
+    # marks a row as its own group's canonical head (see text_element.py's own docstring). Build
+    # each head's own summary with EVERY member (head included) nested under `observations` —
+    # never hidden, only grouped — and a derived (never stored) start/end span across them.
+    heads_by_id: dict[int, TextElement] = {t.id: t for t in text_rows if t.occurrence_group_id is None}
+    members_by_head: dict[int, list[TextElement]] = {}
+    for t in text_rows:
+        if t.occurrence_group_id is not None:
+            members_by_head.setdefault(t.occurrence_group_id, []).append(t)
+
+    text_by_shot: dict[int, list[TextElementSummary]] = {}
+    for head in heads_by_id.values():
+        if head.shot_id is None:
+            continue  # Stage 6 always populates shot_id today; defensive, not expected
+        members = members_by_head.get(head.id, [])
+        group_rows = [head, *members]
+        source_asset = assets_by_id.get(head.source_frame_asset_id) if head.source_frame_asset_id is not None else None
+        text_by_shot.setdefault(head.shot_id, []).append(TextElementSummary(
+            id=head.id, text=head.text,
+            start_time=min(r.start_time for r in group_rows), end_time=max(r.end_time for r in group_rows),
+            x=head.x, y=head.y, width=head.width, height=head.height,
+            certainty=head.certainty, confidence_score=head.confidence_score, category=head.category,
+            style_details=head.style_details, evidence_summary=head.evidence_summary,
+            produced_by_pass=head.produced_by_pass,
+            source_frame_asset_file_path=source_asset.file_path if source_asset else None,
+            observations=[_observation_summary(r) for r in sorted(group_rows, key=lambda r: r.start_time)],
+        ))
+    for shot_id in text_by_shot:
+        text_by_shot[shot_id].sort(key=lambda s: s.start_time)
+
     shots = [
         ShotSummary(
             id=s.id, order=s.order, start_time=s.start_time, end_time=s.end_time,
             certainty=s.certainty, evidence_summary=s.evidence_summary, produced_by_pass=s.produced_by_pass,
             frames=frames_by_shot.get(s.id, []),
+            text_elements=text_by_shot.get(s.id, []),
         )
         for s in shot_rows
+    ]
+
+    # Recurring Element cross-references — video-level (see ReferenceVideoResponse's own
+    # docstring for why: a recurring element may span multiple Shots), explicitly INFERRED,
+    # never confused with the MEASURED groups/observations above.
+    recurring_result = await db.execute(
+        select(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "recurring_text_element",
+        ).order_by(AnalysisAnnotation.start_time)
+    )
+    recurring_elements = [
+        RecurringElementSummary(
+            id=r.id,
+            member_text_element_ids=(r.details or {}).get("member_occurrence_group_head_ids", []),
+            start_time=r.start_time, end_time=r.end_time,
+            certainty=r.certainty, confidence_score=r.confidence_score,
+            reasoning=r.reasoning, evidence_summary=r.evidence_summary, produced_by_pass=r.produced_by_pass,
+        )
+        for r in recurring_result.scalars().all()
     ]
 
     return ReferenceVideoResponse(
@@ -172,6 +245,7 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         latest_analysis=analysis_summary,
         technical_details=rv.technical_details,
         shots=shots,
+        recurring_elements=recurring_elements,
     )
 
 
@@ -655,6 +729,341 @@ async def analyze_reference_video_frames(
         update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
             status="complete",
             pass_status={**pass_status, "visual_evidence": "complete"},
+        )
+    )
+    await db.commit()
+    await db.refresh(rv)
+    return await _to_response(db, rv, asset)
+
+
+TEXT_ANALYSIS_PASS_NAME = "ocr_text_detection_v1"
+
+
+@router.post("/{reference_video_id}/analyze-text", response_model=ReferenceVideoResponse)
+async def analyze_reference_video_text(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Stage 6 — deterministic OCR text/geometry/timing extraction ONLY. See this module's own
+    docstring for the full concurrency/retry/pass-status design (mirrors Stage 4/5's exactly, a
+    fourth pass further along the same VideoAnalysis row). Candidate frames = Stage 5's own
+    already-extracted ShotFrame images (free, read-only reuse) PLUS new fixed-interval
+    supplementary samples (see ffmpeg_svc.plan_supplementary_text_sample_timestamps for why a
+    fixed interval, not a change detector, is used — an empirical finding made during this
+    stage's own implementation). ocr_svc.select_frames_to_ocr then skips near-duplicate
+    candidates via Stage 5's own proven dHash mechanism before any OCR runs."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+    asset = await db.get(Asset, rv.asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+
+    pass_status = dict(latest.pass_status or {})
+    if pass_status.get("visual_evidence") != "complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Visual-evidence extraction must complete before text analysis can run",
+        )
+
+    if pass_status.get("text_analysis") == "complete":
+        # Idempotent — already done. Return as-is; do not re-run, do not create duplicate rows.
+        return await _to_response(db, rv, asset)
+
+    now = datetime.now(timezone.utc)
+    if latest.status == "running":
+        stale = latest.started_at is not None and (now - latest.started_at).total_seconds() > STALE_RUNNING_TIMEOUT_SECONDS
+        if not stale:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+        pass_status = {**pass_status, "text_analysis": "failed", "text_analysis_error": "Stale run — exceeded timeout, treated as failed"}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=pass_status)
+        )
+        await db.commit()
+
+    running_pass_status = {**pass_status, "text_analysis": "running"}
+    claim = await db.execute(
+        update(VideoAnalysis)
+        .where(VideoAnalysis.id == latest.id, VideoAnalysis.status == "complete")
+        .values(status="running", pass_status=running_pass_status)
+        .returning(VideoAnalysis.id)
+    )
+    await db.commit()
+    if claim.first() is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+
+    shots_result = await db.execute(select(Shot).where(Shot.video_analysis_id == latest.id).order_by(Shot.order))
+    shot_rows = shots_result.scalars().all()
+
+    # Existing Stage-5 ShotFrame rows — free, read-only candidate input. Grouped by shot.
+    frames_result = await db.execute(select(ShotFrame).where(ShotFrame.video_analysis_id == latest.id))
+    frame_rows = frames_result.scalars().all()
+    frame_asset_ids = {f.asset_id for f in frame_rows}
+    frame_assets_by_id: dict[int, Asset] = {}
+    if frame_asset_ids:
+        frame_assets_result = await db.execute(select(Asset).where(Asset.id.in_(frame_asset_ids)))
+        frame_assets_by_id = {a.id: a for a in frame_assets_result.scalars().all()}
+    frames_by_shot: dict[int, list[ShotFrame]] = {}
+    for f in frame_rows:
+        frames_by_shot.setdefault(f.shot_id, []).append(f)
+
+    # Same end-of-file safety clamp Stage 5 needed (empirically verified: ffmpeg's own single-
+    # frame extraction can fail within ~0.2s of a file's real end) — a supplementary sample near
+    # a shot's own end can land there just as easily as a Stage-5 representative frame could.
+    safe_limit = max(0.0, rv.duration - ffmpeg_svc.END_OF_FILE_SAFETY_SECONDS) if rv.duration else None
+
+    # Extraction + OCR happens entirely before any DB write — same discipline as Stage 5.
+    new_supplementary_paths: list[str] = []  # every NEW file this attempt wrote, for cleanup
+    groups_by_shot: dict[int, list[list[dict]]] = {}
+    try:
+        for shot in shot_rows:
+            candidates: list[dict] = []
+            for f in frames_by_shot.get(shot.id, []):
+                fa = frame_assets_by_id.get(f.asset_id)
+                if fa is None:
+                    continue  # unreachable via RESTRICT FK — skip defensively
+                candidates.append({
+                    "timestamp": f.timestamp, "file_path": fa.file_path,
+                    "width": f.width, "height": f.height,
+                    "existing_asset_id": f.asset_id, "is_new": False,
+                })
+
+            for ts in ffmpeg_svc.plan_supplementary_text_sample_timestamps(shot.start_time, shot.end_time):
+                safe_ts = min(ts, safe_limit) if safe_limit is not None else ts
+                out_path = await ffmpeg_svc.extract_thumbnail(asset.file_path, user.id, timestamp=safe_ts)
+                new_supplementary_paths.append(str(out_path))
+                measurements = ffmpeg_svc.compute_frame_measurements(str(out_path))
+                candidates.append({
+                    "timestamp": safe_ts, "file_path": str(out_path),
+                    "width": measurements["width"], "height": measurements["height"],
+                    "existing_asset_id": None, "is_new": True,
+                })
+
+            candidates.sort(key=lambda c: c["timestamp"])
+            selected = ocr_svc.select_frames_to_ocr(candidates)
+
+            detections: list[dict] = []
+            for c in selected:
+                w, h = c["width"], c["height"]
+                if w <= 0 or h <= 0:
+                    continue
+                for r in await ocr_svc.detect_text_in_frame(c["file_path"]):
+                    x0, y0, x1, y1 = r["bbox_px"]
+                    bbox_norm = (
+                        max(0.0, min(1.0, x0 / w)), max(0.0, min(1.0, y0 / h)),
+                        max(0.0, min(1.0, x1 / w)), max(0.0, min(1.0, y1 / h)),
+                    )
+                    detections.append({
+                        "text": r["text"], "confidence": r["confidence"],
+                        "bbox_norm": bbox_norm, "timestamp": c["timestamp"],
+                        "language_group": r["language_group"],
+                        "style": ffmpeg_svc.compute_text_region_style(c["file_path"], r["bbox_px"]),
+                        "file_path": c["file_path"], "existing_asset_id": c["existing_asset_id"],
+                        "is_new": c["is_new"],
+                    })
+
+            detections.sort(key=lambda d: d["timestamp"])
+            groups_by_shot[shot.id] = ocr_svc.group_occurrences(detections)
+    except Exception as exc:  # noqa: BLE001 — any unexpected failure must still fail cleanly,
+        # never crash the request or leave the row stuck at "running" forever.
+        for p in new_supplementary_paths:
+            try:
+                Path(p).unlink(missing_ok=True)
+            except OSError:
+                pass
+        failed_pass_status = {**pass_status, "text_analysis": "failed", "text_analysis_error": f"Unexpected error: {exc}"[:500]}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=failed_pass_status)
+        )
+        await db.commit()
+        await db.refresh(rv)
+        return await _to_response(db, rv, asset)
+
+    # Every shot's extraction+OCR succeeded. Discard any NEW supplementary frame file that ended
+    # up unused (found no text at all, or was skipped as a near-duplicate by select_frames_to_ocr
+    # before OCR ever ran on it) — never persisted as an Asset, keeping storage lean, same "don't
+    # keep what nothing needs" philosophy as Stage 5's own dedup-skip. Every raw detection (every
+    # member of every group, not just canonical heads — each raw observation needs its OWN
+    # source-frame Asset for full audit) is kept, per the evidence-preservation requirement.
+    referenced_new_paths = {
+        d["file_path"] for groups in groups_by_shot.values() for group in groups for d in group if d["is_new"]
+    }
+    for p in new_supplementary_paths:
+        if p not in referenced_new_paths:
+            try:
+                Path(p).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    # Defensive idempotency (same reasoning as Stage 4/5's own cleanup): clear any pre-existing
+    # TextElement rows THIS PASS produced, plus any Asset rows created solely for them, before
+    # writing the fresh set — on top of (not instead of) the single-transaction write below.
+    # Only ever finds rows here after a stale-run retry (a genuinely completed attempt is caught
+    # by the idempotent early-return above); a reused Stage-5 ShotFrame asset is NEVER deleted.
+    stale_text_result = await db.execute(
+        select(TextElement).where(
+            TextElement.video_analysis_id == latest.id,
+            TextElement.produced_by_pass == TEXT_ANALYSIS_PASS_NAME,
+        )
+    )
+    stale_text_rows = stale_text_result.scalars().all()
+    if stale_text_rows:
+        stale_asset_ids = {t.source_frame_asset_id for t in stale_text_rows if t.source_frame_asset_id is not None}
+        await db.execute(delete(TextElement).where(TextElement.id.in_([t.id for t in stale_text_rows])))
+        if stale_asset_ids:
+            protected_ids = frame_asset_ids  # Stage-5 ShotFrame assets are never this pass's to delete
+            stale_assets_result = await db.execute(select(Asset).where(Asset.id.in_(stale_asset_ids)))
+            for stale_asset in stale_assets_result.scalars().all():
+                if stale_asset.id in protected_ids:
+                    continue
+                try:
+                    Path(stale_asset.file_path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+                await db.delete(stale_asset)
+    # Same defensive idempotency for a prior stale attempt's Recurring Element cross-references —
+    # these reference TextElement ids directly (by design, see ocr_svc.link_recurring_elements'
+    # own docstring), so any surviving from a stale run would point at now-deleted rows.
+    await db.execute(
+        delete(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.produced_by_pass == ocr_svc.RECURRING_ELEMENT_PASS_NAME,
+        )
+    )
+
+    new_asset_id_by_path: dict[str, int] = {}
+
+    async def _resolve_source_asset_id(shot: Shot, detection: dict) -> int:
+        if not detection["is_new"]:
+            return detection["existing_asset_id"]
+        if detection["file_path"] not in new_asset_id_by_path:
+            file_path = Path(detection["file_path"])
+            new_asset = Asset(
+                job_id=None, user_id=user.id,
+                original_filename=f"text_evidence_shot{shot.order + 1}_{file_path.stem}.jpg",
+                stored_filename=file_path.name, file_path=str(file_path),
+                file_type="reference_frame", mime_type="image/jpeg",
+                file_size=file_path.stat().st_size,
+            )
+            db.add(new_asset)
+            await db.flush()  # assigns new_asset.id for the TextElement FK below
+            new_asset_id_by_path[detection["file_path"]] = new_asset.id
+        return new_asset_id_by_path[detection["file_path"]]
+
+    def _evidence_summary(detection: dict, member_count: int) -> str:
+        base = f"EasyOCR ({'+'.join(detection['language_group'])}) confidence={detection['confidence']:.3f}."
+        if member_count > 1:
+            base += f" Canonical (highest-confidence) reading of an Occurrence Group with {member_count} raw observation(s)."
+        return base
+
+    # Every raw detection becomes its own permanent TextElement row — see ocr_svc.py's own
+    # module docstring for why nothing here is ever merged/edited/dropped. Each group's
+    # highest-confidence member (already sorted first by group_occurrences) is written FIRST,
+    # with occurrence_group_id left NULL — that is what makes it the group's own canonical head;
+    # every other member is written next, pointing at the head's now-real id.
+    all_group_heads: list[dict] = []  # {"id", "text", "bbox_norm", "timestamp"} — for
+    # cross-shot Recurring Element linkage once every shot's groups have real, flushed ids.
+    for shot in shot_rows:
+        for group in groups_by_shot.get(shot.id, []):
+            head_detection = group[0]
+            head_source_asset_id = await _resolve_source_asset_id(shot, head_detection)
+            x0, y0, x1, y1 = head_detection["bbox_norm"]
+            head_row = TextElement(
+                video_analysis_id=latest.id,
+                shot_id=shot.id,
+                text=head_detection["text"],
+                x=x0, y=y0, width=x1 - x0, height=y1 - y0,
+                start_time=head_detection["timestamp"], end_time=head_detection["timestamp"],
+                certainty="MEASURED",
+                confidence_score=head_detection["confidence"],
+                source="easyocr",
+                source_frame_asset_id=head_source_asset_id,
+                style_details=head_detection["style"],
+                evidence_summary=_evidence_summary(head_detection, len(group)),
+                produced_by_pass=TEXT_ANALYSIS_PASS_NAME,
+                occurrence_group_id=None,
+            )
+            db.add(head_row)
+            await db.flush()  # assigns head_row.id — needed both for member FKs below and for
+            # this group's own entry in all_group_heads (used by Recurring Element linkage)
+
+            for member_detection in group[1:]:
+                mx0, my0, mx1, my1 = member_detection["bbox_norm"]
+                member_source_asset_id = await _resolve_source_asset_id(shot, member_detection)
+                db.add(TextElement(
+                    video_analysis_id=latest.id,
+                    shot_id=shot.id,
+                    text=member_detection["text"],
+                    x=mx0, y=my0, width=mx1 - mx0, height=my1 - my0,
+                    start_time=member_detection["timestamp"], end_time=member_detection["timestamp"],
+                    certainty="MEASURED",
+                    confidence_score=member_detection["confidence"],
+                    source="easyocr",
+                    source_frame_asset_id=member_source_asset_id,
+                    style_details=member_detection["style"],
+                    evidence_summary=_evidence_summary(member_detection, 1),
+                    produced_by_pass=TEXT_ANALYSIS_PASS_NAME,
+                    occurrence_group_id=head_row.id,
+                ))
+
+            # Recurring Element linkage itself still compares heads pairwise (bbox_norm/timestamp
+            # are the head's own canonical reading — the right basis for "does this look like the
+            # same element"), but each group's own start/end span (used only for the resulting
+            # AnalysisAnnotation's own start_time/end_time below) reflects EVERY member, matching
+            # exactly what TextElementSummary's own derived span already shows the frontend — the
+            # two must never disagree about how wide a group's own evidence actually reaches.
+            all_group_heads.append({
+                "id": head_row.id, "text": head_row.text,
+                "bbox_norm": head_detection["bbox_norm"], "timestamp": head_detection["timestamp"],
+                "span_start": min(d["timestamp"] for d in group), "span_end": max(d["timestamp"] for d in group),
+            })
+
+    # Recurring Element linkage — explicitly INFERRED, a separate AnalysisAnnotation row per
+    # cluster of 2+ probably-related Occurrence Groups (see ocr_svc.link_recurring_elements' own
+    # docstring). Scoped to the whole VideoAnalysis (not per-shot) — a recurring element like a
+    # persistent watermark could plausibly reappear across Shot boundaries too.
+    for cluster in ocr_svc.link_recurring_elements(all_group_heads):
+        member_heads = [h for h in all_group_heads if h["id"] in cluster["member_ids"]]
+        db.add(AnalysisAnnotation(
+            video_analysis_id=latest.id,
+            shot_id=None,  # may span multiple Shots — same nullable convention this table
+            # already uses for other cross-cutting categories
+            category="recurring_text_element",
+            start_time=min(h["span_start"] for h in member_heads),
+            end_time=max(h["span_end"] for h in member_heads),
+            details={
+                "member_occurrence_group_head_ids": cluster["member_ids"],
+                "pairwise_evidence": cluster["pairwise_evidence"],
+            },
+            certainty="INFERRED",
+            confidence_score=cluster["confidence"],
+            reasoning=(
+                "Consistent recognized text across occurrence groups with no direct observation "
+                "in the gap between them — visibility during that gap is not claimed."
+            ),
+            evidence_summary=(
+                f"Linked {len(cluster['member_ids'])} occurrence groups via text similarity and "
+                f"bbox position/size consistency (see details.pairwise_evidence)."
+            ),
+            source="deterministic_signal_linkage",
+            produced_by_pass=ocr_svc.RECURRING_ELEMENT_PASS_NAME,
+        ))
+
+    await db.execute(
+        update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
+            status="complete",
+            pass_status={**pass_status, "text_analysis": "complete"},
         )
     )
     await db.commit()

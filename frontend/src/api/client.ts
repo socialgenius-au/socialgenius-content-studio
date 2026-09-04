@@ -126,6 +126,10 @@ export const referenceVideosApi = {
   // ffmpeg + Pillow/numpy frame extraction, no AI/OCR/object detection — see reference_videos.py's
   // own module docstring for exact scope.
   analyzeFrames: (id: number) => api.post(`/reference-videos/${id}/analyze-frames`),
+  // Video Deconstructor — Stage 6 (OCR / On-Screen Text / Captions) ONLY. Local EasyOCR, no
+  // semantic classification/font ID/translation — see reference_videos.py's own module docstring
+  // for exact scope.
+  analyzeText: (id: number) => api.post(`/reference-videos/${id}/analyze-text`),
 }
 
 export const templatesApi = {

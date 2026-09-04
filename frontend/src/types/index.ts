@@ -123,6 +123,67 @@ export interface ShotFrameSummary {
   asset_file_path: string
 }
 
+// One RAW OCR observation (Stage 6) — a single engine reading of a single candidate frame.
+// Always certainty "MEASURED". Never edited/merged/dropped once written — the permanent,
+// auditable evidence record a TextElementSummary's own `observations` list is built from.
+export interface TextObservationSummary {
+  id: number
+  text: string
+  timestamp: number
+  x: number
+  y: number
+  width: number
+  height: number
+  confidence_score: number | null
+  evidence_summary: string | null
+  source_frame_asset_file_path: string | null
+}
+
+// One Stage-6 Occurrence Group, represented by its own canonical head observation (the group's
+// highest-confidence raw reading — never a synthetic average). certainty is always "MEASURED" —
+// the recognized string, geometry, and confidence_score (the OCR engine's own reported
+// confidence) are all direct recognizer output on this one head row. category is always null
+// until a later, genuinely INFERRED stage populates it — Stage 6 cannot honestly know a text
+// occurrence's ROLE from OCR alone. `observations` carries EVERY raw detection grouped under
+// this head (head included, never hidden); start_time/end_time are this group's derived span
+// (earliest/latest member) — never a claim of continuous visibility across it.
+export interface TextElementSummary {
+  id: number
+  text: string
+  start_time: number
+  end_time: number
+  x: number
+  y: number
+  width: number
+  height: number
+  certainty: string
+  confidence_score: number | null
+  category: string | null
+  style_details: Record<string, unknown> | null
+  evidence_summary: string | null
+  produced_by_pass: string | null
+  source_frame_asset_file_path: string | null
+  observations: TextObservationSummary[]
+}
+
+// A cross-reference between 2+ Occurrence Groups (by TextElementSummary.id) that probably
+// represent the same real on-screen element reappearing — e.g. a watermark seen at separated
+// moments. Explicitly, unconditionally certainty "INFERRED" — never confused with the
+// unconditionally "MEASURED" TextElementSummary/TextObservationSummary above it. Carries no
+// merged time-span claim beyond start_time/end_time (the outer bounds of its own members) —
+// visibility in any gap between members is never claimed.
+export interface RecurringElementSummary {
+  id: number
+  member_text_element_ids: number[]
+  start_time: number
+  end_time: number
+  certainty: string
+  confidence_score: number | null
+  reasoning: string | null
+  evidence_summary: string | null
+  produced_by_pass: string | null
+}
+
 // One deterministically-detected cut-bounded segment (Stage 4). certainty is always "MEASURED".
 // evidence_summary carries the detector's own score/threshold as human-readable text — detector
 // evidence, not semantic confidence (a separate, unused-here confidence_score field is reserved
@@ -138,6 +199,9 @@ export interface ShotSummary {
   // Stage 5's representative-frame evidence set for this Shot, chronological order — empty
   // until visual-evidence extraction completes at least once.
   frames: ShotFrameSummary[]
+  // Stage 6's OCR text occurrences for this Shot, chronological order — empty until text
+  // analysis completes at least once.
+  text_elements: TextElementSummary[]
 }
 
 // Mirrors backend app/services/ffmpeg_svc._empty_technical_details() exactly — a controlled,
@@ -204,6 +268,10 @@ export interface ReferenceVideo {
   // Stage 4's deterministically-detected shot segments, chronological order — empty until
   // structural analysis completes at least once.
   shots: ShotSummary[]
+  // Stage 6's Recurring Element cross-references — video-level (a recurring element may span
+  // multiple Shots), not nested under any one Shot; empty until text analysis completes at
+  // least once, and even then only present when 2+ Occurrence Groups were actually linked.
+  recurring_elements: RecurringElementSummary[]
 }
 
 // ── Studio types ──────────────────────────────────────────────────────────────
