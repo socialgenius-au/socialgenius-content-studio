@@ -4433,6 +4433,65 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                       Click a shot to seek the Reference Preview above to its start — for visually
                       checking a detected boundary against the actual footage.
                     </p>
+
+                    {/* Video Deconstructor — Stage 6 (OCR / On-Screen Text / Captions) presentation
+                        addition ONLY: the backend already computes recurring_elements (a video-
+                        level cross-reference of Occurrence Groups that probably represent the same
+                        real on-screen element reappearing) — this surfaces that ALREADY EXISTING
+                        data additively, above the per-shot occurrence rows below, never replacing
+                        or hiding any of them. Every value shown here is looked up directly from
+                        data already present on refIngestResult (no new backend fields, no new
+                        inference beyond a plain highest-confidence-member lookup and shot-number
+                        formatting). */}
+                    {textStatus === "complete" && refIngestResult.recurring_elements.length > 0 && (() => {
+                      const textElementsById = new Map<number, { text: string; confidence_score: number | null; shotOrder: number }>();
+                      for (const s of refIngestResult.shots) {
+                        for (const te of s.text_elements) {
+                          textElementsById.set(te.id, { text: te.text, confidence_score: te.confidence_score, shotOrder: s.order });
+                        }
+                      }
+                      return (
+                        <div style={{ marginBottom: 10 }}>
+                          <p className="selection-summary-label">
+                            Recurring/Persistent Elements · {refIngestResult.recurring_elements.length}
+                          </p>
+                          <p className="empty-hint" style={{ margin: "0 0 6px", fontSize: 10 }}>
+                            Linked from individual occurrences below — probably the same on-screen element reappearing.
+                          </p>
+                          {refIngestResult.recurring_elements.map(re => {
+                            const members = re.member_text_element_ids
+                              .map(id => textElementsById.get(id))
+                              .filter((m): m is { text: string; confidence_score: number | null; shotOrder: number } => m != null);
+                            const representative = members.slice().sort(
+                              (a, b) => (b.confidence_score ?? 0) - (a.confidence_score ?? 0)
+                            )[0];
+                            const shotNumbers = Array.from(new Set(members.map(m => m.shotOrder + 1))).sort((a, b) => a - b);
+                            const isContiguous = shotNumbers.every((n, i) => i === 0 || n === shotNumbers[i - 1] + 1);
+                            const shotLabel = shotNumbers.length === 0 ? null
+                              : shotNumbers.length === 1 ? `Shot ${String(shotNumbers[0]).padStart(2, "0")}`
+                              : isContiguous ? `Shot ${String(shotNumbers[0]).padStart(2, "0")}–${String(shotNumbers[shotNumbers.length - 1]).padStart(2, "0")}`
+                              : `Shots ${shotNumbers.map(n => String(n).padStart(2, "0")).join(", ")}`;
+                            return (
+                              <div key={re.id} className="shot-row" style={{ fontSize: 11, marginBottom: 6, cursor: "default" }}>
+                                <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  &ldquo;{representative ? representative.text.trim() : "Unknown text"}&rdquo;
+                                </div>
+                                <div style={{ color: "var(--v-muted)", fontSize: 9 }}>
+                                  {re.member_text_element_ids.length} occurrence{re.member_text_element_ids.length === 1 ? "" : "s"}
+                                  {shotLabel && ` · ${shotLabel}`}
+                                  {" · "}{formatShotTimecode(re.start_time)} → {formatShotTimecode(re.end_time)}
+                                  {re.confidence_score != null && ` · ${Math.round(re.confidence_score * 100)}% text consistency`}
+                                </div>
+                                <div style={{ color: "var(--v-accent)", fontSize: 9, fontStyle: "italic", marginTop: 2 }}>
+                                  Recurring/persistent element
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+
                     {refIngestResult.shots.map(shot => (
                       <div key={shot.id} style={{ marginBottom: 6 }}>
                         <button
