@@ -102,6 +102,31 @@ router = APIRouter()
 # certainly a crashed/killed process, not a slow probe. Generous on purpose.
 STALE_RUNNING_TIMEOUT_SECONDS = 300
 
+# Stage 6 manual-test finding (real Railway run, Shot 01/02): with no confidence gate anywhere
+# in the pipeline, an Occurrence Group head formed from a single low-confidence EasyOCR misread
+# (e.g. "Au", "Ztam", "72" at 2%-19% confidence) surfaces as its own full-weight "occurrence" in
+# the UI/API summary, identical in presentation to a legitimate high-confidence detection.
+#
+# This is a PRESENTATION-LAYER eligibility gate ONLY, applied in _to_response below — it decides
+# which Occurrence Group heads are counted/returned in `shot.text_elements`, nothing else.
+# Deliberately does NOT touch: EasyOCR itself, frame sampling, select_frames_to_ocr,
+# group_occurrences, link_recurring_elements, or any TextElement row ever written — every raw
+# observation this pass produces is stored exactly as before and remains fully queryable; a
+# filtered-out head's own row (and every member still grouped under it) is untouched in the DB.
+# Because this filter runs at read time, it also applies retroactively to every already-analyzed
+# ReferenceVideo with no re-run of Stage 6 required.
+#
+# Applies to CONFIDENCE ONLY, never group size — a genuine, rare, single-observation detection at
+# or above this bar must still be surfaced; the earlier design review confirmed group-of-one is
+# not itself evidence of unreliability (see group_occurrences' own "ambiguous cases stay separate
+# by construction" guarantee).
+#
+# 0.50 is a first, conservative cut informed directly by this manual test's own real values (the
+# reported noise sat at 2%-19%; 0.50 rejects all of it with wide margin while not yet touching
+# the harder mid-confidence cases) — not a universal constant. Named so a future recalibration
+# is a one-line, documented change, same convention as ocr_svc.py's own threshold constants.
+MIN_SURFACED_OCR_CONFIDENCE = 0.50
+
 
 async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> ReferenceVideoResponse:
     result = await db.execute(
@@ -187,6 +212,13 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
     for head in heads_by_id.values():
         if head.shot_id is None:
             continue  # Stage 6 always populates shot_id today; defensive, not expected
+        # Stage-6 manual-test fix (see MIN_SURFACED_OCR_CONFIDENCE's own docstring above): an
+        # unreliable head is simply not counted as an "occurrence" here — its own row, and
+        # every member still grouped under it, remain fully intact and queryable in the DB.
+        # Confidence only, never group size — a genuine high-confidence group-of-one still
+        # reaches this point and is still surfaced below.
+        if head.confidence_score is not None and head.confidence_score < MIN_SURFACED_OCR_CONFIDENCE:
+            continue
         members = members_by_head.get(head.id, [])
         group_rows = [head, *members]
         source_asset = assets_by_id.get(head.source_frame_asset_id) if head.source_frame_asset_id is not None else None
