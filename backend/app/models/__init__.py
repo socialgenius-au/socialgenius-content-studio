@@ -18,9 +18,12 @@ from app.models.analysis_annotation import AnalysisAnnotation
 from app.models.strategic_insight import StrategicInsight
 # Stage 5 (Visual Evidence / Representative Frames) — additive; see shot_frame.py's own docstring.
 from app.models.shot_frame import ShotFrame
+# Stage 7 (Audio / Speech / Transcript), Phase A — evidence-storage foundation only; see
+# speech_segment.py's own docstring for why this is separate from the existing Transcript model.
+from app.models.speech_segment import SpeechSegment
 
 __all__ = [
     "User", "Brand", "Job", "Asset", "Transcript", "Template", "VideoStudioDraft",
     "ReferenceVideo", "VideoAnalysis", "Scene", "Shot", "TextElement", "VisualObject",
-    "AnalysisAnnotation", "StrategicInsight", "ShotFrame",
+    "AnalysisAnnotation", "StrategicInsight", "ShotFrame", "SpeechSegment",
 ]

@@ -29,6 +29,11 @@ from app.models import (  # noqa: F401
     # with zero effect on any table already in the database.
     ReferenceVideo, VideoAnalysis, Scene, Shot, TextElement, VisualObject,
     AnalysisAnnotation, StrategicInsight,
+    # Video Deconstructor — Stage 7 (Audio / Speech / Transcript), Phase A: one new, siloed
+    # evidence table — same "create_all just creates it, zero effect on anything existing"
+    # reasoning as every prior additive Stage above. See speech_segment.py's own docstring for
+    # why this is separate from the existing (untouched) Transcript model.
+    SpeechSegment,
 )
 
 # ── Sentry ────────────────────────────────────────────────────────────────────
