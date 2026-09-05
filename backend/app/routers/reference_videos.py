@@ -86,14 +86,15 @@ from app.models.asset import Asset
 from app.models.reference_video import ReferenceVideo
 from app.models.shot import Shot
 from app.models.shot_frame import ShotFrame
+from app.models.speech_segment import SpeechSegment
 from app.models.text_element import TextElement
 from app.models.user import User
 from app.models.video_analysis import VideoAnalysis
 from app.schemas.reference_video import (
     RecurringElementSummary, ReferenceVideoIngestRequest, ReferenceVideoResponse, ShotFrameSummary,
-    ShotSummary, TextElementSummary, TextObservationSummary, VideoAnalysisSummary,
+    ShotSummary, SpeechSegmentSummary, TextElementSummary, TextObservationSummary, VideoAnalysisSummary,
 )
-from app.services import ffmpeg_svc, ocr_svc
+from app.services import ffmpeg_svc, ocr_svc, speech_analysis_svc
 
 router = APIRouter()
 
@@ -146,7 +147,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         error=(pass_status.get("error") if latest.status == "failed" else None)
         or pass_status.get("scene_segmentation_error")
         or pass_status.get("visual_evidence_error")
-        or pass_status.get("text_analysis_error"),
+        or pass_status.get("text_analysis_error")
+        or pass_status.get("speech_analysis_error"),
         pass_status=pass_status,
     )
 
@@ -265,6 +267,16 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         for r in recurring_result.scalars().all()
     ]
 
+    # Stage 7 — speech-recognition evidence, video-level (never nested under a Shot; see
+    # speech_segment.py's own docstring for why speech is not forced into visual cut boundaries).
+    # Chronological order, same convention as every other evidence list in this response.
+    speech_result = await db.execute(
+        select(SpeechSegment).where(SpeechSegment.video_analysis_id == latest.id).order_by(SpeechSegment.start_time)
+    )
+    speech_segments = [
+        SpeechSegmentSummary.model_validate(seg) for seg in speech_result.scalars().all()
+    ]
+
     return ReferenceVideoResponse(
         id=rv.id,
         asset_id=rv.asset_id,
@@ -278,6 +290,7 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         technical_details=rv.technical_details,
         shots=shots,
         recurring_elements=recurring_elements,
+        speech_segments=speech_segments,
     )
 
 
@@ -1096,6 +1109,149 @@ async def analyze_reference_video_text(
         update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
             status="complete",
             pass_status={**pass_status, "text_analysis": "complete"},
+        )
+    )
+    await db.commit()
+    await db.refresh(rv)
+    return await _to_response(db, rv, asset)
+
+
+SPEECH_ANALYSIS_PASS_NAME = "speech_analysis_v1"
+
+
+@router.post("/{reference_video_id}/analyze-speech", response_model=ReferenceVideoResponse)
+async def analyze_reference_video_speech(
+    reference_video_id: int,
+    language: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Stage 7 (Audio / Speech / Transcript), Phase C — deterministic local-Whisper speech
+    recognition ONLY. See this module's own docstring for the shared concurrency/retry/
+    pass-status design this reuses unmodified (same shape as Stage 4/5/6's own further passes on
+    the same VideoAnalysis row).
+
+    Deliberately gated on `technical_probe` (Stage 3) alone, NOT on scene_segmentation/
+    visual_evidence/text_analysis (Stage 4-6) — speech recognition needs only the underlying
+    media file Stage 3 already validated (and its probed duration), never Shots, ShotFrames, or
+    OCR results. `shot_id` is never set on a written SpeechSegment row for the same reason:
+    speech is continuous and does not align to visual cut boundaries (see speech_segment.py's own
+    docstring) — forcing an association here would be an invented, unearned claim.
+
+    `language` (optional) is passed straight through to speech_analysis_svc.analyze_speech() as a
+    decoding hint; omitted, Whisper performs its own detection. No per-segment language switching
+    and no post-processing/translation/correction of the transcript text happens here — see
+    speech_analysis_svc.py's own docstring for the full reasoning.
+
+    Uses app.services.speech_analysis_svc (Stage 7 Phase B) — an independent, DB-agnostic local
+    Whisper service — never app.services.whisper_svc (the separate, untouched, existing editor
+    "Generate Captions from Audio" feature)."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+    asset = await db.get(Asset, rv.asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+
+    pass_status = dict(latest.pass_status or {})
+    if pass_status.get("technical_probe") != "complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Technical analysis must complete before speech analysis can run",
+        )
+
+    if pass_status.get("speech_analysis") == "complete":
+        # Idempotent — already done. Return as-is; do not re-run, do not create duplicate rows.
+        return await _to_response(db, rv, asset)
+
+    now = datetime.now(timezone.utc)
+    if latest.status == "running":
+        stale = latest.started_at is not None and (now - latest.started_at).total_seconds() > STALE_RUNNING_TIMEOUT_SECONDS
+        if not stale:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+        pass_status = {**pass_status, "speech_analysis": "failed", "speech_analysis_error": "Stale run — exceeded timeout, treated as failed"}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=pass_status)
+        )
+        await db.commit()
+
+    running_pass_status = {**pass_status, "speech_analysis": "running"}
+    claim = await db.execute(
+        update(VideoAnalysis)
+        .where(VideoAnalysis.id == latest.id, VideoAnalysis.status == "complete")
+        .values(status="running", pass_status=running_pass_status)
+        .returning(VideoAnalysis.id)
+    )
+    await db.commit()
+    if claim.first() is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+
+    # No DB write of any kind happens before this succeeds in full — a decode failure or a
+    # genuine Whisper failure therefore can never leave a partial/orphan SpeechSegment row behind
+    # (there is nothing partial to leave; the whole result either exists or it doesn't).
+    try:
+        speech_result = await speech_analysis_svc.analyze_speech(asset.file_path, language=language)
+    except Exception as exc:  # noqa: BLE001 — any unexpected failure (media decode or Whisper
+        # itself) must still fail cleanly, never crash the request or leave the row stuck at
+        # "running" forever, and never fabricate a fallback transcript in its place.
+        failed_pass_status = {**pass_status, "speech_analysis": "failed", "speech_analysis_error": f"Unexpected error: {exc}"[:500]}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=failed_pass_status)
+        )
+        await db.commit()
+        await db.refresh(rv)
+        return await _to_response(db, rv, asset)
+
+    # Defensive idempotency (same reasoning as Stage 4/5/6's own cleanup): clear any pre-existing
+    # SpeechSegment rows THIS PASS produced before writing the fresh set — on top of (not instead
+    # of) the single-transaction write below. Only ever finds rows here after a stale-run retry (a
+    # genuinely completed attempt is caught by the idempotent early-return above).
+    await db.execute(
+        delete(SpeechSegment).where(
+            SpeechSegment.video_analysis_id == latest.id,
+            SpeechSegment.produced_by_pass == SPEECH_ANALYSIS_PASS_NAME,
+        )
+    )
+
+    # An empty segment list is a normal, valid, successful "no speech detected" outcome — zero
+    # rows written, pass_status still becomes "complete", never "failed". See
+    # speech_analysis_svc.py's own docstring: an empty result only ever means the media decoded
+    # successfully and Whisper itself found no usable speech in it.
+    detected_language = speech_result.get("detected_language")
+    model_used = speech_result.get("model_used", "base")
+    for seg in speech_result.get("segments", []):
+        db.add(SpeechSegment(
+            video_analysis_id=latest.id,
+            shot_id=None,  # speech is continuous and not forced onto a visual cut boundary — see
+            # this endpoint's own docstring.
+            start_time=seg["start_time"], end_time=seg["end_time"],
+            text=seg["text"],
+            language=detected_language,
+            speaker_label=None,  # no diarization pass exists yet — forward-compatible field only.
+            certainty="MEASURED",  # direct engine extraction, same convention as TextElement's
+            # own head rows.
+            confidence_score=None,  # never fabricated from Whisper's own raw diagnostics — see
+            # analysis_details below and speech_analysis_svc.py's own "confidence discipline".
+            analysis_details=seg.get("analysis_details") or None,
+            source="whisper",
+            produced_by_pass=SPEECH_ANALYSIS_PASS_NAME,
+            evidence_summary=f"Local Whisper ({model_used}) transcription segment.",
+        ))
+
+    await db.execute(
+        update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
+            status="complete",
+            pass_status={**pass_status, "speech_analysis": "complete"},
         )
     )
     await db.commit()

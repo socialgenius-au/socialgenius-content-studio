@@ -37,6 +37,15 @@ Group's own canonical head, with `observations` carrying every raw OCR reading t
 `recurring_elements` list on `ReferenceVideoResponse` cross-references Occurrence Groups that
 probably represent the same real element reappearing after a gap — explicitly `certainty:
 "INFERRED"`, never confused with the unconditionally `"MEASURED"` groups/observations above it.
+
+Stage 7 (Audio / Speech / Transcript), Phase C: adds `speech_segments`, a video-level (never
+nested under a Shot) list — see app.models.speech_segment.SpeechSegment's own docstring for why
+speech is timeline-based and deliberately not forced into visual Shot boundaries. Every
+SpeechSegmentSummary field is direct local-Whisper output; `confidence_score` is deliberately
+always None (Whisper's own raw decoding diagnostics live in `analysis_details` instead, verbatim,
+never converted into a fabricated calibrated percentage — see speech_analysis_svc.py's own
+docstring for the full reasoning), and `speaker_label` is always None until a future,
+not-yet-built diarization pass populates it.
 """
 from datetime import datetime
 
@@ -175,6 +184,30 @@ class RecurringElementSummary(BaseModel):
     produced_by_pass: str | None
 
 
+class SpeechSegmentSummary(BaseModel):
+    """One Stage-7 speech-recognition evidence row — direct local-Whisper output for one decoded
+    segment. certainty is always "MEASURED" (a direct engine extraction, same convention as
+    ShotFrameSummary/TextElementSummary's own head rows). `confidence_score` is deliberately
+    always None — Whisper's own per-segment decoding diagnostics (avg_logprob, no_speech_prob,
+    compression_ratio, temperature) are NOT a calibrated 0-1 probability of transcript
+    correctness, so they are preserved verbatim in `analysis_details` instead of being converted
+    into a fabricated confidence value. `speaker_label` is always None — no diarization pass
+    exists yet; the column/field exists only as forward-compatible storage."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    start_time: float
+    end_time: float
+    text: str
+    language: str | None
+    speaker_label: str | None
+    certainty: str
+    confidence_score: float | None
+    analysis_details: dict | None = None
+    source: str | None
+    produced_by_pass: str | None
+
+
 class ShotSummary(BaseModel):
     """One deterministically-detected cut-bounded segment. certainty is always "MEASURED" —
     Stage 4 never writes an INFERRED Shot. evidence_summary carries the detector's own score and
@@ -230,3 +263,7 @@ class ReferenceVideoResponse(BaseModel):
     # a recurring element may span multiple Shots; empty until text analysis completes at least
     # once, and even then only present when 2+ Occurrence Groups were actually linked.
     recurring_elements: list[RecurringElementSummary] = []
+    # Stage 7's speech-recognition evidence — video-level (never nested under a Shot; speech is
+    # timeline-based and can cross visual cut boundaries) — empty until speech analysis completes
+    # at least once, and empty (not an error) whenever no speech was detected in the audio.
+    speech_segments: list[SpeechSegmentSummary] = []
