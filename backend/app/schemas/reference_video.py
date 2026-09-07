@@ -46,6 +46,15 @@ always None (Whisper's own raw decoding diagnostics live in `analysis_details` i
 never converted into a fabricated calibrated percentage — see speech_analysis_svc.py's own
 docstring for the full reasoning), and `speaker_label` is always None until a future,
 not-yet-built diarization pass populates it.
+
+Stage 7, Phase D: adds `audio_structure` — deterministic FFmpeg `silencedetect` evidence (observed
+silence intervals only, reusing the existing AnalysisAnnotation table, category="audio_silence";
+see audio_structure_svc.py's own docstring for the full detection/parsing design and why no new
+table was needed). Deliberately independent of, and never merged with, `speech_segments` above —
+a silence interval is not evidence about speech specifically, and this pass never requires
+speech_analysis to have run. `confidence_score` is always None here too — `silencedetect` is a
+fixed threshold/duration detector, not a probabilistic model, so there is no confidence concept
+to report at all.
 """
 from datetime import datetime
 
@@ -208,6 +217,40 @@ class SpeechSegmentSummary(BaseModel):
     produced_by_pass: str | None
 
 
+class AudioSilenceIntervalSummary(BaseModel):
+    """One Stage-7-Phase-D observed silence interval — deterministic FFmpeg `silencedetect`
+    output (an AnalysisAnnotation row, category="audio_silence"). certainty is always "MEASURED"
+    — a fixed amplitude-threshold/duration detector, not a probabilistic model, so
+    confidence_score is always None (there is no calibrated-or-uncalibrated confidence concept
+    here at all, unlike Whisper's own raw decoding diagnostics — see audio_structure_svc.py's own
+    docstring). `details` carries the detector parameters actually used (noise_threshold_db,
+    minimum_duration_seconds) plus the detector's own reported duration, never an interpretation
+    of what the silence means."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    start_time: float
+    end_time: float
+    certainty: str
+    confidence_score: float | None
+    source: str | None
+    produced_by_pass: str | None
+    evidence_summary: str | None
+    details: dict | None = None
+
+
+class AudioStructureSummary(BaseModel):
+    """Stage-7-Phase-D audio-structure evidence for one VideoAnalysis — observed silence
+    intervals only (see audio_structure_svc.py's own docstring for why derived audio-active
+    regions are not persisted or exposed here). `audio_stream_present=False` and
+    `silence_intervals=[]` together mean "no audio track at all" — a distinct fact from "has an
+    audio track, but zero silence was detected in it" (audio_stream_present=True,
+    silence_intervals=[])."""
+    audio_stream_present: bool
+    silence_count: int
+    silence_intervals: list[AudioSilenceIntervalSummary] = []
+
+
 class ShotSummary(BaseModel):
     """One deterministically-detected cut-bounded segment. certainty is always "MEASURED" —
     Stage 4 never writes an INFERRED Shot. evidence_summary carries the detector's own score and
@@ -267,3 +310,7 @@ class ReferenceVideoResponse(BaseModel):
     # timeline-based and can cross visual cut boundaries) — empty until speech analysis completes
     # at least once, and empty (not an error) whenever no speech was detected in the audio.
     speech_segments: list[SpeechSegmentSummary] = []
+    # Stage 7 Phase D's audio-structure evidence (observed silence only) — None until that pass
+    # has completed at least once; kept entirely separate from speech_segments above (see
+    # AudioStructureSummary's own docstring for why the two are never merged/overloaded).
+    audio_structure: AudioStructureSummary | None = None

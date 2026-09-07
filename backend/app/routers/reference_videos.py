@@ -91,10 +91,11 @@ from app.models.text_element import TextElement
 from app.models.user import User
 from app.models.video_analysis import VideoAnalysis
 from app.schemas.reference_video import (
-    RecurringElementSummary, ReferenceVideoIngestRequest, ReferenceVideoResponse, ShotFrameSummary,
-    ShotSummary, SpeechSegmentSummary, TextElementSummary, TextObservationSummary, VideoAnalysisSummary,
+    AudioSilenceIntervalSummary, AudioStructureSummary, RecurringElementSummary, ReferenceVideoIngestRequest,
+    ReferenceVideoResponse, ShotFrameSummary, ShotSummary, SpeechSegmentSummary, TextElementSummary,
+    TextObservationSummary, VideoAnalysisSummary,
 )
-from app.services import ffmpeg_svc, ocr_svc, speech_analysis_svc
+from app.services import audio_structure_svc, ffmpeg_svc, ocr_svc, speech_analysis_svc
 
 router = APIRouter()
 
@@ -148,7 +149,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         or pass_status.get("scene_segmentation_error")
         or pass_status.get("visual_evidence_error")
         or pass_status.get("text_analysis_error")
-        or pass_status.get("speech_analysis_error"),
+        or pass_status.get("speech_analysis_error")
+        or pass_status.get("audio_structure_error"),
         pass_status=pass_status,
     )
 
@@ -277,6 +279,25 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         SpeechSegmentSummary.model_validate(seg) for seg in speech_result.scalars().all()
     ]
 
+    # Stage 7 Phase D — audio-structure evidence (observed silence only), reusing
+    # AnalysisAnnotation (category="audio_silence") — see audio_structure_svc.py's own docstring
+    # for the full design. None until that pass has completed at least once; a completed pass
+    # with zero rows means "audio present, no silence detected", NOT "not yet analyzed".
+    audio_structure: AudioStructureSummary | None = None
+    if pass_status.get("audio_structure") == "complete":
+        silence_result = await db.execute(
+            select(AnalysisAnnotation).where(
+                AnalysisAnnotation.video_analysis_id == latest.id,
+                AnalysisAnnotation.category == "audio_silence",
+            ).order_by(AnalysisAnnotation.start_time)
+        )
+        silence_rows = silence_result.scalars().all()
+        audio_structure = AudioStructureSummary(
+            audio_stream_present=bool(pass_status.get("audio_structure_audio_present", True)),
+            silence_count=len(silence_rows),
+            silence_intervals=[AudioSilenceIntervalSummary.model_validate(r) for r in silence_rows],
+        )
+
     return ReferenceVideoResponse(
         id=rv.id,
         asset_id=rv.asset_id,
@@ -291,6 +312,7 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         shots=shots,
         recurring_elements=recurring_elements,
         speech_segments=speech_segments,
+        audio_structure=audio_structure,
     )
 
 
@@ -1252,6 +1274,153 @@ async def analyze_reference_video_speech(
         update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
             status="complete",
             pass_status={**pass_status, "speech_analysis": "complete"},
+        )
+    )
+    await db.commit()
+    await db.refresh(rv)
+    return await _to_response(db, rv, asset)
+
+
+AUDIO_STRUCTURE_PASS_NAME = "audio_structure_v1"
+
+
+@router.post("/{reference_video_id}/analyze-audio-structure", response_model=ReferenceVideoResponse)
+async def analyze_reference_video_audio_structure(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Stage 7 (Audio / Speech / Transcript), Phase D — deterministic FFmpeg `silencedetect`
+    audio-structure evidence ONLY. See this module's own docstring for the shared concurrency/
+    retry/pass-status design this reuses unmodified (same shape as Stage 4-7's own further passes
+    on the same VideoAnalysis row).
+
+    Gated on `technical_probe` (Stage 3) alone, same minimum prerequisite as
+    analyze_reference_video_speech — and deliberately NOT gated on `speech_analysis`: the two
+    Stage 7 passes are independent of each other (neither requires the other to have run), even
+    though (like every other pass pair in this router) they cannot literally execute
+    concurrently on the same VideoAnalysis row, since `status` is one shared top-level
+    concurrency guard for whichever pass currently holds it.
+
+    Reuses the existing AnalysisAnnotation table (category="audio_silence") rather than a new
+    table — see app.services.audio_structure_svc.py's own docstring for the detection/parsing
+    design, and app.models.analysis_annotation.py's own docstring for why this table already
+    exists for exactly this kind of small, timeline-scoped, open-category evidence. `shot_id` is
+    always left NULL — silence is a fact about the audio track, independent of and often crossing
+    visual Shot boundaries.
+
+    This pass observes WHERE silence is — it never infers pacing, rhythm, hook timing, or any
+    other semantic meaning from it; that is explicitly out of scope here (a later stage's job)."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+    asset = await db.get(Asset, rv.asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+
+    pass_status = dict(latest.pass_status or {})
+    if pass_status.get("technical_probe") != "complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Technical analysis must complete before audio-structure analysis can run",
+        )
+
+    if pass_status.get("audio_structure") == "complete":
+        # Idempotent — already done. Return as-is; do not re-run, do not create duplicate rows.
+        return await _to_response(db, rv, asset)
+
+    now = datetime.now(timezone.utc)
+    if latest.status == "running":
+        stale = latest.started_at is not None and (now - latest.started_at).total_seconds() > STALE_RUNNING_TIMEOUT_SECONDS
+        if not stale:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+        pass_status = {**pass_status, "audio_structure": "failed", "audio_structure_error": "Stale run — exceeded timeout, treated as failed"}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=pass_status)
+        )
+        await db.commit()
+
+    running_pass_status = {**pass_status, "audio_structure": "running"}
+    claim = await db.execute(
+        update(VideoAnalysis)
+        .where(VideoAnalysis.id == latest.id, VideoAnalysis.status == "complete")
+        .values(status="running", pass_status=running_pass_status)
+        .returning(VideoAnalysis.id)
+    )
+    await db.commit()
+    if claim.first() is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+
+    # No DB write of any kind happens before this succeeds in full — a genuine ffmpeg failure
+    # therefore can never leave a partial/orphan AnalysisAnnotation row behind.
+    try:
+        audio_result = await audio_structure_svc.analyze_audio_structure(asset.file_path)
+    except Exception as exc:  # noqa: BLE001 — any unexpected failure must still fail cleanly,
+        # never crash the request or leave the row stuck at "running" forever.
+        failed_pass_status = {**pass_status, "audio_structure": "failed", "audio_structure_error": f"Unexpected error: {exc}"[:500]}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=failed_pass_status)
+        )
+        await db.commit()
+        await db.refresh(rv)
+        return await _to_response(db, rv, asset)
+
+    # Defensive idempotency (same reasoning as Stage 4/5/6/7's own cleanup): clear any
+    # pre-existing audio_silence rows THIS PASS produced before writing the fresh set. Only ever
+    # finds rows here after a stale-run retry (a genuinely completed attempt is caught by the
+    # idempotent early-return above).
+    await db.execute(
+        delete(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "audio_silence",
+            AnalysisAnnotation.produced_by_pass == AUDIO_STRUCTURE_PASS_NAME,
+        )
+    )
+
+    # No audio stream at all, or an audio stream with zero detected silence, are both normal,
+    # valid, successful outcomes — zero rows written either way, pass_status still becomes
+    # "complete", never "failed". "No audio track" (audio_stream_present=False) and "audio track
+    # containing no silence" (audio_stream_present=True, zero rows) are kept as distinct facts —
+    # see audio_structure_svc.py's own docstring.
+    for interval in audio_result.get("silence_intervals", []):
+        db.add(AnalysisAnnotation(
+            video_analysis_id=latest.id,
+            shot_id=None,  # silence is a fact about the audio track, independent of visual Shots
+            # — see this endpoint's own docstring.
+            category="audio_silence",
+            start_time=interval["start_time"], end_time=interval["end_time"],
+            details={
+                "detector": audio_result["detector"],
+                "noise_threshold_db": audio_result["noise_threshold_db"],
+                "minimum_duration_seconds": audio_result["minimum_duration_seconds"],
+                "duration": interval["duration"],
+            },
+            certainty="MEASURED",  # direct deterministic-detector extraction
+            confidence_score=None,  # silencedetect is a fixed threshold/duration detector, not a
+            # probabilistic model — there is no confidence concept to report at all.
+            reasoning=None,
+            evidence_summary="Deterministic FFmpeg silencedetect interval.",
+            source="ffmpeg",
+            produced_by_pass=AUDIO_STRUCTURE_PASS_NAME,
+        ))
+
+    await db.execute(
+        update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
+            status="complete",
+            pass_status={
+                **pass_status, "audio_structure": "complete",
+                "audio_structure_audio_present": audio_result["audio_stream_present"],
+            },
         )
     )
     await db.commit()
