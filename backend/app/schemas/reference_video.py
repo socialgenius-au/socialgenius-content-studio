@@ -64,6 +64,22 @@ this exists to preserve: `label`/`class_id` are the detector's own native COCO o
 rewritten into a guessed real-world identity; `category` is only ever "person" (the one
 structurally-equivalent COCO label) or the new neutral "object" value — never a guessed product/
 prop/logo/background role, which remains explicitly future-stage scope.
+
+Stage 8, Phase C1: adds `persistent_visual_elements` on each ShotSummary (shot-scoped, same
+reasoning as `visual_objects` — a persistence claim about objects in one Shot belongs to that
+Shot, never a video-wide claim). Reuses AnalysisAnnotation (category="persistent_visual_element"),
+the same "small, derived, JSON-detailed claim" pattern Stage 6's own `recurring_elements` already
+established for TextElement, extended here from raw VisualObject rows. Every
+PersistentVisualElementSummary is deliberately conservative — see
+app.services.visual_persistence_svc.py's own docstring for the full reasoning — requiring exact
+native-label equality (no laptop/tv/cell-phone consolidation), excluding `category="person"`
+entirely (never identity/face tracking), and requiring >=2 distinct source frames within the SAME
+shot. `certainty` is always "INFERRED"; `confidence_score`/`linkage_confidence` are deliberately
+always None — there is no calibrated, defensible probability this derivation could honestly
+report — with the real geometric evidence (IoU/height-similarity of every member against the
+group's own representative) preserved verbatim in `geometry_evidence` instead of a fabricated
+score. `representative_bbox` is always one EXISTING member's own real bounding box, never fused or
+re-measured.
 """
 from datetime import datetime
 
@@ -305,6 +321,73 @@ class VisualObjectSummary(BaseModel):
     source_frame_asset_file_path: str | None = None
 
 
+class PersistentVisualElementGeometryEvidence(BaseModel):
+    """One non-representative member's own real geometric comparison against the group's own
+    representative observation — never a claim about the representative itself (nothing to
+    compare it against)."""
+    visual_object_id: int
+    source_frame_id: int
+    iou_vs_reference: float
+    height_similarity_vs_reference: float
+    centroid_displacement_vs_reference: float
+
+
+class PersistentVisualElementDetectorConfidence(BaseModel):
+    """One member's own real, unmodified detector confidence — kept separate from this element's
+    own linkage_confidence (see PersistentVisualElementSummary's own docstring for why the two
+    must never be conflated)."""
+    visual_object_id: int
+    confidence_score: float | None
+
+
+class PersistentVisualElementBoundingBox(BaseModel):
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class PersistentVisualElementSummary(BaseModel):
+    """One Stage-8-Phase-C1 conservative same-shot, same-native-label, non-person persistence
+    claim, derived entirely from already-persisted Phase-B VisualObject rows — see
+    app.services.visual_persistence_svc.py's own docstring for the full derivation reasoning.
+    Always `certainty="INFERRED"` — the first INFERRED-tier claim Stage 8 has produced (every
+    VisualObject row it derives from stays "MEASURED" and untouched).
+
+    `representative_bbox` is `representative_visual_object_id`'s own real, already-persisted
+    bounding box — chosen (the highest-confidence member), never averaged or re-measured.
+    `linkage_confidence` is deliberately always None: there is no calibrated, defensible
+    probability this module can honestly report for "these are the same physical object" — the
+    real geometric evidence lives in `geometry_evidence` instead, one entry per non-representative
+    member, so a reader can judge the evidence directly. `detector_confidences` preserves every
+    member's own real detector confidence_score separately — never averaged into a linkage score.
+
+    Deliberately NOT present: any cross-label consolidation (a `laptop`/`tv` reading of the same
+    physical region stays as two separate, unlinked elements in Phase C1 — see the module
+    docstring's own "false split is safer than a manufactured merge" reasoning), any
+    dominant-subject/product-role/composition field, and any element for `category="person"`
+    observations (Phase C1 never performs identity/face tracking)."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    native_label: str
+    member_visual_object_ids: list[int]
+    source_frame_ids: list[int]
+    observation_count: int
+    start_time: float
+    end_time: float
+    representative_visual_object_id: int
+    representative_bbox: PersistentVisualElementBoundingBox
+    detector_confidences: list[PersistentVisualElementDetectorConfidence]
+    geometry_evidence: list[PersistentVisualElementGeometryEvidence]
+    certainty: str
+    linkage_confidence: float | None
+    reasoning: str | None
+    evidence_summary: str | None
+    source: str | None
+    produced_by_pass: str | None
+
+
 class ShotSummary(BaseModel):
     """One deterministically-detected cut-bounded segment. certainty is always "MEASURED" —
     Stage 4 never writes an INFERRED Shot. evidence_summary carries the detector's own score and
@@ -330,6 +413,11 @@ class ShotSummary(BaseModel):
     # source frame timestamp) — empty until visual-object detection completes at least once. No
     # grouping/tracking/composition here — see visual_object_svc.py's own docstring for why.
     visual_objects: list[VisualObjectSummary] = []
+    # Stage 8 Phase C1's derived same-shot persistence claims over the visual_objects above —
+    # empty until the visual-persistence pass completes at least once, or when nothing in this
+    # Shot qualifies (e.g. every label appeared in only one frame). See
+    # visual_persistence_svc.py's own docstring for the exact conservative derivation rules.
+    persistent_visual_elements: list[PersistentVisualElementSummary] = []
 
 
 class ReferenceVideoResponse(BaseModel):

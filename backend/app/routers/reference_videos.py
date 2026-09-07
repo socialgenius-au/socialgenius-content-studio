@@ -92,11 +92,11 @@ from app.models.user import User
 from app.models.video_analysis import VideoAnalysis
 from app.models.visual_object import VisualObject
 from app.schemas.reference_video import (
-    AudioSilenceIntervalSummary, AudioStructureSummary, RecurringElementSummary, ReferenceVideoIngestRequest,
-    ReferenceVideoResponse, ShotFrameSummary, ShotSummary, SpeechSegmentSummary, TextElementSummary,
-    TextObservationSummary, VideoAnalysisSummary, VisualObjectSummary,
+    AudioSilenceIntervalSummary, AudioStructureSummary, PersistentVisualElementSummary, RecurringElementSummary,
+    ReferenceVideoIngestRequest, ReferenceVideoResponse, ShotFrameSummary, ShotSummary, SpeechSegmentSummary,
+    TextElementSummary, TextObservationSummary, VideoAnalysisSummary, VisualObjectSummary,
 )
-from app.services import audio_structure_svc, ffmpeg_svc, ocr_svc, speech_analysis_svc, visual_object_svc
+from app.services import audio_structure_svc, ffmpeg_svc, ocr_svc, speech_analysis_svc, visual_object_svc, visual_persistence_svc
 
 router = APIRouter()
 
@@ -152,7 +152,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         or pass_status.get("text_analysis_error")
         or pass_status.get("speech_analysis_error")
         or pass_status.get("audio_structure_error")
-        or pass_status.get("visual_objects_error"),
+        or pass_status.get("visual_objects_error")
+        or pass_status.get("visual_persistence_error"),
         pass_status=pass_status,
     )
 
@@ -266,6 +267,39 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             source_frame_asset_file_path=source_asset.file_path if source_asset else None,
         ))
 
+    # Stage 8 Phase C1 — derived same-shot persistence claims, reusing AnalysisAnnotation
+    # (category="persistent_visual_element") exactly as Stage 6's own recurring_elements reuses
+    # it — see visual_persistence_svc.py's own docstring for the full derivation this surfaces.
+    persistence_result = await db.execute(
+        select(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "persistent_visual_element",
+        ).order_by(AnalysisAnnotation.shot_id, AnalysisAnnotation.start_time)
+    )
+    persistent_by_shot: dict[int, list[PersistentVisualElementSummary]] = {}
+    for ann in persistence_result.scalars().all():
+        if ann.shot_id is None:
+            continue  # Phase C1 always populates shot_id (same-shot-only rule) — defensive
+        details = ann.details or {}
+        persistent_by_shot.setdefault(ann.shot_id, []).append(PersistentVisualElementSummary(
+            id=ann.id,
+            native_label=details.get("native_label"),
+            member_visual_object_ids=details.get("member_visual_object_ids", []),
+            source_frame_ids=details.get("source_frame_ids", []),
+            observation_count=details.get("observation_count", 0),
+            start_time=ann.start_time, end_time=ann.end_time,
+            representative_visual_object_id=details.get("representative_visual_object_id"),
+            representative_bbox=details.get("representative_bbox"),
+            detector_confidences=details.get("detector_confidences", []),
+            geometry_evidence=details.get("geometry_evidence", []),
+            certainty=ann.certainty,
+            linkage_confidence=ann.confidence_score,
+            reasoning=ann.reasoning,
+            evidence_summary=ann.evidence_summary,
+            source=ann.source,
+            produced_by_pass=ann.produced_by_pass,
+        ))
+
     shots = [
         ShotSummary(
             id=s.id, order=s.order, start_time=s.start_time, end_time=s.end_time,
@@ -273,6 +307,7 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             frames=frames_by_shot.get(s.id, []),
             text_elements=text_by_shot.get(s.id, []),
             visual_objects=visual_objects_by_shot.get(s.id, []),
+            persistent_visual_elements=persistent_by_shot.get(s.id, []),
         )
         for s in shot_rows
     ]
@@ -1635,6 +1670,194 @@ async def analyze_reference_video_visual_objects(
         update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
             status="complete",
             pass_status={**pass_status, "visual_objects": "complete"},
+        )
+    )
+    await db.commit()
+    await db.refresh(rv)
+    return await _to_response(db, rv, asset)
+
+
+VISUAL_PERSISTENCE_PASS_NAME = "visual_persistence_v1"
+
+# The one concise, repository-consistent producer/algorithm-family identifier this pass ever
+# writes to AnalysisAnnotation.source — same convention as ocr_svc.RECURRING_ELEMENT_PASS_NAME's
+# own "deterministic_signal_linkage" (28 chars, fits the existing String(32) column unmodified;
+# this one is 22). Named here, not inlined, so a future Phase-C2 algorithm gets its own distinct
+# value rather than silently overloading this one.
+VISUAL_PERSISTENCE_SOURCE = "geometric_iou_linkage"
+
+
+@router.post("/{reference_video_id}/analyze-visual-persistence", response_model=ReferenceVideoResponse)
+async def analyze_reference_video_visual_persistence(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Stage 8 (Visual Objects / People / Products / Composition), Phase C1 — CONSERVATIVE
+    SAME-SHOT NEAR-STATIC VISUAL PERSISTENCE. See app/services/visual_persistence_svc.py's own
+    docstring for the full derivation reasoning this endpoint exists to apply, not extend.
+
+    Gated on `visual_objects` (Stage 8 Phase B) alone — deliberately NOT on `text_analysis`,
+    `speech_analysis`, or `audio_structure`. This pass reads nothing but Stage 8 Phase B's own
+    already-persisted VisualObject rows; no object detection is ever re-run here.
+
+    Reuses the existing AnalysisAnnotation table (category="persistent_visual_element") rather
+    than a new table or a new VisualObject column — see visual_persistence_svc.py's own docstring
+    and the Phase-C read-only inspection's own data-model verdict (A: existing architecture
+    sufficient). Every derived row's `details` carries the full evidence
+    (member_visual_object_ids, source_frame_ids, representative_bbox, detector_confidences,
+    geometry_evidence, thresholds used) so a reader never needs to re-derive what this pass saw.
+
+    Raw VisualObject rows are NEVER modified, deleted, or reinterpreted by this pass — this
+    endpoint only ever adds AnalysisAnnotation rows alongside them. `certainty` is always
+    "INFERRED" and `confidence_score` is always None (no calibrated linkage probability exists —
+    see visual_persistence_svc.py's own docstring point 6); the real geometric evidence lives in
+    `details.geometry_evidence` instead."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+    asset = await db.get(Asset, rv.asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+
+    pass_status = dict(latest.pass_status or {})
+    if pass_status.get("visual_objects") != "complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Visual-object detection must complete before visual-persistence derivation can run",
+        )
+
+    if pass_status.get("visual_persistence") == "complete":
+        # Idempotent — already done. Return as-is; do not re-run, do not create duplicate rows.
+        return await _to_response(db, rv, asset)
+
+    now = datetime.now(timezone.utc)
+    if latest.status == "running":
+        stale = latest.started_at is not None and (now - latest.started_at).total_seconds() > STALE_RUNNING_TIMEOUT_SECONDS
+        if not stale:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+        pass_status = {**pass_status, "visual_persistence": "failed", "visual_persistence_error": "Stale run — exceeded timeout, treated as failed"}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=pass_status)
+        )
+        await db.commit()
+
+    running_pass_status = {**pass_status, "visual_persistence": "running"}
+    claim = await db.execute(
+        update(VideoAnalysis)
+        .where(VideoAnalysis.id == latest.id, VideoAnalysis.status == "complete")
+        .values(status="running", pass_status=running_pass_status)
+        .returning(VideoAnalysis.id)
+    )
+    await db.commit()
+    if claim.first() is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+
+    # Existing Stage-8-Phase-B VisualObject rows — the ONLY input this pass ever uses. No object
+    # detection is re-run; no ShotFrame/Asset is even read.
+    visual_objects_result = await db.execute(
+        select(VisualObject).where(VisualObject.video_analysis_id == latest.id).order_by(VisualObject.shot_id)
+    )
+    visual_object_rows = visual_objects_result.scalars().all()
+    observations_by_shot: dict[int, list[dict]] = {}
+    for vo in visual_object_rows:
+        if vo.shot_id is None:
+            continue  # unreachable today (Phase B always populates shot_id) — skip defensively
+        observations_by_shot.setdefault(vo.shot_id, []).append({
+            "visual_object_id": vo.id, "shot_id": vo.shot_id, "source_frame_id": vo.source_frame_id,
+            "label": vo.label, "category": vo.category, "confidence_score": vo.confidence_score,
+            "x": vo.x, "y": vo.y, "width": vo.width, "height": vo.height,
+            "timestamp": vo.start_time,
+        })
+
+    # Derivation happens entirely before any DB write — same discipline as every prior Stage
+    # 6-8 pass — so a mid-run failure can never leave a partial/orphan annotation behind. This
+    # pass is pure in-memory computation (no I/O), but the same discipline is kept regardless.
+    groups_by_shot: dict[int, list[dict]] = {}
+    try:
+        for shot_id, observations in observations_by_shot.items():
+            groups_by_shot[shot_id] = visual_persistence_svc.derive_persistent_visual_elements(observations)
+    except Exception as exc:  # noqa: BLE001 — any unexpected failure must still fail cleanly,
+        # never crash the request or leave the row stuck at "running" forever. Nothing has been
+        # written to the DB yet at this point, so there is nothing to clean up here.
+        failed_pass_status = {**pass_status, "visual_persistence": "failed", "visual_persistence_error": f"Unexpected error: {exc}"[:500]}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=failed_pass_status)
+        )
+        await db.commit()
+        await db.refresh(rv)
+        return await _to_response(db, rv, asset)
+
+    # Defensive idempotency (same reasoning as Stage 4-8's own cleanup): clear any pre-existing
+    # persistent_visual_element rows THIS PASS produced before writing the fresh set. Only ever
+    # finds rows here after a stale-run retry (a genuinely completed attempt is caught by the
+    # idempotent early-return above).
+    await db.execute(
+        delete(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "persistent_visual_element",
+            AnalysisAnnotation.produced_by_pass == VISUAL_PERSISTENCE_PASS_NAME,
+        )
+    )
+
+    # Zero eligible groups across every shot is a normal, valid, successful outcome — zero rows
+    # written, pass_status still becomes "complete", never "failed".
+    for shot_id, groups in groups_by_shot.items():
+        for group in groups:
+            db.add(AnalysisAnnotation(
+                video_analysis_id=latest.id,
+                shot_id=shot_id,
+                category="persistent_visual_element",
+                start_time=group["start_time"], end_time=group["end_time"],
+                details={
+                    "native_label": group["native_label"],
+                    "member_visual_object_ids": group["member_visual_object_ids"],
+                    "source_frame_ids": group["source_frame_ids"],
+                    "observation_count": group["observation_count"],
+                    "representative_visual_object_id": group["representative_visual_object_id"],
+                    "representative_bbox": group["representative_bbox"],
+                    "detector_confidences": group["detector_confidences"],
+                    "geometry_evidence": group["geometry_evidence"],
+                    "iou_threshold_used": group["iou_threshold_used"],
+                    "height_similarity_threshold_used": group["height_similarity_threshold_used"],
+                },
+                certainty="INFERRED",
+                confidence_score=group["linkage_confidence"],  # always None — see this
+                # endpoint's own docstring and visual_persistence_svc.py's own docstring point 6.
+                reasoning=(
+                    f"Native label '{group['native_label']}' observed in {group['observation_count']} "
+                    f"distinct Stage-5 frames within this Shot, each meeting IoU >= "
+                    f"{group['iou_threshold_used']} and height-similarity >= "
+                    f"{group['height_similarity_threshold_used']} against the group's own "
+                    "representative observation (an existing member, never fused or re-measured). "
+                    "Exact native-label equality was required — no cross-label consolidation was "
+                    "attempted; category='person' observations are always excluded."
+                ),
+                evidence_summary=(
+                    "Inferred near-static persistent visual element, supported by repeated same-"
+                    "label detector observations within one Shot. This is not a claim that a real "
+                    "physical object was definitively re-identified, nor a claim about its "
+                    "business role (product/prop/logo/background); see details.geometry_evidence "
+                    "for the real, unmodified geometric evidence this claim rests on."
+                ),
+                source=VISUAL_PERSISTENCE_SOURCE,
+                produced_by_pass=VISUAL_PERSISTENCE_PASS_NAME,
+            ))
+
+    await db.execute(
+        update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
+            status="complete",
+            pass_status={**pass_status, "visual_persistence": "complete"},
         )
     )
     await db.commit()
