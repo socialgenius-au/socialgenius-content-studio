@@ -104,6 +104,18 @@ established — and introduces NO new "near-static" threshold: C1's own persiste
 reports the real drift numbers on top of that inherited qualification. `certainty` is always
 "INFERRED"; `confidence_score` is deliberately always None (no calibrated, defensible stability
 probability exists).
+
+Stage 9 (Motion / Camera / Transitions / Animation), Phase A: adds `ShotSummary.
+global_motion_evidence` — MEASURED (not INFERRED) global-motion evidence for one Shot, derived
+from the ORIGINAL reference-video source (never Stage-5 stills), reusing AnalysisAnnotation
+(category="global_motion_evidence"). See app.services.visual_motion_svc.py's own docstring for
+the full architecture: a fixed 5fps shot-scoped transient sampling foundation (selected from a
+real-video benchmark, not guessed), two deliberately separate evidence streams (ORB+RANSAC affine
+estimation and phase correlation, never averaged into one synthetic score), and boundary-safe
+sampling that never crosses a real shot cut. This field answers only "what global geometric
+change was measured" — it NEVER classifies a shot as static/pan/tilt/zoom/rotating; that
+inference is explicitly deferred to a later Stage-9 phase. `Shot.camera_movement` remains
+untouched by this phase.
 """
 from datetime import datetime
 
@@ -500,6 +512,72 @@ class PersistentLayoutStabilitySummary(BaseModel):
     produced_by_pass: str | None
 
 
+class AffineMotionEvidenceSummary(BaseModel):
+    """ORB-feature + RANSAC-affine global-motion evidence, aggregated across one Shot's own
+    analytical frame pairs — see app.services.visual_motion_svc.py's own docstring for the exact
+    method and why a failed per-pair estimate is never fabricated as zero motion.
+    `estimation_success_rate` is over ALL frame pairs (successful + failed); every median/p95
+    field is computed ONLY over the successful pairs and is None when zero pairs succeeded —
+    never a fabricated 0.0. `failure_reason_counts` is a small, bounded count-by-reason map
+    (never one entry per failed pair)."""
+    successful_pair_count: int
+    failed_pair_count: int
+    estimation_success_rate: float
+    median_translation_x: float | None
+    median_translation_y: float | None
+    median_translation_magnitude: float | None
+    p95_translation_magnitude: float | None
+    median_scale: float | None
+    max_abs_scale_deviation_from_1: float | None
+    median_rotation_deg: float | None
+    max_abs_rotation_deg: float | None
+    median_candidate_match_count: float | None
+    median_ransac_inlier_count: float | None
+    median_ransac_inlier_ratio: float | None
+    failure_reason_counts: dict[str, int] | None
+
+
+class PhaseCorrelationMotionEvidenceSummary(BaseModel):
+    """Frequency-domain global-TRANSLATION-only evidence (cv2.phaseCorrelate), aggregated across
+    the same frame pairs as AffineMotionEvidenceSummary — kept as a genuinely separate evidence
+    stream, never averaged into one synthetic combined score (see visual_motion_svc.py's own
+    docstring for why). `median_response`/`minimum_response` are the library's own real
+    correlation-quality values, preserved verbatim."""
+    median_dx: float
+    median_dy: float
+    median_translation_magnitude: float
+    p95_translation_magnitude: float
+    median_response: float
+    minimum_response: float
+
+
+class GlobalMotionEvidenceSummary(BaseModel):
+    """Stage 9 (Motion / Camera / Transitions / Animation), Phase A — MEASURED global-motion
+    evidence for one Shot, derived entirely from the ORIGINAL reference-video source (never
+    Stage-5 stills). Always `certainty="MEASURED"`; `confidence_score` is deliberately always
+    None (no calibrated probability exists for a raw geometric measurement — same discipline as
+    every other MEASURED evidence table in this project). This row NEVER classifies the shot as
+    static/pan/tilt/zoom/rotating — see visual_motion_svc.py's own docstring: it answers only
+    "what global geometric change was measured", never "was this a pan/tilt/zoom/static shot".
+    Absent (no row) for a Shot too short to produce at least 2 analytical frames — never a
+    fabricated zero-motion row for an unanalyzable shot."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    sampling_fps: float
+    sample_count: int
+    frame_pair_count: int
+    affine: AffineMotionEvidenceSummary
+    phase_correlation: PhaseCorrelationMotionEvidenceSummary
+    extraction_parameters: dict
+    certainty: str
+    confidence_score: float | None
+    reasoning: str | None
+    evidence_summary: str | None
+    source: str | None
+    produced_by_pass: str | None
+
+
 class ShotSummary(BaseModel):
     """One deterministically-detected cut-bounded segment. certainty is always "MEASURED" —
     Stage 4 never writes an INFERRED Shot. evidence_summary carries the detector's own score and
@@ -537,6 +615,11 @@ class ShotSummary(BaseModel):
     # above; empty until the composition pass completes at least once, or when no C1 element
     # exists in this Shot.
     layout_stability: list[PersistentLayoutStabilitySummary] = []
+    # Stage 9 Phase A — MEASURED global-motion evidence for this Shot, derived from the original
+    # reference-video source; None until the global-motion pass completes at least once, or when
+    # this Shot was too short to produce at least 2 analytical frames (never a fabricated
+    # zero-motion row). No camera classification anywhere in this field.
+    global_motion_evidence: GlobalMotionEvidenceSummary | None = None
 
 
 class ReferenceVideoResponse(BaseModel):

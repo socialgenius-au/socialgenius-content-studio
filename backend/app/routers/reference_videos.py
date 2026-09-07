@@ -92,14 +92,15 @@ from app.models.user import User
 from app.models.video_analysis import VideoAnalysis
 from app.models.visual_object import VisualObject
 from app.schemas.reference_video import (
-    AudioSilenceIntervalSummary, AudioStructureSummary, PersistentLayoutStabilitySummary, PersistentVisualElementSummary,
+    AffineMotionEvidenceSummary, AudioSilenceIntervalSummary, AudioStructureSummary, GlobalMotionEvidenceSummary,
+    PersistentLayoutStabilitySummary, PersistentVisualElementSummary, PhaseCorrelationMotionEvidenceSummary,
     RecurringElementSummary, ReferenceVideoIngestRequest, ReferenceVideoResponse, SameFrameLayoutPairSummary,
     ShotFrameSummary, ShotSummary, SpeechSegmentSummary, TextElementSummary, TextObservationSummary,
     VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
 )
 from app.services import (
     audio_structure_svc, ffmpeg_svc, ocr_svc, speech_analysis_svc, visual_composition_svc, visual_geometry_svc,
-    visual_object_svc, visual_persistence_svc,
+    visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
 
 router = APIRouter()
@@ -158,7 +159,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         or pass_status.get("audio_structure_error")
         or pass_status.get("visual_objects_error")
         or pass_status.get("visual_persistence_error")
-        or pass_status.get("visual_composition_error"),
+        or pass_status.get("visual_composition_error")
+        or pass_status.get("global_motion_evidence_error"),
         pass_status=pass_status,
     )
 
@@ -398,6 +400,37 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             produced_by_pass=ann.produced_by_pass,
         ))
 
+    # Stage 9 Phase A — MEASURED global-motion evidence per Shot, reusing AnalysisAnnotation
+    # (category="global_motion_evidence") — see visual_motion_svc.py's own docstring. Absent for
+    # any Shot too short to have produced evidence (see that endpoint's own docstring); never a
+    # fabricated zero-motion row.
+    global_motion_result = await db.execute(
+        select(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "global_motion_evidence",
+        )
+    )
+    global_motion_by_shot: dict[int, GlobalMotionEvidenceSummary] = {}
+    for ann in global_motion_result.scalars().all():
+        if ann.shot_id is None:
+            continue  # this pass always populates shot_id — defensive
+        details = ann.details or {}
+        global_motion_by_shot[ann.shot_id] = GlobalMotionEvidenceSummary(
+            id=ann.id,
+            sampling_fps=details.get("sampling_fps"),
+            sample_count=details.get("sample_count"),
+            frame_pair_count=details.get("frame_pair_count"),
+            affine=AffineMotionEvidenceSummary(**details.get("affine", {})),
+            phase_correlation=PhaseCorrelationMotionEvidenceSummary(**details.get("phase_correlation", {})),
+            extraction_parameters=details.get("extraction_parameters", {}),
+            certainty=ann.certainty,
+            confidence_score=ann.confidence_score,
+            reasoning=ann.reasoning,
+            evidence_summary=ann.evidence_summary,
+            source=ann.source,
+            produced_by_pass=ann.produced_by_pass,
+        )
+
     shots = [
         ShotSummary(
             id=s.id, order=s.order, start_time=s.start_time, end_time=s.end_time,
@@ -408,6 +441,7 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             persistent_visual_elements=persistent_by_shot.get(s.id, []),
             same_frame_layout_pairs=same_frame_pairs_by_shot.get(s.id, []),
             layout_stability=layout_stability_by_shot.get(s.id, []),
+            global_motion_evidence=global_motion_by_shot.get(s.id),
         )
         for s in shot_rows
     ]
@@ -2151,6 +2185,192 @@ async def analyze_reference_video_visual_composition(
         update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
             status="complete",
             pass_status={**pass_status, "visual_composition": "complete"},
+        )
+    )
+    await db.commit()
+    await db.refresh(rv)
+    return await _to_response(db, rv, asset)
+
+
+GLOBAL_MOTION_EVIDENCE_PASS_NAME = "global_motion_evidence_v1"
+
+# Producer/algorithm-family identifier — same convention as C1's own "geometric_iou_linkage" and
+# Composition's own "geometric_layout_drift" (see this router's own other passes).
+GLOBAL_MOTION_EVIDENCE_SOURCE = "opencv_phase_affine"
+
+
+@router.post("/{reference_video_id}/analyze-global-motion", response_model=ReferenceVideoResponse)
+async def analyze_reference_video_global_motion(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Stage 9 (Motion / Camera / Transitions / Animation), Phase A — TEMPORAL / GLOBAL-MOTION
+    EVIDENCE FOUNDATION. See app/services/visual_motion_svc.py's own docstring for the full
+    architecture (5fps shot-scoped transient sampling, boundary-safe windowing, two-stream
+    phase-correlation + affine/RANSAC evidence) this endpoint persists.
+
+    Gated on `scene_segmentation` (Stage 4) alone — deliberately NOT on OCR/speech/audio_structure/
+    visual_objects/visual_persistence/visual_composition/C2. Global-motion evidence operates over
+    Shot boundaries (Stage 4's own output) and the ORIGINAL reference-video source; it needs
+    nothing else Stage 5-8 produced, though Stage 8's own persistence evidence was useful
+    corroboration during this phase's own real-video benchmark (see that report) — it is NOT a
+    dependency here.
+
+    Analyzes the ORIGINAL ReferenceVideo source file (`asset.file_path`) — never Stage-5 stills,
+    preview derivatives, or exported editor media. If that file is missing, this pass fails
+    honestly (via the same try/except every prior pass uses) — it never silently substitutes a
+    different frame source or fabricates successful evidence.
+
+    Reuses the existing AnalysisAnnotation table (category="global_motion_evidence") — no
+    schema/model change of any kind; confirmed non-conflicting with the existing
+    `audio_silence`/`recurring_text_element`/`persistent_visual_element`/`persistent_layout_
+    stability` categories. `certainty` is always "MEASURED" (a direct geometric measurement, the
+    same tier as Stage 4/5's own deterministic facts); `confidence_score` is always None (no
+    calibrated probability exists for a raw geometric measurement). This endpoint NEVER writes
+    `Shot.camera_movement` and NEVER classifies a shot as static/pan/tilt/zoom/rotating — see
+    visual_motion_svc.py's own docstring for exactly why that inference is out of scope here.
+
+    A Shot too short to produce at least 2 analytical frames (visual_motion_svc's own
+    `insufficient_temporal_samples`) gets NO AnalysisAnnotation row at all — the same "zero
+    eligible -> zero rows" honesty convention every prior Stage 6-8 pass already established,
+    never a fabricated placeholder row."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+    asset = await db.get(Asset, rv.asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+
+    pass_status = dict(latest.pass_status or {})
+    if pass_status.get("scene_segmentation") != "complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Shot detection must complete before global-motion analysis can run",
+        )
+
+    if pass_status.get("global_motion_evidence") == "complete":
+        # Idempotent — already done. Return as-is; do not re-run, do not create duplicate rows.
+        return await _to_response(db, rv, asset)
+
+    now = datetime.now(timezone.utc)
+    if latest.status == "running":
+        stale = latest.started_at is not None and (now - latest.started_at).total_seconds() > STALE_RUNNING_TIMEOUT_SECONDS
+        if not stale:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+        pass_status = {**pass_status, "global_motion_evidence": "failed", "global_motion_evidence_error": "Stale run — exceeded timeout, treated as failed"}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=pass_status)
+        )
+        await db.commit()
+
+    running_pass_status = {**pass_status, "global_motion_evidence": "running"}
+    claim = await db.execute(
+        update(VideoAnalysis)
+        .where(VideoAnalysis.id == latest.id, VideoAnalysis.status == "complete")
+        .values(status="running", pass_status=running_pass_status)
+        .returning(VideoAnalysis.id)
+    )
+    await db.commit()
+    if claim.first() is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+
+    shots_result = await db.execute(select(Shot).where(Shot.video_analysis_id == latest.id).order_by(Shot.order))
+    shot_rows = shots_result.scalars().all()
+
+    # Measurement happens entirely before any DB write — same discipline as every prior Stage
+    # 6-8 pass — so a mid-run failure can never leave a partial/orphan annotation behind.
+    evidence_by_shot_id: dict[int, dict] = {}
+    try:
+        for shot in shot_rows:
+            evidence = await visual_motion_svc.measure_shot_global_motion(asset.file_path, shot.start_time, shot.end_time)
+            evidence_by_shot_id[shot.id] = evidence
+    except Exception as exc:  # noqa: BLE001 — any unexpected failure (including a genuinely
+        # missing/unreadable original source file) must still fail cleanly, never crash the
+        # request or leave the row stuck at "running" forever. Nothing has been written to the DB
+        # yet at this point, so there is nothing to clean up here.
+        failed_pass_status = {**pass_status, "global_motion_evidence": "failed", "global_motion_evidence_error": f"Unexpected error: {exc}"[:500]}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=failed_pass_status)
+        )
+        await db.commit()
+        await db.refresh(rv)
+        return await _to_response(db, rv, asset)
+
+    # Defensive idempotency (same reasoning as Stage 4-9's own cleanup): clear any pre-existing
+    # global_motion_evidence rows THIS PASS produced before writing the fresh set. Only ever finds
+    # rows here after a stale-run retry (a genuinely completed attempt is caught by the idempotent
+    # early-return above).
+    await db.execute(
+        delete(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "global_motion_evidence",
+            AnalysisAnnotation.produced_by_pass == GLOBAL_MOTION_EVIDENCE_PASS_NAME,
+        )
+    )
+
+    # Every Shot too short for at least 2 analytical frames is a normal, valid, successful
+    # outcome for THAT shot — zero rows for it, pass_status still becomes "complete" overall,
+    # never "failed" merely because one shot was short.
+    extraction_parameters = {
+        "orb_nfeatures": visual_motion_svc.DEFAULT_ORB_NFEATURES,
+        "ratio_test_threshold": visual_motion_svc.DEFAULT_RATIO_TEST_THRESHOLD,
+        "ransac_reprojection_threshold_px": visual_motion_svc.DEFAULT_RANSAC_REPROJECTION_THRESHOLD_PX,
+    }
+    for shot in shot_rows:
+        evidence = evidence_by_shot_id.get(shot.id)
+        if evidence is None or evidence["insufficient_temporal_samples"]:
+            continue
+        db.add(AnalysisAnnotation(
+            video_analysis_id=latest.id,
+            shot_id=shot.id,
+            category="global_motion_evidence",
+            start_time=shot.start_time, end_time=shot.end_time,
+            details={
+                "sampling_fps": evidence["sampling_fps"],
+                "sample_count": evidence["sample_count"],
+                "frame_pair_count": evidence["frame_pair_count"],
+                "affine": evidence["affine"],
+                "phase_correlation": evidence["phase_correlation"],
+                "extraction_parameters": extraction_parameters,
+            },
+            certainty="MEASURED",
+            confidence_score=None,  # always None — see this endpoint's own docstring and
+            # visual_motion_svc.py's own docstring: no calibrated probability exists for a raw
+            # geometric measurement.
+            reasoning=(
+                f"Global-motion evidence measured over {evidence['sample_count']} analytical "
+                f"frames ({evidence['frame_pair_count']} consecutive pairs) sampled at "
+                f"{evidence['sampling_fps']} fps within this Shot's own boundary-safe window. "
+                "This is raw geometric measurement only — it does not classify the shot as "
+                "static, panning, tilting, zooming, or rotating; that inference is explicitly "
+                "deferred to a later Stage-9 phase."
+            ),
+            evidence_summary=(
+                "Two independently-measured evidence streams: ORB-feature + RANSAC-affine "
+                "estimation (translation/scale/rotation, may fail honestly on low-texture pairs) "
+                "and frequency-domain phase correlation (translation-only, always numeric). "
+                "Never averaged into one synthetic motion score — see details.affine/"
+                "details.phase_correlation for each stream's own real numbers."
+            ),
+            source=GLOBAL_MOTION_EVIDENCE_SOURCE,
+            produced_by_pass=GLOBAL_MOTION_EVIDENCE_PASS_NAME,
+        ))
+
+    await db.execute(
+        update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
+            status="complete",
+            pass_status={**pass_status, "global_motion_evidence": "complete"},
         )
     )
     await db.commit()

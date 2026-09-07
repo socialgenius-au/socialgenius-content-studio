@@ -25,6 +25,17 @@ openai-whisper
 # Pulls in its own opencv-python-headless/scipy/scikit-image/Shapely/etc — none of which conflict
 # with anything already pinned here (verified via `pip check` after install).
 easyocr==1.7.2
+# Stage 9 (Video Deconstructor — Motion / Camera / Transitions / Animation), Phase A: promoted
+# from a silent transitive guest of easyocr (above) to an explicit, direct, pinned dependency —
+# see the Stage-9 Phase-0B real-video benchmark's own finding that phase correlation alone
+# (numpy/scipy-only) cannot measure scale/rotation at all, while affine+RANSAC estimation
+# (materially richer evidence, positively validated against real footage) genuinely needs this.
+# Exact installed distribution confirmed via `pip show` (not guessed from the `cv2` import name):
+# opencv-python-headless 5.0.0.93, already `Required-by: easyocr` in this same environment — the
+# headless build is the correct choice for this backend/server deployment (no GUI dependencies).
+# Pinning it here does not add anything new to the environment; it only stops relying on easyocr
+# to keep supplying it silently.
+opencv-python-headless==5.0.0.93
 ffmpeg-python>=0.2.0
 # STEP 7.15F: ffmpeg-python only builds argument lists — it never installs the actual ffmpeg
 # binary, and this environment has none on PATH. imageio-ffmpeg bundles a real static ffmpeg
