@@ -20,8 +20,9 @@ database — create_all's own "table already exists, nothing to do" behaviour th
 skipped them on every Railway deploy, breaking every reference-video endpoint with
 `asyncpg.exceptions.UndefinedColumnError` the moment a real request touched `text_elements`.
 
-Scope note: this currently covers Stage 6's own four `text_elements` columns only. Stage 3's and
-Stage 4's own historical column additions (`reference_videos.technical_details`,
+Scope note: this currently covers Stage 6's own four `text_elements` columns, plus (added for
+Stage 8 Phase B) `visual_objects`'s two new columns and its updated category CHECK constraint.
+Stage 3's and Stage 4's own historical column additions (`reference_videos.technical_details`,
 `shots.scene_id`/`video_analysis_id`) were also applied by hand at the time and carry the same
 class of risk on a database that was never manually patched — deliberately left out of this list
 for now, to review and add separately rather than widen this specific change's blast radius.
@@ -39,6 +40,22 @@ _ADDITIVE_PATCHES: list[str] = [
     "ALTER TABLE text_elements ADD COLUMN IF NOT EXISTS occurrence_group_id INTEGER REFERENCES text_elements(id) ON DELETE SET NULL",
     "CREATE INDEX IF NOT EXISTS ix_text_elements_source_frame_asset_id ON text_elements (source_frame_asset_id)",
     "CREATE INDEX IF NOT EXISTS ix_text_elements_occurrence_group_id ON text_elements (occurrence_group_id)",
+    # Stage 8 (Visual Objects), Phase B — see app/models/visual_object.py's own docstring for
+    # what each of these means and why. `visual_objects` has existed, empty, since Stage 1 — the
+    # exact same "ADD COLUMN IF NOT EXISTS" gap this file exists to close, on the exact same
+    # table-already-existed-before-the-column-did class of change as Stage 6's own patches above.
+    "ALTER TABLE visual_objects ADD COLUMN IF NOT EXISTS class_id INTEGER",
+    "ALTER TABLE visual_objects ADD COLUMN IF NOT EXISTS source_frame_id INTEGER REFERENCES shot_frames(id) ON DELETE RESTRICT",
+    "CREATE INDEX IF NOT EXISTS ix_visual_objects_source_frame_id ON visual_objects (source_frame_id)",
+    # The category CHECK constraint itself needs the new 'object' value added — Postgres has no
+    # "ADD CONSTRAINT IF NOT EXISTS", so this drops (if present, from either an older run of this
+    # exact patch or a fresh create_all-built table with the OLD five-value constraint) and
+    # unconditionally re-adds it under the same name; running this on every startup is therefore
+    # just as idempotent in EFFECT as every other statement here (drop-then-add always ends in
+    # the same final constraint, never accumulates, never errors on a repeat run).
+    "ALTER TABLE visual_objects DROP CONSTRAINT IF EXISTS ck_visual_objects_category_valid",
+    "ALTER TABLE visual_objects ADD CONSTRAINT ck_visual_objects_category_valid "
+    "CHECK (category IN ('person', 'product', 'logo', 'background', 'prop', 'object'))",
 ]
 
 

@@ -90,12 +90,13 @@ from app.models.speech_segment import SpeechSegment
 from app.models.text_element import TextElement
 from app.models.user import User
 from app.models.video_analysis import VideoAnalysis
+from app.models.visual_object import VisualObject
 from app.schemas.reference_video import (
     AudioSilenceIntervalSummary, AudioStructureSummary, RecurringElementSummary, ReferenceVideoIngestRequest,
     ReferenceVideoResponse, ShotFrameSummary, ShotSummary, SpeechSegmentSummary, TextElementSummary,
-    TextObservationSummary, VideoAnalysisSummary,
+    TextObservationSummary, VideoAnalysisSummary, VisualObjectSummary,
 )
-from app.services import audio_structure_svc, ffmpeg_svc, ocr_svc, speech_analysis_svc
+from app.services import audio_structure_svc, ffmpeg_svc, ocr_svc, speech_analysis_svc, visual_object_svc
 
 router = APIRouter()
 
@@ -150,7 +151,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         or pass_status.get("visual_evidence_error")
         or pass_status.get("text_analysis_error")
         or pass_status.get("speech_analysis_error")
-        or pass_status.get("audio_structure_error"),
+        or pass_status.get("audio_structure_error")
+        or pass_status.get("visual_objects_error"),
         pass_status=pass_status,
     )
 
@@ -239,12 +241,38 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
     for shot_id in text_by_shot:
         text_by_shot[shot_id].sort(key=lambda s: s.start_time)
 
+    # Stage 8 Phase B — raw visual-object detections, shot-scoped like frames/text_elements
+    # above (see ShotSummary's own docstring for why, unlike Stage 7's timeline-wide evidence).
+    # Every source_frame_id points at a ShotFrame already covered by frame_rows/assets_by_id
+    # above, so no additional Asset query is needed here — just the frame_id -> asset_id lookup.
+    frame_id_to_asset_id = {f.id: f.asset_id for f in frame_rows}
+    visual_objects_result = await db.execute(
+        select(VisualObject).where(VisualObject.video_analysis_id == latest.id).order_by(VisualObject.shot_id, VisualObject.start_time)
+    )
+    visual_objects_by_shot: dict[int, list[VisualObjectSummary]] = {}
+    for vo in visual_objects_result.scalars().all():
+        if vo.shot_id is None:
+            continue  # Stage 8 Phase B always populates shot_id today; defensive, not expected
+        source_asset = None
+        if vo.source_frame_id is not None:
+            source_asset = assets_by_id.get(frame_id_to_asset_id.get(vo.source_frame_id))
+        visual_objects_by_shot.setdefault(vo.shot_id, []).append(VisualObjectSummary(
+            id=vo.id, label=vo.label, category=vo.category, class_id=vo.class_id,
+            x=vo.x, y=vo.y, width=vo.width, height=vo.height,
+            start_time=vo.start_time, end_time=vo.end_time,
+            certainty=vo.certainty, confidence_score=vo.confidence_score,
+            evidence_summary=vo.evidence_summary, source=vo.source, produced_by_pass=vo.produced_by_pass,
+            source_frame_id=vo.source_frame_id,
+            source_frame_asset_file_path=source_asset.file_path if source_asset else None,
+        ))
+
     shots = [
         ShotSummary(
             id=s.id, order=s.order, start_time=s.start_time, end_time=s.end_time,
             certainty=s.certainty, evidence_summary=s.evidence_summary, produced_by_pass=s.produced_by_pass,
             frames=frames_by_shot.get(s.id, []),
             text_elements=text_by_shot.get(s.id, []),
+            visual_objects=visual_objects_by_shot.get(s.id, []),
         )
         for s in shot_rows
     ]
@@ -1421,6 +1449,192 @@ async def analyze_reference_video_audio_structure(
                 **pass_status, "audio_structure": "complete",
                 "audio_structure_audio_present": audio_result["audio_stream_present"],
             },
+        )
+    )
+    await db.commit()
+    await db.refresh(rv)
+    return await _to_response(db, rv, asset)
+
+
+VISUAL_OBJECTS_PASS_NAME = "visual_objects_v1"
+
+
+@router.post("/{reference_video_id}/analyze-visual-objects", response_model=ReferenceVideoResponse)
+async def analyze_reference_video_visual_objects(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Stage 8 (Visual Objects / People / Products / Composition), Phase B — RAW DETECTOR
+    EVIDENCE PERSISTENCE ONLY. See app/models/visual_object.py's own docstring and
+    app/services/visual_object_svc.py's own docstring for the full RAW EVIDENCE vs. BUSINESS/
+    CONTENT ROLE reasoning this endpoint exists to preserve, not resolve.
+
+    Gated on `visual_evidence` (Stage 5) alone — deliberately NOT on `text_analysis`,
+    `speech_analysis`, or `audio_structure`. This pass reads nothing but Stage 5's own already-
+    extracted ShotFrame images, exactly the same "free, read-only reuse" input Stage 6's own text
+    analysis pass already established, so it needs nothing else to have finished first.
+
+    Frame source discipline: this pass runs the Phase-A detector (visual_object_svc.analyze_
+    visual_objects) against ONLY Stage 5's own existing ShotFrame rows — no supplementary frame
+    extraction of any kind (unlike Stage 6, which samples extra frames for text coverage). Every
+    VisualObject row this pass writes is therefore traceable to one real, already-existing
+    ShotFrame via source_frame_id.
+
+    Category discipline (the reason this endpoint exists at all — see visual_object.py's own
+    docstring): the detector's native COCO "person" label maps to category="person" (the same
+    structural concept, not an interpretation); every other native COCO label maps to the neutral
+    category="object". This pass never guesses "product", "prop", "logo", or "background" — that
+    business/content-role judgment is explicitly out of scope here.
+
+    Screen-within-screen limitation preserved: a "person" row here means only "the detector's own
+    person class matched this pixel region with this score" — never "a physical, on-camera human
+    was here." See visual_object_svc.py's own docstring for why a generic detector cannot and does
+    not distinguish a directly-filmed person from one merely displayed inside another screen.
+
+    Timing honesty: start_time and end_time are both set to the source frame's own single
+    timestamp — a detection observed in one still frame has no measured duration, so none is
+    fabricated. Transform columns (scale/rotation/anchor/opacity/z_index) are written at their
+    schema defaults, not measured by this detector — evidence_summary says so explicitly on every
+    row, mirroring visual_object.py's own docstring on this exact point."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+    asset = await db.get(Asset, rv.asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+
+    pass_status = dict(latest.pass_status or {})
+    if pass_status.get("visual_evidence") != "complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Visual-evidence extraction must complete before visual-object detection can run",
+        )
+
+    if pass_status.get("visual_objects") == "complete":
+        # Idempotent — already done. Return as-is; do not re-run, do not create duplicate rows.
+        return await _to_response(db, rv, asset)
+
+    now = datetime.now(timezone.utc)
+    if latest.status == "running":
+        stale = latest.started_at is not None and (now - latest.started_at).total_seconds() > STALE_RUNNING_TIMEOUT_SECONDS
+        if not stale:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+        pass_status = {**pass_status, "visual_objects": "failed", "visual_objects_error": "Stale run — exceeded timeout, treated as failed"}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=pass_status)
+        )
+        await db.commit()
+
+    running_pass_status = {**pass_status, "visual_objects": "running"}
+    claim = await db.execute(
+        update(VideoAnalysis)
+        .where(VideoAnalysis.id == latest.id, VideoAnalysis.status == "complete")
+        .values(status="running", pass_status=running_pass_status)
+        .returning(VideoAnalysis.id)
+    )
+    await db.commit()
+    if claim.first() is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+
+    shots_result = await db.execute(select(Shot).where(Shot.video_analysis_id == latest.id).order_by(Shot.order))
+    shot_rows = shots_result.scalars().all()
+
+    # Existing Stage-5 ShotFrame rows — the ONLY frame source this pass ever uses (no
+    # supplementary extraction — see this endpoint's own docstring).
+    frames_result = await db.execute(select(ShotFrame).where(ShotFrame.video_analysis_id == latest.id))
+    frame_rows = frames_result.scalars().all()
+    frame_asset_ids = {f.asset_id for f in frame_rows}
+    frame_assets_by_id: dict[int, Asset] = {}
+    if frame_asset_ids:
+        frame_assets_result = await db.execute(select(Asset).where(Asset.id.in_(frame_asset_ids)))
+        frame_assets_by_id = {a.id: a for a in frame_assets_result.scalars().all()}
+
+    # Detection happens entirely before any DB write — same discipline as Stage 6/7 — so a
+    # mid-run failure can never leave a partial/orphan VisualObject row behind.
+    detections_by_frame: list[tuple[Shot, ShotFrame, dict]] = []
+    try:
+        for shot in shot_rows:
+            for f in [fr for fr in frame_rows if fr.shot_id == shot.id]:
+                fa = frame_assets_by_id.get(f.asset_id)
+                if fa is None:
+                    continue  # unreachable via RESTRICT FK — skip defensively
+                result_dict = await visual_object_svc.analyze_visual_objects(fa.file_path)
+                detections_by_frame.append((shot, f, result_dict))
+    except Exception as exc:  # noqa: BLE001 — any unexpected failure must still fail cleanly,
+        # never crash the request or leave the row stuck at "running" forever. Nothing has been
+        # written to the DB yet at this point, so there is nothing to clean up here.
+        failed_pass_status = {**pass_status, "visual_objects": "failed", "visual_objects_error": f"Unexpected error: {exc}"[:500]}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=failed_pass_status)
+        )
+        await db.commit()
+        await db.refresh(rv)
+        return await _to_response(db, rv, asset)
+
+    # Defensive idempotency (same reasoning as Stage 4-7's own cleanup): clear any pre-existing
+    # VisualObject rows THIS PASS produced before writing the fresh set. Only ever finds rows here
+    # after a stale-run retry (a genuinely completed attempt is caught by the idempotent
+    # early-return above).
+    await db.execute(
+        delete(VisualObject).where(
+            VisualObject.video_analysis_id == latest.id,
+            VisualObject.produced_by_pass == VISUAL_OBJECTS_PASS_NAME,
+        )
+    )
+
+    # Zero detections across every frame is a normal, valid, successful outcome — zero rows
+    # written, pass_status still becomes "complete", never "failed".
+    for shot, frame, result_dict in detections_by_frame:
+        model_name = result_dict["model"]
+        for detection in result_dict["detections"]:
+            category = "person" if detection["label"] == "person" else "object"
+            bbox = detection["bbox_normalized"]
+            db.add(VisualObject(
+                video_analysis_id=latest.id,
+                shot_id=shot.id,
+                source_frame_id=frame.id,
+                label=detection["label"],
+                category=category,
+                class_id=detection["class_id"],
+                x=bbox["x"], y=bbox["y"], width=bbox["width"], height=bbox["height"],
+                start_time=frame.timestamp, end_time=frame.timestamp,  # a single still frame has
+                # no measured duration — see this endpoint's own docstring.
+                certainty="MEASURED",
+                confidence_score=detection["confidence_score"],
+                reasoning=None,
+                evidence_summary=(
+                    f"{model_name} native COCO label '{detection['label']}' (class_id="
+                    f"{detection['class_id']}), confidence={detection['confidence_score']:.3f}. "
+                    "Label, confidence, and geometry are direct detector output for this exact "
+                    "source frame; this is not a claim that a real physical object or person "
+                    "exists, nor a claim about its business role (product/prop/logo/background). "
+                    "Unlisted transform fields (scale/rotation/anchor/opacity/z_index) are "
+                    "unmeasured schema defaults, not detector output."
+                ),
+                # `source` is the producer/engine FAMILY name — same convention as "easyocr"/
+                # "whisper"/"ffmpeg" elsewhere in this router, never the exact model variant. The
+                # exact model identifier (model_name) is preserved verbatim in evidence_summary
+                # above instead, mirroring exactly where Whisper's own model variant lives
+                # (SpeechSegment's evidence_summary embeds "Local Whisper (base) ...").
+                source="torchvision",
+                produced_by_pass=VISUAL_OBJECTS_PASS_NAME,
+            ))
+
+    await db.execute(
+        update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
+            status="complete",
+            pass_status={**pass_status, "visual_objects": "complete"},
         )
     )
     await db.commit()

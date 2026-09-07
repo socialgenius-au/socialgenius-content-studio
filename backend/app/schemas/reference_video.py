@@ -55,6 +55,15 @@ a silence interval is not evidence about speech specifically, and this pass neve
 speech_analysis to have run. `confidence_score` is always None here too — `silencedetect` is a
 fixed threshold/duration detector, not a probabilistic model, so there is no confidence concept
 to report at all.
+
+Stage 8 (Visual Objects / People / Products / Composition), Phase B: adds `visual_objects` on
+each ShotSummary (shot-scoped, like `frames`/`text_elements` — unlike Stage 7's timeline-wide
+evidence, a detected object genuinely belongs to the one frame/Shot it was seen in). See
+app.models.visual_object.py's own docstring for the full RAW-EVIDENCE-vs-BUSINESS-ROLE design
+this exists to preserve: `label`/`class_id` are the detector's own native COCO output, never
+rewritten into a guessed real-world identity; `category` is only ever "person" (the one
+structurally-equivalent COCO label) or the new neutral "object" value — never a guessed product/
+prop/logo/background role, which remains explicitly future-stage scope.
 """
 from datetime import datetime
 
@@ -251,6 +260,51 @@ class AudioStructureSummary(BaseModel):
     silence_intervals: list[AudioSilenceIntervalSummary] = []
 
 
+class VisualObjectSummary(BaseModel):
+    """One Stage-8-Phase-B raw visual-object detection — direct local-torchvision-detector
+    output for one Stage-5 ShotFrame. certainty is always "MEASURED" — see
+    app.models.visual_object.py's own docstring for the full RAW-EVIDENCE-vs-BUSINESS-ROLE
+    reasoning this field set exists to preserve.
+
+    `label` is the detector's own native COCO label (e.g. "cell phone", "keyboard", "laptop",
+    "tv") — NEVER rewritten into a guessed "real" object identity. `class_id` is the same
+    evidence in the detector's own native integer form. `category` is either "person" (the one
+    COCO label structurally equivalent to this project's own category of the same name) or
+    "object" (every other COCO label — a deliberately neutral placeholder, never a guessed
+    product/prop/logo/background role — see the model's own docstring point 1). `confidence_score`
+    is the detector's own real, unmodified score.
+
+    `source_frame_id`/`source_frame_asset_file_path` trace this detection back to the EXACT
+    Stage-5 ShotFrame/image it came from — never merely "this Shot, sometime." `start_time`/
+    `end_time` are both the source frame's own timestamp (a single-instant observation; Stage 8
+    Phase B never infers how long an object was actually visible beyond the one frame it was
+    seen in).
+
+    scale_x/scale_y/rotation/anchor_x/anchor_y/opacity/z_index are deliberately NOT exposed here
+    — Phase B never measures them (a 2D bounding-box detector cannot), so this schema is exactly
+    the fields Phase B genuinely knows, not the full VisualObject column set padded out with
+    unmeasured defaults that could be mistaken for detector output."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    label: str
+    category: str
+    class_id: int | None
+    x: float
+    y: float
+    width: float
+    height: float
+    start_time: float
+    end_time: float
+    certainty: str
+    confidence_score: float | None
+    evidence_summary: str | None
+    source: str | None
+    produced_by_pass: str | None
+    source_frame_id: int | None
+    source_frame_asset_file_path: str | None = None
+
+
 class ShotSummary(BaseModel):
     """One deterministically-detected cut-bounded segment. certainty is always "MEASURED" —
     Stage 4 never writes an INFERRED Shot. evidence_summary carries the detector's own score and
@@ -272,6 +326,10 @@ class ShotSummary(BaseModel):
     # Stage 6's OCR text occurrences for this Shot, chronological order — empty until text
     # analysis completes at least once.
     text_elements: list[TextElementSummary] = []
+    # Stage 8 Phase B's raw visual-object detections for this Shot, chronological order (by
+    # source frame timestamp) — empty until visual-object detection completes at least once. No
+    # grouping/tracking/composition here — see visual_object_svc.py's own docstring for why.
+    visual_objects: list[VisualObjectSummary] = []
 
 
 class ReferenceVideoResponse(BaseModel):
