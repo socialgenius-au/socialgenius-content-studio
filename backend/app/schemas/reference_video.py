@@ -80,6 +80,30 @@ report — with the real geometric evidence (IoU/height-similarity of every memb
 group's own representative) preserved verbatim in `geometry_evidence` instead of a fabricated
 score. `representative_bbox` is always one EXISTING member's own real bounding box, never fused or
 re-measured.
+
+Stage 8, Composition MVP: adds deterministic, on-demand GEOMETRIC LAYOUT EVIDENCE — never a
+creative/compositional judgment. Part A: `VisualObjectSummary.layout` (per-detection frame-
+occupancy, centroid, distance-from-frame-center, edge distances, thirds placement — see
+app.services.visual_geometry_svc.py's own docstring) and `ShotSummary.same_frame_layout_pairs`
+(pairwise IoU/containment/area-ratio/centroid-displacement/centroid-relative-position between
+detections sharing one source frame — never compared across different frames). Both are computed
+fresh on every response from already-persisted VisualObject geometry; NOTHING here is persisted —
+see visual_geometry_svc.py's own docstring for why these are trivial, on-demand derivatives, not
+new facts. `is_largest_detected_region_in_source_frame` reports only which existing box has the
+largest already-measured area — deliberately never called "dominant"/"primary"/"focal"/"hero"
+anything (the real reference video's own coarse, mislabeled "laptop" detection is consistently the
+single largest box in every real frame — exactly why that language would be misleading).
+
+Part B: `ShotSummary.layout_stability` — the ONE new persisted Composition inference, reusing
+AnalysisAnnotation (category="persistent_layout_stability") to record shot-level layout-DRIFT
+evidence across an already-existing Phase-C1 persistent_visual_element's own members (see
+app.services.visual_composition_svc.py's own docstring). This does NOT re-derive persistence —
+every drift measurement here is over a shot/label/person-exclusion grouping C1 already
+established — and introduces NO new "near-static" threshold: C1's own persistence criteria
+(IoU>=0.80, height-similarity>=0.85) already qualified the underlying group, and this layer only
+reports the real drift numbers on top of that inherited qualification. `certainty` is always
+"INFERRED"; `confidence_score` is deliberately always None (no calibrated, defensible stability
+probability exists).
 """
 from datetime import datetime
 
@@ -276,6 +300,29 @@ class AudioStructureSummary(BaseModel):
     silence_intervals: list[AudioSilenceIntervalSummary] = []
 
 
+class VisualObjectLayoutSummary(BaseModel):
+    """Stage-8-Composition-MVP deterministic, on-demand geometric layout measurements for one
+    VisualObject detection — computed fresh on every response directly from that same row's own
+    x/y/width/height (see app.services.visual_geometry_svc.py's own docstring), never persisted
+    anywhere. SIMPLE GEOMETRIC LAYOUT EVIDENCE ONLY: `horizontal_third`/`vertical_third` are plain
+    coordinate-space partitions (< 1/3, > 2/3, otherwise the middle third) — a documented,
+    explicit geometric convention, NOT an AI/aesthetic composition judgment. `frame_occupancy` is
+    identical to this detection's own normalized bbox area (width * height) — exposed under this
+    name because it is the more directly useful framing for a Reconstructor, not a second,
+    independently-measured quantity."""
+    frame_occupancy: float
+    centroid_x: float
+    centroid_y: float
+    distance_from_frame_center: float
+    edge_distance_left: float
+    edge_distance_right: float
+    edge_distance_top: float
+    edge_distance_bottom: float
+    nearest_edge_distance: float
+    horizontal_third: str
+    vertical_third: str
+
+
 class VisualObjectSummary(BaseModel):
     """One Stage-8-Phase-B raw visual-object detection — direct local-torchvision-detector
     output for one Stage-5 ShotFrame. certainty is always "MEASURED" — see
@@ -299,7 +346,13 @@ class VisualObjectSummary(BaseModel):
     scale_x/scale_y/rotation/anchor_x/anchor_y/opacity/z_index are deliberately NOT exposed here
     — Phase B never measures them (a 2D bounding-box detector cannot), so this schema is exactly
     the fields Phase B genuinely knows, not the full VisualObject column set padded out with
-    unmeasured defaults that could be mistaken for detector output."""
+    unmeasured defaults that could be mistaken for detector output.
+
+    `layout` (Composition MVP) is a deterministic, on-demand derivative of this same row's own
+    x/y/width/height — nothing new is measured, only recomputed for convenience on every
+    response. `is_largest_detected_region_in_source_frame` is the Composition MVP's own
+    `largest_detected_region` finding — see VisualObjectLayoutSummary's own docstring for why
+    this is never called "dominant"/"primary"/"focal"/"hero" anything."""
     model_config = {"from_attributes": True}
 
     id: int
@@ -319,6 +372,8 @@ class VisualObjectSummary(BaseModel):
     produced_by_pass: str | None
     source_frame_id: int | None
     source_frame_asset_file_path: str | None = None
+    layout: VisualObjectLayoutSummary
+    is_largest_detected_region_in_source_frame: bool = False
 
 
 class PersistentVisualElementGeometryEvidence(BaseModel):
@@ -388,6 +443,63 @@ class PersistentVisualElementSummary(BaseModel):
     produced_by_pass: str | None
 
 
+class SameFrameLayoutPairSummary(BaseModel):
+    """Stage-8-Composition-MVP deterministic, on-demand pairwise geometric relationship between
+    two VisualObject detections that share the SAME source_frame_id — comparisons are NEVER made
+    across different frames (two detections from different timestamps do not coexist in one
+    image, so comparing their geometry would be meaningless — see visual_geometry_svc.py's own
+    docstring). Field names state their exact mathematical meaning (e.g. `a_centroid_above_b`,
+    never "a is above b") so they cannot be misread as a claim about the real-world relationship
+    between two physical things — only about the two detector boxes' own measured geometry.
+    Nothing here is persisted; every value is recomputed fresh on every response."""
+    source_frame_id: int
+    visual_object_id_a: int
+    visual_object_id_b: int
+    iou: float
+    intersection_over_a: float
+    intersection_over_b: float
+    area_ratio: float
+    centroid_displacement: float
+    a_centroid_above_b: bool
+    a_centroid_below_b: bool
+    a_centroid_left_of_b: bool
+    a_centroid_right_of_b: bool
+
+
+class PersistentLayoutStabilitySummary(BaseModel):
+    """Stage-8-Composition-MVP shot-level LAYOUT-DRIFT evidence for one already-existing Phase-C1
+    `persistent_visual_element` — see app.services.visual_composition_svc.py's own docstring for
+    the exact metric definitions. This does NOT re-derive persistence (member/source-frame ids are
+    copied verbatim from the source C1 annotation's own `details`), and introduces NO new
+    "near-static" threshold — the underlying group already met C1's own persistence criteria
+    (IoU>=0.80, height-similarity>=0.85); `reasoning` states this inheritance explicitly. Always
+    `certainty="INFERRED"`; `confidence_score` is deliberately always None — no calibrated,
+    defensible stability probability exists, matching C1's own `linkage_confidence` discipline."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    source_persistent_visual_element_id: int
+    native_label: str
+    member_visual_object_ids: list[int]
+    source_frame_ids: list[int]
+    centroid_max_pairwise_displacement: float
+    width_min: float
+    width_max: float
+    width_range: float
+    height_min: float
+    height_max: float
+    height_range: float
+    occupancy_min: float
+    occupancy_max: float
+    occupancy_range: float
+    certainty: str
+    confidence_score: float | None
+    reasoning: str | None
+    evidence_summary: str | None
+    source: str | None
+    produced_by_pass: str | None
+
+
 class ShotSummary(BaseModel):
     """One deterministically-detected cut-bounded segment. certainty is always "MEASURED" —
     Stage 4 never writes an INFERRED Shot. evidence_summary carries the detector's own score and
@@ -418,6 +530,13 @@ class ShotSummary(BaseModel):
     # Shot qualifies (e.g. every label appeared in only one frame). See
     # visual_persistence_svc.py's own docstring for the exact conservative derivation rules.
     persistent_visual_elements: list[PersistentVisualElementSummary] = []
+    # Composition MVP Part A — deterministic, on-demand pairwise layout evidence between
+    # visual_objects above that share the SAME source frame, never computed across frames.
+    same_frame_layout_pairs: list[SameFrameLayoutPairSummary] = []
+    # Composition MVP Part B — shot-level layout-drift evidence over the persistent_visual_elements
+    # above; empty until the composition pass completes at least once, or when no C1 element
+    # exists in this Shot.
+    layout_stability: list[PersistentLayoutStabilitySummary] = []
 
 
 class ReferenceVideoResponse(BaseModel):

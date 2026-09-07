@@ -92,11 +92,15 @@ from app.models.user import User
 from app.models.video_analysis import VideoAnalysis
 from app.models.visual_object import VisualObject
 from app.schemas.reference_video import (
-    AudioSilenceIntervalSummary, AudioStructureSummary, PersistentVisualElementSummary, RecurringElementSummary,
-    ReferenceVideoIngestRequest, ReferenceVideoResponse, ShotFrameSummary, ShotSummary, SpeechSegmentSummary,
-    TextElementSummary, TextObservationSummary, VideoAnalysisSummary, VisualObjectSummary,
+    AudioSilenceIntervalSummary, AudioStructureSummary, PersistentLayoutStabilitySummary, PersistentVisualElementSummary,
+    RecurringElementSummary, ReferenceVideoIngestRequest, ReferenceVideoResponse, SameFrameLayoutPairSummary,
+    ShotFrameSummary, ShotSummary, SpeechSegmentSummary, TextElementSummary, TextObservationSummary,
+    VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
 )
-from app.services import audio_structure_svc, ffmpeg_svc, ocr_svc, speech_analysis_svc, visual_object_svc, visual_persistence_svc
+from app.services import (
+    audio_structure_svc, ffmpeg_svc, ocr_svc, speech_analysis_svc, visual_composition_svc, visual_geometry_svc,
+    visual_object_svc, visual_persistence_svc,
+)
 
 router = APIRouter()
 
@@ -153,7 +157,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         or pass_status.get("speech_analysis_error")
         or pass_status.get("audio_structure_error")
         or pass_status.get("visual_objects_error")
-        or pass_status.get("visual_persistence_error"),
+        or pass_status.get("visual_persistence_error")
+        or pass_status.get("visual_composition_error"),
         pass_status=pass_status,
     )
 
@@ -250,13 +255,43 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
     visual_objects_result = await db.execute(
         select(VisualObject).where(VisualObject.video_analysis_id == latest.id).order_by(VisualObject.shot_id, VisualObject.start_time)
     )
+    visual_object_rows = visual_objects_result.scalars().all()
+
+    # Composition MVP Part A — largest_by_area is computed PER SOURCE FRAME, never across
+    # frames: every VisualObject sharing one source_frame_id genuinely coexists in one image;
+    # different frames never do — see visual_geometry_svc.py's own docstring.
+    boxes_by_source_frame: dict[int, dict[int, visual_geometry_svc.Box]] = {}
+    for vo in visual_object_rows:
+        if vo.source_frame_id is None:
+            continue
+        boxes_by_source_frame.setdefault(vo.source_frame_id, {})[vo.id] = visual_geometry_svc.Box(vo.x, vo.y, vo.width, vo.height)
+    largest_ids_by_source_frame = {
+        fid: set(visual_geometry_svc.largest_by_area(boxes)) for fid, boxes in boxes_by_source_frame.items()
+    }
+
     visual_objects_by_shot: dict[int, list[VisualObjectSummary]] = {}
-    for vo in visual_objects_result.scalars().all():
+    for vo in visual_object_rows:
         if vo.shot_id is None:
             continue  # Stage 8 Phase B always populates shot_id today; defensive, not expected
         source_asset = None
         if vo.source_frame_id is not None:
             source_asset = assets_by_id.get(frame_id_to_asset_id.get(vo.source_frame_id))
+        # Composition MVP Part A — deterministic, on-demand layout derivative of this same row's
+        # own x/y/width/height (see VisualObjectLayoutSummary's own docstring); never persisted.
+        box = visual_geometry_svc.Box(vo.x, vo.y, vo.width, vo.height)
+        edges = visual_geometry_svc.edge_distances(box)
+        centroid_x, centroid_y = visual_geometry_svc.centroid(box)
+        layout = VisualObjectLayoutSummary(
+            frame_occupancy=visual_geometry_svc.area(box),
+            centroid_x=centroid_x, centroid_y=centroid_y,
+            distance_from_frame_center=visual_geometry_svc.distance_from_frame_center(box),
+            edge_distance_left=edges["left"], edge_distance_right=edges["right"],
+            edge_distance_top=edges["top"], edge_distance_bottom=edges["bottom"],
+            nearest_edge_distance=visual_geometry_svc.nearest_edge_distance(box),
+            horizontal_third=visual_geometry_svc.horizontal_third(box),
+            vertical_third=visual_geometry_svc.vertical_third(box),
+        )
+        is_largest = vo.id in largest_ids_by_source_frame.get(vo.source_frame_id, set())
         visual_objects_by_shot.setdefault(vo.shot_id, []).append(VisualObjectSummary(
             id=vo.id, label=vo.label, category=vo.category, class_id=vo.class_id,
             x=vo.x, y=vo.y, width=vo.width, height=vo.height,
@@ -265,7 +300,37 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             evidence_summary=vo.evidence_summary, source=vo.source, produced_by_pass=vo.produced_by_pass,
             source_frame_id=vo.source_frame_id,
             source_frame_asset_file_path=source_asset.file_path if source_asset else None,
+            layout=layout,
+            is_largest_detected_region_in_source_frame=is_largest,
         ))
+
+    # Composition MVP Part A — same-frame pairwise layout evidence, shot-scoped, NEVER computed
+    # across two different source frames (see SameFrameLayoutPairSummary's own docstring).
+    same_frame_pairs_by_shot: dict[int, list[SameFrameLayoutPairSummary]] = {}
+    vo_by_shot_and_frame: dict[tuple[int, int], list[VisualObject]] = {}
+    for vo in visual_object_rows:
+        if vo.shot_id is None or vo.source_frame_id is None:
+            continue
+        vo_by_shot_and_frame.setdefault((vo.shot_id, vo.source_frame_id), []).append(vo)
+    for (pair_shot_id, pair_frame_id), frame_vos in vo_by_shot_and_frame.items():
+        frame_vos_sorted = sorted(frame_vos, key=lambda v: v.id)
+        for i in range(len(frame_vos_sorted)):
+            for j in range(i + 1, len(frame_vos_sorted)):
+                vo_a, vo_b = frame_vos_sorted[i], frame_vos_sorted[j]
+                box_a = visual_geometry_svc.Box(vo_a.x, vo_a.y, vo_a.width, vo_a.height)
+                box_b = visual_geometry_svc.Box(vo_b.x, vo_b.y, vo_b.width, vo_b.height)
+                containment = visual_geometry_svc.containment_ratios(box_a, box_b)
+                rel = visual_geometry_svc.centroid_relative_position(box_a, box_b)
+                same_frame_pairs_by_shot.setdefault(pair_shot_id, []).append(SameFrameLayoutPairSummary(
+                    source_frame_id=pair_frame_id, visual_object_id_a=vo_a.id, visual_object_id_b=vo_b.id,
+                    iou=visual_geometry_svc.iou(box_a, box_b),
+                    intersection_over_a=containment["intersection_over_a"],
+                    intersection_over_b=containment["intersection_over_b"],
+                    area_ratio=visual_geometry_svc.area_ratio(box_a, box_b),
+                    centroid_displacement=visual_geometry_svc.centroid_displacement(box_a, box_b),
+                    a_centroid_above_b=rel["a_centroid_above_b"], a_centroid_below_b=rel["a_centroid_below_b"],
+                    a_centroid_left_of_b=rel["a_centroid_left_of_b"], a_centroid_right_of_b=rel["a_centroid_right_of_b"],
+                ))
 
     # Stage 8 Phase C1 — derived same-shot persistence claims, reusing AnalysisAnnotation
     # (category="persistent_visual_element") exactly as Stage 6's own recurring_elements reuses
@@ -300,6 +365,39 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             produced_by_pass=ann.produced_by_pass,
         ))
 
+    # Composition MVP Part B — shot-level layout-drift evidence over C1's own persistent
+    # elements, reusing AnalysisAnnotation (category="persistent_layout_stability") — see
+    # visual_composition_svc.py's own docstring for the exact metric definitions.
+    stability_result = await db.execute(
+        select(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "persistent_layout_stability",
+        ).order_by(AnalysisAnnotation.shot_id, AnalysisAnnotation.start_time)
+    )
+    layout_stability_by_shot: dict[int, list[PersistentLayoutStabilitySummary]] = {}
+    for ann in stability_result.scalars().all():
+        if ann.shot_id is None:
+            continue  # this pass always populates shot_id (inherited from its own C1 source) — defensive
+        details = ann.details or {}
+        layout_stability_by_shot.setdefault(ann.shot_id, []).append(PersistentLayoutStabilitySummary(
+            id=ann.id,
+            source_persistent_visual_element_id=details.get("source_persistent_visual_element_id"),
+            native_label=details.get("native_label"),
+            member_visual_object_ids=details.get("member_visual_object_ids", []),
+            source_frame_ids=details.get("source_frame_ids", []),
+            centroid_max_pairwise_displacement=details.get("centroid_max_pairwise_displacement"),
+            width_min=details.get("width_min"), width_max=details.get("width_max"), width_range=details.get("width_range"),
+            height_min=details.get("height_min"), height_max=details.get("height_max"), height_range=details.get("height_range"),
+            occupancy_min=details.get("occupancy_min"), occupancy_max=details.get("occupancy_max"),
+            occupancy_range=details.get("occupancy_range"),
+            certainty=ann.certainty,
+            confidence_score=ann.confidence_score,
+            reasoning=ann.reasoning,
+            evidence_summary=ann.evidence_summary,
+            source=ann.source,
+            produced_by_pass=ann.produced_by_pass,
+        ))
+
     shots = [
         ShotSummary(
             id=s.id, order=s.order, start_time=s.start_time, end_time=s.end_time,
@@ -308,6 +406,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             text_elements=text_by_shot.get(s.id, []),
             visual_objects=visual_objects_by_shot.get(s.id, []),
             persistent_visual_elements=persistent_by_shot.get(s.id, []),
+            same_frame_layout_pairs=same_frame_pairs_by_shot.get(s.id, []),
+            layout_stability=layout_stability_by_shot.get(s.id, []),
         )
         for s in shot_rows
     ]
@@ -1858,6 +1958,199 @@ async def analyze_reference_video_visual_persistence(
         update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
             status="complete",
             pass_status={**pass_status, "visual_persistence": "complete"},
+        )
+    )
+    await db.commit()
+    await db.refresh(rv)
+    return await _to_response(db, rv, asset)
+
+
+VISUAL_COMPOSITION_PASS_NAME = "visual_composition_v1"
+
+# Same producer/algorithm-family-identifier convention as C1's own VISUAL_PERSISTENCE_SOURCE
+# ("geometric_iou_linkage") — this pass's own deterministic drift arithmetic gets its own,
+# distinct value rather than silently overloading C1's.
+VISUAL_COMPOSITION_SOURCE = "geometric_layout_drift"
+
+
+@router.post("/{reference_video_id}/analyze-visual-composition", response_model=ReferenceVideoResponse)
+async def analyze_reference_video_visual_composition(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Stage 8 (Visual Objects / People / Products / Composition), Composition MVP, Part B —
+    shot-level LAYOUT-DRIFT evidence over already-existing Stage-8-Phase-C1
+    `persistent_visual_element` annotations. See app/services/visual_composition_svc.py's own
+    docstring for the exact metric definitions this endpoint persists.
+
+    Gated on `visual_persistence` (Stage 8 Phase C1) alone — deliberately NOT on OCR/speech/
+    audio_structure/C2/product recognition (none of those exist or are needed here). This pass
+    reads nothing but Stage 8 Phase C1's own already-persisted `persistent_visual_element`
+    AnalysisAnnotation rows (and, through them, their own member VisualObject rows' geometry) —
+    no object detection is ever re-run, and no new persistence grouping is ever derived here.
+
+    Reuses the existing AnalysisAnnotation table (category="persistent_layout_stability") rather
+    than a new table or column — confirmed non-conflicting with the three existing categories
+    (`audio_silence`, `recurring_text_element`, `persistent_visual_element`). Every derived row's
+    `details` references its own source `persistent_visual_element` annotation id verbatim,
+    alongside the same member_visual_object_ids/source_frame_ids/native_label C1 already
+    established — this pass makes NO new identity or grouping claim of its own, only measures how
+    much that already-established group's own geometry drifts across its members.
+
+    `certainty` is always "INFERRED"; `confidence_score` is always None — no calibrated,
+    defensible layout-stability probability exists (same discipline as C1's own
+    linkage_confidence). No new "near-static" threshold is introduced: the underlying C1 group
+    already qualified as persistent using its own approved criteria (IoU>=0.80, height-
+    similarity>=0.85); this pass's own `reasoning` states that inheritance explicitly rather than
+    re-classifying stability with a second, independent threshold."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+    asset = await db.get(Asset, rv.asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+
+    pass_status = dict(latest.pass_status or {})
+    if pass_status.get("visual_persistence") != "complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Visual-persistence derivation must complete before composition layout-stability analysis can run",
+        )
+
+    if pass_status.get("visual_composition") == "complete":
+        # Idempotent — already done. Return as-is; do not re-run, do not create duplicate rows.
+        return await _to_response(db, rv, asset)
+
+    now = datetime.now(timezone.utc)
+    if latest.status == "running":
+        stale = latest.started_at is not None and (now - latest.started_at).total_seconds() > STALE_RUNNING_TIMEOUT_SECONDS
+        if not stale:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+        pass_status = {**pass_status, "visual_composition": "failed", "visual_composition_error": "Stale run — exceeded timeout, treated as failed"}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=pass_status)
+        )
+        await db.commit()
+
+    running_pass_status = {**pass_status, "visual_composition": "running"}
+    claim = await db.execute(
+        update(VideoAnalysis)
+        .where(VideoAnalysis.id == latest.id, VideoAnalysis.status == "complete")
+        .values(status="running", pass_status=running_pass_status)
+        .returning(VideoAnalysis.id)
+    )
+    await db.commit()
+    if claim.first() is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+
+    # Existing Stage-8-Phase-C1 persistent_visual_element rows — the ONLY input this pass ever
+    # uses. No object detection is re-run; no new persistence grouping is ever derived here.
+    persistence_result = await db.execute(
+        select(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "persistent_visual_element",
+        )
+    )
+    persistence_rows = persistence_result.scalars().all()
+
+    all_member_ids: set[int] = set()
+    for ann in persistence_rows:
+        all_member_ids.update((ann.details or {}).get("member_visual_object_ids", []))
+    member_vo_by_id: dict[int, VisualObject] = {}
+    if all_member_ids:
+        member_vo_result = await db.execute(select(VisualObject).where(VisualObject.id.in_(all_member_ids)))
+        member_vo_by_id = {vo.id: vo for vo in member_vo_result.scalars().all()}
+
+    # Drift computation happens entirely before any DB write — same discipline as every prior
+    # Stage 6-8 pass — so a mid-run failure can never leave a partial/orphan annotation behind.
+    drift_by_annotation_id: dict[int, dict] = {}
+    try:
+        for ann in persistence_rows:
+            details = ann.details or {}
+            member_ids = details.get("member_visual_object_ids", [])
+            boxes = [
+                visual_geometry_svc.Box(member_vo_by_id[mid].x, member_vo_by_id[mid].y, member_vo_by_id[mid].width, member_vo_by_id[mid].height)
+                for mid in member_ids if mid in member_vo_by_id
+            ]
+            drift_by_annotation_id[ann.id] = visual_composition_svc.compute_layout_drift(boxes)
+    except Exception as exc:  # noqa: BLE001 — any unexpected failure must still fail cleanly,
+        # never crash the request or leave the row stuck at "running" forever. Nothing has been
+        # written to the DB yet at this point, so there is nothing to clean up here.
+        failed_pass_status = {**pass_status, "visual_composition": "failed", "visual_composition_error": f"Unexpected error: {exc}"[:500]}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=failed_pass_status)
+        )
+        await db.commit()
+        await db.refresh(rv)
+        return await _to_response(db, rv, asset)
+
+    # Defensive idempotency (same reasoning as Stage 4-8's own cleanup): clear any pre-existing
+    # persistent_layout_stability rows THIS PASS produced before writing the fresh set. Only ever
+    # finds rows here after a stale-run retry (a genuinely completed attempt is caught by the
+    # idempotent early-return above).
+    await db.execute(
+        delete(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "persistent_layout_stability",
+            AnalysisAnnotation.produced_by_pass == VISUAL_COMPOSITION_PASS_NAME,
+        )
+    )
+
+    # Zero eligible C1 elements is a normal, valid, successful outcome — zero rows written,
+    # pass_status still becomes "complete", never "failed".
+    for ann in persistence_rows:
+        drift = drift_by_annotation_id.get(ann.id)
+        if drift is None:
+            continue
+        details = ann.details or {}
+        db.add(AnalysisAnnotation(
+            video_analysis_id=latest.id,
+            shot_id=ann.shot_id,
+            category="persistent_layout_stability",
+            start_time=ann.start_time, end_time=ann.end_time,
+            details={
+                "source_persistent_visual_element_id": ann.id,
+                "member_visual_object_ids": details.get("member_visual_object_ids", []),
+                "source_frame_ids": details.get("source_frame_ids", []),
+                "native_label": details.get("native_label"),
+                **drift,
+            },
+            certainty="INFERRED",
+            confidence_score=None,  # always None — see this endpoint's own docstring and
+            # visual_composition_svc.py's own docstring: no calibrated stability probability exists.
+            reasoning=(
+                f"Layout-drift evidence over Phase-C1 persistent_visual_element id={ann.id} "
+                f"(native label '{details.get('native_label')}'), which already met C1's own "
+                "persistence criteria (IoU >= 0.80, height-similarity >= 0.85 against its own "
+                "reference observation) — that qualification is inherited here, not re-derived or "
+                "re-classified by a new threshold. The drift numbers below are the real, "
+                "unmodified geometric spread across this group's own already-persisted members."
+            ),
+            evidence_summary=(
+                "Deterministic layout-drift measurement (centroid/width/height/occupancy) over an "
+                "already-existing Phase-C1 persistent element's own members. This is not a claim "
+                "about the real-world object's identity or composition role — only about how much "
+                "its already-inferred persistent region's own geometry varies across observations."
+            ),
+            source=VISUAL_COMPOSITION_SOURCE,
+            produced_by_pass=VISUAL_COMPOSITION_PASS_NAME,
+        ))
+
+    await db.execute(
+        update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
+            status="complete",
+            pass_status={**pass_status, "visual_composition": "complete"},
         )
     )
     await db.commit()
