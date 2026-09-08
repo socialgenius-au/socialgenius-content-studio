@@ -151,6 +151,22 @@ ROTATION/HANDHELD/MIXED label anywhere in this schema, `Shot.camera_movement` st
 and explicitly no scale/rotation-driven translation "correction" of any kind (Phase C0 identified
 the coupling effect; any future correction needs the full affine transform, not a scale-only
 approximation — C1 reports the raw dynamics only).
+
+Stage 9, Phase D1 (LOCAL MOTION EVIDENCE): adds `ShotSummary.local_motion_evidence` — MEASURED
+compensated-pixel-residual and dual (uncompensated + compensated) sparse-optical-flow evidence
+over a fixed, content-independent 3x4 spatial grid, reusing AnalysisAnnotation (category=
+"local_motion_evidence"). See app.services.local_motion_evidence_svc.py's own docstring for the
+full architecture validated by the Phase D0/D0.1/D0.2/D0.3 experiment series: Phase A's own
+`_affine_pair` reused unmodified for global compensation, a purely geometric valid-overlap mask,
+the D0.3-selected mean/p95/max residual statistic vector (median/p75/p90/p99/standard_deviation/
+top-k%-mean were evaluated and explicitly rejected as blind or redundant), and explicit temporal
+aggregation kept separate from spatial aggregation (never pooling raw pixels/features across
+pairs before computing a percentile). Answers only "what spatial change/motion evidence remains
+within this shot's own frame" — NEVER "what object moved", "was this animation", "was this a
+person/screen/camera pan"; `certainty` is always "MEASURED", `confidence_score` is always None.
+`tracked_point_count == 0` in any flow cell means no usable tracked-feature evidence was obtained
+there, never a claim that no motion occurred (see the schema's own field-level docstrings for the
+full feature-density and low-texture limitations carried forward, not fixed, from D0.2).
 """
 from datetime import datetime
 
@@ -795,6 +811,104 @@ class TransitionEvidenceSummary(BaseModel):
     produced_by_pass: str | None
 
 
+class TemporalAggregateSummary(BaseModel):
+    """Stage 9 Phase D1 — the temporal aggregation of one NON-NEGATIVE, magnitude-type per-pair
+    statistic (residual mean/p95/max, or flow median_magnitude/p95_magnitude) across a shot's own
+    successful pairs. `temporal_mean` is the average of each pair's own value; `temporal_max`
+    preserves the single largest per-pair value, guarding against a rare, transient real event
+    being diluted away by averaging (see local_motion_evidence_svc.py's own docstring for the
+    D0.3 experiment finding this is built on). Both `None` when no pair contributed a value —
+    never a fabricated 0.0."""
+    temporal_mean: float | None
+    temporal_max: float | None
+
+
+class TemporalAggregateMeanOnlySummary(BaseModel):
+    """Stage 9 Phase D1 — the temporal aggregation of one SIGNED per-pair statistic (flow
+    median_dx/median_dy). Only `temporal_mean` is reported — a "max" of a signed value is not the
+    same well-defined worst-case concept it is for a non-negative magnitude; that information
+    remains available via the corresponding magnitude statistic's own `temporal_max`."""
+    temporal_mean: float | None
+
+
+class ValidOverlapFractionSummary(BaseModel):
+    """Stage 9 Phase D1 — shot-level valid-overlap coverage across successfully-compensated
+    pairs. `temporal_min` (not `temporal_max`) is deliberately used alongside `temporal_mean`
+    here: lower overlap means WORSE geometric coverage, so the worst-case (minimum) pair is the
+    informative extreme to preserve, the opposite of every magnitude-type statistic in this
+    schema where the largest value is the informative extreme."""
+    temporal_mean: float | None
+    temporal_min: float | None
+
+
+class LocalMotionResidualCellSummary(BaseModel):
+    """Stage 9 Phase D1 — one cell of the fixed 3x4 compensated-pixel-residual grid. `row`/`col`
+    are 0-indexed (row-major: r0c0, r0c1, r0c2, r0c3, r1c0, ...). `contributing_pair_count` is how
+    many of the shot's own successfully-affine-compensated pairs left at least one valid-overlap
+    pixel in this specific cell — may be less than the shot's own affine_successful_pair_count
+    (e.g. a large translation can push a whole cell outside the valid-overlap region for some
+    pairs). Only mean/p95/max are persisted — see local_motion_evidence_svc.py's own docstring
+    for the D0.3 evidence behind rejecting median/p75/p90/p99/standard_deviation/top-k%-mean from
+    this vector."""
+    row: int
+    col: int
+    contributing_pair_count: int
+    mean: TemporalAggregateSummary
+    p95: TemporalAggregateSummary
+    max: TemporalAggregateSummary
+
+
+class LocalMotionFlowCellSummary(BaseModel):
+    """Stage 9 Phase D1 — one cell of the fixed 3x4 sparse-optical-flow grid (used identically
+    for BOTH uncompensated and compensated flow — see local_motion_evidence_svc.py's own
+    docstring: these are parallel, never "better/worse" measurements). `tracked_point_count == 0`
+    means NO USABLE TRACKED-FEATURE EVIDENCE WAS OBTAINED in this cell for this pair — it does
+    NOT mean no motion occurred (a flat, low-texture region offers goodFeaturesToTrack nothing to
+    find regardless of whether it moved) — never treat this field as a confidence or motion-
+    strength score. `contributing_pair_count` counts pairs where >=1 point was actually tracked
+    here, which may be far fewer than the shot's own total pair count."""
+    row: int
+    col: int
+    total_tracked_point_count: int
+    contributing_pair_count: int
+    median_dx: TemporalAggregateMeanOnlySummary
+    median_dy: TemporalAggregateMeanOnlySummary
+    median_magnitude: TemporalAggregateSummary
+    p95_magnitude: TemporalAggregateSummary
+
+
+class LocalMotionEvidenceSummary(BaseModel):
+    """Stage 9 Phase D1 — MEASURED local-motion evidence for one Shot (an AnalysisAnnotation row,
+    category="local_motion_evidence"). Answers ONLY "what spatial pixel-residual and sparse-
+    feature-displacement evidence remains within this shot's own frame, after compensating for
+    its own global affine motion" — NEVER "what object moved", "was this animation", "was this a
+    person/screen/camera pan". `certainty` is always "MEASURED"; `confidence_score` is always
+    None (no calibrated probability exists for this raw geometric/statistical measurement).
+    `sampling_fps` is an ENGINEERING DEFAULT recorded as metadata, never claimed semantically
+    optimal (see local_motion_evidence_svc.py's own docstring on the D0.1/D0.2 sampling-
+    sensitivity findings). Absent (no row) for a Shot too short to produce at least 2 analytical
+    frames — never a fabricated zero-motion row for an unanalyzable shot."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    sampling_fps: float
+    sample_count: int
+    frame_pair_count: int
+    affine_successful_pair_count: int
+    affine_failed_pair_count: int
+    affine_failure_reason_counts: dict[str, int] | None
+    valid_overlap_fraction: ValidOverlapFractionSummary | None
+    residual_grid: list[LocalMotionResidualCellSummary]
+    uncompensated_flow_grid: list[LocalMotionFlowCellSummary]
+    compensated_flow_grid: list[LocalMotionFlowCellSummary]
+    certainty: str
+    confidence_score: float | None
+    reasoning: str | None
+    evidence_summary: str | None
+    source: str | None
+    produced_by_pass: str | None
+
+
 class ShotSummary(BaseModel):
     """One deterministically-detected cut-bounded segment. certainty is always "MEASURED" —
     Stage 4 never writes an INFERRED Shot. evidence_summary carries the detector's own score and
@@ -837,6 +951,11 @@ class ShotSummary(BaseModel):
     # this Shot was too short to produce at least 2 analytical frames (never a fabricated
     # zero-motion row). No camera classification anywhere in this field.
     global_motion_evidence: GlobalMotionEvidenceSummary | None = None
+    # Stage 9 Phase D1 — MEASURED local-motion evidence (compensated pixel residual + dual sparse
+    # optical flow, fixed 3x4 grid) for this Shot; None until that pass completes at least once,
+    # or when this Shot was too short to produce at least 2 analytical frames. No object/
+    # animation/camera-motion classification anywhere in this field.
+    local_motion_evidence: LocalMotionEvidenceSummary | None = None
 
 
 class ReferenceVideoResponse(BaseModel):
