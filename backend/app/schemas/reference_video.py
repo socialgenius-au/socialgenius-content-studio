@@ -116,6 +116,25 @@ sampling that never crosses a real shot cut. This field answers only "what globa
 change was measured" — it NEVER classifies a shot as static/pan/tilt/zoom/rotating; that
 inference is explicitly deferred to a later Stage-9 phase. `Shot.camera_movement` remains
 untouched by this phase.
+
+Stage 9, Phase B1 (BOUNDARY-TRIGGERED TRANSITION EVIDENCE MVP): adds `ReferenceVideoResponse.
+transition_evidence` — a video-level (never nested under a Shot, same reasoning as
+`speech_segments`: a transition genuinely spans TWO Shots, not one) list of MEASURED evidence
+windows, one per existing Stage-4 shot boundary this pass could obtain material on both sides of.
+Reuses AnalysisAnnotation (category="transition_evidence"). See
+app.services.transition_evidence_svc.py's own docstring for the full architecture: this pass
+performs its OWN independent transient 10fps extraction (never reusing Phase-A's or Stage-5's own
+already-deleted/derivative frames), candidate windows come ONLY from already-persisted Stage-4
+shot boundaries (no independent coarse scan in this increment — a gradual transition Stage 4 never
+flagged is invisible to this pass, a deliberate, stated MVP limitation), and every field is a
+neutral, threshold-free measurement (raw values plus deterministic math summaries) — NEVER a
+transition-type label (no hard_cut/fade/dissolve/dip_to_black anywhere in this schema) and NEVER
+an interpreted shape (no declining/rising/sustained_plateau/monotonic-enough). `shot_id` is always
+None for this MVP (a boundary-spanning window belongs to neither Shot alone); `preceding_shot_id`/
+`following_shot_id` record the real relationship explicitly instead. `certainty` is always
+"MEASURED"; `confidence_score` is always None (no calibrated probability exists for a raw
+temporal measurement). Similarity-transfer evidence (dissolve reference-frame comparison) is
+deliberately NOT implemented in this phase — see transition_evidence_svc.py's own docstring.
 """
 from datetime import datetime
 
@@ -578,6 +597,117 @@ class GlobalMotionEvidenceSummary(BaseModel):
     produced_by_pass: str | None
 
 
+class TransitionLuminanceSummary(BaseModel):
+    """Stage 9 Phase B1 — neutral, threshold-free luminance measurements over one boundary
+    candidate window. See transition_evidence_svc.py's own docstring for why no interpreted field
+    (declining/rising/fade-like/plateau) exists here. `zero_delta_count` is EXACT numeric equality
+    between consecutive samples only, never a "near-zero" tolerance band."""
+    values: list[float]
+    first_value: float
+    last_value: float
+    min: float
+    max: float
+    signed_total_change: float
+    regression_slope: float
+    positive_delta_count: int
+    negative_delta_count: int
+    zero_delta_count: int
+    sign_change_count: int
+
+
+class TransitionFrameDifferenceSummary(BaseModel):
+    """Stage 9 Phase B1 — neutral frame-difference measurements (deterministic normalized
+    mean-absolute-pixel-difference, the exact metric validated in Phase B0.3). No "elevated pair"
+    concept and no run-length fields — deliberately omitted for this MVP (see
+    transition_evidence_svc.py's own docstring)."""
+    values: list[float]
+    median: float
+    max: float
+    argmax_index: int
+
+
+class TransitionAffinePairSummary(BaseModel):
+    """One ORB+RANSAC-affine pair result, reused verbatim from visual_motion_svc._affine_pair — a
+    failed estimate keeps its own explicit `reason` (insufficient_keypoints/insufficient_matches/
+    affine_estimation_failed); every other field is None on failure, NEVER a fabricated
+    translation=0/scale=1/rotation=0."""
+    estimation_success: bool
+    reason: str | None = None
+    translation_x: float | None = None
+    translation_y: float | None = None
+    translation_magnitude: float | None = None
+    scale: float | None = None
+    rotation_deg: float | None = None
+    candidate_match_count: int | None = None
+    ransac_inlier_count: int | None = None
+    ransac_inlier_ratio: float | None = None
+
+
+class TransitionAffineEvidenceSummary(BaseModel):
+    """Per-pair affine evidence for one boundary candidate window, kept PER PAIR (never collapsed
+    into a single median the way Phase A's own global-motion evidence is) — see
+    transition_evidence_svc.py's own docstring for why: transition identity depends on temporal
+    shape, and a single failed/degenerate pair hidden inside an aggregate would erase exactly the
+    evidence a future inference layer needs."""
+    pairs: list[TransitionAffinePairSummary]
+    successful_pair_count: int
+    failed_pair_count: int
+    failure_reason_counts: dict[str, int] | None = None
+
+
+class TransitionPhaseCorrelationPairSummary(BaseModel):
+    """One phase-correlation pair result, reused verbatim from visual_motion_svc._phase_correlation_
+    pair — dx/dy/magnitude/response are always preserved, never erased or gated behind a general
+    usability rule. `phase_quality_issue` is the ONE narrow, exact-value diagnostic Phase B1
+    authorizes: "black_frame_zero_response" when an involved frame already meets the existing
+    black-frame definition AND response is exactly 0.0 — never a generalized response threshold."""
+    dx: float
+    dy: float
+    magnitude: float
+    response: float
+    phase_quality_issue: str | None = None
+
+
+class TransitionPhaseCorrelationEvidenceSummary(BaseModel):
+    """Per-pair phase-correlation evidence for one boundary candidate window — same "keep every
+    pair, never collapse" reasoning as TransitionAffineEvidenceSummary."""
+    pairs: list[TransitionPhaseCorrelationPairSummary]
+
+
+class TransitionEvidenceSummary(BaseModel):
+    """Stage 9 Phase B1 — one boundary-triggered MEASURED transition-evidence window (an
+    AnalysisAnnotation row, category="transition_evidence"). `certainty` is always "MEASURED";
+    `confidence_score` is always None. `shot_id` is always None for this MVP — a boundary-spanning
+    window belongs to neither adjacent Shot alone; `preceding_shot_id`/`following_shot_id` record
+    the real relationship instead (see this project's own B0.4A design correction for why a
+    default-to-preceding-shot convention was explicitly rejected). NEVER contains a transition-type
+    label (hard_cut/fade/dissolve/dip_to_black) or an interpreted shape field — see
+    transition_evidence_svc.py's own docstring."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    boundary_timestamp: float
+    window_start: float
+    window_end: float
+    preceding_shot_id: int | None
+    following_shot_id: int | None
+    sampling_fps: float
+    sample_count: int
+    frame_pair_count: int
+    sample_timestamps: list[float]
+    luminance: TransitionLuminanceSummary
+    frame_difference: TransitionFrameDifferenceSummary
+    black_frame_flags: list[bool]
+    affine: TransitionAffineEvidenceSummary
+    phase_correlation: TransitionPhaseCorrelationEvidenceSummary
+    certainty: str
+    confidence_score: float | None
+    reasoning: str | None
+    evidence_summary: str | None
+    source: str | None
+    produced_by_pass: str | None
+
+
 class ShotSummary(BaseModel):
     """One deterministically-detected cut-bounded segment. certainty is always "MEASURED" —
     Stage 4 never writes an INFERRED Shot. evidence_summary carries the detector's own score and
@@ -662,3 +792,10 @@ class ReferenceVideoResponse(BaseModel):
     # has completed at least once; kept entirely separate from speech_segments above (see
     # AudioStructureSummary's own docstring for why the two are never merged/overloaded).
     audio_structure: AudioStructureSummary | None = None
+    # Stage 9 Phase B1's boundary-triggered transition evidence — video-level (never nested under
+    # a Shot; a transition genuinely spans TWO Shots, same reasoning as speech_segments above);
+    # empty until that pass completes at least once, and empty (not an error) whenever the video
+    # has zero shot boundaries (a single-shot video) or every boundary lacked enough material on
+    # both sides to measure. No transition-type label anywhere in this list — see
+    # TransitionEvidenceSummary's own docstring.
+    transition_evidence: list[TransitionEvidenceSummary] = []

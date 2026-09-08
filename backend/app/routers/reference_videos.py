@@ -96,11 +96,13 @@ from app.schemas.reference_video import (
     PersistentLayoutStabilitySummary, PersistentVisualElementSummary, PhaseCorrelationMotionEvidenceSummary,
     RecurringElementSummary, ReferenceVideoIngestRequest, ReferenceVideoResponse, SameFrameLayoutPairSummary,
     ShotFrameSummary, ShotSummary, SpeechSegmentSummary, TextElementSummary, TextObservationSummary,
-    VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
+    TransitionAffineEvidenceSummary, TransitionAffinePairSummary, TransitionEvidenceSummary,
+    TransitionFrameDifferenceSummary, TransitionLuminanceSummary, TransitionPhaseCorrelationEvidenceSummary,
+    TransitionPhaseCorrelationPairSummary, VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
 )
 from app.services import (
-    audio_structure_svc, ffmpeg_svc, ocr_svc, speech_analysis_svc, visual_composition_svc, visual_geometry_svc,
-    visual_motion_svc, visual_object_svc, visual_persistence_svc,
+    audio_structure_svc, ffmpeg_svc, ocr_svc, speech_analysis_svc, transition_evidence_svc, visual_composition_svc,
+    visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
 
 router = APIRouter()
@@ -160,7 +162,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         or pass_status.get("visual_objects_error")
         or pass_status.get("visual_persistence_error")
         or pass_status.get("visual_composition_error")
-        or pass_status.get("global_motion_evidence_error"),
+        or pass_status.get("global_motion_evidence_error")
+        or pass_status.get("transition_evidence_error"),
         pass_status=pass_status,
     )
 
@@ -495,6 +498,50 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             silence_intervals=[AudioSilenceIntervalSummary.model_validate(r) for r in silence_rows],
         )
 
+    # Stage 9 Phase B1 — boundary-triggered transition evidence, video-level (never nested under a
+    # Shot; a transition genuinely spans TWO Shots — see TransitionEvidenceSummary's own
+    # docstring), reusing AnalysisAnnotation (category="transition_evidence"). Chronological order
+    # by window_start, same convention as every other evidence list in this response.
+    transition_result = await db.execute(
+        select(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "transition_evidence",
+        ).order_by(AnalysisAnnotation.start_time)
+    )
+    transition_evidence = []
+    for ann in transition_result.scalars().all():
+        details = ann.details or {}
+        transition_evidence.append(TransitionEvidenceSummary(
+            id=ann.id,
+            boundary_timestamp=details.get("boundary_timestamp"),
+            window_start=details.get("window_start"),
+            window_end=details.get("window_end"),
+            preceding_shot_id=details.get("preceding_shot_id"),
+            following_shot_id=details.get("following_shot_id"),
+            sampling_fps=details.get("sampling_fps"),
+            sample_count=details.get("sample_count"),
+            frame_pair_count=details.get("frame_pair_count"),
+            sample_timestamps=details.get("sample_timestamps", []),
+            luminance=TransitionLuminanceSummary(**details.get("luminance", {})),
+            frame_difference=TransitionFrameDifferenceSummary(**details.get("frame_difference", {})),
+            black_frame_flags=details.get("black_frame_flags", []),
+            affine=TransitionAffineEvidenceSummary(
+                pairs=[TransitionAffinePairSummary(**p) for p in details.get("affine", {}).get("pairs", [])],
+                successful_pair_count=details.get("affine", {}).get("successful_pair_count", 0),
+                failed_pair_count=details.get("affine", {}).get("failed_pair_count", 0),
+                failure_reason_counts=details.get("affine", {}).get("failure_reason_counts"),
+            ),
+            phase_correlation=TransitionPhaseCorrelationEvidenceSummary(
+                pairs=[TransitionPhaseCorrelationPairSummary(**p) for p in details.get("phase_correlation", {}).get("pairs", [])],
+            ),
+            certainty=ann.certainty,
+            confidence_score=ann.confidence_score,
+            reasoning=ann.reasoning,
+            evidence_summary=ann.evidence_summary,
+            source=ann.source,
+            produced_by_pass=ann.produced_by_pass,
+        ))
+
     return ReferenceVideoResponse(
         id=rv.id,
         asset_id=rv.asset_id,
@@ -510,6 +557,7 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         recurring_elements=recurring_elements,
         speech_segments=speech_segments,
         audio_structure=audio_structure,
+        transition_evidence=transition_evidence,
     )
 
 
@@ -2371,6 +2419,217 @@ async def analyze_reference_video_global_motion(
         update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
             status="complete",
             pass_status={**pass_status, "global_motion_evidence": "complete"},
+        )
+    )
+    await db.commit()
+    await db.refresh(rv)
+    return await _to_response(db, rv, asset)
+
+
+TRANSITION_EVIDENCE_PASS_NAME = "transition_evidence_v1"
+
+# Producer/algorithm-family identifier — deliberately NOT "opencv_phase_affine" (Phase A's own
+# value): this pass also measures luminance, frame-difference, and black-frame evidence that no
+# single library "owns" — see the B0.4A design correction's own naming-accuracy discussion.
+TRANSITION_EVIDENCE_SOURCE = "temporal_visual_measurements"
+
+
+@router.post("/{reference_video_id}/analyze-transition-evidence", response_model=ReferenceVideoResponse)
+async def analyze_reference_video_transition_evidence(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Stage 9 (Motion / Camera / Transitions / Animation), Phase B1 — BOUNDARY-TRIGGERED
+    TRANSITION EVIDENCE MVP. See app/services/transition_evidence_svc.py's own docstring for the
+    full architecture (own independent transient 10fps extraction, boundary-triggered candidate
+    source only, neutral threshold-free measurement fields).
+
+    Gated on `scene_segmentation` (Stage 4) ALONE — deliberately NOT on visual_evidence/
+    text_analysis/speech_analysis/audio_structure/visual_objects/visual_persistence/
+    visual_composition/global_motion_evidence. This pass reuses `ffmpeg_svc.
+    FRAME_BLACK_LUMINANCE_THRESHOLD` and `visual_motion_svc`'s own pure measurement functions as
+    plain importable CODE (see transition_evidence_svc.py's own docstring) — this does NOT create
+    a Stage-5 or Stage-9-Phase-A pass-completion PREREQUISITE; a video whose only completed pass is
+    scene_segmentation is fully eligible.
+
+    CANDIDATE WINDOWS COME ONLY FROM EXISTING STAGE-4 SHOT BOUNDARIES — this pass never reruns or
+    modifies Stage-4 shot detection; it reads already-persisted Shot rows (ordered by `order`) and
+    measures the shared boundary instant between every pair of ADJACENT shots. THIS INCREMENT DOES
+    NOT YET DETECT GRADUAL TRANSITIONS STAGE 4 NEVER FLAGGED AS A BOUNDARY — a slow fade/dissolve
+    whose own frames never crossed Stage 4's own scene-difference threshold is invisible to this
+    pass. This is a deliberate, stated MVP limitation (see the B0.4A design correction, section 9),
+    not a claim of complete gradual-transition coverage.
+
+    Analyzes the ORIGINAL ReferenceVideo source file (`asset.file_path`) — never Stage-5 stills or
+    any other derivative. Reuses the existing AnalysisAnnotation table (category=
+    "transition_evidence") — no schema/model change of any kind. `certainty` is always "MEASURED";
+    `confidence_score` is always None. `shot_id` is ALWAYS None for every annotation this pass
+    writes — a boundary-spanning window belongs to neither adjacent Shot alone (see this project's
+    own B0.4A design correction for why a default-to-preceding-shot convention was explicitly
+    rejected); the real relationship is instead recorded explicitly as `preceding_shot_id`/
+    `following_shot_id`/`boundary_timestamp` inside `details`. This endpoint NEVER writes
+    `Shot.camera_movement` and NEVER writes a transition-type label of any kind (no hard_cut/fade/
+    dissolve/dip_to_black) — see transition_evidence_svc.py's own docstring for exactly why that
+    inference is out of scope here.
+
+    A boundary too close to either adjacent Shot's own edge to obtain at least one analytical
+    sample on BOTH sides (transition_evidence_svc's own `insufficient_boundary_material`) gets NO
+    AnalysisAnnotation row at all — the same "zero eligible -> zero rows" honesty convention every
+    prior Stage 6-9 pass already established, never a fabricated placeholder row. A video with
+    fewer than 2 shots (zero boundaries) is a normal, valid, successful outcome with zero rows."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+    asset = await db.get(Asset, rv.asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+
+    pass_status = dict(latest.pass_status or {})
+    if pass_status.get("scene_segmentation") != "complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Shot detection must complete before transition-evidence analysis can run",
+        )
+
+    if pass_status.get("transition_evidence") == "complete":
+        # Idempotent — already done. Return as-is; do not re-run, do not create duplicate rows.
+        return await _to_response(db, rv, asset)
+
+    now = datetime.now(timezone.utc)
+    if latest.status == "running":
+        stale = latest.started_at is not None and (now - latest.started_at).total_seconds() > STALE_RUNNING_TIMEOUT_SECONDS
+        if not stale:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+        pass_status = {**pass_status, "transition_evidence": "failed", "transition_evidence_error": "Stale run — exceeded timeout, treated as failed"}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=pass_status)
+        )
+        await db.commit()
+
+    running_pass_status = {**pass_status, "transition_evidence": "running"}
+    claim = await db.execute(
+        update(VideoAnalysis)
+        .where(VideoAnalysis.id == latest.id, VideoAnalysis.status == "complete")
+        .values(status="running", pass_status=running_pass_status)
+        .returning(VideoAnalysis.id)
+    )
+    await db.commit()
+    if claim.first() is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+
+    shots_result = await db.execute(select(Shot).where(Shot.video_analysis_id == latest.id).order_by(Shot.order))
+    shot_rows = shots_result.scalars().all()
+
+    # One candidate boundary per ADJACENT shot pair — never a third shot's own territory (see
+    # transition_evidence_svc._boundary_candidate_window's own docstring). Zero shot pairs (0 or 1
+    # shots total) is a normal, valid outcome: zero boundaries, zero candidate windows.
+    boundary_specs = [
+        (shot_rows[i], shot_rows[i + 1], shot_rows[i].end_time)
+        for i in range(len(shot_rows) - 1)
+    ]
+
+    # Measurement happens entirely before any DB write — same discipline as every prior Stage
+    # 6-9 pass — so a mid-run failure can never leave a partial/orphan annotation behind.
+    evidence_by_boundary: dict[int, dict] = {}
+    try:
+        for preceding_shot, following_shot, boundary_timestamp in boundary_specs:
+            evidence = await transition_evidence_svc.measure_boundary_transition_evidence(
+                asset.file_path, boundary_timestamp, preceding_shot.start_time, following_shot.end_time,
+            )
+            evidence_by_boundary[preceding_shot.id] = evidence
+    except Exception as exc:  # noqa: BLE001 — any unexpected failure (including a genuinely
+        # missing/unreadable original source file) must still fail cleanly, never crash the
+        # request or leave the row stuck at "running" forever. Nothing has been written to the DB
+        # yet at this point, so there is nothing to clean up here.
+        failed_pass_status = {**pass_status, "transition_evidence": "failed", "transition_evidence_error": f"Unexpected error: {exc}"[:500]}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=failed_pass_status)
+        )
+        await db.commit()
+        await db.refresh(rv)
+        return await _to_response(db, rv, asset)
+
+    # Defensive idempotency (same reasoning as Stage 4-9's own cleanup): clear any pre-existing
+    # transition_evidence rows THIS PASS produced before writing the fresh set. Only ever finds
+    # rows here after a stale-run retry (a genuinely completed attempt is caught by the idempotent
+    # early-return above).
+    await db.execute(
+        delete(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "transition_evidence",
+            AnalysisAnnotation.produced_by_pass == TRANSITION_EVIDENCE_PASS_NAME,
+        )
+    )
+
+    for preceding_shot, following_shot, boundary_timestamp in boundary_specs:
+        evidence = evidence_by_boundary.get(preceding_shot.id)
+        if evidence is None or evidence["insufficient_boundary_material"]:
+            continue
+        db.add(AnalysisAnnotation(
+            video_analysis_id=latest.id,
+            shot_id=None,  # ALWAYS None — a boundary-spanning window belongs to neither Shot
+            # alone; see this endpoint's own docstring and the B0.4A design correction.
+            category="transition_evidence",
+            start_time=evidence["window_start"], end_time=evidence["window_end"],
+            details={
+                "boundary_timestamp": evidence["boundary_timestamp"],
+                "window_start": evidence["window_start"],
+                "window_end": evidence["window_end"],
+                "preceding_shot_id": preceding_shot.id,
+                "following_shot_id": following_shot.id,
+                "sampling_fps": evidence["sampling_fps"],
+                "sample_count": evidence["sample_count"],
+                "frame_pair_count": evidence["frame_pair_count"],
+                "sample_timestamps": evidence["sample_timestamps"],
+                "luminance": evidence["luminance"],
+                "frame_difference": evidence["frame_difference"],
+                "black_frame_flags": evidence["black_frame_flags"],
+                "affine": evidence["affine_evidence"],
+                "phase_correlation": evidence["phase_correlation_evidence"],
+                "extraction_parameters": {
+                    "margin_seconds": transition_evidence_svc.TRANSITION_BOUNDARY_MARGIN_SECONDS,
+                    "orb_nfeatures": visual_motion_svc.DEFAULT_ORB_NFEATURES,
+                    "ratio_test_threshold": visual_motion_svc.DEFAULT_RATIO_TEST_THRESHOLD,
+                    "ransac_reprojection_threshold_px": visual_motion_svc.DEFAULT_RANSAC_REPROJECTION_THRESHOLD_PX,
+                },
+            },
+            certainty="MEASURED",
+            confidence_score=None,  # always None — no calibrated probability exists for a raw
+            # temporal measurement, same discipline as global_motion_evidence.
+            reasoning=(
+                f"Boundary-triggered transition evidence measured over {evidence['sample_count']} "
+                f"analytical frames ({evidence['frame_pair_count']} consecutive pairs) sampled at "
+                f"{evidence['sampling_fps']} fps in a window bracketing the Stage-4 boundary at "
+                f"{evidence['boundary_timestamp']}s. This is raw, neutral measurement only — it "
+                "does not classify this boundary as a hard cut, fade, dissolve, or dip-to-black; "
+                "that inference is explicitly deferred to a later Stage-9 phase."
+            ),
+            evidence_summary=(
+                "Neutral luminance/frame-difference trajectories plus per-pair ORB+RANSAC-affine "
+                "and phase-correlation evidence (each kept per-pair, never collapsed into a single "
+                "aggregate) — see details.luminance/details.frame_difference/details.affine/"
+                "details.phase_correlation for the real numbers. No transition-type label or "
+                "interpreted shape field of any kind."
+            ),
+            source=TRANSITION_EVIDENCE_SOURCE,
+            produced_by_pass=TRANSITION_EVIDENCE_PASS_NAME,
+        ))
+
+    await db.execute(
+        update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
+            status="complete",
+            pass_status={**pass_status, "transition_evidence": "complete"},
         )
     )
     await db.commit()
