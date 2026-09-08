@@ -93,7 +93,9 @@ from app.models.video_analysis import VideoAnalysis
 from app.models.visual_object import VisualObject
 from app.schemas.reference_video import (
     AffineMotionEvidenceSummary, AudioSilenceIntervalSummary, AudioStructureSummary, GlobalMotionEvidenceSummary,
-    LocalMotionEvidenceSummary, LocalMotionFlowCellSummary, LocalMotionResidualCellSummary,
+    LocalMotionDynamicsSummary, LocalMotionEvidenceSummary, LocalMotionFlowCellDynamicsSummary,
+    LocalMotionFlowCellSummary, LocalMotionResidualCellDynamicsSummary, LocalMotionResidualCellSummary,
+    LocalMotionSpatialDistributionStreamSummary,
     PersistentLayoutStabilitySummary, PersistentVisualElementSummary, PhaseCorrelationMotionEvidenceSummary,
     RecurringElementSummary, ReferenceVideoIngestRequest, ReferenceVideoResponse, SameFrameLayoutPairSummary,
     ShotFrameSummary, ShotSummary, SpeechSegmentSummary, TextElementSummary, TextObservationSummary,
@@ -102,7 +104,8 @@ from app.schemas.reference_video import (
     TransitionPhaseCorrelationPairSummary, VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
 )
 from app.services import (
-    audio_structure_svc, ffmpeg_svc, local_motion_evidence_svc, ocr_svc, speech_analysis_svc, transition_evidence_svc,
+    audio_structure_svc, ffmpeg_svc, local_motion_dynamics_svc, local_motion_evidence_svc, ocr_svc,
+    speech_analysis_svc, transition_evidence_svc,
     visual_composition_svc, visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
 
@@ -165,7 +168,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         or pass_status.get("visual_composition_error")
         or pass_status.get("global_motion_evidence_error")
         or pass_status.get("transition_evidence_error")
-        or pass_status.get("local_motion_evidence_error"),
+        or pass_status.get("local_motion_evidence_error")
+        or pass_status.get("local_motion_dynamics_error"),
         pass_status=pass_status,
     )
 
@@ -471,6 +475,48 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             produced_by_pass=ann.produced_by_pass,
         )
 
+    # Stage 9 Phase D2 — MEASURED local-motion DYNAMICS per Shot, reusing AnalysisAnnotation
+    # (category="local_motion_dynamics") — a SEPARATE row from local_motion_evidence above; see
+    # local_motion_dynamics_svc.py's own docstring. Absent for any Shot too short to have
+    # produced dynamics, or for any Shot this pass has not yet run against — never a fabricated
+    # placeholder row, and never dependent on local_motion_evidence existing for the same Shot.
+    local_motion_dynamics_result = await db.execute(
+        select(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "local_motion_dynamics",
+        )
+    )
+    local_motion_dynamics_by_shot: dict[int, LocalMotionDynamicsSummary] = {}
+    for ann in local_motion_dynamics_result.scalars().all():
+        if ann.shot_id is None:
+            continue  # this pass always populates shot_id — defensive
+        details = ann.details or {}
+        local_motion_dynamics_by_shot[ann.shot_id] = LocalMotionDynamicsSummary(
+            id=ann.id,
+            sampling_fps=details.get("sampling_fps"),
+            sample_count=details.get("sample_count"),
+            frame_pair_count=details.get("frame_pair_count"),
+            affine_successful_pair_count=details.get("affine_successful_pair_count"),
+            affine_failed_pair_count=details.get("affine_failed_pair_count"),
+            residual_dynamics=[LocalMotionResidualCellDynamicsSummary(**c) for c in details.get("residual_dynamics", [])],
+            uncompensated_flow_dynamics=[
+                LocalMotionFlowCellDynamicsSummary(**c) for c in details.get("uncompensated_flow_dynamics", [])
+            ],
+            compensated_flow_dynamics=[
+                LocalMotionFlowCellDynamicsSummary(**c) for c in details.get("compensated_flow_dynamics", [])
+            ],
+            spatial_distribution={
+                stream: LocalMotionSpatialDistributionStreamSummary(**stream_data)
+                for stream, stream_data in (details.get("spatial_distribution") or {}).items()
+            },
+            certainty=ann.certainty,
+            confidence_score=ann.confidence_score,
+            reasoning=ann.reasoning,
+            evidence_summary=ann.evidence_summary,
+            source=ann.source,
+            produced_by_pass=ann.produced_by_pass,
+        )
+
     shots = [
         ShotSummary(
             id=s.id, order=s.order, start_time=s.start_time, end_time=s.end_time,
@@ -483,6 +529,7 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             layout_stability=layout_stability_by_shot.get(s.id, []),
             global_motion_evidence=global_motion_by_shot.get(s.id),
             local_motion_evidence=local_motion_by_shot.get(s.id),
+            local_motion_dynamics=local_motion_dynamics_by_shot.get(s.id),
         )
         for s in shot_rows
     ]
@@ -2885,6 +2932,207 @@ async def analyze_reference_video_local_motion(
         update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
             status="complete",
             pass_status={**pass_status, "local_motion_evidence": "complete"},
+        )
+    )
+    await db.commit()
+    await db.refresh(rv)
+    return await _to_response(db, rv, asset)
+
+
+LOCAL_MOTION_DYNAMICS_PASS_NAME = "local_motion_dynamics_v1"
+
+# Same producer/algorithm-family identifier as local_motion_evidence — this pass reuses the
+# IDENTICAL underlying residual + sparse-flow algorithms (never a second implementation), it just
+# additionally computes bounded temporal/spatial-distribution dynamics from them. Length-checked
+# directly against the EXISTING, unmodified AnalysisAnnotation.source column (String(32)) by the
+# regression-guard test in test_reference_video_local_motion_dynamics.py — see D1's own real
+# StringDataRightTruncationError discovery for why this is verified, never assumed.
+LOCAL_MOTION_DYNAMICS_SOURCE = "opencv_residual_sparse_flow"
+
+
+@router.post("/{reference_video_id}/analyze-local-motion-dynamics", response_model=ReferenceVideoResponse)
+async def analyze_reference_video_local_motion_dynamics(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Stage 9 (Motion / Camera / Transitions / Animation), Phase D2 — LOCAL MOTION DYNAMICS. See
+    app/services/local_motion_dynamics_svc.py's own docstring for the full architecture. Answers
+    ONLY "how did D1's own neutral spatial-change measurements vary spatially and temporally
+    within this shot" — NEVER what object moved, why, whether it was animation, whether motion
+    was important, or whether an argmax cell/centroid is trustworthy.
+
+    Gated on `scene_segmentation` (Stage 4) ALONE — deliberately NOT on
+    `local_motion_evidence` (D1). This pass recomputes its own transient per-pair measurements
+    independently (reusing D1's own pure functions as plain importable code, never reading D1's
+    persisted row and never requiring it to exist) — a video whose only completed pass is
+    scene_segmentation is fully eligible, and a Shot where D1 previously failed or was never run
+    can still be independently attempted here.
+
+    Persists a SEPARATE AnalysisAnnotation category (`local_motion_dynamics`) from D1's own
+    `local_motion_evidence` — this endpoint NEVER reads, deletes, or modifies any
+    `local_motion_evidence` row; a failure here can never corrupt or remove D1's own evidence,
+    and vice versa. `certainty` is always "MEASURED"; `confidence_score` is always None. This
+    endpoint NEVER writes `Shot.camera_movement`, NEVER touches Stage 8 (`VisualObject`/
+    `TextElement`/`persistent_visual_element`), and NEVER emits any object/animation/camera-
+    motion/trajectory/path/confidence/reliability label.
+
+    A Shot too short to produce at least 2 analytical frames gets NO AnalysisAnnotation row at
+    all — the same "zero eligible -> zero rows" honesty convention every prior Stage 6-9 pass
+    already established, never a fabricated placeholder row."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+    asset = await db.get(Asset, rv.asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+
+    pass_status = dict(latest.pass_status or {})
+    if pass_status.get("scene_segmentation") != "complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Shot detection must complete before local-motion-dynamics analysis can run",
+        )
+
+    if pass_status.get("local_motion_dynamics") == "complete":
+        # Idempotent — already done. Return as-is; do not re-run, do not create duplicate rows.
+        return await _to_response(db, rv, asset)
+
+    now = datetime.now(timezone.utc)
+    if latest.status == "running":
+        stale = latest.started_at is not None and (now - latest.started_at).total_seconds() > STALE_RUNNING_TIMEOUT_SECONDS
+        if not stale:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+        pass_status = {**pass_status, "local_motion_dynamics": "failed", "local_motion_dynamics_error": "Stale run — exceeded timeout, treated as failed"}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=pass_status)
+        )
+        await db.commit()
+
+    running_pass_status = {**pass_status, "local_motion_dynamics": "running"}
+    claim = await db.execute(
+        update(VideoAnalysis)
+        .where(VideoAnalysis.id == latest.id, VideoAnalysis.status == "complete")
+        .values(status="running", pass_status=running_pass_status)
+        .returning(VideoAnalysis.id)
+    )
+    await db.commit()
+    if claim.first() is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+
+    shots_result = await db.execute(select(Shot).where(Shot.video_analysis_id == latest.id).order_by(Shot.order))
+    shot_rows = shots_result.scalars().all()
+
+    # Measurement happens entirely before any DB write — same discipline as every prior Stage
+    # 6-9 pass, including D1 — so a mid-run failure can never leave a partial/orphan annotation
+    # behind, and (per this pass's own failure-isolation requirement) can never touch D1's own
+    # already-persisted local_motion_evidence rows at all, since this block never queries or
+    # writes that category.
+    dynamics_by_shot_id: dict[int, dict] = {}
+    try:
+        for shot in shot_rows:
+            dynamics = await local_motion_dynamics_svc.measure_shot_local_motion_dynamics(asset.file_path, shot.start_time, shot.end_time)
+            dynamics_by_shot_id[shot.id] = dynamics
+    except Exception as exc:  # noqa: BLE001 — any unexpected failure (including a genuinely
+        # missing/unreadable original source file) must still fail cleanly, never crash the
+        # request or leave the row stuck at "running" forever. Nothing has been written to the DB
+        # yet at this point, so there is nothing to clean up here — and D1's own rows (a
+        # different category entirely) were never touched by this block regardless.
+        failed_pass_status = {**pass_status, "local_motion_dynamics": "failed", "local_motion_dynamics_error": f"Unexpected error: {exc}"[:500]}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=failed_pass_status)
+        )
+        await db.commit()
+        await db.refresh(rv)
+        return await _to_response(db, rv, asset)
+
+    # Defensive idempotency (same reasoning as Stage 4-9's own cleanup): clear any pre-existing
+    # local_motion_dynamics rows THIS PASS produced before writing the fresh set. Only ever finds
+    # rows here after a stale-run retry. Scoped strictly to category="local_motion_dynamics" —
+    # this DELETE can never match a local_motion_evidence row, which is a different category.
+    await db.execute(
+        delete(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "local_motion_dynamics",
+            AnalysisAnnotation.produced_by_pass == LOCAL_MOTION_DYNAMICS_PASS_NAME,
+        )
+    )
+
+    # Every Shot too short for at least 2 analytical frames is a normal, valid, successful
+    # outcome for THAT shot — zero rows for it, pass_status still becomes "complete" overall,
+    # never "failed" merely because one shot was short.
+    extraction_parameters = {
+        "sampling_fps": local_motion_dynamics_svc.DEFAULT_SAMPLING_FPS,
+        "orb_nfeatures": visual_motion_svc.DEFAULT_ORB_NFEATURES,
+        "ratio_test_threshold": visual_motion_svc.DEFAULT_RATIO_TEST_THRESHOLD,
+        "ransac_reprojection_threshold_px": visual_motion_svc.DEFAULT_RANSAC_REPROJECTION_THRESHOLD_PX,
+        "grid_rows": local_motion_dynamics_svc.GRID_ROWS,
+        "grid_cols": local_motion_dynamics_svc.GRID_COLS,
+        "spatial_distribution_streams": local_motion_dynamics_svc.SPATIAL_STREAMS,
+    }
+    for shot in shot_rows:
+        dynamics = dynamics_by_shot_id.get(shot.id)
+        if dynamics is None or dynamics["insufficient_temporal_samples"]:
+            continue
+        db.add(AnalysisAnnotation(
+            video_analysis_id=latest.id,
+            shot_id=shot.id,
+            category="local_motion_dynamics",
+            start_time=shot.start_time, end_time=shot.end_time,
+            details={
+                "sampling_fps": dynamics["sampling_fps"],
+                "sample_count": dynamics["sample_count"],
+                "frame_pair_count": dynamics["frame_pair_count"],
+                "affine_successful_pair_count": dynamics["affine_successful_pair_count"],
+                "affine_failed_pair_count": dynamics["affine_failed_pair_count"],
+                "residual_dynamics": dynamics["residual_dynamics"],
+                "uncompensated_flow_dynamics": dynamics["uncompensated_flow_dynamics"],
+                "compensated_flow_dynamics": dynamics["compensated_flow_dynamics"],
+                "spatial_distribution": dynamics["spatial_distribution"],
+                "extraction_parameters": extraction_parameters,
+            },
+            certainty="MEASURED",
+            confidence_score=None,  # always None — no calibrated probability exists for a raw
+            # temporal/spatial-distribution dynamics measurement, same discipline as D1's own
+            # local_motion_evidence and Phase A/C1's global_motion_evidence.
+            reasoning=(
+                f"Local-motion dynamics measured over {dynamics['frame_pair_count']} consecutive "
+                f"pairs ({dynamics['affine_successful_pair_count']} successfully globally "
+                f"compensated) sampled at {dynamics['sampling_fps']} fps within this Shot's own "
+                "boundary-safe window, over the same fixed 3x4 content-independent spatial grid "
+                "D1 uses. This is raw temporal/spatial-distribution measurement only — it does "
+                "not identify what object (if any) produced any evidence, does not classify "
+                "animation, and does not classify camera motion; every one of those remains "
+                "explicitly deferred to a later Stage-9 phase."
+            ),
+            evidence_summary=(
+                "Bounded first-difference/availability/contiguity dynamics for every residual "
+                "and flow cell statistic, plus argmax-cell and weighted-evidence-centroid "
+                "spatial-distribution dynamics for four evidence streams (residual mean/p95/max, "
+                "compensated-flow median magnitude) — see details.residual_dynamics/"
+                "details.uncompensated_flow_dynamics/details.compensated_flow_dynamics/"
+                "details.spatial_distribution for the real numbers. A centroid means only the "
+                "center of the measured evidence distribution over the coarse fixed grid, never "
+                "an object/tracked position; total_weight context always travels alongside it."
+            ),
+            source=LOCAL_MOTION_DYNAMICS_SOURCE,
+            produced_by_pass=LOCAL_MOTION_DYNAMICS_PASS_NAME,
+        ))
+
+    await db.execute(
+        update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
+            status="complete",
+            pass_status={**pass_status, "local_motion_dynamics": "complete"},
         )
     )
     await db.commit()

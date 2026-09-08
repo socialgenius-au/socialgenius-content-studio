@@ -167,6 +167,22 @@ person/screen/camera pan"; `certainty` is always "MEASURED", `confidence_score` 
 `tracked_point_count == 0` in any flow cell means no usable tracked-feature evidence was obtained
 there, never a claim that no motion occurred (see the schema's own field-level docstrings for the
 full feature-density and low-texture limitations carried forward, not fixed, from D0.2).
+
+Stage 9, Phase D2 (LOCAL MOTION DYNAMICS): adds `ShotSummary.local_motion_dynamics` — a SEPARATE
+AnalysisAnnotation category (`local_motion_dynamics`, never additive fields on D1's own
+`local_motion_evidence` row — see D2.2's own design report for the evidence-semantics/failure-
+isolation reasoning). Answers "how did D1's own neutral spatial-change measurements vary
+spatially and temporally within the shot" — bounded first-difference/availability/contiguity
+descriptors for every residual/flow cell statistic, plus argmax-cell and weighted-evidence-
+centroid spatial-distribution dynamics for exactly four D2.1-validated streams (residual
+mean/p95/max, compensated-flow median magnitude). Reuses D1's own algorithms verbatim (never a
+second implementation) via its own thin per-pair driving loop — D1's row is neither read nor
+required to exist; D2 recomputes its own transient measurements independently and is never
+corrupted by, nor corrupts, D1's own row. See app.services.local_motion_dynamics_svc.py's own
+docstring for the full architecture, the value-sign-vs-delta-sign distinction, the deliberate
+(scope, not evidence-proven) omission of temporal standard deviation, and the centroid/low-
+weight-noise semantics validated by the D2.1 experiment. Still zero classification — no object/
+animation/camera-motion/trajectory/path/confidence/reliability label anywhere in this schema.
 """
 from datetime import datetime
 
@@ -909,6 +925,180 @@ class LocalMotionEvidenceSummary(BaseModel):
     produced_by_pass: str | None
 
 
+class LocalMotionDynamicsMagnitudeSummary(BaseModel):
+    """Stage 9 Phase D2 — bounded temporal dynamics for one NON-NEGATIVE, magnitude-type per-pair
+    statistic (residual mean/p95/max, or flow median_magnitude/p95_magnitude). Deliberately has
+    NO value_positive_count/value_negative_count/value_zero_count field — a magnitude-type
+    statistic is always >= 0 by construction, so "sign of the value" is either universally true
+    or meaningless (see LocalMotionDynamicsSignedSummary for the genuinely signed equivalent).
+    `range`/`longest_contiguous_available_run` are None/0 respectively when no pair contributed a
+    value — never a fabricated number. Temporal standard deviation is deliberately NOT included —
+    a minimal-first-vector MVP scope decision, NOT a result D0.3 or any other experiment proved
+    (D0.3 tested SPATIAL pixel-statistic redundancy, a different question from TEMPORAL sequence
+    redundancy — see local_motion_dynamics_svc.py's own docstring)."""
+    available_pair_count: int
+    unavailable_pair_count: int
+    delta_positive_count: int
+    delta_negative_count: int
+    delta_zero_count: int
+    delta_sign_change_count: int
+    range: float | None
+    longest_contiguous_available_run: int
+
+
+class LocalMotionDynamicsSignedSummary(BaseModel):
+    """Stage 9 Phase D2 — bounded temporal dynamics for one genuinely SIGNED per-pair statistic
+    (flow median_dx/median_dy). Carries BOTH the VALUE sign (was the raw measured value itself
+    positive/negative/zero that pair) and the DELTA sign (did the value rise/fall/stay between
+    consecutive pairs) as two clearly separate field families — NOT the same concept (e.g.
+    dx=[-2,-1,+1] is mostly negative in VALUE but its own first difference [+1,+2] is entirely
+    positive in DELTA) and never conflated under one ambiguous name."""
+    available_pair_count: int
+    unavailable_pair_count: int
+    value_positive_count: int
+    value_negative_count: int
+    value_zero_count: int
+    delta_positive_count: int
+    delta_negative_count: int
+    delta_zero_count: int
+    delta_sign_change_count: int
+    range: float | None
+    longest_contiguous_available_run: int
+
+
+class LocalMotionFeatureAvailabilitySummary(BaseModel):
+    """Stage 9 Phase D2 — bounded temporal feature-availability context for one flow cell (either
+    uncompensated or compensated). Purely descriptive — NOT confidence, reliability, quality, or
+    a motion-strength measurement (a flat, low-texture region offers goodFeaturesToTrack nothing
+    to find regardless of whether it moved, exactly D0.2/D1's own carried-forward limitation).
+    `longest_available_run` uses the stricter sense of "available" — a real tracked feature was
+    actually found that pair (tracked_point_count > 0), not merely that the flow computation was
+    attempted."""
+    tracked_point_count_temporal_mean: float | None
+    tracked_point_count_temporal_min: int | None
+    tracked_point_count_temporal_max: int | None
+    zero_feature_pair_count: int
+    longest_available_run: int
+
+
+class LocalMotionResidualCellDynamicsSummary(BaseModel):
+    """Stage 9 Phase D2 — one cell of the fixed 3x4 residual-dynamics grid. row/col are 0-indexed
+    (row-major, identical convention to D1's own grid)."""
+    row: int
+    col: int
+    mean: LocalMotionDynamicsMagnitudeSummary
+    p95: LocalMotionDynamicsMagnitudeSummary
+    max: LocalMotionDynamicsMagnitudeSummary
+
+
+class LocalMotionFlowCellDynamicsSummary(BaseModel):
+    """Stage 9 Phase D2 — one cell of the fixed 3x4 flow-dynamics grid (used identically for both
+    uncompensated and compensated flow)."""
+    row: int
+    col: int
+    median_dx: LocalMotionDynamicsSignedSummary
+    median_dy: LocalMotionDynamicsSignedSummary
+    median_magnitude: LocalMotionDynamicsMagnitudeSummary
+    p95_magnitude: LocalMotionDynamicsMagnitudeSummary
+    feature_availability: LocalMotionFeatureAvailabilitySummary
+
+
+class LocalMotionArgmaxDynamicsSummary(BaseModel):
+    """Stage 9 Phase D2 — bounded temporal argmax dynamics for one spatial-distribution stream.
+    A tied pair contributes to `tie_count` but NEVER to `unique_argmax_cell_count`,
+    `most_frequent_argmax_cell`, or `argmax_cell_change_count` — only uniquely-resolved pairs
+    participate in those (never an arbitrarily resolved winner). `most_frequent_argmax_cell` is
+    `None` whenever two-or-more cells tie for the highest per-pair frequency, or when no pair was
+    ever uniquely resolved. This is still only an aggregate geometric fact about which cell most
+    often held the maximum evidence value — NEVER a path or track."""
+    available_pair_count: int
+    tie_count: int
+    unique_argmax_cell_count: int
+    argmax_cell_change_count: int
+    most_frequent_argmax_cell: list[int] | None
+    most_frequent_argmax_frequency_count: int | None
+
+
+class LocalMotionCentroidDynamicsSummary(BaseModel):
+    """Stage 9 Phase D2 — bounded temporal centroid dynamics for one spatial-distribution stream.
+    The centroid itself means ONLY "center of the measured evidence distribution over the coarse
+    fixed 3x4 grid" — NEVER an object center, bounding-box center, tracked position, pixel-
+    accurate position, or keyframe coordinate (D2.1's own explicit semantics, carried forward
+    verbatim). No full centroid sequence is ever persisted — only these bounded descriptors."""
+    available_pair_count: int
+    unavailable_pair_count: int
+    cx_min: float | None
+    cx_max: float | None
+    cx_range: float | None
+    cy_min: float | None
+    cy_max: float | None
+    cy_range: float | None
+    delta_cx_positive_count: int
+    delta_cx_negative_count: int
+    delta_cx_zero_count: int
+    delta_cx_sign_change_count: int
+    delta_cy_positive_count: int
+    delta_cy_negative_count: int
+    delta_cy_zero_count: int
+    delta_cy_sign_change_count: int
+    displacement_temporal_mean: float | None
+    displacement_temporal_max: float | None
+
+
+class LocalMotionTotalWeightDynamicsSummary(BaseModel):
+    """Stage 9 Phase D2 — RAW DESCRIPTIVE total-evidence-weight context accompanying one centroid
+    stream. D2.1 demonstrated that a tiny non-zero total weight can produce large apparent
+    centroid movement on an otherwise static shot — this context is what lets a LATER inference
+    layer judge that, without D2 itself suppressing, thresholding, or interpreting it. NEVER a
+    confidence/reliability/quality/trust/motion-strength score."""
+    total_weight_temporal_mean: float | None
+    total_weight_temporal_max: float | None
+    total_weight_range: float | None
+    available_cell_count_temporal_mean: float | None
+
+
+class LocalMotionSpatialDistributionStreamSummary(BaseModel):
+    """Stage 9 Phase D2 — the three neutral spatial-distribution descriptors for ONE evidence
+    stream (argmax and centroid are deliberately kept as separate measurements, never combined
+    into one score — see local_motion_dynamics_svc.py's own docstring)."""
+    argmax: LocalMotionArgmaxDynamicsSummary
+    centroid: LocalMotionCentroidDynamicsSummary
+    total_weight: LocalMotionTotalWeightDynamicsSummary
+
+
+class LocalMotionDynamicsSummary(BaseModel):
+    """Stage 9 Phase D2 — MEASURED local-motion DYNAMICS for one Shot (an AnalysisAnnotation row,
+    category="local_motion_dynamics" — a SEPARATE row from D1's own "local_motion_evidence",
+    never additive fields on it). Answers ONLY "how did D1's own neutral spatial-change
+    measurements vary spatially and temporally within this shot" — NEVER what object moved, why,
+    whether it was animation, whether motion was important, or whether a centroid/argmax cell is
+    trustworthy. `certainty` is always "MEASURED"; `confidence_score` is always None.
+    `spatial_distribution` is keyed by exactly the four D2.1-validated stream names ("residual_
+    mean", "residual_p95", "residual_max", "compensated_flow_median_magnitude") — see D2.2's own
+    design report item 12 for why uncompensated flow and compensated-flow p95-magnitude were
+    excluded from this MVP. Absent (no row) for a Shot too short to produce at least 2 analytical
+    frames — never a fabricated placeholder row; D1's own row need not exist for this row to
+    exist, and this row's absence/failure never affects D1's own row."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    sampling_fps: float
+    sample_count: int
+    frame_pair_count: int
+    affine_successful_pair_count: int
+    affine_failed_pair_count: int
+    residual_dynamics: list[LocalMotionResidualCellDynamicsSummary]
+    uncompensated_flow_dynamics: list[LocalMotionFlowCellDynamicsSummary]
+    compensated_flow_dynamics: list[LocalMotionFlowCellDynamicsSummary]
+    spatial_distribution: dict[str, LocalMotionSpatialDistributionStreamSummary]
+    certainty: str
+    confidence_score: float | None
+    reasoning: str | None
+    evidence_summary: str | None
+    source: str | None
+    produced_by_pass: str | None
+
+
 class ShotSummary(BaseModel):
     """One deterministically-detected cut-bounded segment. certainty is always "MEASURED" —
     Stage 4 never writes an INFERRED Shot. evidence_summary carries the detector's own score and
@@ -956,6 +1146,12 @@ class ShotSummary(BaseModel):
     # or when this Shot was too short to produce at least 2 analytical frames. No object/
     # animation/camera-motion classification anywhere in this field.
     local_motion_evidence: LocalMotionEvidenceSummary | None = None
+    # Stage 9 Phase D2 — MEASURED local-motion DYNAMICS (bounded temporal/spatial-distribution
+    # descriptors derived from D1's own algorithms, reused independently) for this Shot; a
+    # SEPARATE AnalysisAnnotation category from local_motion_evidence above — None until this
+    # pass completes at least once, independent of whether local_motion_evidence itself exists.
+    # No object/animation/camera-motion/trajectory/path classification anywhere in this field.
+    local_motion_dynamics: LocalMotionDynamicsSummary | None = None
 
 
 class ReferenceVideoResponse(BaseModel):
