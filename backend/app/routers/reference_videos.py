@@ -101,11 +101,12 @@ from app.schemas.reference_video import (
     ShotFrameSummary, ShotSummary, SpeechSegmentSummary, TextElementSummary, TextObservationSummary,
     TransitionAffineEvidenceSummary, TransitionAffinePairSummary, TransitionEvidenceSummary,
     TransitionFrameDifferenceSummary, TransitionLuminanceSummary, TransitionPhaseCorrelationEvidenceSummary,
-    TransitionPhaseCorrelationPairSummary, VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
+    TransitionPhaseCorrelationPairSummary, TransitionSimilarityEvidenceSummary,
+    VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
 )
 from app.services import (
     audio_structure_svc, ffmpeg_svc, local_motion_dynamics_svc, local_motion_evidence_svc, ocr_svc,
-    speech_analysis_svc, transition_evidence_svc,
+    speech_analysis_svc, transition_evidence_svc, transition_similarity_evidence_svc,
     visual_composition_svc, visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
 
@@ -169,7 +170,8 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         or pass_status.get("global_motion_evidence_error")
         or pass_status.get("transition_evidence_error")
         or pass_status.get("local_motion_evidence_error")
-        or pass_status.get("local_motion_dynamics_error"),
+        or pass_status.get("local_motion_dynamics_error")
+        or pass_status.get("transition_similarity_evidence_error"),
         pass_status=pass_status,
     )
 
@@ -627,6 +629,40 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             produced_by_pass=ann.produced_by_pass,
         ))
 
+    # Stage 9 Phase B2 — boundary-triggered transition SIMILARITY evidence, video-level, same
+    # reasoning as transition_evidence above — a SEPARATE row from it (category=
+    # "transition_similarity_evidence"). Chronological order by window_start, same convention.
+    transition_similarity_result = await db.execute(
+        select(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "transition_similarity_evidence",
+        ).order_by(AnalysisAnnotation.start_time)
+    )
+    transition_similarity_evidence = []
+    for ann in transition_similarity_result.scalars().all():
+        details = ann.details or {}
+        transition_similarity_evidence.append(TransitionSimilarityEvidenceSummary(
+            id=ann.id,
+            boundary_timestamp=details.get("boundary_timestamp"),
+            window_start=details.get("window_start"),
+            window_end=details.get("window_end"),
+            preceding_shot_id=details.get("preceding_shot_id"),
+            following_shot_id=details.get("following_shot_id"),
+            sampling_fps=details.get("sampling_fps"),
+            sample_count=details.get("sample_count"),
+            cross_boundary_similarity=details.get("cross_boundary_similarity"),
+            pre_window_edge_similarity=details.get("pre_window_edge_similarity"),
+            post_window_edge_similarity=details.get("post_window_edge_similarity"),
+            pre_trigger_adjacent_similarity=details.get("pre_trigger_adjacent_similarity"),
+            post_trigger_adjacent_similarity=details.get("post_trigger_adjacent_similarity"),
+            certainty=ann.certainty,
+            confidence_score=ann.confidence_score,
+            reasoning=ann.reasoning,
+            evidence_summary=ann.evidence_summary,
+            source=ann.source,
+            produced_by_pass=ann.produced_by_pass,
+        ))
+
     return ReferenceVideoResponse(
         id=rv.id,
         asset_id=rv.asset_id,
@@ -643,6 +679,7 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
         speech_segments=speech_segments,
         audio_structure=audio_structure,
         transition_evidence=transition_evidence,
+        transition_similarity_evidence=transition_similarity_evidence,
     )
 
 
@@ -3133,6 +3170,219 @@ async def analyze_reference_video_local_motion_dynamics(
         update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
             status="complete",
             pass_status={**pass_status, "local_motion_dynamics": "complete"},
+        )
+    )
+    await db.commit()
+    await db.refresh(rv)
+    return await _to_response(db, rv, asset)
+
+
+TRANSITION_SIMILARITY_EVIDENCE_PASS_NAME = "transition_similarity_evidence_v1"
+
+# Same producer/algorithm-family naming discipline as B1's own TRANSITION_EVIDENCE_SOURCE — this
+# pass reuses B1's own _frame_diff_pair family (never a new metric), so no single library "owns"
+# it either. Length-checked directly (30/26/33 chars respectively against String(32)/String(32)/
+# String(64), confirmed via len() before implementation — see this phase's own final report) —
+# never assumed, per D1's own real StringDataRightTruncationError lesson.
+TRANSITION_SIMILARITY_EVIDENCE_SOURCE = "temporal_visual_similarity"
+
+
+@router.post("/{reference_video_id}/analyze-transition-similarity", response_model=ReferenceVideoResponse)
+async def analyze_reference_video_transition_similarity(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Stage 9 (Motion / Camera / Transitions / Animation), Phase B2 — TRANSITION SIMILARITY
+    EVIDENCE. See app/services/transition_similarity_evidence_svc.py's own docstring for the full
+    architecture (own independent transient extraction, B1's own already-validated similarity
+    metric reused verbatim, the exact 5-field bounded production vector the B2.3 experiment
+    locked).
+
+    Gated on `scene_segmentation` (Stage 4) ALONE — deliberately NOT on `transition_evidence`
+    (B1). This pass recomputes its own transient measurements independently (reusing B1's own
+    pure functions as plain importable code, never reading B1's persisted row and never requiring
+    it to exist) — a video whose only completed pass is scene_segmentation is fully eligible, and
+    a boundary where B1 previously failed or was never run can still be independently attempted
+    here.
+
+    CANDIDATE WINDOWS COME ONLY FROM EXISTING STAGE-4 SHOT BOUNDARIES, identically to B1 — this
+    pass never reruns or modifies Stage-4 shot detection.
+
+    Persists a SEPARATE AnalysisAnnotation category (`transition_similarity_evidence`) from B1's
+    own `transition_evidence` — this endpoint NEVER reads, deletes, or modifies any
+    `transition_evidence` row; a failure here can never corrupt or remove B1's own evidence, and
+    vice versa. `certainty` is always "MEASURED"; `confidence_score` is always None. `shot_id` is
+    ALWAYS None for every annotation this pass writes — same B0.4A convention B1 itself
+    established; the real relationship is recorded via `preceding_shot_id`/`following_shot_id`/
+    `boundary_timestamp` inside `details`. This endpoint NEVER writes `Shot.camera_movement` and
+    NEVER emits any transition-type label (no hard_cut/fade/dissolve/wipe/crossover) or
+    trust/quality/confidence field of any kind.
+
+    A boundary too close to either adjacent Shot's own edge to obtain at least one analytical
+    sample on BOTH sides (`insufficient_boundary_material`) gets NO AnalysisAnnotation row at all
+    — the same "zero eligible -> zero rows" honesty convention every prior Stage 6-9 pass already
+    established, never a fabricated placeholder row."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+    asset = await db.get(Asset, rv.asset_id)
+    if not asset:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+
+    pass_status = dict(latest.pass_status or {})
+    if pass_status.get("scene_segmentation") != "complete":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Shot detection must complete before transition-similarity analysis can run",
+        )
+
+    if pass_status.get("transition_similarity_evidence") == "complete":
+        # Idempotent — already done. Return as-is; do not re-run, do not create duplicate rows.
+        # Note this early-return is also the structural reason a genuinely successful prior result
+        # can never be re-entered into measurement (and therefore never reach the delete-then-
+        # insert below) via a normal call to this endpoint — see this phase's own final report.
+        return await _to_response(db, rv, asset)
+
+    now = datetime.now(timezone.utc)
+    if latest.status == "running":
+        stale = latest.started_at is not None and (now - latest.started_at).total_seconds() > STALE_RUNNING_TIMEOUT_SECONDS
+        if not stale:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+        pass_status = {**pass_status, "transition_similarity_evidence": "failed", "transition_similarity_evidence_error": "Stale run — exceeded timeout, treated as failed"}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=pass_status)
+        )
+        await db.commit()
+
+    running_pass_status = {**pass_status, "transition_similarity_evidence": "running"}
+    claim = await db.execute(
+        update(VideoAnalysis)
+        .where(VideoAnalysis.id == latest.id, VideoAnalysis.status == "complete")
+        .values(status="running", pass_status=running_pass_status)
+        .returning(VideoAnalysis.id)
+    )
+    await db.commit()
+    if claim.first() is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
+
+    shots_result = await db.execute(select(Shot).where(Shot.video_analysis_id == latest.id).order_by(Shot.order))
+    shot_rows = shots_result.scalars().all()
+
+    # One candidate boundary per ADJACENT shot pair — identical construction to B1's own
+    # boundary_specs. Zero shot pairs (0 or 1 shots total) is a normal, valid outcome.
+    boundary_specs = [
+        (shot_rows[i], shot_rows[i + 1], shot_rows[i].end_time)
+        for i in range(len(shot_rows) - 1)
+    ]
+
+    # Measurement happens entirely before any DB write — same discipline as every prior Stage
+    # 6-9 pass, including B1 — so a mid-run failure can never leave a partial/orphan annotation
+    # behind, and (per this pass's own failure-isolation requirement) can never touch B1's own
+    # already-persisted transition_evidence rows at all, since this block never queries or writes
+    # that category.
+    evidence_by_boundary: dict[int, dict] = {}
+    try:
+        for preceding_shot, following_shot, boundary_timestamp in boundary_specs:
+            evidence = await transition_similarity_evidence_svc.measure_boundary_transition_similarity(
+                asset.file_path, boundary_timestamp, preceding_shot.start_time, following_shot.end_time,
+            )
+            evidence_by_boundary[preceding_shot.id] = evidence
+    except Exception as exc:  # noqa: BLE001 — any unexpected failure (including a genuinely
+        # missing/unreadable original source file) must still fail cleanly, never crash the
+        # request or leave the row stuck at "running" forever. Nothing has been written to the DB
+        # yet at this point, so there is nothing to clean up here — and any PRE-EXISTING
+        # transition_similarity_evidence rows from an earlier successful run (or B1's own rows,
+        # a different category entirely) were never touched by this block regardless: the code
+        # below that deletes/replaces rows is never reached when this except branch fires, so a
+        # genuinely prior successful result is never destroyed by a later failed retry.
+        failed_pass_status = {**pass_status, "transition_similarity_evidence": "failed", "transition_similarity_evidence_error": f"Unexpected error: {exc}"[:500]}
+        await db.execute(
+            update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(status="complete", pass_status=failed_pass_status)
+        )
+        await db.commit()
+        await db.refresh(rv)
+        return await _to_response(db, rv, asset)
+
+    # Defensive idempotency (same reasoning as Stage 4-9's own cleanup): clear any pre-existing
+    # transition_similarity_evidence rows THIS PASS produced before writing the fresh set. Only
+    # ever finds rows here after a stale-run retry (a genuinely completed attempt is caught by the
+    # idempotent early-return above, which never reaches this line at all). Scoped strictly to
+    # category="transition_similarity_evidence" — this DELETE can never match a transition_
+    # evidence row, which is a different category.
+    await db.execute(
+        delete(AnalysisAnnotation).where(
+            AnalysisAnnotation.video_analysis_id == latest.id,
+            AnalysisAnnotation.category == "transition_similarity_evidence",
+            AnalysisAnnotation.produced_by_pass == TRANSITION_SIMILARITY_EVIDENCE_PASS_NAME,
+        )
+    )
+
+    for preceding_shot, following_shot, boundary_timestamp in boundary_specs:
+        evidence = evidence_by_boundary.get(preceding_shot.id)
+        if evidence is None or evidence["insufficient_boundary_material"]:
+            continue
+        db.add(AnalysisAnnotation(
+            video_analysis_id=latest.id,
+            shot_id=None,  # ALWAYS None — a boundary-spanning window belongs to neither Shot
+            # alone; same B0.4A convention B1 itself established.
+            category="transition_similarity_evidence",
+            start_time=evidence["window_start"], end_time=evidence["window_end"],
+            details={
+                "boundary_timestamp": evidence["boundary_timestamp"],
+                "window_start": evidence["window_start"],
+                "window_end": evidence["window_end"],
+                "preceding_shot_id": preceding_shot.id,
+                "following_shot_id": following_shot.id,
+                "sampling_fps": evidence["sampling_fps"],
+                "sample_count": evidence["sample_count"],
+                "cross_boundary_similarity": evidence["cross_boundary_similarity"],
+                "pre_window_edge_similarity": evidence["pre_window_edge_similarity"],
+                "post_window_edge_similarity": evidence["post_window_edge_similarity"],
+                "pre_trigger_adjacent_similarity": evidence["pre_trigger_adjacent_similarity"],
+                "post_trigger_adjacent_similarity": evidence["post_trigger_adjacent_similarity"],
+                "extraction_parameters": {
+                    "margin_seconds": transition_evidence_svc.TRANSITION_BOUNDARY_MARGIN_SECONDS,
+                },
+            },
+            certainty="MEASURED",
+            confidence_score=None,  # always None — no calibrated probability exists for a raw
+            # pixel-similarity measurement, same discipline as transition_evidence.
+            reasoning=(
+                f"Boundary-triggered transition similarity evidence measured over "
+                f"{evidence['sample_count']} analytical frames sampled at "
+                f"{evidence['sampling_fps']} fps in a window bracketing the Stage-4 boundary at "
+                f"{evidence['boundary_timestamp']}s. This is raw, neutral similarity measurement "
+                "only — it does not classify this boundary as a hard cut, fade, dissolve, wipe, "
+                "or crossover, and does not judge its own trust/quality; that inference is "
+                "explicitly deferred to a later Stage-9 phase."
+            ),
+            evidence_summary=(
+                "Exactly 5 bounded similarity fields (cross-boundary, pre/post window-edge, "
+                "pre/post trigger-adjacent) — see details.cross_boundary_similarity/"
+                "details.pre_window_edge_similarity/details.post_window_edge_similarity/"
+                "details.pre_trigger_adjacent_similarity/details.post_trigger_adjacent_similarity "
+                "for the real numbers. A None value means fewer than 2 usable samples existed for "
+                "that specific comparison, never a fabricated value."
+            ),
+            source=TRANSITION_SIMILARITY_EVIDENCE_SOURCE,
+            produced_by_pass=TRANSITION_SIMILARITY_EVIDENCE_PASS_NAME,
+        ))
+
+    await db.execute(
+        update(VideoAnalysis).where(VideoAnalysis.id == latest.id).values(
+            status="complete",
+            pass_status={**pass_status, "transition_similarity_evidence": "complete"},
         )
     )
     await db.commit()

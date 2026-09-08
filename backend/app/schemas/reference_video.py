@@ -183,6 +183,22 @@ docstring for the full architecture, the value-sign-vs-delta-sign distinction, t
 (scope, not evidence-proven) omission of temporal standard deviation, and the centroid/low-
 weight-noise semantics validated by the D2.1 experiment. Still zero classification — no object/
 animation/camera-motion/trajectory/path/confidence/reliability label anywhere in this schema.
+
+Stage 9, Phase B2 (TRANSITION SIMILARITY EVIDENCE): adds `ReferenceVideoResponse.transition_
+similarity_evidence` — a SEPARATE AnalysisAnnotation category (`transition_similarity_evidence`,
+never additive fields on B1's own `transition_evidence` row — see the B2.3 experiment's own final
+report for the evidence-semantics/failure-isolation/numerical-stability reasoning behind every
+field decision). Answers only "how similar is the material immediately around an already-known
+Stage-4 shot boundary" via exactly 5 bounded scalar fields (`cross_boundary_similarity`, `pre_
+window_edge_similarity`/`post_window_edge_similarity`, `pre_trigger_adjacent_similarity`/`post_
+trigger_adjacent_similarity`) — every other quantity investigated across B2.0-B2.3 (ratio forms,
+difference forms, the trigger-vs-edge gap, offset sweeps, similarity matrices) was deliberately
+excluded as either numerically unstable, an exact arithmetic redundancy of simpler fields, or
+purely experimental evidence never meant for bounded persistence. Reuses B1's own already-
+validated similarity metric verbatim (never a new metric, never a learned model) via its own
+independent transient extraction — B1's row is neither read nor required to exist. Still zero
+classification — no hard_cut/fade/dissolve/wipe/crossover label, and no trust/quality/confidence
+field of any kind, anywhere in this schema.
 """
 from datetime import datetime
 
@@ -925,6 +941,44 @@ class LocalMotionEvidenceSummary(BaseModel):
     produced_by_pass: str | None
 
 
+class TransitionSimilarityEvidenceSummary(BaseModel):
+    """Stage 9 Phase B2 — one boundary-triggered MEASURED transition-SIMILARITY evidence window
+    (an AnalysisAnnotation row, category="transition_similarity_evidence") — a SEPARATE row from
+    B1's own "transition_evidence", never additive fields on it (see B2.3's own design report for
+    the failure-isolation/versioning reasoning). `certainty` is always "MEASURED"; `confidence_
+    score` is always None. `shot_id` is always None for this pass, same B0.4A convention B1
+    itself established — `preceding_shot_id`/`following_shot_id` record the real relationship.
+    Exactly the 5 scalar fields the B2.3 experiment locked — `cross_boundary_similarity` (the
+    literal first-vs-last extracted frame of the boundary window), `pre_window_edge_similarity`/
+    `post_window_edge_similarity` (internal consistency of the outermost material on each side),
+    `pre_trigger_adjacent_similarity`/`post_trigger_adjacent_similarity` (internal consistency of
+    the material nearest the boundary on each side) — each `None` only when its own required
+    sample subset had fewer than 2 usable samples, never a fabricated value. NEVER contains a
+    transition-type label (hard_cut/fade/dissolve/wipe/crossover) or a trust/quality/confidence
+    field of any kind — see transition_similarity_evidence_svc.py's own docstring."""
+    model_config = {"from_attributes": True}
+
+    id: int
+    boundary_timestamp: float
+    window_start: float
+    window_end: float
+    preceding_shot_id: int | None
+    following_shot_id: int | None
+    sampling_fps: float
+    sample_count: int
+    cross_boundary_similarity: float | None
+    pre_window_edge_similarity: float | None
+    post_window_edge_similarity: float | None
+    pre_trigger_adjacent_similarity: float | None
+    post_trigger_adjacent_similarity: float | None
+    certainty: str
+    confidence_score: float | None
+    reasoning: str | None
+    evidence_summary: str | None
+    source: str | None
+    produced_by_pass: str | None
+
+
 class LocalMotionDynamicsMagnitudeSummary(BaseModel):
     """Stage 9 Phase D2 — bounded temporal dynamics for one NON-NEGATIVE, magnitude-type per-pair
     statistic (residual mean/p95/max, or flow median_magnitude/p95_magnitude). Deliberately has
@@ -1201,3 +1255,10 @@ class ReferenceVideoResponse(BaseModel):
     # both sides to measure. No transition-type label anywhere in this list — see
     # TransitionEvidenceSummary's own docstring.
     transition_evidence: list[TransitionEvidenceSummary] = []
+    # Stage 9 Phase B2's boundary-triggered transition SIMILARITY evidence — video-level, same
+    # reasoning as transition_evidence above; a SEPARATE list from it (a separate
+    # AnalysisAnnotation category) — empty until that pass completes at least once, or whenever
+    # every boundary lacked enough material to measure. No transition-type label or trust/
+    # confidence field anywhere in this list — see TransitionSimilarityEvidenceSummary's own
+    # docstring.
+    transition_similarity_evidence: list[TransitionSimilarityEvidenceSummary] = []
