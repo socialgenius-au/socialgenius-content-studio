@@ -425,6 +425,7 @@ async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> Re
             frame_pair_count=details.get("frame_pair_count"),
             affine=AffineMotionEvidenceSummary(**details.get("affine", {})),
             phase_correlation=PhaseCorrelationMotionEvidenceSummary(**details.get("phase_correlation", {})),
+            cross_stream=details.get("cross_stream"),  # Phase C1 — additive; None on older rows
             extraction_parameters=details.get("extraction_parameters", {}),
             certainty=ann.certainty,
             confidence_score=ann.confidence_score,
@@ -2390,6 +2391,9 @@ async def analyze_reference_video_global_motion(
                 "frame_pair_count": evidence["frame_pair_count"],
                 "affine": evidence["affine"],
                 "phase_correlation": evidence["phase_correlation"],
+                # Phase C1 — additive; .get() (not []) keeps this tolerant of any caller/fixture
+                # still returning the pre-C1 evidence shape without this key.
+                "cross_stream": evidence.get("cross_stream"),
                 "extraction_parameters": extraction_parameters,
             },
             certainty="MEASURED",

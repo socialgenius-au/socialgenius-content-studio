@@ -135,6 +135,22 @@ None for this MVP (a boundary-spanning window belongs to neither Shot alone); `p
 "MEASURED"; `confidence_score` is always None (no calibrated probability exists for a raw
 temporal measurement). Similarity-transfer evidence (dissolve reference-frame comparison) is
 deliberately NOT implemented in this phase — see transition_evidence_svc.py's own docstring.
+
+Stage 9, Phase C1 (MOTION DYNAMICS EVIDENCE): adds `AffineMotionEvidenceSummary.dynamics`
+(SignedAxisDynamicsSummary for translation_x/translation_y/rotation_deg, UnsignedAxisDynamicsSummary
+for scale, MagnitudeDynamicsSummary for translation_magnitude — median/min/max/range/standard_
+deviation, plus sign/delta counts for the signed fields) and `GlobalMotionEvidenceSummary.
+cross_stream` (CrossStreamMotionEvidenceSummary — neutral affine-vs-phase differences/ratio).
+Both purely additive to the existing `global_motion_evidence` category/pass — no new
+AnalysisAnnotation category, no schema migration, `certainty`/`source`/`produced_by_pass`
+unchanged. See app.services.visual_motion_svc.py's own docstring for the exact fields, the
+sign-change definition (the sign of each pair's own motion value, never a second-order delta of
+successive values), and the run-continuity rule (a failed affine pair never bridges two
+successful ones for sign-change purposes). Still zero classification — no STATIC/PAN/TILT/ZOOM/
+ROTATION/HANDHELD/MIXED label anywhere in this schema, `Shot.camera_movement` still untouched,
+and explicitly no scale/rotation-driven translation "correction" of any kind (Phase C0 identified
+the coupling effect; any future correction needs the full affine transform, not a scale-only
+approximation — C1 reports the raw dynamics only).
 """
 from datetime import datetime
 
@@ -531,6 +547,57 @@ class PersistentLayoutStabilitySummary(BaseModel):
     produced_by_pass: str | None
 
 
+class SignedAxisDynamicsSummary(BaseModel):
+    """Stage 9 Phase C1 — neutral, threshold-free dynamics for one signed per-pair affine field
+    (translation_x, translation_y, or rotation_deg — each already IS a per-pair motion value, so
+    its own sign is the fact of interest). `sign_change_count` only ever compares consecutive
+    pairs within one contiguous run of successful affine estimations (see
+    visual_motion_svc._successful_runs's own docstring) — a failed pair never bridges two
+    successful ones. `zero_delta_count` is exact numeric equality (0.0) only, never a tolerance
+    band. `standard_deviation` is None below 2 successful pairs (see visual_motion_svc.
+    MINIMUM_PAIRS_FOR_STANDARD_DEVIATION's own docstring for why that is withheld rather than
+    reported as a fabricated 0)."""
+    positive_delta_count: int
+    negative_delta_count: int
+    zero_delta_count: int
+    sign_change_count: int
+    median: float
+    min: float
+    max: float
+    range: float
+    standard_deviation: float | None
+
+
+class UnsignedAxisDynamicsSummary(BaseModel):
+    """Stage 9 Phase C1 — neutral dynamics for a field with no sign concept (scale is always > 0;
+    translation_magnitude is always >= 0) — median/min/max/range/standard_deviation only, same
+    None-below-2-pairs rule as SignedAxisDynamicsSummary."""
+    median: float
+    min: float
+    max: float
+    range: float
+    standard_deviation: float | None
+
+
+class MagnitudeDynamicsSummary(UnsignedAxisDynamicsSummary):
+    """UnsignedAxisDynamicsSummary plus a p95, for translation_magnitude specifically."""
+    p95: float
+
+
+class AffineDynamicsSummary(BaseModel):
+    """Stage 9 Phase C1 — the full set of neutral dynamics statistics over one Shot's own
+    successful affine pairs. None entirely whenever zero pairs succeeded (see
+    AffineMotionEvidenceSummary.dynamics's own docstring) — never a fabricated 0/identity result
+    for a shot with no successful affine evidence at all."""
+    translation_x: SignedAxisDynamicsSummary
+    translation_y: SignedAxisDynamicsSummary
+    translation_magnitude: MagnitudeDynamicsSummary
+    rotation_deg: SignedAxisDynamicsSummary
+    scale: UnsignedAxisDynamicsSummary
+    successful_run_count: int
+    longest_successful_run_pair_count: int
+
+
 class AffineMotionEvidenceSummary(BaseModel):
     """ORB-feature + RANSAC-affine global-motion evidence, aggregated across one Shot's own
     analytical frame pairs — see app.services.visual_motion_svc.py's own docstring for the exact
@@ -554,6 +621,10 @@ class AffineMotionEvidenceSummary(BaseModel):
     median_ransac_inlier_count: float | None
     median_ransac_inlier_ratio: float | None
     failure_reason_counts: dict[str, int] | None
+    # Stage 9 Phase C1 — additive; None whenever successful_pair_count == 0 (no successful pair
+    # exists to compute dynamics from), never a fabricated 0/identity result. See
+    # AffineDynamicsSummary's own docstring.
+    dynamics: AffineDynamicsSummary | None = None
 
 
 class PhaseCorrelationMotionEvidenceSummary(BaseModel):
@@ -568,6 +639,19 @@ class PhaseCorrelationMotionEvidenceSummary(BaseModel):
     p95_translation_magnitude: float
     median_response: float
     minimum_response: float
+
+
+class CrossStreamMotionEvidenceSummary(BaseModel):
+    """Stage 9 Phase C1 — neutral, deterministic comparisons between the affine and phase-
+    correlation evidence streams for the same Shot. NEVER an agreement/disagreement/trustworthy/
+    usable/confidence judgment — see visual_motion_svc._cross_stream_evidence's own docstring.
+    Every difference is affine value MINUS phase value, exactly as each field's own name states.
+    `magnitude_ratio_affine_over_phase` is None when the phase denominator is exactly 0.0 — no
+    epsilon substituted."""
+    magnitude_absolute_difference: float
+    magnitude_ratio_affine_over_phase: float | None
+    signed_dx_difference_affine_minus_phase: float
+    signed_dy_difference_affine_minus_phase: float
 
 
 class GlobalMotionEvidenceSummary(BaseModel):
@@ -588,6 +672,9 @@ class GlobalMotionEvidenceSummary(BaseModel):
     frame_pair_count: int
     affine: AffineMotionEvidenceSummary
     phase_correlation: PhaseCorrelationMotionEvidenceSummary
+    # Stage 9 Phase C1 — additive; None whenever affine has zero successful pairs to compare
+    # against phase evidence. See CrossStreamMotionEvidenceSummary's own docstring.
+    cross_stream: CrossStreamMotionEvidenceSummary | None = None
     extraction_parameters: dict
     certainty: str
     confidence_score: float | None

@@ -35,6 +35,21 @@ EVIDENCE ARCHITECTURE (per the Phase-0B experiment's own real findings against S
     which persists only the AGGREGATE dict this function returns, never a per-pair or per-frame
     record (see this module's own docstring on aggregate_motion_evidence for exactly why).
 
+PHASE C1 ADDITION (MOTION DYNAMICS EVIDENCE): additive, backwards-compatible neutral statistics
+computed from the SAME already-collected successful affine pairs a shot's own Phase-A aggregate
+already produces -- no new sampling, no new extraction, no change to any existing field. See
+aggregate_motion_evidence's own docstring for the exact new fields, the sign-change definition
+(the sign of each PAIR'S OWN motion value, never a second-order delta-of-samples), and the
+run-continuity rule (a failed affine pair breaks temporal adjacency for sign-change purposes --
+two successful pairs on either side of a failure are never treated as consecutive). Explicitly
+NOT implemented here, per this phase's own scope correction: no scale/rotation-driven translation
+"correction" or "compensation" of any kind -- Phase C0 identified the coupling effect, but any
+future correction would need the full affine transform, not a scale-only approximation; C1
+reports the raw dynamics only. Still zero classification: no STATIC/PAN/TILT/ZOOM/ROTATION/
+HANDHELD/MIXED label, no Shot.camera_movement write, no new threshold, still `certainty=
+"MEASURED"`, still `produced_by_pass="global_motion_evidence_v1"` (an additive field set, not a
+new pass version).
+
 BOUNDARY SAFETY (the reason the caller must pass the SHOT's own start_time/end_time, never a
 whole-video span): FFmpeg's own timestamp seeking can be imprecise by a small fraction of a
 second, and this project's own real reference video has a real, sharp hard cut at ~30.100s (Shot
@@ -207,6 +222,133 @@ def _percentile(values: list[float], q: float) -> float:
     return float(np.percentile(values, q, method="linear"))
 
 
+# ─── Phase C1 — Motion Dynamics Evidence ─────────────────────────────────────────────────────
+#
+# Threshold-free neutral statistics over the SAME successful affine pairs Phase A already
+# computes -- no new sampling, no scale/rotation-driven translation correction (explicitly out
+# of scope, see this module's own docstring), no classification, no epsilon of any kind.
+#
+# MINIMUM_PAIRS_FOR_STANDARD_DEVIATION: population standard deviation of a single value is
+# mathematically 0 -- but reporting that 0 would look identical to a genuinely OBSERVED zero
+# spread across multiple pairs, silently hiding the fact that only one data point existed. This
+# is the one place C1 withholds a value (returns None) below a minimum sample count, mirroring
+# Phase A's own MINIMUM_ANALYZABLE_FRAMES precedent -- a "how much data before a statistic is
+# even meaningful" rule, not a motion/stability/behavioral threshold. Median/min/max/range and
+# every delta/sign count remain fully defined (and reported) even for a single successful pair.
+MINIMUM_PAIRS_FOR_STANDARD_DEVIATION = 2
+
+
+def _sign(x: float) -> int:
+    """+1/-1/0 -- exact mathematical sign, no epsilon. Reused by every C1 sign-change count."""
+    if x > 0.0:
+        return 1
+    if x < 0.0:
+        return -1
+    return 0
+
+
+def _successful_runs(affine_pairs: list[dict]) -> list[list[int]]:
+    """Returns every MAXIMAL contiguous run of pair-INDICES whose affine estimation succeeded --
+    a failed pair always breaks a run. Two successful pairs separated by a failure are never
+    treated as temporally adjacent anywhere in this module (see _axis_dynamics's own sign-change
+    computation, which only ever compares consecutive indices WITHIN one run)."""
+    runs: list[list[int]] = []
+    current: list[int] = []
+    for i, pair in enumerate(affine_pairs):
+        if pair["estimation_success"]:
+            current.append(i)
+        else:
+            if current:
+                runs.append(current)
+                current = []
+    if current:
+        runs.append(current)
+    return runs
+
+
+def _axis_dynamics(field: str, successes: list[dict], runs: list[list[int]], success_by_index: dict[int, dict]) -> dict:
+    """Neutral dynamics for one signed per-pair field (translation_x, translation_y, or
+    rotation_deg -- each is already itself a per-pair MOTION value, not a position, so its own
+    sign IS the motion-direction fact this exists to report).
+
+    `sign_change_count` counts adjacents WITHIN successful runs only (see _successful_runs) whose
+    signs differ -- e.g. tx values [-2, -1, +1, +2, -1] (all one contiguous successful run) ->
+    2 sign changes, exactly the worked example this phase's own spec gives. A value of exactly
+    0.0 neither starts nor breaks a sign comparison (matching this project's own established
+    zero-handling convention, e.g. transition_evidence_svc's own luminance sign_change_count) --
+    the mathematically simplest rule, no epsilon: `sign(0.0) == 0`, and a comparison only counts
+    when BOTH sides are non-zero and differ.
+
+    `positive_delta_count`/`negative_delta_count`/`zero_delta_count` tally the RAW SIGN of every
+    successful pair's own value (order-independent, unlike sign_change_count) -- "delta" here
+    means the per-pair motion value itself (each affine pair's own translation/rotation IS
+    already a delta between two frames), never a second-order delta-of-successive-values; see
+    this module's own docstring for why the two concepts must not be confused.
+
+    `standard_deviation` is None below MINIMUM_PAIRS_FOR_STANDARD_DEVIATION successful pairs --
+    never a fabricated 0 for a single observation (see that constant's own docstring)."""
+    values = [p[field] for p in successes]
+    n = len(values)
+    sign_changes = 0
+    for run in runs:
+        run_values = [success_by_index[i][field] for i in run]
+        for a, b in zip(run_values, run_values[1:]):
+            sa, sb = _sign(a), _sign(b)
+            if sa != 0 and sb != 0 and sa != sb:
+                sign_changes += 1
+    mn, mx = float(min(values)), float(max(values))
+    return {
+        "positive_delta_count": sum(1 for v in values if v > 0.0),
+        "negative_delta_count": sum(1 for v in values if v < 0.0),
+        "zero_delta_count": sum(1 for v in values if v == 0.0),
+        "sign_change_count": sign_changes,
+        "median": float(np.median(values)), "min": mn, "max": mx, "range": mx - mn,
+        "standard_deviation": float(np.std(values, ddof=0)) if n >= MINIMUM_PAIRS_FOR_STANDARD_DEVIATION else None,
+    }
+
+
+def _scale_dynamics(successes: list[dict]) -> dict:
+    """Scale has no sign concept (always > 0 by construction of sqrt(...)) -- median/min/max/
+    range/standard_deviation only, per this phase's own field list."""
+    values = [p["scale"] for p in successes]
+    n = len(values)
+    mn, mx = float(min(values)), float(max(values))
+    return {
+        "median": float(np.median(values)), "min": mn, "max": mx, "range": mx - mn,
+        "standard_deviation": float(np.std(values, ddof=0)) if n >= MINIMUM_PAIRS_FOR_STANDARD_DEVIATION else None,
+    }
+
+
+def _magnitude_dynamics(successes: list[dict]) -> dict:
+    """Translation magnitude has no sign concept either (always >= 0) -- median/min/max/range/
+    standard_deviation/p95, reusing this module's own _percentile for the p95 (explicit 'linear'
+    semantics, same discipline as every other percentile in this module)."""
+    values = [p["translation_magnitude"] for p in successes]
+    n = len(values)
+    mn, mx = float(min(values)), float(max(values))
+    return {
+        "median": float(np.median(values)), "min": mn, "max": mx, "range": mx - mn,
+        "standard_deviation": float(np.std(values, ddof=0)) if n >= MINIMUM_PAIRS_FOR_STANDARD_DEVIATION else None,
+        "p95": _percentile(values, 95),
+    }
+
+
+def _cross_stream_evidence(affine_agg: dict, phase_agg: dict) -> dict:
+    """Neutral, deterministic comparisons between the two independently-measured evidence
+    streams -- NEVER a agreement/disagreement/trustworthy/usable/confidence boolean (see this
+    phase's own scope correction). `magnitude_ratio_affine_over_phase` is None when the phase
+    denominator is EXACTLY 0.0 -- no epsilon substituted. Every difference is affine-minus-phase,
+    documented explicitly here and in the field names themselves."""
+    affine_mag = affine_agg["median_translation_magnitude"]
+    phase_mag = phase_agg["median_translation_magnitude"]
+    return {
+        "magnitude_absolute_difference": abs(affine_mag - phase_mag),
+        "magnitude_ratio_affine_over_phase": (affine_mag / phase_mag) if phase_mag != 0.0 else None,
+        "signed_dx_difference_affine_minus_phase": affine_agg["median_translation_x"] - phase_agg["median_dx"],
+        "signed_dy_difference_affine_minus_phase": affine_agg["median_translation_y"] - phase_agg["median_dy"],
+    }
+
+
 def aggregate_motion_evidence(phase_pairs: list[dict], affine_pairs: list[dict], *, sampling_fps: float, sample_count: int) -> dict:
     """Turns per-pair phase-correlation and affine results into ONE compact, per-shot MEASURED
     evidence dict — the ONLY thing a caller should ever persist (see this module's own docstring
@@ -218,7 +360,13 @@ def aggregate_motion_evidence(phase_pairs: list[dict], affine_pairs: list[dict],
 
     `sample_count < MINIMUM_ANALYZABLE_FRAMES` sets `insufficient_temporal_samples=True` and
     every aggregate field to None — never a fabricated zero-motion result for a shot too short to
-    measure at all."""
+    measure at all.
+
+    PHASE C1 ADDITION: `affine["dynamics"]` (per-axis sign/variability statistics over the same
+    successful pairs, see _axis_dynamics/_scale_dynamics/_magnitude_dynamics) and a new top-level
+    `cross_stream` key (neutral affine-vs-phase comparison, see _cross_stream_evidence) — both
+    None whenever zero affine pairs succeeded, exactly mirroring every existing affine field's own
+    None-on-zero-success convention. Nothing existing above this paragraph changed."""
     n_pairs = len(phase_pairs)  # phase_pairs and affine_pairs are always the same length (one
     # entry per consecutive frame pair — see measure_shot_global_motion's own construction)
     insufficient = sample_count < MINIMUM_ANALYZABLE_FRAMES
@@ -227,7 +375,7 @@ def aggregate_motion_evidence(phase_pairs: list[dict], affine_pairs: list[dict],
         return {
             "sampling_fps": sampling_fps, "sample_count": sample_count, "frame_pair_count": n_pairs,
             "insufficient_temporal_samples": True,
-            "affine": None, "phase_correlation": None,
+            "affine": None, "phase_correlation": None, "cross_stream": None,
         }
 
     successes = [p for p in affine_pairs if p["estimation_success"]]
@@ -257,6 +405,18 @@ def aggregate_motion_evidence(phase_pairs: list[dict], affine_pairs: list[dict],
             "median_ransac_inlier_ratio": float(np.median(inlier_ratio_vals)),
             "failure_reason_counts": failure_reason_counts or None,
         }
+        # Phase C1 — additive only, every field above this line is unchanged.
+        runs = _successful_runs(affine_pairs)
+        success_by_index = {i: p for i, p in enumerate(affine_pairs) if p["estimation_success"]}
+        affine_agg["dynamics"] = {
+            "translation_x": _axis_dynamics("translation_x", successes, runs, success_by_index),
+            "translation_y": _axis_dynamics("translation_y", successes, runs, success_by_index),
+            "translation_magnitude": _magnitude_dynamics(successes),
+            "rotation_deg": _axis_dynamics("rotation_deg", successes, runs, success_by_index),
+            "scale": _scale_dynamics(successes),
+            "successful_run_count": len(runs),
+            "longest_successful_run_pair_count": max((len(r) for r in runs), default=0),
+        }
     else:
         affine_agg = {
             "successful_pair_count": 0, "failed_pair_count": len(failures),
@@ -268,6 +428,7 @@ def aggregate_motion_evidence(phase_pairs: list[dict], affine_pairs: list[dict],
             "median_candidate_match_count": None, "median_ransac_inlier_count": None,
             "median_ransac_inlier_ratio": None,
             "failure_reason_counts": failure_reason_counts or None,
+            "dynamics": None,  # Phase C1 — no successful pair exists to compute dynamics from.
         }
 
     pc_dx = [p["dx"] for p in phase_pairs]
@@ -280,10 +441,15 @@ def aggregate_motion_evidence(phase_pairs: list[dict], affine_pairs: list[dict],
         "median_response": float(np.median(pc_response)), "minimum_response": float(min(pc_response)),
     }
 
+    # Phase C1 — neutral affine-vs-phase comparison, None whenever affine has no successful pair
+    # to compare (phase_agg is always available at this point — n_pairs > 0 is already guaranteed).
+    cross_stream = _cross_stream_evidence(affine_agg, phase_agg) if successes else None
+
     return {
         "sampling_fps": sampling_fps, "sample_count": sample_count, "frame_pair_count": n_pairs,
         "insufficient_temporal_samples": False,
         "affine": affine_agg, "phase_correlation": phase_agg,
+        "cross_stream": cross_stream,
     }
 
 
