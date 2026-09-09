@@ -34,12 +34,16 @@ class Settings(BaseSettings):
     # TEXT generation for AI Tools (prompt/hook/script/caption generation); this pair drives a
     # STRUCTURED semantic-boundary DECISION (see app/services/semantic_reasoner/contract.py) and
     # may reasonably use a different provider/model, or none at all, without affecting AI Tools
-    # in either direction. Empty string ("") means "no semantic reasoner configured" — the honest
-    # Stage 10.2B1 default: zero real providers are registered yet (see semantic_reasoner/
-    # router.py's own _REASONER_PROVIDERS), so every call raises SemanticReasoningError rather
-    # than silently fabricating a decision.
+    # in either direction. SEMANTIC_REASONER_PROVIDER empty ("") means "no semantic reasoner
+    # configured" — the honest default: even though Stage 10.2B2 registers a real
+    # AnthropicSemanticReasoner (see semantic_reasoner/router.py's own _REASONER_PROVIDERS), it
+    # never runs unless an operator explicitly opts in by setting this to "anthropic" (and unless
+    # ANTHROPIC_API_KEY, reused as-is from above, is also actually set) — never a silent default,
+    # exactly like AnthropicProvider.is_configured() already gates every app/services/ai/ call.
+    # SEMANTIC_REASONER_MODEL has a real default (unlike PROVIDER) since a provider, once
+    # selected, needs *some* valid model name — matching CLAUDE_MODEL/AI_TEXT_MODEL's own default.
     SEMANTIC_REASONER_PROVIDER: str = ""
-    SEMANTIC_REASONER_MODEL: str = ""
+    SEMANTIC_REASONER_MODEL: str = "claude-sonnet-4-20250514"
 
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 500
