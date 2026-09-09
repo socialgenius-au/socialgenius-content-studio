@@ -52,6 +52,16 @@ Rules you must follow:
 - A technical shot cut or edit boundary does NOT by itself imply a semantic boundary.
 - The ABSENCE of a technical cut does NOT imply semantic continuity -- meaning can change entirely \
 within one continuous shot.
+- A semantic boundary requires BOTH that one coherent unit of meaning ends AND that another \
+coherent unit of meaning begins -- these are two separate conditions, not one. Content concluding, \
+stopping, fading out, going silent, or reaching an end-card, creator-handle, or other non-\
+substantive closing material only ever demonstrates the FIRST condition (an ending). It does NOT, \
+by itself, demonstrate the SECOND condition (a new beginning) -- the absence of continuing content \
+is not evidence of new content. A new coherent unit's own positive evidence can take any form \
+present in what you are given (spoken, on-screen text, or otherwise) -- it is not required to be \
+speech specifically -- but some such positive evidence of an actual new unit is required before \
+concluding one has begun. If only an ending is evidenced and nothing establishes a new beginning, \
+this is not a semantic boundary.
 - Judge from the actual MEANING of the content itself, not from technical/visual signals alone.
 - Any "language" field on speech evidence is only a measured hint from automatic speech \
 recognition -- it can be imprecise (for example, a closely related language sometimes gets \

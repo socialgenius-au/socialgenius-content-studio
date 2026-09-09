@@ -272,3 +272,133 @@ def test_anthropic_provider_module_imports_no_orm_model():
     source = inspect.getsource(module)
     assert "from app.models" not in source
     assert "AsyncSession" not in source
+
+
+# ===========================================================================
+# STAGE 10.2B2C -- SEMANTIC BOUNDARY DEFINITION CORRECTION. The generic prompt
+# now distinguishes "a section ends" from "a new section begins" -- these
+# assertions check the ACTUAL prompt content/behaviour, never RV5127-specific
+# wording (no video ids, timestamps, or specific languages referenced here).
+# ===========================================================================
+
+def _prompt_lower() -> str:
+    return SYSTEM_PROMPT.lower()
+
+
+def test_prompt_states_an_ending_alone_is_insufficient():
+    prompt = _prompt_lower()
+    # The prompt must explicitly say that an ending alone does not establish the second
+    # (new-beginning) condition -- not merely mention "ending" in passing.
+    assert "ending" in prompt
+    assert "does not, by itself, demonstrate" in prompt or "does not by itself demonstrate" in prompt
+
+
+def test_prompt_requires_a_new_coherent_unit_to_begin():
+    prompt = _prompt_lower()
+    assert "coherent unit of meaning begins" in prompt
+    assert "both" in prompt  # the two-condition ("ends AND begins") framing
+
+
+def test_prompt_states_silence_alone_is_insufficient():
+    prompt = _prompt_lower()
+    assert "silent" in prompt or "silence" in prompt
+
+
+def test_prompt_still_states_technical_cut_alone_is_insufficient():
+    # Pre-existing rule (Stage 10.2B2) -- confirm the new correction did not remove or weaken it.
+    prompt = _prompt_lower()
+    assert "technical shot cut or edit boundary does not by itself imply a semantic boundary" in prompt
+
+
+def test_prompt_states_end_card_or_creator_handle_alone_is_insufficient():
+    prompt = _prompt_lower()
+    assert "end-card" in prompt or "end card" in prompt
+    assert "creator-handle" in prompt or "creator handle" in prompt
+
+
+def test_prompt_does_not_deterministically_equate_missing_speech_with_false():
+    # The prompt must NOT contain a rule like "if no speech after, answer false" -- new content
+    # may be non-verbal. Check the actual guidance: new-unit evidence may take ANY form, not just
+    # speech, and nothing in the prompt singles out speech_after specifically as decisive.
+    prompt = _prompt_lower()
+    assert "not required to be speech specifically" in prompt
+    assert "speech_after" not in SYSTEM_PROMPT  # never refers to the bundle's own field names
+
+
+def test_prompt_explicitly_allows_visual_or_text_only_new_content():
+    prompt = _prompt_lower()
+    assert "on-screen text, or otherwise" in prompt
+
+
+def test_prompt_correction_adds_no_domain_or_video_specific_terms():
+    # The pre-existing prompt legitimately mentions marketing/tutorial/medical/etc. once, in its
+    # own "do not analyze for X purposes" EXCLUSION sentence (see the unchanged rule immediately
+    # following this phase's new one) -- that is correct, desired behaviour, not a violation. This
+    # test instead checks the NEWLY ADDED rule text itself (isolated below) never introduces any
+    # video id, timestamp, specific language, or domain term of its own.
+    new_rule_marker_start = "a semantic boundary requires both"
+    new_rule_marker_end = "judge from the actual meaning"
+    prompt = _prompt_lower()
+    start = prompt.index(new_rule_marker_start)
+    end = prompt.index(new_rule_marker_end)
+    added_rule_text = prompt[start:end]
+
+    forbidden = (
+        "rv146", "rv5127", "5368", "12.0", "25.64", "39.86", "39.9", "urdu", "hindi", "لیکن",
+        "marketing", "tutorial", "medical", "educational", "hook", "cta",
+    )
+    for term in forbidden:
+        assert term not in added_rule_text
+
+
+def test_json_schema_block_unchanged():
+    # The strict JSON contract block itself must be byte-identical to what Stage 10.2B2 shipped --
+    # this phase only adds a new RULE bullet, never touches the response schema.
+    expected_schema_block = '''{
+  "is_semantic_boundary": true | false | null,
+  "confidence": "low" | "medium" | "high",
+  "confidence_score": null,
+  "reasoning": "concise justification",
+  "evidence_references": {
+    "supporting_shot_ids": [],
+    "supporting_speech_segment_ids": [],
+    "supporting_text_element_ids": [],
+    "supporting_annotation_ids": []
+  }
+}'''
+    assert expected_schema_block in SYSTEM_PROMPT
+
+
+async def test_evidence_id_validation_still_rejects_unknown_ids_after_prompt_change(monkeypatch):
+    # Regression: the new rule text must not have disturbed the existing evidence-id validation
+    # path (unchanged code, but confirmed here alongside the prompt change for this phase).
+    monkeypatch.setattr(reasoner_router.settings, "SEMANTIC_REASONER_PROVIDER", "anthropic")
+    response = {
+        "is_semantic_boundary": True, "confidence": "high", "confidence_score": None,
+        "reasoning": "x", "evidence_references": {"supporting_speech_segment_ids": [999999]},
+    }
+    fake_client = _fake_client_returning(response)
+    with patch("app.services.semantic_reasoner.providers.anthropic_provider.get_client", return_value=fake_client), \
+         patch("app.services.semantic_reasoner.providers.anthropic_provider.settings.ANTHROPIC_API_KEY", "sk-ant-fake"):
+        with pytest.raises(SemanticReasoningError, match="never offered in this bundle"):
+            await reason_about_boundary(_SAMPLE_BUNDLE)
+
+
+async def test_ending_only_scenario_still_structurally_acceptable_as_true_or_false_or_none(monkeypatch):
+    # This phase is a PROMPT-only correction -- no code-level rule forces a particular answer for
+    # an "ending, no speech_after" scenario. Confirm the contract still accepts any of the three
+    # legitimate outcomes for such a bundle, proving no accidental code-level override was added
+    # (the guidance lives entirely in the prompt text, not in validation logic).
+    monkeypatch.setattr(reasoner_router.settings, "SEMANTIC_REASONER_PROVIDER", "anthropic")
+    ending_only_bundle = dict(_SAMPLE_BUNDLE, speech_after=None)
+
+    for decision_value in (True, False, None):
+        response = {
+            "is_semantic_boundary": decision_value, "confidence": "low", "confidence_score": None,
+            "reasoning": "x", "evidence_references": {},
+        }
+        fake_client = _fake_client_returning(response)
+        with patch("app.services.semantic_reasoner.providers.anthropic_provider.get_client", return_value=fake_client), \
+             patch("app.services.semantic_reasoner.providers.anthropic_provider.settings.ANTHROPIC_API_KEY", "sk-ant-fake"):
+            result = await reason_about_boundary(ending_only_bundle)
+        assert result.decision.is_semantic_boundary == decision_value
