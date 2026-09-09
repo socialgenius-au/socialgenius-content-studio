@@ -49,6 +49,8 @@ from app.models.user import User
 from app.models.video_analysis import VideoAnalysis
 from app.services.semantic_boundary_assembly_svc import (
     CANDIDATE_MERGE_WINDOW_SECONDS,
+    MAX_SPEECH_CONTEXT_SECONDS_EACH_SIDE,
+    MAX_SPEECH_CONTEXT_SEGMENTS_EACH_SIDE,
     assemble_semantic_boundary_candidates,
 )
 
@@ -423,6 +425,7 @@ async def test_bundle_shape_is_exactly_bounded():
 
             expected_keys = {
                 "candidate_timestamp", "source_nominations", "speech_before", "speech_after",
+                "speech_context_before", "speech_context_after",
                 "ocr_before", "ocr_after", "shots_overlapping", "nearby_annotations",
                 "visual_objects_before", "visual_objects_after",
             }
@@ -669,3 +672,401 @@ async def test_real_rv5127_bundles_near_confirmed_boundaries_carry_text_and_lang
         serialized = json.dumps(result, ensure_ascii=False, default=str).lower()
         assert "is_semantic_boundary" not in serialized
         assert "semantic" not in serialized
+
+
+# ===========================================================================
+# STAGE 10.2B2A -- SEMANTIC EVIDENCE CORRECTION: boundary anchor + bounded
+# discourse context + OCR confidence. Letters match this phase's own task list.
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# A / B. Merged candidate timestamp may cross a real SpeechSegment start without
+# changing the speech-gap's true left/right pair (the RV5127-like 708->709 case).
+# ---------------------------------------------------------------------------
+
+async def test_merged_candidate_timestamp_does_not_shift_the_true_speech_gap_pair():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            # Segment A ends 11.8, segment B starts 12.0 -- true gap midpoint = 11.9.
+            # An unrelated OCR head at 12.267 merges into the same cluster (|12.267-11.9|=0.367
+            # <= CANDIDATE_MERGE_WINDOW_SECONDS=0.5), pulling the averaged candidate_timestamp to
+            # (11.9+12.267)/2 = 12.0835 -- PAST segment B's own start (12.0).
+            await _add_speech_segments(db, va_id, [(9.08, 11.8, "before turn"), (12.0, 14.4, "after turn")])
+            await _add_ocr_heads(db, va_id, [(12.267, "unrelated caption")])
+
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            assert len(result["candidates"]) == 1
+            candidate = result["candidates"][0]
+
+            # candidate_timestamp itself is UNCHANGED -- still the averaged/normalized position.
+            assert abs(candidate["candidate_timestamp"] - 12.0835) < 1e-6
+
+            # But speech_before/after are the TRUE pair, not shifted past segment B's own start.
+            assert candidate["speech_before"]["text"] == "before turn"
+            assert candidate["speech_after"]["text"] == "after turn"
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# C. Candidate WITHOUT a speech_gap nomination falls back to canonical
+# nearest-before/after behaviour, deterministically and unchanged.
+# ---------------------------------------------------------------------------
+
+async def test_candidate_without_speech_gap_falls_back_to_nearest_before_after():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await _add_shots(db, va_id, [(0.0, 30.0), (30.0, 60.0)])
+            await _add_speech_segments(db, va_id, [(5.0, 10.0, "one segment only")])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate = result["candidates"][0]  # the shot_boundary candidate at 30.0
+            # Only one speech segment exists and it ends well before 30.0 -- falls back to plain
+            # nearest-before/after around the canonical timestamp (30.0), exactly as before.
+            assert candidate["speech_before"]["text"] == "one segment only"
+            assert candidate["speech_after"] is None
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# D / E. Multiple source nominations preserved; multiple speech-gap nominations
+# resolved deterministically (closest-raw-timestamp-to-centroid, id tie-break).
+# ---------------------------------------------------------------------------
+
+async def test_multiple_source_nominations_all_preserved_in_cluster():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await _add_speech_segments(db, va_id, [(9.08, 11.8, "A"), (12.0, 14.4, "B")])
+            await _add_ocr_heads(db, va_id, [(12.267, "caption")])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate = result["candidates"][0]
+            source_types = {n["source_type"] for n in candidate["source_nominations"]}
+            assert source_types == {"speech_gap", "ocr_occurrence_head"}
+            assert len(candidate["source_nominations"]) == 2
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_multiple_speech_gap_nominations_resolved_deterministically():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            # Three very short, closely-spaced segments -> TWO speech_gap nominations landing
+            # within CANDIDATE_MERGE_WINDOW_SECONDS of each other, merging into ONE cluster.
+            # Gap 1 (between seg1 end=10.0 and seg2 start=10.2): midpoint = 10.1
+            # Gap 2 (between seg2 end=10.4 and seg3 start=10.6): midpoint = 10.5
+            # |10.5 - 10.1| = 0.4 <= 0.5 -> merge. Cluster mean = (10.1+10.5)/2 = 10.3.
+            # Gap 1's own raw timestamp (10.1) is closer to 10.3 than Gap 2's (10.5) is
+            # (|10.1-10.3|=0.2 < |10.5-10.3|=0.2)... exactly tied by distance -> tie-break by
+            # lowest source_id, which is Gap 1 (seg1's id, the smaller of the two).
+            await _add_speech_segments(db, va_id, [
+                (9.0, 10.0, "seg1"), (10.2, 10.4, "seg2"), (10.6, 11.0, "seg3"),
+            ])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            assert len(result["candidates"]) == 1
+            candidate = result["candidates"][0]
+            speech_gap_nominations = [n for n in candidate["source_nominations"] if n["source_type"] == "speech_gap"]
+            assert len(speech_gap_nominations) == 2  # both preserved, nothing discarded
+
+            # The resolved anchor pair is deterministic -- re-running produces the identical pair.
+            result2 = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate2 = result2["candidates"][0]
+            assert candidate["speech_before"]["id"] == candidate2["speech_before"]["id"]
+            assert candidate["speech_after"]["id"] == candidate2["speech_after"]["id"]
+            # And the resolved pair is one of the two genuine adjacent gaps (never a "made up" pair).
+            valid_pairs = {("seg1", "seg2"), ("seg2", "seg3")}
+            assert (candidate["speech_before"]["text"], candidate["speech_after"]["text"]) in valid_pairs
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# F / G / H. Bounded context: segment-count cap, seconds cap, whichever hits first.
+# ---------------------------------------------------------------------------
+
+async def test_context_before_capped_at_max_segments():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            # Each adjacent pair below is >0.5s apart from its own neighboring gap, so these
+            # produce SEPARATE candidates (one per gap), not one merged cluster -- exactly like
+            # real speech. The candidate under test is the LAST gap (s5->s6, anchor = s5), which
+            # has the deepest available "before" history (s1..s5) to cap.
+            await _add_speech_segments(db, va_id, [
+                (0.0, 1.0, "s1"), (1.2, 2.0, "s2"), (2.2, 3.0, "s3"), (3.2, 4.0, "s4"),
+                (4.2, 5.0, "s5"), (6.0, 7.0, "s6"),
+            ])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            gap_timestamp = (5.0 + 6.0) / 2.0  # the true s5->s6 gap midpoint = 5.5
+            candidate = min(result["candidates"], key=lambda c: abs(c["candidate_timestamp"] - gap_timestamp))
+            assert len(candidate["speech_context_before"]) == MAX_SPEECH_CONTEXT_SEGMENTS_EACH_SIDE
+            texts = [s["text"] for s in candidate["speech_context_before"]]
+            assert texts == ["s3", "s4", "s5"]  # 3 most recent, chronological, anchor (s5) last
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_context_after_capped_at_max_segments():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            # Each gap below is its own separate candidate (see the "before" test's own comment).
+            # The candidate under test is the FIRST gap (s1->s2, anchor = s2), which has the
+            # deepest available "after" history (s2..s6) to cap.
+            await _add_speech_segments(db, va_id, [
+                (0.0, 1.0, "s1"),
+                (2.0, 3.0, "s2"), (3.2, 4.0, "s3"), (4.2, 5.0, "s4"), (5.2, 6.0, "s5"), (6.2, 7.0, "s6"),
+            ])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            gap_timestamp = (1.0 + 2.0) / 2.0  # the true s1->s2 gap midpoint = 1.5
+            candidate = min(result["candidates"], key=lambda c: abs(c["candidate_timestamp"] - gap_timestamp))
+            assert len(candidate["speech_context_after"]) == MAX_SPEECH_CONTEXT_SEGMENTS_EACH_SIDE
+            texts = [s["text"] for s in candidate["speech_context_after"]]
+            assert texts == ["s2", "s3", "s4"]  # anchor (s2) first, then 2 more, chronological
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_seconds_cap_enforced_before_segment_cap():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            # The candidate under test is the "anchor_before -> anchor_after" gap (true midpoint
+            # 30.5). Its own before-anchor is "anchor_before"; "too_far" sits 24s before that true
+            # gap instant (30.5 - 5.0 = 25.5s) -- beyond MAX_SPEECH_CONTEXT_SECONDS_EACH_SIDE
+            # (20s) -- so even though the 3-segment cap has not been reached, expansion must stop
+            # before including it. "too_far"->"anchor_before" is itself a SEPARATE, earlier
+            # candidate (true midpoint 17.0) and is not the one under test here.
+            assert MAX_SPEECH_CONTEXT_SECONDS_EACH_SIDE == 20.0
+            await _add_speech_segments(db, va_id, [
+                (5.0, 6.0, "too_far"), (28.0, 30.0, "anchor_before"), (31.0, 33.0, "anchor_after"),
+            ])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            gap_timestamp = (30.0 + 31.0) / 2.0  # the true anchor_before->anchor_after gap = 30.5
+            candidate = min(result["candidates"], key=lambda c: abs(c["candidate_timestamp"] - gap_timestamp))
+            texts = [s["text"] for s in candidate["speech_context_before"]]
+            assert "too_far" not in texts
+            assert texts == ["anchor_before"]
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# I / J / K. Context chronological order; anchor is the boundary entry on each side.
+# ---------------------------------------------------------------------------
+
+async def test_context_is_chronological_with_anchor_at_the_correct_edge():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await _add_speech_segments(db, va_id, [
+                (0.0, 1.0, "s1"), (1.2, 2.0, "s2"), (3.0, 4.0, "s3"), (4.2, 5.0, "s4"),
+            ])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate = result["candidates"][0]
+
+            before_times = [s["start_time"] for s in candidate["speech_context_before"]]
+            assert before_times == sorted(before_times)  # chronological
+            assert candidate["speech_context_before"][-1]["id"] == candidate["speech_before"]["id"]
+
+            after_times = [s["start_time"] for s in candidate["speech_context_after"]]
+            assert after_times == sorted(after_times)  # chronological
+            assert candidate["speech_context_after"][0]["id"] == candidate["speech_after"]["id"]
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# L / M. Original multilingual text and language hint unchanged in context entries.
+# ---------------------------------------------------------------------------
+
+async def test_context_entries_preserve_original_text_and_language():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            urdu_a = "لیکن وہی اورت اگر"
+            urdu_b = "آپ سے توک چکی ہو"
+            await _add_speech_segments_with_language(db, va_id, [
+                (0.0, 2.0, urdu_a, "hi"), (2.2, 4.0, urdu_b, "hi"), (5.0, 6.0, "third", "hi"),
+            ])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate = result["candidates"][0]
+            assert candidate["speech_context_before"][-1]["text"] == urdu_a
+            assert candidate["speech_context_before"][-1]["language"] == "hi"
+            assert candidate["speech_context_after"][0]["text"] == urdu_b
+            assert candidate["speech_context_after"][0]["language"] == "hi"
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# N. Missing speech degrades to empty context / None appropriately.
+# ---------------------------------------------------------------------------
+
+async def test_missing_speech_degrades_to_empty_context():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await _add_shots(db, va_id, [(0.0, 30.0), (30.0, 60.0)])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate = result["candidates"][0]
+            assert candidate["speech_before"] is None
+            assert candidate["speech_after"] is None
+            assert candidate["speech_context_before"] == []
+            assert candidate["speech_context_after"] == []
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_speech_after_none_produces_empty_context_after_only():
+    # Mirrors the real RV5127 ~39.9 case: speech exists before, nothing after.
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await _add_shots(db, va_id, [(0.0, 40.0), (40.0, 44.0)])
+            await _add_speech_segments(db, va_id, [(36.0, 39.0, "final narration")])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate = result["candidates"][0]  # the shot_boundary candidate at 40.0
+            assert candidate["speech_after"] is None
+            assert candidate["speech_context_after"] == []
+            assert candidate["speech_before"]["text"] == "final narration"
+            assert len(candidate["speech_context_before"]) == 1
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# O / P. OCR confidence_score surfaced verbatim; near-zero confidence NOT filtered.
+# ---------------------------------------------------------------------------
+
+async def test_ocr_confidence_score_surfaced_verbatim():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            heads = await _add_ocr_heads(db, va_id, [(5.0, "high conf"), (10.0, "noise")])
+            high_conf_head = await db.get(TextElement, heads[0])
+            high_conf_head.confidence_score = 0.91
+            low_conf_head = await db.get(TextElement, heads[1])
+            low_conf_head.confidence_score = 0.00267
+            await db.commit()
+
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate = result["candidates"][0]
+            assert candidate["ocr_before"]["confidence_score"] == 0.91
+            assert candidate["ocr_after"]["confidence_score"] == 0.00267
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_real_rv146_near_zero_ocr_confidence_surfaced_not_filtered():
+    async with _TestSessionLocal() as db:
+        result = await assemble_semantic_boundary_candidates(db, RV146_VIDEO_ANALYSIS_ID)
+
+        def _candidate_near(target: float, tolerance: float = 1.0):
+            return next((c for c in result["candidates"] if abs(c["candidate_timestamp"] - target) <= tolerance), None)
+
+        candidate = _candidate_near(30.1)
+        assert candidate is not None
+        assert candidate["ocr_after"]["confidence_score"] is not None
+        assert candidate["ocr_after"]["confidence_score"] < 0.01  # the real near-zero "7" reading
+        # Still present in the bundle -- never filtered out for being low-confidence.
+        assert candidate["ocr_after"]["text"] == "7"
+
+
+# ---------------------------------------------------------------------------
+# Q. Candidate timestamp normalization behaviour otherwise unchanged.
+# ---------------------------------------------------------------------------
+
+async def test_candidate_timestamp_normalization_unchanged():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await _add_shots(db, va_id, [(0.0, 10.0), (10.0, 20.0), (20.0, 30.0)])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            timestamps = [c["candidate_timestamp"] for c in result["candidates"]]
+            assert timestamps == [10.0, 20.0]  # exact same values as the pre-10.2B2A behaviour
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# R / S / T / U. No semantic decision, no external AI call, no Scene row, Shot.scene_id untouched.
+# ---------------------------------------------------------------------------
+
+async def test_no_semantic_decision_no_ai_call_no_scene_no_scene_id_mutation():
+    from app.models.scene import Scene
+
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            shot_ids = await _add_shots(db, va_id, [(0.0, 30.0), (30.0, 60.0)])
+            await _add_speech_segments(db, va_id, [(9.08, 11.8, "A"), (12.0, 14.4, "B")])
+
+            shot_before = await db.get(Shot, shot_ids[0])
+            shot_snapshot = (shot_before.start_time, shot_before.end_time, shot_before.scene_id)
+
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+
+            # No semantic-decision vocabulary anywhere in the module's own output.
+            serialized = json.dumps(result, ensure_ascii=False, default=str).lower()
+            for forbidden in ("is_semantic_boundary", "confidence", "reasoning", "anthropic", "openai"):
+                assert forbidden not in serialized
+
+            scenes = (await db.execute(select(Scene).where(Scene.video_analysis_id == va_id))).scalars().all()
+            assert scenes == []
+
+            shot_after = await db.get(Shot, shot_ids[0])
+            assert (shot_after.start_time, shot_after.end_time, shot_after.scene_id) == shot_snapshot
+            assert shot_after.scene_id is None
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# Real-data validation (Section 9 of the task) -- read-only, no API calls.
+# ---------------------------------------------------------------------------
+
+async def test_real_rv5127_12_corrected_anchor_pair():
+    async with _TestSessionLocal() as db:
+        result = await assemble_semantic_boundary_candidates(db, RV5127_VIDEO_ANALYSIS_ID)
+        candidate = min(result["candidates"], key=lambda c: abs(c["candidate_timestamp"] - 12.083))
+        assert candidate["speech_before"]["id"] == 708
+        assert candidate["speech_after"]["id"] == 709
+        assert len(candidate["speech_context_before"]) <= MAX_SPEECH_CONTEXT_SEGMENTS_EACH_SIDE
+        assert len(candidate["speech_context_after"]) <= MAX_SPEECH_CONTEXT_SEGMENTS_EACH_SIDE
+        assert candidate["speech_context_before"][-1]["id"] == 708
+        assert candidate["speech_context_after"][0]["id"] == 709
+
+
+async def test_real_rv5127_2564_true_pair_unchanged_by_this_fix():
+    async with _TestSessionLocal() as db:
+        result = await assemble_semantic_boundary_candidates(db, RV5127_VIDEO_ANALYSIS_ID)
+        candidate = min(result["candidates"], key=lambda c: abs(c["candidate_timestamp"] - 25.38))
+        assert candidate["speech_before"]["id"] == 713
+        assert candidate["speech_after"]["id"] == 714
+
+
+async def test_real_rv5127_399_no_fabricated_post_boundary_speech():
+    async with _TestSessionLocal() as db:
+        result = await assemble_semantic_boundary_candidates(db, RV5127_VIDEO_ANALYSIS_ID)
+        candidate = min(result["candidates"], key=lambda c: abs(c["candidate_timestamp"] - 39.91))
+        assert candidate["speech_after"] is None
+        assert candidate["speech_context_after"] == []
+        assert candidate["speech_before"]["id"] == 718
