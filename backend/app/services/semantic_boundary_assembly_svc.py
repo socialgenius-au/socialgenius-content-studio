@@ -93,7 +93,15 @@ _RELEVANT_ANNOTATION_CATEGORIES = [
 
 
 def _speech_dict(seg: SpeechSegment) -> dict:
-    return {"id": seg.id, "start_time": seg.start_time, "end_time": seg.end_time, "text": seg.text}
+    # `language` is copied verbatim from the already-persisted Stage 7 (Whisper) value -- never
+    # inferred, normalized, or defaulted here. SpeechSegment.language is itself nullable with no
+    # default (NULL means "Whisper never established one," never "assumed English" -- see that
+    # column's own docstring); this module preserves that same honesty, passing None through
+    # unchanged rather than guessing a language a future reasoner could be misled by.
+    return {
+        "id": seg.id, "start_time": seg.start_time, "end_time": seg.end_time,
+        "text": seg.text, "language": seg.language,
+    }
 
 
 def _ocr_dict(head: TextElement) -> dict:

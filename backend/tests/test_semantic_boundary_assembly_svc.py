@@ -113,6 +113,23 @@ async def _add_speech_segments(db, va_id: int, segments: list[tuple[float, float
     return ids
 
 
+async def _add_speech_segments_with_language(db, va_id: int, segments: list[tuple[float, float, str, str | None]]) -> list[int]:
+    """Same as _add_speech_segments, but lets each test set SpeechSegment.language explicitly
+    (including None) -- a separate helper rather than changing _add_speech_segments' own
+    signature, so every existing call site above is untouched."""
+    ids = []
+    for start, end, text, language in segments:
+        seg = SpeechSegment(
+            video_analysis_id=va_id, start_time=start, end_time=end, text=text, language=language,
+            certainty="MEASURED", source="whisper", produced_by_pass="speech_analysis_v1",
+        )
+        db.add(seg)
+        await db.flush()
+        ids.append(seg.id)
+    await db.commit()
+    return ids
+
+
 async def _add_ocr_heads(db, va_id: int, heads: list[tuple[float, str]]) -> list[int]:
     ids = []
     for start, text in heads:
@@ -535,3 +552,120 @@ async def test_no_semantic_or_llm_field_anywhere_in_real_outputs():
                 "topic_change", "narrative", "story_beat",
             ):
                 assert forbidden not in serialized
+
+
+# ---------------------------------------------------------------------------
+# Stage 10.2B1 — A. SpeechSegment.language appears in speech_before/speech_after.
+# ---------------------------------------------------------------------------
+
+async def test_speech_segment_language_appears_in_bundle():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await _add_speech_segments_with_language(db, va_id, [
+                (0.0, 5.0, "before text", "ur"), (6.0, 10.0, "after text", "ur"),
+            ])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate = result["candidates"][0]
+            assert candidate["speech_before"]["language"] == "ur"
+            assert candidate["speech_after"]["language"] == "ur"
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# Stage 10.2B1 — B. Urdu language value from RV5127 is transported unchanged if persisted.
+# ---------------------------------------------------------------------------
+
+async def test_real_rv5127_language_value_transported_unchanged():
+    async with _TestSessionLocal() as db:
+        # The real, already-persisted value Whisper actually detected for RV5127 -- "hi", not
+        # "ur", per Stage 10.1's own documented Hindi-Urdu script/detection ambiguity (RV5127's
+        # own script is Urdu, but Whisper's own language-id landed on the closely-related "hi").
+        # This test asserts transport fidelity against that REAL measured value, never a guess.
+        direct_result = await db.execute(
+            select(SpeechSegment.language).where(SpeechSegment.video_analysis_id == RV5127_VIDEO_ANALYSIS_ID).distinct()
+        )
+        persisted_language_values = set(direct_result.scalars().all())
+        assert persisted_language_values == {"hi"}
+
+        result = await assemble_semantic_boundary_candidates(db, RV5127_VIDEO_ANALYSIS_ID)
+        found_language_values = {
+            c["speech_before"]["language"] for c in result["candidates"] if c["speech_before"] is not None
+        } | {
+            c["speech_after"]["language"] for c in result["candidates"] if c["speech_after"] is not None
+        }
+        assert found_language_values == persisted_language_values
+
+
+# ---------------------------------------------------------------------------
+# Stage 10.2B1 — C. Nullable/unknown language remains None rather than guessed.
+# ---------------------------------------------------------------------------
+
+async def test_null_language_remains_none_never_guessed():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await _add_speech_segments_with_language(db, va_id, [
+                (0.0, 5.0, "before text", None), (6.0, 10.0, "after text", None),
+            ])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate = result["candidates"][0]
+            assert candidate["speech_before"]["language"] is None
+            assert candidate["speech_after"]["language"] is None
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# Stage 10.2B1 — D. Original multilingual text remains unchanged alongside the new language field.
+# ---------------------------------------------------------------------------
+
+async def test_original_text_unchanged_when_language_field_present():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            urdu_text = "لیکن وہی اورت اگر"
+            await _add_speech_segments_with_language(db, va_id, [
+                (0.0, 5.0, urdu_text, "ur"), (6.0, 10.0, "second segment", "ur"),
+            ])
+            result = await assemble_semantic_boundary_candidates(db, va_id)
+            candidate = result["candidates"][0]
+            assert candidate["speech_before"]["text"] == urdu_text  # unchanged, not translated
+            assert candidate["speech_before"]["language"] == "ur"   # new field, alongside it
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# Stage 10.2B1 — Section 11 real-data check: RV5127 bundles around ~12.0/~25.64 carry both the
+# original transcript text AND the persisted language value. No semantic call, no decision.
+# ---------------------------------------------------------------------------
+
+async def test_real_rv5127_bundles_near_confirmed_boundaries_carry_text_and_language():
+    async with _TestSessionLocal() as db:
+        result = await assemble_semantic_boundary_candidates(db, RV5127_VIDEO_ANALYSIS_ID)
+
+        def _candidate_near(target: float, tolerance: float = 1.5):
+            return next((c for c in result["candidates"] if abs(c["candidate_timestamp"] - target) <= tolerance), None)
+
+        for target in (12.0, 25.64):
+            candidate = _candidate_near(target)
+            assert candidate is not None, f"expected a candidate near {target}"
+            has_speech = candidate["speech_before"] is not None or candidate["speech_after"] is not None
+            assert has_speech
+            for side in ("speech_before", "speech_after"):
+                if candidate[side] is not None:
+                    assert isinstance(candidate[side]["text"], str) and len(candidate[side]["text"]) > 0
+                    assert "language" in candidate[side]  # key always present, value may be None
+
+        # The technical cut (~39.866667) remains represented as a plain candidate -- still no
+        # semantic label of any kind attached anywhere in the output.
+        technical_cut = _candidate_near(39.866667)
+        assert technical_cut is not None
+        serialized = json.dumps(result, ensure_ascii=False, default=str).lower()
+        assert "is_semantic_boundary" not in serialized
+        assert "semantic" not in serialized

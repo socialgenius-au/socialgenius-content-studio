@@ -29,6 +29,18 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     GOOGLE_AI_API_KEY: str = ""
 
+    # ── Stage 10.2B — Semantic Boundary Reasoner (app/services/semantic_reasoner/) ────────────
+    # Deliberately SEPARATE from AI_TEXT_PROVIDER/AI_TEXT_MODEL above: that pair drives FREEFORM
+    # TEXT generation for AI Tools (prompt/hook/script/caption generation); this pair drives a
+    # STRUCTURED semantic-boundary DECISION (see app/services/semantic_reasoner/contract.py) and
+    # may reasonably use a different provider/model, or none at all, without affecting AI Tools
+    # in either direction. Empty string ("") means "no semantic reasoner configured" — the honest
+    # Stage 10.2B1 default: zero real providers are registered yet (see semantic_reasoner/
+    # router.py's own _REASONER_PROVIDERS), so every call raises SemanticReasoningError rather
+    # than silently fabricating a decision.
+    SEMANTIC_REASONER_PROVIDER: str = ""
+    SEMANTIC_REASONER_MODEL: str = ""
+
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 500
 
