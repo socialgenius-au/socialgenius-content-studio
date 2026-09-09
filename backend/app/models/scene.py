@@ -4,10 +4,28 @@ Scene groups an ordered run of Shots into a narrative unit. Shot boundaries (see
 MEASURED (pixel-diff cut detection); which shots belong to the same Scene, and later (Stage 15)
 each Scene's narrative_role (hook/setup/problem/solution/proof/cta/outro), are judgments —
 always INFERRED, never MEASURED, reflected in this row's own `certainty` value.
+
+Stage 10 structural provision (Semantic Scene Grouping readiness — see the Stage 10.0/10.0B
+read-only audits for the full reasoning): `start_time`/`end_time` above are a Scene's own
+independently-INFERRED temporal range — NEVER derived from, nested inside, or required to align
+with any Shot's own boundaries (a semantic change may occur inside one continuous technical
+shot, and a Scene may begin/end mid-shot, span several shots, or overlap only part of one).
+`Shot.scene_id` therefore remains unused/reserved by design — it cannot represent a shot split
+across multiple Scenes, so it is never the authoritative Scene<->Shot relationship; any future
+consumer derives shot/Scene overlap at read time by comparing the two independent time ranges.
+
+`details` (nullable JSON, added for Stage 10): STRUCTURED EVIDENCE CITATION ONLY — which
+already-persisted Stage 1-9 rows (shots/frames/text/speech/annotations) support this Scene's own
+boundary, as bounded id lists. It is deliberately NOT a place for semantic/narrative output of
+any kind (no role, no Story Beat data, no confidence breakdown, no reasoning/evidence-summary
+prose — those already have their own columns on this row, or belong on a future, separate Story
+Beat evidence row) — see the `details` column's own docstring below for the exact bounded v1 key
+set. Never populated by anything as of this commit; Stage 10 inference itself is explicitly out
+of scope here.
 """
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -24,6 +42,24 @@ class Scene(Base):
     end_time: Mapped[float] = mapped_column(Float, nullable=False)
     # Populated by Stage 15, not Stage 1 — nullable until then.
     narrative_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Stage 10 structural provision — STRUCTURED EVIDENCE CITATION ONLY, never semantic output.
+    # Bounded v1 contract (all keys optional, all values lists of integer ids, never required,
+    # never exhaustive-by-assumption — a future evidence type gets its own new
+    # `supporting_<type>_ids` key only when it actually exists and is explicitly designed in):
+    #   supporting_shot_ids              -> Shot.id
+    #   supporting_frame_ids             -> ShotFrame.id
+    #   supporting_text_element_ids      -> TextElement.id
+    #   supporting_speech_segment_ids    -> SpeechSegment.id
+    #   supporting_annotation_ids        -> AnalysisAnnotation.id (category-agnostic)
+    # Every value is a REFERENCE by id, never a copy of the cited row's own content (no verbatim
+    # transcript/OCR text, no frame descriptions) — the cited row remains the single source of
+    # truth. Explicitly NOT for: semantic/narrative/Story-Beat role, confidence breakdown,
+    # reasoning/evidence-summary prose (this row's own `reasoning`/`evidence_summary` columns
+    # already own that), UI/rendering hints, tutorial-authoring or reconstruction instructions,
+    # or any other unstructured/arbitrary output — never a generic metadata dumping ground.
+    # Nullable, no default: an existing (currently nonexistent, since nothing populates Scene
+    # yet) row is equally valid with details=NULL.
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     certainty: Mapped[str] = mapped_column(String(32), nullable=False)
     confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)

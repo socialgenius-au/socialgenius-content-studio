@@ -56,6 +56,12 @@ _ADDITIVE_PATCHES: list[str] = [
     "ALTER TABLE visual_objects DROP CONSTRAINT IF EXISTS ck_visual_objects_category_valid",
     "ALTER TABLE visual_objects ADD CONSTRAINT ck_visual_objects_category_valid "
     "CHECK (category IN ('person', 'product', 'logo', 'background', 'prop', 'object'))",
+    # Stage 10 structural provision (Semantic Scene Grouping readiness) — see
+    # app/models/scene.py's own docstring for the exact bounded v1 `details` contract and why
+    # `scenes` (present, empty, since Stage 1 — the exact same table-already-existed-before-the-
+    # column-did class of change as every patch above) needs this same ADD-COLUMN-IF-NOT-EXISTS
+    # treatment rather than relying on create_all.
+    "ALTER TABLE scenes ADD COLUMN IF NOT EXISTS details JSON",
 ]
 
 
