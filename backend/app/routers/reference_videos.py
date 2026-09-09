@@ -143,13 +143,35 @@ STALE_RUNNING_TIMEOUT_SECONDS = 300
 MIN_SURFACED_OCR_CONFIDENCE = 0.50
 
 
-async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset) -> ReferenceVideoResponse:
-    result = await db.execute(
-        select(VideoAnalysis)
-        .where(VideoAnalysis.reference_video_id == rv.id)
-        .order_by(VideoAnalysis.created_at.desc())
-    )
-    latest = result.scalars().first()
+async def _to_response(db: AsyncSession, rv: ReferenceVideo, asset: Asset, video_analysis_id: int | None = None) -> ReferenceVideoResponse:
+    """`video_analysis_id=None` (every existing call site, unchanged): resolves the LATEST
+    VideoAnalysis for this ReferenceVideo — identical query/behavior to before this parameter
+    existed.
+
+    `video_analysis_id=<id>` (the pinned-analysis architectural provision — see
+    get_reference_video's own docstring for why this exists): resolves EXACTLY that VideoAnalysis
+    row, scoped to `reference_video_id == rv.id` in the query itself so an id belonging to a
+    DIFFERENT ReferenceVideo can never be used to retrieve this one's evidence. Never falls back
+    to "latest" on a miss (unknown id, or an id that belongs to another ReferenceVideo) — raises
+    404 instead. Read-only: this function has never performed a write, and this addition changes
+    nothing about that."""
+    if video_analysis_id is not None:
+        result = await db.execute(
+            select(VideoAnalysis).where(
+                VideoAnalysis.id == video_analysis_id,
+                VideoAnalysis.reference_video_id == rv.id,
+            )
+        )
+        latest = result.scalar_one_or_none()
+        if latest is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requested video analysis not found for this reference video")
+    else:
+        result = await db.execute(
+            select(VideoAnalysis)
+            .where(VideoAnalysis.reference_video_id == rv.id)
+            .order_by(VideoAnalysis.created_at.desc())
+        )
+        latest = result.scalars().first()
     pass_status = dict(latest.pass_status or {})
     analysis_summary = VideoAnalysisSummary(
         id=latest.id,
@@ -741,9 +763,23 @@ async def ingest_reference_video(
 @router.get("/{reference_video_id}", response_model=ReferenceVideoResponse)
 async def get_reference_video(
     reference_video_id: int,
+    video_analysis_id: int | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(current_user),
 ):
+    """Architectural provision (Tutorial-Authoring audit, verdict B): an optional
+    `video_analysis_id` query parameter lets a caller pin its own read to one EXACT,
+    already-existing VideoAnalysis version, instead of always receiving whichever run is
+    currently latest. Purpose: a future TutorialProject must be able to attach itself to
+    `ReferenceVideo X + VideoAnalysis Y` and stay attached to Y even if X is analysed again
+    later — see this module's own docstring for the full evidence-chain reasoning this preserves.
+
+    Omitting `video_analysis_id` (every existing caller, unchanged) returns the latest analysis,
+    identical to this endpoint's own behavior before this parameter existed. Providing it never
+    silently falls back to latest: an id that does not exist, or that belongs to a DIFFERENT
+    ReferenceVideo, returns 404 — see `_to_response`'s own docstring for the exact scoped query
+    that makes cross-ReferenceVideo addressing impossible. This is a pure read: no analysis,
+    source, or evidence row is ever created, deleted, or modified by this parameter."""
     result = await db.execute(
         select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
     )
@@ -755,7 +791,7 @@ async def get_reference_video(
         # Should be unreachable: asset_id is a RESTRICT FK, so the Asset cannot be deleted while
         # this ReferenceVideo exists. Surfaced honestly rather than silently swallowed.
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Reference video's underlying asset is missing")
-    return await _to_response(db, rv, asset)
+    return await _to_response(db, rv, asset, video_analysis_id=video_analysis_id)
 
 
 @router.post("/{reference_video_id}/analyze", response_model=ReferenceVideoResponse)
