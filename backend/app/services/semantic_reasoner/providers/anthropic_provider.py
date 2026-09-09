@@ -62,6 +62,16 @@ present in what you are given (spoken, on-screen text, or otherwise) -- it is no
 speech specifically -- but some such positive evidence of an actual new unit is required before \
 concluding one has begun. If only an ending is evidenced and nothing establishes a new beginning, \
 this is not a semantic boundary.
+- Even once you have established that another coherent unit genuinely begins, a Scene boundary \
+additionally requires that this unit's own CENTRAL PROPOSITION, TOPIC, OR FUNCTION is materially \
+distinct from what came before -- not merely that the content moved on to a new rhetorical \
+development while still serving the same underlying proposition or topic. A meaningful rhetorical \
+movement -- for example a contrast, qualification, example, escalation, reversal, or emphasis -- \
+that occurs while the surrounding content continues arguing, explaining, or describing the SAME \
+underlying proposition or topic is NOT by itself sufficient to establish a new Scene, even when it \
+is a genuine, clearly-marked turn. Only conclude a boundary when what the content is fundamentally \
+about, or what function it is serving, has itself changed -- not merely how it is being argued or \
+delivered.
 - Judge from the actual MEANING of the content itself, not from technical/visual signals alone.
 - Any "language" field on speech evidence is only a measured hint from automatic speech \
 recognition -- it can be imprecise (for example, a closely related language sometimes gets \

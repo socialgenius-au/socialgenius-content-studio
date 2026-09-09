@@ -402,3 +402,141 @@ async def test_ending_only_scenario_still_structurally_acceptable_as_true_or_fal
              patch("app.services.semantic_reasoner.providers.anthropic_provider.settings.ANTHROPIC_API_KEY", "sk-ant-fake"):
             result = await reason_about_boundary(ending_only_bundle)
         assert result.decision.is_semantic_boundary == decision_value
+
+
+# ===========================================================================
+# STAGE 10.2B2F -- LOCK SEMANTIC SCENE GRANULARITY. Stage 10.2B2E's real-
+# benchmark audit found that a meaningful rhetorical contrast (e.g. a "but")
+# occurring INSIDE one still-continuing central proposition is not itself a
+# Semantic Scene boundary -- only a material change in the content's own
+# central proposition/topic/function is. This section locks that generic
+# distinction into the prompt and tests it directly, WITHOUT referencing any
+# specific benchmark video, timestamp, or transcript phrase (those live only
+# in this engagement's own validation history, never in production code or
+# tests). No Story Beat inference, classification, or output field is added
+# anywhere -- the prompt only explains what is NOT sufficient for a Scene.
+# ===========================================================================
+
+def test_prompt_operates_at_central_proposition_topic_or_function_granularity():
+    prompt = _prompt_lower()
+    assert "central proposition, topic, or function" in prompt or (
+        "central proposition" in prompt and "topic" in prompt and "function" in prompt
+    )
+
+
+def test_prompt_states_rhetorical_contrast_alone_is_insufficient():
+    prompt = _prompt_lower()
+    assert "contrast" in prompt
+    assert "not by itself sufficient to establish a new scene" in prompt
+
+
+def test_prompt_states_qualification_alone_is_insufficient():
+    prompt = _prompt_lower()
+    assert "qualification" in prompt
+
+
+def test_prompt_states_example_alone_is_insufficient():
+    prompt = _prompt_lower()
+    assert "example" in prompt
+
+
+def test_prompt_states_escalation_alone_is_insufficient():
+    prompt = _prompt_lower()
+    assert "escalation" in prompt
+
+
+def test_prompt_still_allows_a_genuinely_new_proposition_to_be_a_scene():
+    # The rule must be phrased as an exclusion ("X alone is not sufficient"), never as a blanket
+    # ban on ever detecting a boundary -- confirm the prompt still affirmatively describes what
+    # DOES qualify (a real change in what the content is fundamentally about/its function).
+    prompt = _prompt_lower()
+    assert "what the content is fundamentally about" in prompt or "has itself changed" in prompt
+
+
+def test_prompt_still_preserves_b2c_ending_rule():
+    # Stage 10.2B2C's own rule must remain present, unedited in spirit, alongside the new
+    # granularity clarification -- these are complementary, not a replacement of one by the other.
+    prompt = _prompt_lower()
+    assert "a semantic boundary requires both" in prompt
+    assert "coherent unit of meaning begins" in prompt
+
+
+def test_prompt_still_allows_visual_or_text_only_new_scenes():
+    # Unchanged from B2C -- the granularity clarification must not narrow this back down to a
+    # speech-only requirement.
+    prompt = _prompt_lower()
+    assert "not required to be speech specifically" in prompt
+
+
+def test_prompt_does_not_add_story_beat_output_or_classification():
+    # The prompt may explain what is NOT sufficient for a Scene split (illustratively naming
+    # rhetorical-development types), but must never ask the model to LABEL or CLASSIFY a beat, and
+    # the strict response schema must still contain no such field.
+    prompt = _prompt_lower()
+    assert "story beat" not in prompt or "do not produce a story beat" in prompt  # exclusion only
+    assert '"story_beat"' not in SYSTEM_PROMPT
+    assert '"beat_type"' not in SYSTEM_PROMPT
+    assert '"rhetorical_move"' not in SYSTEM_PROMPT
+
+
+def test_granularity_rule_introduces_no_benchmark_specific_terms():
+    # This new rule text must be as domain/video-neutral as the rest of the prompt -- no specific
+    # video id, timestamp, language, or transcript content of any kind.
+    new_rule_marker_start = "even once you have established"
+    new_rule_marker_end = "judge from the actual meaning"
+    prompt = _prompt_lower()
+    start = prompt.index(new_rule_marker_start)
+    end = prompt.index(new_rule_marker_end)
+    added_rule_text = prompt[start:end]
+
+    forbidden = (
+        "rv146", "rv5127", "5368", "12.083", "25.380", "39.9", "urdu", "hindi", "لیکن",
+        "woman", "marketing", "tutorial", "medical", "educational",
+    )
+    for term in forbidden:
+        assert term not in added_rule_text
+
+
+def test_json_schema_block_still_unchanged():
+    # Contract/schema must remain byte-identical after this prompt addition too.
+    expected_schema_block = '''{
+  "is_semantic_boundary": true | false | null,
+  "confidence": "low" | "medium" | "high",
+  "confidence_score": null,
+  "reasoning": "concise justification",
+  "evidence_references": {
+    "supporting_shot_ids": [],
+    "supporting_speech_segment_ids": [],
+    "supporting_text_element_ids": [],
+    "supporting_annotation_ids": []
+  }
+}'''
+    assert expected_schema_block in SYSTEM_PROMPT
+
+
+async def test_evidence_id_validation_still_rejects_unknown_ids_after_granularity_rule(monkeypatch):
+    monkeypatch.setattr(reasoner_router.settings, "SEMANTIC_REASONER_PROVIDER", "anthropic")
+    response = {
+        "is_semantic_boundary": True, "confidence": "high", "confidence_score": None,
+        "reasoning": "x", "evidence_references": {"supporting_speech_segment_ids": [999999]},
+    }
+    fake_client = _fake_client_returning(response)
+    with patch("app.services.semantic_reasoner.providers.anthropic_provider.get_client", return_value=fake_client), \
+         patch("app.services.semantic_reasoner.providers.anthropic_provider.settings.ANTHROPIC_API_KEY", "sk-ant-fake"):
+        with pytest.raises(SemanticReasoningError, match="never offered in this bundle"):
+            await reason_about_boundary(_SAMPLE_BUNDLE)
+
+
+async def test_true_decision_still_structurally_acceptable_after_granularity_rule(monkeypatch):
+    # A PROMPT-only correction -- confirm the contract still accepts a genuine True (a materially
+    # new proposition/topic/function is always a legitimate, structurally unconstrained outcome).
+    monkeypatch.setattr(reasoner_router.settings, "SEMANTIC_REASONER_PROVIDER", "anthropic")
+    response = {
+        "is_semantic_boundary": True, "confidence": "medium", "confidence_score": None,
+        "reasoning": "the content's own central topic changes here", "evidence_references": {},
+    }
+    fake_client = _fake_client_returning(response)
+    with patch("app.services.semantic_reasoner.providers.anthropic_provider.get_client", return_value=fake_client), \
+         patch("app.services.semantic_reasoner.providers.anthropic_provider.settings.ANTHROPIC_API_KEY", "sk-ant-fake"):
+        result = await reason_about_boundary(_SAMPLE_BUNDLE)
+    assert result.decision.is_semantic_boundary is True
