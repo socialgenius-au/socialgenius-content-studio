@@ -97,12 +97,24 @@ class ReasonerDecision:
         REFERENCES ONLY, never copied transcript/OCR text or other evidence content. Restricted to
         VALID_EVIDENCE_REFERENCE_KEYS; every value is a list of ids (int), possibly empty, never
         required to cite every category.
+
+    reasoning_contract_version: which version of the PROMPT/reasoning instructions actually
+        produced this decision (Stage 10.2B5) -- independent of provider/model, since provider+
+        model+pass-name alone cannot distinguish "the same model reasoned under two different
+        prompt revisions" (this engagement's own SYSTEM_PROMPT has already changed three times).
+        A concrete provider reports its OWN version string here (e.g. AnthropicSemanticReasoner
+        reports its own SEMANTIC_BOUNDARY_PROMPT_VERSION) -- this is the ONLY channel a provider
+        has to report such a fact back through, since router.py's own ReasonerResult construction
+        knows nothing provider-specific beyond what the provider hands back in this object.
+        router.py copies this value straight into the outer ReasonerResult it returns. None only
+        for a provider that has not been updated to report one.
     """
     is_semantic_boundary: bool | None
     confidence: str
     confidence_score: float | None
     reasoning: str
     evidence_references: dict = field(default_factory=dict)
+    reasoning_contract_version: str | None = None
 
     def __post_init__(self) -> None:
         if self.confidence not in VALID_CONFIDENCE_LEVELS:
@@ -120,8 +132,18 @@ class ReasonerResult:
     like AIProvider.generate_text() never returns an AIResult for a failed call — this keeps
     "the call failed" (an exception) structurally distinct from "the call succeeded but the
     reasoner itself couldn't tell" (decision.is_semantic_boundary is None).
+
+    reasoning_contract_version: which version of the PROMPT/reasoning instructions actually
+        produced this decision -- independent of `provider`/`model` (Stage 10.2B5). provider+model+
+        pass-name alone cannot distinguish "the same model reasoned under two different prompt
+        revisions" (this engagement's own SYSTEM_PROMPT has already changed three times); this
+        field closes that gap. Each provider reports its OWN version string (e.g.
+        AnthropicSemanticReasoner reports its own SEMANTIC_BOUNDARY_PROMPT_VERSION) -- this module
+        stays fully provider-agnostic and never hard-codes any one provider's own versioning
+        scheme. None only for a provider that has not been updated to report one.
     """
     decision: ReasonerDecision
     provider: str
     model: str
     candidate_timestamp: float
+    reasoning_contract_version: str | None = None

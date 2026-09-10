@@ -70,4 +70,8 @@ async def reason_about_boundary(evidence_bundle: dict) -> ReasonerResult:
         provider=provider.name,
         model=settings.SEMANTIC_REASONER_MODEL,
         candidate_timestamp=candidate_timestamp,
+        # Copied straight from the decision the provider itself returned -- this router has no
+        # provider-specific knowledge of its own; the provider is the only place that knows which
+        # prompt/reasoning-contract version it actually used (Stage 10.2B5).
+        reasoning_contract_version=decision.reasoning_contract_version,
     )

@@ -90,13 +90,17 @@ async def _cleanup(db, asset_id: int, reference_video_id: int):
 def _reasoner_result(
     timestamp: float, is_semantic_boundary: bool | None, confidence: str,
     evidence_references: dict | None = None, provider: str = "anthropic", model: str = "claude-sonnet-4-6",
-    reasoning: str = "test reasoning",
+    reasoning: str = "test reasoning", reasoning_contract_version: str | None = None,
 ) -> ReasonerResult:
     decision = ReasonerDecision(
         is_semantic_boundary=is_semantic_boundary, confidence=confidence, confidence_score=None,
         reasoning=reasoning, evidence_references=evidence_references or {},
+        reasoning_contract_version=reasoning_contract_version,
     )
-    return ReasonerResult(decision=decision, provider=provider, model=model, candidate_timestamp=timestamp)
+    return ReasonerResult(
+        decision=decision, provider=provider, model=model, candidate_timestamp=timestamp,
+        reasoning_contract_version=reasoning_contract_version,
+    )
 
 
 def _record(timestamp, is_semantic_boundary, confidence, evidence_references=None, source_nominations=None, **kwargs):
@@ -557,6 +561,32 @@ async def test_scene_construction_pass_key_removed_even_if_stale_entry_pre_exist
 
             va_after = await db.get(VideoAnalysis, va_id)
             assert "semantic_scene_construction_v1" not in va_after.ai_provider_versions_used
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_snapshot_decision_rows_carry_their_own_per_row_provenance():
+    # Stage 10.2B5 -- each semantic_boundary_decision row must remain traceable to the EXACT
+    # reasoning result it came from, independent of the run-level aggregate.
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user, duration=100.0)
+        try:
+            records = [
+                _record(20.0, False, "high", provider="anthropic", model="claude-sonnet-4-6", reasoning_contract_version="v3"),
+                _record(60.0, True, "medium", provider="other", model="some-other-model", reasoning_contract_version="v1"),
+            ]
+            await construct_and_persist_scenes(db, va_id, records)
+
+            rows = (await db.execute(select(AnalysisAnnotation).where(
+                AnalysisAnnotation.video_analysis_id == va_id, AnalysisAnnotation.category == BOUNDARY_DECISION_CATEGORY,
+            ).order_by(AnalysisAnnotation.start_time))).scalars().all()
+            assert rows[0].details["provider"] == "anthropic"
+            assert rows[0].details["model"] == "claude-sonnet-4-6"
+            assert rows[0].details["prompt_version"] == "v3"
+            assert rows[1].details["provider"] == "other"
+            assert rows[1].details["model"] == "some-other-model"
+            assert rows[1].details["prompt_version"] == "v1"
         finally:
             await _cleanup(db, asset_id, rv_id)
 

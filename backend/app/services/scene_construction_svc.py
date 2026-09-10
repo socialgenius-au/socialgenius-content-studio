@@ -60,7 +60,10 @@ PRESERVING EVERY DECISION: every supplied `CandidateReasoningRecord` — accepte
 confidence, including None (undecided) — is persisted as its own `AnalysisAnnotation` row
 (`category="semantic_boundary_decision"`, a new category value on the existing, category-agnostic
 table -- no new table, no schema change). This is the durable audit trail answering "why was this
-boundary accepted/rejected" without ever copying full evidence bundles into a Scene row.
+boundary accepted/rejected" without ever copying full evidence bundles into a Scene row. Each row's
+own `details` also carries its own `provider`/`model`/`prompt_version` (Stage 10.2B5) -- so this
+specific snapshot decision stays traceable to the EXACT reasoning result it was built from,
+independent of the run-level aggregate described below.
 
 PROVENANCE (Stage 10.2B3-P1 correction): Scene CONSTRUCTION itself never calls a model or any
 external API, so it is never credited with "using" a provider/model — that fact belongs to the
@@ -265,6 +268,13 @@ async def construct_and_persist_scenes(
                 "confidence": decision.confidence,
                 "evidence_references": decision.evidence_references,
                 "source_nominations": record.source_nominations,
+                # Stage 10.2B5 -- per-decision provenance, so THIS specific snapshot row remains
+                # traceable to the exact reasoning result it was built from, independent of the
+                # run-level aggregate under VideoAnalysis.ai_provider_versions_used (which records
+                # only "which distinct pairs appeared somewhere in this run," never per-row).
+                "provider": record.result.provider,
+                "model": record.result.model,
+                "prompt_version": record.result.reasoning_contract_version,
             },
             certainty="INFERRED",
             confidence_score=decision.confidence_score,

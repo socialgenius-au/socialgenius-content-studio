@@ -31,6 +31,19 @@ from .base import SemanticReasonerProvider
 
 MAX_RESPONSE_TOKENS = 1024
 
+# Stage 10.2B5 — the explicit, stable reasoning-contract version for SYSTEM_PROMPT below. Bumped
+# by hand every time SYSTEM_PROMPT's own text meaningfully changes -- mirroring this codebase's
+# own long-established `_v1`/`_v2` PASS-naming convention, just applied one level deeper, to the
+# prompt text itself rather than only the pass that runs it. This value travels with every
+# ReasonerResult (see ReasonerResult.reasoning_contract_version) independently of provider/model,
+# so a future durable reasoning-result row can distinguish "same model, different prompt" --
+# something provider+model+pass-name alone cannot do (see the Stage 10.2B5 final-provenance-
+# contract audit). "v3" reflects the three real prompt iterations this exact text has already
+# gone through in this engagement: the original Stage 10.2B2 question, the Stage 10.2B2C
+# "ending != beginning" rule, and the Stage 10.2B2F "central proposition/topic/function"
+# granularity rule -- this SYSTEM_PROMPT, as committed here, IS that third version.
+SEMANTIC_BOUNDARY_PROMPT_VERSION = "v3"
+
 # ── The ONE generic semantic-boundary prompt, used identically for every candidate in every video
 # -- no video id, timestamp, language, or expected answer is ever special-cased into this string.
 # Per the Stage 10.2B2 task's own explicit "DO NOT CHEAT THE BENCHMARK" section: this prompt is
@@ -266,6 +279,7 @@ class AnthropicSemanticReasoner(SemanticReasonerProvider):
                 confidence_score=data.get("confidence_score"),
                 reasoning=data["reasoning"],
                 evidence_references=data["evidence_references"],
+                reasoning_contract_version=SEMANTIC_BOUNDARY_PROMPT_VERSION,
             )
         except ValueError as exc:
             raise SemanticReasoningError(f"Anthropic response failed contract validation: {exc}") from exc

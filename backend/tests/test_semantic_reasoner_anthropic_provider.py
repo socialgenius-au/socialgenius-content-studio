@@ -540,3 +540,16 @@ async def test_true_decision_still_structurally_acceptable_after_granularity_rul
          patch("app.services.semantic_reasoner.providers.anthropic_provider.settings.ANTHROPIC_API_KEY", "sk-ant-fake"):
         result = await reason_about_boundary(_SAMPLE_BUNDLE)
     assert result.decision.is_semantic_boundary is True
+
+
+# ===========================================================================
+# STAGE 10.2B5 -- prompt/reasoning-contract version provenance.
+# ===========================================================================
+
+async def test_reasoning_contract_version_populated_on_decision_and_result(monkeypatch):
+    from app.services.semantic_reasoner.providers.anthropic_provider import SEMANTIC_BOUNDARY_PROMPT_VERSION
+
+    result = await _run_with_response(monkeypatch, _valid_true_response())
+    assert result.decision.reasoning_contract_version == SEMANTIC_BOUNDARY_PROMPT_VERSION
+    assert result.reasoning_contract_version == SEMANTIC_BOUNDARY_PROMPT_VERSION
+    assert SEMANTIC_BOUNDARY_PROMPT_VERSION  # non-empty, non-None
