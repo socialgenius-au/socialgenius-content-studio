@@ -6,6 +6,8 @@ other test file in this suite. No real semantic reasoner or Anthropic call occur
 this file -- every ReasonerResult/ReasonerDecision is hand-constructed, exactly like
 test_scene_construction_svc.py's own convention.
 """
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -20,6 +22,7 @@ from app.models.video_analysis import VideoAnalysis
 from app.services.scene_construction_svc import CandidateReasoningRecord, construct_and_persist_scenes
 from app.services.semantic_boundary_reasoning_store_svc import (
     REASONING_RESULT_CATEGORY,
+    BackfillProvenance,
     find_unreasoned_candidates,
     load_latest_reasoning_results,
     persist_reasoning_result,
@@ -320,6 +323,178 @@ async def test_loader_output_feeds_directly_into_existing_b3():
 # ---------------------------------------------------------------------------
 
 def test_store_module_imports_no_anthropic_or_reasoner_router():
+    import ast
+    import inspect
+    import app.services.semantic_boundary_reasoning_store_svc as module
+
+    tree = ast.parse(inspect.getsource(module))
+    imported_names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_names.add(node.module)
+
+    assert "anthropic" not in imported_names
+    assert not any(name.startswith("app.services.semantic_reasoner.router") for name in imported_names)
+    assert "reason_about_boundary" not in imported_names
+
+
+# ===========================================================================
+# STAGE 10.2B6-P3 -- bounded historical-backfill provenance support. No real
+# historical result is imported anywhere in this file -- these tests use
+# synthetic fixtures only, exactly like every other test in this file.
+# ===========================================================================
+
+async def test_ordinary_live_persistence_remains_unchanged():
+    # backfill=None (the default) -- confirms the existing call shape from every pre-existing
+    # test in this file still works exactly as before.
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            annotation = await persist_reasoning_result(db, va_id, _record(30.0, True, "high"))
+            assert annotation.details["is_semantic_boundary"] is True
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_normal_rows_do_not_acquire_misleading_historical_metadata():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            annotation = await persist_reasoning_result(db, va_id, _record(30.0, True, "high"))
+            for key in (
+                "backfilled_from_prior_reasoning", "original_reasoning_timestamp",
+                "original_reasoning_timestamp_basis", "source_nominations_reconstructed",
+            ):
+                assert key not in annotation.details  # omitted entirely, never false/null placeholders
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_historical_backfill_metadata_persisted_exactly_when_supplied():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            backfill = BackfillProvenance(
+                original_reasoning_timestamp="2026-09-09T13:36:19+05:30",
+                original_reasoning_timestamp_basis="scratchpad_file_mtime_approximate",
+                source_nominations_reconstructed=True,
+            )
+            annotation = await persist_reasoning_result(
+                db, va_id, _record(30.175, False, "low", provider="anthropic", model="claude-sonnet-4-6", reasoning_contract_version="v2"),
+                backfill=backfill,
+            )
+            assert annotation.details["backfilled_from_prior_reasoning"] is True
+            assert annotation.details["original_reasoning_timestamp"] == "2026-09-09T13:36:19+05:30"
+            assert annotation.details["original_reasoning_timestamp_basis"] == "scratchpad_file_mtime_approximate"
+            assert annotation.details["source_nominations_reconstructed"] is True
+            assert annotation.details["prompt_version"] == "v2"  # historical version preserved
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_backfill_with_no_known_timestamp_omits_timestamp_keys():
+    # A backfill can legitimately mark source_nominations as reconstructed without claiming any
+    # original timestamp at all -- the two concerns are independent.
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            backfill = BackfillProvenance(source_nominations_reconstructed=True)
+            annotation = await persist_reasoning_result(db, va_id, _record(30.0, True, "high"), backfill=backfill)
+            assert annotation.details["backfilled_from_prior_reasoning"] is True
+            assert "original_reasoning_timestamp" not in annotation.details
+            assert "original_reasoning_timestamp_basis" not in annotation.details
+            assert annotation.details["source_nominations_reconstructed"] is True
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_created_at_remains_db_generated_insertion_time_for_backfill():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            before = datetime.now(timezone.utc)
+            backfill = BackfillProvenance(
+                original_reasoning_timestamp="2020-01-01T00:00:00+00:00",  # deliberately ancient
+                original_reasoning_timestamp_basis="test_fixture",
+            )
+            annotation = await persist_reasoning_result(db, va_id, _record(30.0, True, "high"), backfill=backfill)
+            after = datetime.now(timezone.utc)
+
+            assert before <= annotation.created_at <= after  # NOT the historical 2020 date
+            assert annotation.details["original_reasoning_timestamp"] == "2020-01-01T00:00:00+00:00"
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_prompt_version_v2_survives_persistence_and_load():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            backfill = BackfillProvenance(
+                original_reasoning_timestamp="2026-09-09T13:36:19+05:30",
+                original_reasoning_timestamp_basis="scratchpad_file_mtime_approximate",
+            )
+            await persist_reasoning_result(
+                db, va_id, _record(30.175, False, "low", reasoning_contract_version="v2"), backfill=backfill,
+            )
+            loaded = await load_latest_reasoning_results(db, va_id)
+            assert loaded[0].result.reasoning_contract_version == "v2"
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_reconstructed_source_nominations_usable_by_loader():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            reconstructed_nominations = [{"source_type": "shot_boundary", "source_id": 141, "timestamp": 30.1}]
+            backfill = BackfillProvenance(source_nominations_reconstructed=True)
+            await persist_reasoning_result(
+                db, va_id, _record(30.175, False, "low", source_nominations=reconstructed_nominations),
+                backfill=backfill,
+            )
+            loaded = await load_latest_reasoning_results(db, va_id)
+            assert loaded[0].source_nominations == reconstructed_nominations  # fully usable, not degraded
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_append_only_latest_wins_unchanged_with_backfill_mixed_in():
+    # A live result persisted AFTER an earlier backfilled one must still win as "latest" --
+    # backfill support must not alter append-only/latest-wins semantics at all.
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            backfill = BackfillProvenance(
+                original_reasoning_timestamp="2026-09-09T13:36:19+05:30",
+                original_reasoning_timestamp_basis="scratchpad_file_mtime_approximate",
+            )
+            await persist_reasoning_result(db, va_id, _record(30.0, False, "low", reasoning="historical"), backfill=backfill)
+            await persist_reasoning_result(db, va_id, _record(30.0, True, "high", reasoning="fresh live rerun"))
+
+            all_rows = (await db.execute(select(AnalysisAnnotation).where(
+                AnalysisAnnotation.video_analysis_id == va_id, AnalysisAnnotation.category == REASONING_RESULT_CATEGORY,
+            ))).scalars().all()
+            assert len(all_rows) == 2  # both preserved, append-only
+
+            loaded = await load_latest_reasoning_results(db, va_id)
+            assert len(loaded) == 1
+            assert loaded[0].result.decision.reasoning == "fresh live rerun"  # latest wins
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+def test_backfill_support_introduces_no_provider_or_api_import():
     import ast
     import inspect
     import app.services.semantic_boundary_reasoning_store_svc as module

@@ -44,6 +44,8 @@ FOLLOW-UP:
     that have no durable reasoning result yet, using the same proximity tolerance. Computed fresh
     every call rather than cached, so it can never go stale if evidence changes later.
 """
+from dataclasses import dataclass
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,8 +68,41 @@ def _same_candidate(a: float, b: float) -> bool:
     return abs(a - b) <= CANDIDATE_MERGE_WINDOW_SECONDS
 
 
+@dataclass
+class BackfillProvenance:
+    """Explicit, BOUNDED provenance for a reasoning result being durably recorded after the fact
+    (Stage 10.2B6) -- e.g. a real result already obtained in an earlier session, only now given a
+    durable home in this store. Deliberately NOT a generic/unrestricted metadata dict: exactly
+    these two fields, each with one specific, narrow meaning. Passing an instance of this class to
+    `persist_reasoning_result` (rather than leaving its `backfill` parameter at the default None)
+    is itself what marks the resulting row `details.backfilled_from_prior_reasoning = true` --
+    there is no separate boolean to set inconsistently.
+
+    original_reasoning_timestamp: when the ORIGINAL reasoning call actually happened, if known --
+        never fabricated; leave None (the default) if genuinely unknown. An ISO-8601 string, not a
+        live/current timestamp -- this must never be confused with, or substituted for,
+        `AnalysisAnnotation.created_at` (which always means "when this row was inserted").
+
+    original_reasoning_timestamp_basis: HOW that timestamp was established (e.g.
+        "scratchpad_file_mtime_approximate") -- so a reader can judge its own precision rather
+        than mistaking it for an exact, API-returned event timestamp. Required whenever
+        `original_reasoning_timestamp` is supplied (a timestamp with no stated basis is not
+        trustworthy provenance); ignored if `original_reasoning_timestamp` is None.
+
+    source_nominations_reconstructed: True when the candidate's own `source_nominations` were
+        recomputed after the fact (e.g. via a fresh, deterministic Stage 10.2A recomputation)
+        rather than captured live at the moment the original reasoning call was made -- keeps
+        reconstructed provenance explicitly distinguishable from nominations genuinely captured
+        at reasoning time. Defaults to False; only ever written into `details` when True.
+    """
+    original_reasoning_timestamp: str | None = None
+    original_reasoning_timestamp_basis: str | None = None
+    source_nominations_reconstructed: bool = False
+
+
 async def persist_reasoning_result(
     db: AsyncSession, video_analysis_id: int, record: CandidateReasoningRecord,
+    backfill: BackfillProvenance | None = None,
 ) -> AnalysisAnnotation:
     """Durably persists ONE reasoning result immediately, independent of Scene construction.
     Commits right away — this is what makes the design crash-safe: a crash while reasoning about
@@ -75,23 +110,39 @@ async def persist_reasoning_result(
     overwrites a prior row for the same candidate_timestamp; a rerun (a different provider, model,
     or prompt version) simply adds its own new row, and every earlier attempt remains queryable
     history, distinguishable by `created_at` plus this row's own `details.provider`/`details.
-    model`/`details.prompt_version`."""
+    model`/`details.prompt_version`.
+
+    `backfill`: leave at the default None for ordinary LIVE persistence (immediately after a real
+    reasoning call) -- the resulting row's `details` then contains NONE of the historical-backfill
+    keys at all, never a meaningless `false`/`null` placeholder for them. Pass a `BackfillProvenance`
+    only when durably recording a result that was ALREADY obtained earlier and is only now being
+    given a durable home (Stage 10.2B6) -- `AnalysisAnnotation.created_at` still reflects the
+    actual moment THIS row is inserted either way; it is never overridden to the historical time."""
     decision = record.result.decision
+    details = {
+        "is_semantic_boundary": decision.is_semantic_boundary,
+        "confidence": decision.confidence,
+        "evidence_references": decision.evidence_references,
+        "source_nominations": record.source_nominations,
+        "provider": record.result.provider,
+        "model": record.result.model,
+        "prompt_version": record.result.reasoning_contract_version,
+    }
+    if backfill is not None:
+        details["backfilled_from_prior_reasoning"] = True
+        if backfill.original_reasoning_timestamp is not None:
+            details["original_reasoning_timestamp"] = backfill.original_reasoning_timestamp
+            details["original_reasoning_timestamp_basis"] = backfill.original_reasoning_timestamp_basis
+        if backfill.source_nominations_reconstructed:
+            details["source_nominations_reconstructed"] = True
+
     annotation = AnalysisAnnotation(
         video_analysis_id=video_analysis_id,
         shot_id=None,
         category=REASONING_RESULT_CATEGORY,
         start_time=record.result.candidate_timestamp,
         end_time=record.result.candidate_timestamp,
-        details={
-            "is_semantic_boundary": decision.is_semantic_boundary,
-            "confidence": decision.confidence,
-            "evidence_references": decision.evidence_references,
-            "source_nominations": record.source_nominations,
-            "provider": record.result.provider,
-            "model": record.result.model,
-            "prompt_version": record.result.reasoning_contract_version,
-        },
+        details=details,
         certainty="INFERRED",
         confidence_score=decision.confidence_score,
         reasoning=decision.reasoning,
