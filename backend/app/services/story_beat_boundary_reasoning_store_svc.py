@@ -55,10 +55,11 @@ Stage 10.3B4's own explicit scope limits (do not exceed without a separate, late
     is reasoning EVIDENCE about a candidate; `story_beat` (not yet built) will be a constructed,
     time-ranged semantic object built FROM that evidence, exactly as Scene is built from
     `semantic_boundary_attempt` rows.
-  - No backfill support exists in this module yet (unlike the Scene store, which gained
-    `BackfillProvenance` in a separate later phase, Stage 10.2B6-P3) — whether/how to durably
-    record the eight already-made B3/B3-P2 pilot results is an explicitly deferred, separate
-    decision, not part of this phase.
+  - Stage 10.3B5 adds bounded historical-backfill provenance support (`StoryBeatBackfillProvenance`
+    + the optional `backfill` parameter below), mirroring the Scene store's own `BackfillProvenance`
+    (Stage 10.2B6-P3). Whether/how to actually backfill the eight already-made B3/B3-P2 pilot
+    results is STILL an explicitly deferred, separate decision — Stage 10.3B5 only ships the
+    structural ability, inserts nothing.
   - This module never imports `anthropic`, `app.services.story_beat_reasoner.router`, or
     `reason_about_story_beat_boundary` — it only ever persists or reads already-computed
     `StoryBeatReasoningRecord` objects, exactly mirroring the Scene store's own "cannot make a real
@@ -103,8 +104,48 @@ class StoryBeatReasoningRecord:
     source_nominations: list[dict] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class StoryBeatBackfillProvenance:
+    """Explicit, BOUNDED provenance for a Story Beat reasoning result being durably recorded after
+    the fact — e.g. one of the eight non-persistent B3/B3-P2 pilot results, only now (in some
+    future, separately-authorized task) given a durable home in this store. A deliberate SIBLING of
+    `semantic_boundary_reasoning_store_svc.BackfillProvenance` — same three fields, same narrow
+    meanings — never a shared/imported class, and (unlike the Scene one) `frozen=True` so an
+    instance is immutable once constructed.
+
+    Deliberately NOT a generic/unrestricted metadata dict: exactly these three fields, each with
+    one specific, narrow meaning. Passing an instance of this class to
+    `persist_story_beat_reasoning_result` (rather than leaving its `backfill` parameter at the
+    default None) is itself what marks the resulting row
+    `details.backfilled_from_prior_reasoning = true` — there is no separate boolean to set
+    inconsistently.
+
+    original_reasoning_timestamp: when the ORIGINAL Story Beat reasoning call actually happened, if
+        known — never fabricated; leave None (the default) if genuinely unknown. An ISO-8601
+        string, not a live/current timestamp — this must never be confused with, or substituted
+        for, `AnalysisAnnotation.created_at` (which always means "when this row was inserted").
+
+    original_reasoning_timestamp_basis: HOW that timestamp was established (e.g.
+        "session_transcript_message_timestamp") — so a reader can judge its own precision rather
+        than mistaking it for an exact, API-returned event timestamp. Meaningful only when
+        `original_reasoning_timestamp` is supplied; ignored (and omitted from `details`) otherwise.
+
+    source_nominations_reconstructed: True when the candidate's own `source_nominations` were
+        recomputed after the fact (via a fresh, deterministic Stage 10.2A recomputation from
+        current evidence) rather than captured live at the moment the original reasoning call was
+        made — the B3/B3-P2 pilots never durably captured their nominations at call time, so any
+        eventual backfill of them WILL need this. Keeps reconstructed provenance explicitly
+        distinguishable from nominations genuinely captured at reasoning time. Defaults to False;
+        only ever written into `details` when True.
+    """
+    original_reasoning_timestamp: str | None = None
+    original_reasoning_timestamp_basis: str | None = None
+    source_nominations_reconstructed: bool = False
+
+
 async def persist_story_beat_reasoning_result(
     db: AsyncSession, video_analysis_id: int, record: StoryBeatReasoningRecord,
+    backfill: StoryBeatBackfillProvenance | None = None,
 ) -> AnalysisAnnotation:
     """Durably persists ONE Story Beat reasoning result immediately. Commits right away — this is
     what makes the design crash-safe: a crash while reasoning about the NEXT candidate leaves this
@@ -116,7 +157,20 @@ async def persist_story_beat_reasoning_result(
     This row represents a REASONING ATTEMPT about a candidate timestamp — never a final, time-
     ranged Story Beat. `certainty` is always "INFERRED" (this is an AI interpretation of the
     underlying evidence, never itself measured/observed data — the Shot/Speech/OCR rows this
-    reasoning cites remain the MEASURED layer, untouched by this module)."""
+    reasoning cites remain the MEASURED layer, untouched by this module).
+
+    `backfill`: leave at the default None for ordinary LIVE persistence (immediately after a real
+    reasoning call) — the resulting row's `details` then contains NONE of the historical-backfill
+    keys at all, never a meaningless `false`/`null` placeholder for them, and normal-live behavior
+    is byte-for-byte identical to Stage 10.3B4. Pass a `StoryBeatBackfillProvenance` only when
+    durably recording a result that was ALREADY obtained earlier (Stage 10.3B3/B3-P2) and is only
+    now being given a durable home — `AnalysisAnnotation.created_at` still reflects the actual
+    moment THIS row is inserted either way; it is never overridden to the historical time, which
+    lives only in `details.original_reasoning_timestamp` alongside its stated
+    `.original_reasoning_timestamp_basis`. A backfilled row still preserves the ORIGINAL decision,
+    confidence, reasoning, evidence references, provider, model, and prompt version exactly as the
+    original call produced them — a historical "v1" result is never silently upgraded to a later
+    prompt version."""
     decision = record.result.decision
     details = {
         "is_story_beat_boundary": decision.is_story_beat_boundary,
@@ -127,6 +181,13 @@ async def persist_story_beat_reasoning_result(
         "model": record.result.model,
         "prompt_version": record.result.reasoning_contract_version,
     }
+    if backfill is not None:
+        details["backfilled_from_prior_reasoning"] = True
+        if backfill.original_reasoning_timestamp is not None:
+            details["original_reasoning_timestamp"] = backfill.original_reasoning_timestamp
+            details["original_reasoning_timestamp_basis"] = backfill.original_reasoning_timestamp_basis
+        if backfill.source_nominations_reconstructed:
+            details["source_nominations_reconstructed"] = True
 
     annotation = AnalysisAnnotation(
         video_analysis_id=video_analysis_id,

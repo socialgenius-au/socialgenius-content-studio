@@ -1,13 +1,15 @@
 """
-Video Deconstructor — Stage 10.3B4: Durable Story Beat Reasoning Result Store.
+Video Deconstructor — Stage 10.3B4 (durable Story Beat reasoning store) + Stage 10.3B5 (historical
+backfill provenance support).
 
 Uses the same real-database, direct create_async_engine/async_sessionmaker convention as
 tests/test_semantic_boundary_reasoning_store_svc.py. No real Story Beat reasoner or Anthropic call
-occurs anywhere in this file -- every StoryBeatResult/StoryBeatDecision is hand-constructed.
-
-No backfill support exists in this phase (an explicitly deferred, separate decision -- see the
-module's own docstring), so this file carries no backfill tests, unlike its Scene-store sibling.
+occurs anywhere in this file -- every StoryBeatResult/StoryBeatDecision is hand-constructed. The
+Stage 10.3B5 tests use synthetic fixtures only -- none of the eight real B3/B3-P2 pilot results is
+imported or inserted anywhere in this file.
 """
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -22,6 +24,7 @@ from app.models.video_analysis import VideoAnalysis
 from app.services.story_beat_boundary_reasoning_store_svc import (
     STORY_BEAT_BOUNDARY_ATTEMPT_CATEGORY,
     STORY_BEAT_REASONING_PASS_NAME,
+    StoryBeatBackfillProvenance,
     StoryBeatReasoningRecord,
     find_unreasoned_story_beat_candidates,
     load_latest_story_beat_reasoning_results,
@@ -544,3 +547,337 @@ def test_no_new_orm_model_or_migration_introduced():
 
     assert "alembic" not in source.lower()
     assert "ADD COLUMN" not in source.upper()
+
+
+# ===========================================================================
+# STAGE 10.3B5 -- historical-backfill provenance support. Synthetic fixtures
+# only; none of the eight real B3/B3-P2 pilot results is imported or inserted
+# anywhere. Mirrors tests/test_semantic_boundary_reasoning_store_svc.py's own
+# Stage 10.2B6-P3 section.
+# ===========================================================================
+
+def _backfill(
+    original_reasoning_timestamp: str | None = None,
+    original_reasoning_timestamp_basis: str | None = None,
+    source_nominations_reconstructed: bool = False,
+) -> StoryBeatBackfillProvenance:
+    return StoryBeatBackfillProvenance(
+        original_reasoning_timestamp=original_reasoning_timestamp,
+        original_reasoning_timestamp_basis=original_reasoning_timestamp_basis,
+        source_nominations_reconstructed=source_nominations_reconstructed,
+    )
+
+
+def test_backfill_provenance_structure_is_bounded_and_frozen():
+    import dataclasses
+    fields = {f.name for f in dataclasses.fields(StoryBeatBackfillProvenance)}
+    assert fields == {
+        "original_reasoning_timestamp",
+        "original_reasoning_timestamp_basis",
+        "source_nominations_reconstructed",
+    }
+    # frozen -> immutable
+    bp = StoryBeatBackfillProvenance()
+    try:
+        bp.original_reasoning_timestamp = "x"  # type: ignore[misc]
+        raise AssertionError("StoryBeatBackfillProvenance must be frozen/immutable")
+    except dataclasses.FrozenInstanceError:
+        pass
+    # no generic metadata bucket
+    for forbidden in ("extra_details", "metadata", "extra", "details"):
+        assert forbidden not in fields
+
+
+async def test_1_normal_live_persistence_remains_unchanged():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            annotation = await persist_story_beat_reasoning_result(db, va_id, _record(30.0, True, "high"))
+            assert annotation.details["is_story_beat_boundary"] is True
+            assert annotation.details["confidence"] == "high"
+            assert annotation.details["provider"] == "anthropic"
+            assert annotation.details["prompt_version"] == "v1"
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_2_live_rows_omit_all_backfill_fields():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            annotation = await persist_story_beat_reasoning_result(db, va_id, _record(30.0, True, "high"))
+            for key in (
+                "backfilled_from_prior_reasoning", "original_reasoning_timestamp",
+                "original_reasoning_timestamp_basis", "source_nominations_reconstructed",
+            ):
+                assert key not in annotation.details  # omitted entirely, never false/null placeholders
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_3_and_4_backfill_provenance_supplied_marks_only_backfilled_rows():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            live = await persist_story_beat_reasoning_result(db, va_id, _record(10.0, True, "high"))
+            back = await persist_story_beat_reasoning_result(
+                db, va_id, _record(20.0, True, "high"),
+                backfill=_backfill("2026-09-10T00:00:00+00:00", "session_transcript_message_timestamp"),
+            )
+            assert "backfilled_from_prior_reasoning" not in live.details
+            assert back.details["backfilled_from_prior_reasoning"] is True
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_5_6_7_historical_timestamp_basis_and_reconstructed_flag_preserved():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            annotation = await persist_story_beat_reasoning_result(
+                db, va_id,
+                _record(19.96, True, "high", provider="anthropic", model="claude-sonnet-4-6", reasoning_contract_version="v1"),
+                backfill=_backfill(
+                    original_reasoning_timestamp="2026-09-10T12:00:00+00:00",
+                    original_reasoning_timestamp_basis="session_transcript_message_timestamp",
+                    source_nominations_reconstructed=True,
+                ),
+            )
+            assert annotation.details["original_reasoning_timestamp"] == "2026-09-10T12:00:00+00:00"
+            assert annotation.details["original_reasoning_timestamp_basis"] == "session_transcript_message_timestamp"
+            assert annotation.details["source_nominations_reconstructed"] is True
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_backfill_with_no_known_timestamp_omits_timestamp_keys():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            annotation = await persist_story_beat_reasoning_result(
+                db, va_id, _record(30.0, True, "high"), backfill=_backfill(source_nominations_reconstructed=True),
+            )
+            assert annotation.details["backfilled_from_prior_reasoning"] is True
+            assert "original_reasoning_timestamp" not in annotation.details
+            assert "original_reasoning_timestamp_basis" not in annotation.details
+            assert annotation.details["source_nominations_reconstructed"] is True
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_8_created_at_remains_insertion_time_not_historical_time():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            before = datetime.now(timezone.utc)
+            annotation = await persist_story_beat_reasoning_result(
+                db, va_id, _record(30.0, True, "high"),
+                backfill=_backfill("2020-01-01T00:00:00+00:00", "test_fixture"),  # deliberately ancient
+            )
+            after = datetime.now(timezone.utc)
+            assert before <= annotation.created_at <= after  # NOT the historical 2020 date
+            assert annotation.details["original_reasoning_timestamp"] == "2020-01-01T00:00:00+00:00"
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_9_original_provider_model_prompt_version_preserved_on_backfill():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await persist_story_beat_reasoning_result(
+                db, va_id,
+                _record(30.0, False, "high", provider="anthropic", model="claude-sonnet-4-6", reasoning_contract_version="v1"),
+                backfill=_backfill("2026-09-10T12:00:00+00:00", "session_transcript_message_timestamp"),
+            )
+            loaded = await load_latest_story_beat_reasoning_results(db, va_id)
+            assert loaded[0].result.provider == "anthropic"
+            assert loaded[0].result.model == "claude-sonnet-4-6"
+            assert loaded[0].result.reasoning_contract_version == "v1"  # never silently upgraded
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_10_original_decision_confidence_reasoning_evidence_preserved_on_backfill():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            refs = {"supporting_speech_segment_ids": [711, 712]}
+            await persist_story_beat_reasoning_result(
+                db, va_id,
+                _record(19.96, True, "high", evidence_references=refs, reasoning="condition -> consequence rhetorical shift"),
+                backfill=_backfill(source_nominations_reconstructed=True),
+            )
+            loaded = await load_latest_story_beat_reasoning_results(db, va_id)
+            assert loaded[0].result.decision.is_story_beat_boundary is True
+            assert loaded[0].result.decision.confidence == "high"
+            assert loaded[0].result.decision.reasoning == "condition -> consequence rhetorical shift"
+            assert loaded[0].result.decision.evidence_references == refs
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_11_loader_reconstructs_backfilled_rows_as_ordinary_results():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await persist_story_beat_reasoning_result(
+                db, va_id, _record(30.0, True, "medium"),
+                backfill=_backfill("2026-09-10T12:00:00+00:00", "session_transcript_message_timestamp", True),
+            )
+            loaded = await load_latest_story_beat_reasoning_results(db, va_id)
+            assert len(loaded) == 1
+            assert isinstance(loaded[0], StoryBeatReasoningRecord)
+            assert isinstance(loaded[0].result, StoryBeatResult)
+            # No historical/backfill metadata leaks into the reconstructed reasoning object.
+            assert not hasattr(loaded[0].result.decision, "backfilled_from_prior_reasoning")
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_12_backfilled_false_counts_as_reasoned():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await _add_shots(db, va_id, [(0.0, 30.0), (30.0, 60.0)])
+            await persist_story_beat_reasoning_result(
+                db, va_id, _record(30.0, False, "high"), backfill=_backfill(source_nominations_reconstructed=True),
+            )
+            unreasoned = await find_unreasoned_story_beat_candidates(db, va_id)
+            assert unreasoned == []  # a backfilled False still means "reasoned about"
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_13_backfilled_none_counts_as_reasoned():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await _add_shots(db, va_id, [(0.0, 30.0), (30.0, 60.0)])
+            await persist_story_beat_reasoning_result(
+                db, va_id, _record(30.0, None, "low"), backfill=_backfill(source_nominations_reconstructed=True),
+            )
+            unreasoned = await find_unreasoned_story_beat_candidates(db, va_id)
+            assert unreasoned == []  # a backfilled undecided attempt still counts
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_14_and_15_mixed_historical_live_attempts_append_only_latest_by_created_at():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            # An earlier backfilled (historical) attempt, then a fresh live rerun of the same candidate.
+            await persist_story_beat_reasoning_result(
+                db, va_id, _record(30.0, False, "low", reasoning="historical"),
+                backfill=_backfill("2026-09-10T12:00:00+00:00", "session_transcript_message_timestamp"),
+            )
+            await persist_story_beat_reasoning_result(db, va_id, _record(30.0, True, "high", reasoning="fresh live rerun"))
+
+            all_rows = (await db.execute(select(AnalysisAnnotation).where(
+                AnalysisAnnotation.video_analysis_id == va_id,
+                AnalysisAnnotation.category == STORY_BEAT_BOUNDARY_ATTEMPT_CATEGORY,
+            ))).scalars().all()
+            assert len(all_rows) == 2  # both preserved, append-only
+
+            loaded = await load_latest_story_beat_reasoning_results(db, va_id)
+            assert len(loaded) == 1
+            assert loaded[0].result.decision.reasoning == "fresh live rerun"  # latest by created_at wins
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_16_no_final_story_beat_row_created_by_backfill():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            await persist_story_beat_reasoning_result(
+                db, va_id, _record(30.0, True, "high"),
+                backfill=_backfill("2026-09-10T12:00:00+00:00", "session_transcript_message_timestamp"),
+            )
+            final_rows = (await db.execute(select(AnalysisAnnotation).where(
+                AnalysisAnnotation.video_analysis_id == va_id, AnalysisAnnotation.category == "story_beat",
+            ))).scalars().all()
+            assert final_rows == []
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+def test_17_backfill_support_introduces_no_migration():
+    import ast
+    import inspect
+    import app.services.story_beat_boundary_reasoning_store_svc as module
+    source = inspect.getsource(module)
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            base_names = {b.id for b in node.bases if isinstance(b, ast.Name)}
+            assert "Base" not in base_names
+    assert "alembic" not in source.lower()
+    assert "ADD COLUMN" not in source.upper()
+
+
+async def test_18_scene_store_backfill_behavior_unchanged():
+    from app.services.semantic_boundary_reasoning_store_svc import BackfillProvenance, persist_reasoning_result
+    from app.services.scene_construction_svc import CandidateReasoningRecord
+    from app.services.semantic_reasoner.contract import ReasonerDecision, ReasonerResult
+
+    # The two backfill-provenance classes remain genuinely separate types.
+    assert BackfillProvenance is not StoryBeatBackfillProvenance
+
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user)
+        try:
+            decision = ReasonerDecision(
+                is_semantic_boundary=False, confidence="low", confidence_score=None,
+                reasoning="x", evidence_references={}, reasoning_contract_version="v2",
+            )
+            result = ReasonerResult(
+                decision=decision, provider="anthropic", model="claude-sonnet-4-6",
+                candidate_timestamp=30.0, reasoning_contract_version="v2",
+            )
+            annotation = await persist_reasoning_result(
+                db, va_id, CandidateReasoningRecord(result=result),
+                backfill=BackfillProvenance(
+                    original_reasoning_timestamp="2026-09-09T13:36:19+05:30",
+                    original_reasoning_timestamp_basis="scratchpad_file_mtime_approximate",
+                ),
+            )
+            assert annotation.category == "semantic_boundary_attempt"
+            assert annotation.details["backfilled_from_prior_reasoning"] is True
+            assert annotation.details["prompt_version"] == "v2"  # Scene's own historical version, untouched
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+def test_19_backfill_support_makes_no_external_api_import():
+    import ast
+    import inspect
+    import app.services.story_beat_boundary_reasoning_store_svc as module
+
+    tree = ast.parse(inspect.getsource(module))
+    imported_names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_names.add(node.module)
+
+    assert "anthropic" not in imported_names
+    assert not any(name.startswith("app.services.story_beat_reasoner.router") for name in imported_names)
+    assert not any(name.startswith("app.services.story_beat_reasoner.providers") for name in imported_names)
+    assert "reason_about_story_beat_boundary" not in imported_names
