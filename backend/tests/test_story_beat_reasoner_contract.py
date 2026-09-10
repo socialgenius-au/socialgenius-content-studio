@@ -189,11 +189,15 @@ def test_contract_module_imports_no_provider_or_external_api():
         assert "reason_about_boundary" not in imported_names
 
 
-def test_no_router_or_provider_entry_point_exists_yet():
-    # Stage 10.3B1's own explicit scope: contract only, no reason_about_story_beat() callable.
+def test_router_entry_point_now_exists_as_of_stage_10_3b2():
+    # Superseded by Stage 10.3B2 (see tests/test_story_beat_reasoner_router.py for full coverage
+    # of the entry point itself): Stage 10.3B1's own explicit scope was contract-only, with no
+    # reason_about_story_beat_boundary() callable yet. That scope has since expanded on purpose --
+    # this test now records the opposite fact, rather than being deleted outright, so the contract-
+    # only era stays visible in this file's own history.
     import app.services.story_beat_reasoner as package_module
-    assert not hasattr(package_module, "reason_about_story_beat")
-    assert "providers" not in dir(package_module)
+    assert hasattr(package_module, "reason_about_story_beat_boundary")
+    assert callable(package_module.reason_about_story_beat_boundary)
 
 
 def test_reasoning_error_is_a_distinct_exception_type_from_semantic_reasoning_error():

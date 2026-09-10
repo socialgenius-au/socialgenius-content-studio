@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     SEMANTIC_REASONER_PROVIDER: str = ""
     SEMANTIC_REASONER_MODEL: str = "claude-sonnet-4-20250514"
 
+    # ── Stage 10.3B — Story Beat Reasoner (app/services/story_beat_reasoner/) ─────────────────
+    # A SIBLING pair to SEMANTIC_REASONER_PROVIDER/MODEL above, never a reuse of it: Story Beat
+    # answers a genuinely different question (see story_beat_reasoner/contract.py's own docstring)
+    # and may reasonably run under a different provider/model, or none at all, independently of
+    # whether the Semantic Scene reasoner is configured. Same honest-unconfigured discipline:
+    # STORY_BEAT_REASONER_PROVIDER empty ("") means no Story Beat reasoner runs, even though Stage
+    # 10.3B2 registers a real AnthropicStoryBeatReasoner (see story_beat_reasoner/router.py's own
+    # _REASONER_PROVIDERS) — an operator must explicitly opt in, and
+    # AnthropicStoryBeatReasoner.is_configured() still gates every call on ANTHROPIC_API_KEY
+    # actually being set.
+    STORY_BEAT_REASONER_PROVIDER: str = ""
+    STORY_BEAT_REASONER_MODEL: str = "claude-sonnet-4-20250514"
+
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 500
 
