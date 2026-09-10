@@ -443,10 +443,10 @@ async def test_idempotent_rerun_does_not_duplicate():
 
 
 # ---------------------------------------------------------------------------
-# Provider/model provenance.
+# Provider/model provenance (Stage 10.2B3-P1 correction).
 # ---------------------------------------------------------------------------
 
-async def test_provider_model_provenance_recorded_on_video_analysis():
+async def test_single_provider_model_pair_recorded_under_reasoning_pass():
     async with _TestSessionLocal() as db:
         user = await _existing_test_user(db)
         rv_id, asset_id, va_id = await _make_bare_analysis(db, user, duration=60.0)
@@ -455,8 +455,108 @@ async def test_provider_model_provenance_recorded_on_video_analysis():
             await construct_and_persist_scenes(db, va_id, records)
 
             va = await db.get(VideoAnalysis, va_id)
-            recorded = va.ai_provider_versions_used["semantic_scene_construction_v1"]
-            assert recorded == {"provider": "anthropic", "model": "claude-sonnet-4-6"}
+            recorded = va.ai_provider_versions_used["semantic_boundary_reasoning_v1"]
+            assert recorded == [{"provider": "anthropic", "model": "claude-sonnet-4-6"}]
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_repeated_identical_provider_model_pairs_are_deduplicated():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user, duration=60.0)
+        try:
+            records = [
+                _record(20.0, False, "high", provider="anthropic", model="claude-sonnet-4-6"),
+                _record(40.0, True, "high", provider="anthropic", model="claude-sonnet-4-6"),
+            ]
+            await construct_and_persist_scenes(db, va_id, records)
+
+            va = await db.get(VideoAnalysis, va_id)
+            recorded = va.ai_provider_versions_used["semantic_boundary_reasoning_v1"]
+            assert recorded == [{"provider": "anthropic", "model": "claude-sonnet-4-6"}]  # one entry, not two
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_mixed_provider_model_inputs_preserve_all_distinct_pairs():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user, duration=100.0)
+        try:
+            records = [
+                _record(20.0, False, "high", provider="anthropic", model="claude-sonnet-4-6"),
+                _record(50.0, True, "medium", provider="other", model="some-other-model"),
+                _record(80.0, False, "medium", provider="anthropic", model="claude-sonnet-4-6"),  # duplicate of the first pair
+            ]
+            await construct_and_persist_scenes(db, va_id, records)
+
+            va = await db.get(VideoAnalysis, va_id)
+            recorded = va.ai_provider_versions_used["semantic_boundary_reasoning_v1"]
+            assert len(recorded) == 2  # both distinct pairs present, the duplicate collapsed
+            assert {"provider": "anthropic", "model": "claude-sonnet-4-6"} in recorded
+            assert {"provider": "other", "model": "some-other-model"} in recorded
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_provider_model_ordering_is_deterministic():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user, duration=100.0)
+        try:
+            # Deliberately supplied out of alphabetical order -- the stored result must not depend
+            # on input order.
+            records = [
+                _record(20.0, False, "high", provider="zeta", model="model-z"),
+                _record(50.0, False, "high", provider="alpha", model="model-a"),
+            ]
+            await construct_and_persist_scenes(db, va_id, records)
+            va = await db.get(VideoAnalysis, va_id)
+            recorded = va.ai_provider_versions_used["semantic_boundary_reasoning_v1"]
+            assert recorded == [{"provider": "alpha", "model": "model-a"}, {"provider": "zeta", "model": "model-z"}]
+
+            # Rerunning with a fresh (idempotent) call to the same inputs must reproduce the exact
+            # same ordering -- proven by clearing pass_status and re-deriving from scratch.
+            va.pass_status = {k: v for k, v in va.pass_status.items() if k != "semantic_scene_construction"}
+            await db.commit()
+            await construct_and_persist_scenes(db, va_id, records)
+            va2 = await db.get(VideoAnalysis, va_id)
+            assert va2.ai_provider_versions_used["semantic_boundary_reasoning_v1"] == recorded
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_scene_construction_pass_no_longer_claims_provider_model_ownership():
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user, duration=60.0)
+        try:
+            records = [_record(30.0, True, "high", provider="anthropic", model="claude-sonnet-4-6")]
+            await construct_and_persist_scenes(db, va_id, records)
+
+            va = await db.get(VideoAnalysis, va_id)
+            assert "semantic_scene_construction_v1" not in va.ai_provider_versions_used
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_scene_construction_pass_key_removed_even_if_stale_entry_pre_existed():
+    # Simulates a VideoAnalysis carrying a stale entry from the superseded (pre-correction)
+    # behaviour -- the corrected code must actively clean it up, not merely stop adding new ones.
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_bare_analysis(db, user, duration=60.0)
+        try:
+            va = await db.get(VideoAnalysis, va_id)
+            va.ai_provider_versions_used = {"semantic_scene_construction_v1": {"provider": "stale", "model": "stale-model"}}
+            await db.commit()
+
+            records = [_record(30.0, True, "high", provider="anthropic", model="claude-sonnet-4-6")]
+            await construct_and_persist_scenes(db, va_id, records)
+
+            va_after = await db.get(VideoAnalysis, va_id)
+            assert "semantic_scene_construction_v1" not in va_after.ai_provider_versions_used
         finally:
             await _cleanup(db, asset_id, rv_id)
 
@@ -497,3 +597,25 @@ async def test_rv5127_shaped_case_one_accepted_boundary():
             assert (scenes[1].start_time, scenes[1].end_time) == (25.380, 43.9)
         finally:
             await _cleanup(db, asset_id, rv_id)
+
+
+# ---------------------------------------------------------------------------
+# Structural: this module cannot make an external API call under any input.
+# ---------------------------------------------------------------------------
+
+def test_module_imports_no_anthropic_or_reasoner_router():
+    import ast
+    import inspect
+    import app.services.scene_construction_svc as module
+
+    tree = ast.parse(inspect.getsource(module))
+    imported_names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_names.add(node.module)
+
+    assert "anthropic" not in imported_names
+    assert not any(name.startswith("app.services.semantic_reasoner.router") for name in imported_names)
+    assert "reason_about_boundary" not in imported_names

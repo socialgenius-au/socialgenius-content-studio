@@ -62,9 +62,16 @@ confidence, including None (undecided) — is persisted as its own `AnalysisAnno
 table -- no new table, no schema change). This is the durable audit trail answering "why was this
 boundary accepted/rejected" without ever copying full evidence bundles into a Scene row.
 
-PROVENANCE: provider/model are recorded ONCE per run on `VideoAnalysis.ai_provider_versions_used`
-(an already-existing JSON column built for exactly this purpose — "recorded once per run here, not
-duplicated onto every individual claim row") under this pass's own name, never as a new column.
+PROVENANCE (Stage 10.2B3-P1 correction): Scene CONSTRUCTION itself never calls a model or any
+external API, so it is never credited with "using" a provider/model — that fact belongs to the
+REASONING pass, whose output this module only consumes. `VideoAnalysis.ai_provider_versions_used`
+(an already-existing JSON column built for exactly this purpose) is updated under
+`BOUNDARY_DECISION_PASS_NAME`'s own key with the deduplicated, deterministically (alphabetically)
+sorted list of every distinct `{provider, model}` pair actually present across the supplied
+`reasoner_results` — one entry if the whole run used a single provider/model, several if it
+genuinely did not; the earlier, superseded version of this module wrote only the LAST record's own
+provider/model under THIS pass's own name instead, which both misattributed the fact and silently
+dropped every other provider/model whenever the input was genuinely mixed. No new column.
 
 IDEMPOTENCY / TRANSACTION SAFETY: mirrors the EXACT pattern Stage 4's own structural-analysis
 endpoint already established for Shot rows (see app/routers/reference_videos.py's
@@ -245,8 +252,6 @@ async def construct_and_persist_scenes(
         ))
 
     decision_annotations: list[AnalysisAnnotation] = []
-    provider_used: str | None = None
-    model_used: str | None = None
     for record in reasoner_results:
         decision = record.result.decision
         decision_annotations.append(AnalysisAnnotation(
@@ -267,9 +272,6 @@ async def construct_and_persist_scenes(
             source="ai_reasoning",
             produced_by_pass=BOUNDARY_DECISION_PASS_NAME,
         ))
-        # Recorded once per run, not per decision -- every real run uses one provider/model for
-        # all its candidates; the last one seen is as good as any (they are expected to agree).
-        provider_used, model_used = record.result.provider, record.result.model
 
     # Defensive idempotency, on top of (not instead of) the pass_status short-circuit above --
     # guarantees a retry can never leave duplicate/stale rows behind, exactly mirroring Stage 4's
@@ -285,9 +287,22 @@ async def construct_and_persist_scenes(
     for annotation in decision_annotations:
         db.add(annotation)
 
+    # Scene CONSTRUCTION itself never calls a model or any external API -- crediting it with
+    # "using" a provider/model would be a misnomer regardless of how many distinct ones actually
+    # appear in `reasoner_results` (Stage 10.2B3-P1 correction: the original version wrote only
+    # the LAST record's own provider/model here, under this pass's own name, which both
+    # misattributed the fact to the wrong pass and silently dropped every other provider/model
+    # actually present whenever the input was genuinely mixed). The REASONING pass is what
+    # actually used a model, so the fact is recorded under ITS OWN name instead -- as the
+    # deduplicated, deterministically-ordered set of every distinct (provider, model) pair
+    # actually represented in this run's own input, never a single value implying uniformity.
     provider_versions = dict(video_analysis.ai_provider_versions_used or {})
-    if provider_used is not None:
-        provider_versions[SCENE_CONSTRUCTION_PASS_NAME] = {"provider": provider_used, "model": model_used}
+    provider_versions.pop(SCENE_CONSTRUCTION_PASS_NAME, None)  # never claimed by construction itself
+    distinct_provider_models = sorted({(r.result.provider, r.result.model) for r in reasoner_results})
+    if distinct_provider_models:
+        provider_versions[BOUNDARY_DECISION_PASS_NAME] = [
+            {"provider": provider, "model": model} for provider, model in distinct_provider_models
+        ]
     video_analysis.pass_status = {**pass_status, SCENE_CONSTRUCTION_PASS_STATUS_KEY: "complete"}
     video_analysis.ai_provider_versions_used = provider_versions
 
