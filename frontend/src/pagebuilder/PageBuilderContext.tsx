@@ -3,6 +3,7 @@ import {
 } from 'react'
 import type {
   AnimationConfig, Breakpoint, ElementConfig, PageBuilderMode, PageConfig, ResponsiveOverride,
+  SectionBackgroundConfig,
 } from './types'
 
 /**
@@ -20,12 +21,18 @@ interface PageBuilderState {
   mode: PageBuilderMode
   page: PageConfig
   selectedId: string | null
+  /** Section-level selection, for editing a SECTION'S BACKGROUND LAYER rather than an element —
+   * mutually exclusive with `selectedId` (selecting one clears the other), since the property
+   * panel shows one editor or the other, never both at once. */
+  selectedSectionId: string | null
   breakpoint: Breakpoint
 }
 
 interface PageBuilderActions {
   setMode: (mode: PageBuilderMode) => void
   select: (id: string | null) => void
+  selectSection: (id: string | null) => void
+  updateSectionBackground: (sectionId: string, patch: Partial<SectionBackgroundConfig>) => void
   setBreakpoint: (bp: Breakpoint) => void
   moveElement: (id: string, dx: number, dy: number) => void
   resizeElement: (id: string, patch: { width?: number; height?: number; x?: number; y?: number }) => void
@@ -93,6 +100,7 @@ export function PageBuilderProvider({
   })
   const [mode, setMode] = useState<PageBuilderMode>('view')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null)
   const [breakpoint, setBreakpoint] = useState<Breakpoint>('desktop')
 
   const initialRef = useRef(initialConfig)
@@ -105,6 +113,24 @@ export function PageBuilderProvider({
       // storage full/unavailable — editing still works in-memory for this session
     }
   }, [page, storageKey])
+
+  // BUG FIX (responsive-architecture audit): `breakpoint` previously defaulted to 'desktop' and
+  // was NEVER updated outside Edit Mode's own toolbar buttons — meaning a real visitor loading
+  // /positioning on an actual phone in VIEW MODE always got 'desktop', so per-element responsive
+  // overrides could never activate for anyone but an editor manually clicking the preview toggle.
+  // In View Mode this now tracks the REAL window width (same thresholds the page's own CSS
+  // container queries use: <=640 mobile, <=960 tablet). In Edit Mode, breakpoint stays fully
+  // driven by the toolbar — that is the deliberate simulation surface, untouched by this effect.
+  useEffect(() => {
+    if (mode !== 'view') return
+    const compute = () => {
+      const w = window.innerWidth
+      setBreakpoint(w <= 640 ? 'mobile' : w <= 960 ? 'tablet' : 'desktop')
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    return () => window.removeEventListener('resize', compute)
+  }, [mode])
 
   const mutate = useCallback((fn: (draft: PageConfig) => void) => {
     setPage(prev => {
@@ -127,23 +153,55 @@ export function PageBuilderProvider({
 
   const actions: PageBuilderActions = useMemo(() => ({
     setMode: (m) => setMode(m),
-    select: (id) => setSelectedId(id),
+    select: (id) => { setSelectedId(id); if (id) setSelectedSectionId(null) },
+    selectSection: (id) => { setSelectedSectionId(id); if (id) setSelectedId(null) },
+    updateSectionBackground: (sectionId, patch) => mutate(draft => {
+      const section = draft.sections.find(s => s.id === sectionId)
+      if (!section) return
+      section.backgroundLayer = { ...(section.backgroundLayer ?? { type: 'none', opacity: 1 }), ...patch }
+    }),
     setBreakpoint: (bp) => setBreakpoint(bp),
 
+    // BUG FIX (responsive-architecture audit): these two actions previously always wrote to the
+    // element's base (desktop) x/y/width/height, no matter which breakpoint tab was active in the
+    // toolbar — so there was no way to author a genuine tablet/mobile-only override at all, and
+    // (see ElementRenderer.tsx's own matching fix) an edited element would blindly reapply its
+    // desktop pixels at every narrower breakpoint. They now target `element.responsive[breakpoint]`
+    // whenever the active breakpoint isn't 'desktop', reading the CURRENT effective value at that
+    // breakpoint (its own override if one already exists, else the desktop base) as the starting
+    // point for the drag/resize delta — so a fresh mobile-only override starts from wherever the
+    // element already visually sits, not from an unrelated stored number.
     moveElement: (id, dx, dy) => mutate(draft => {
       walk(allElements(draft), id, el => {
-        el.positionOverridden = true
-        el.x = Math.round(el.x + dx)
-        el.y = Math.round(el.y + dy)
+        if (breakpoint === 'desktop') {
+          el.positionOverridden = true
+          el.x = Math.round(el.x + dx)
+          el.y = Math.round(el.y + dy)
+        } else {
+          const current = el.responsive[breakpoint] ?? {}
+          const baseX = current.x ?? el.x
+          const baseY = current.y ?? el.y
+          el.responsive = { ...el.responsive, [breakpoint]: { ...current, x: Math.round(baseX + dx), y: Math.round(baseY + dy) } }
+        }
       })
     }),
 
     resizeElement: (id, patch) => mutate(draft => {
       walk(allElements(draft), id, el => {
-        if (patch.width !== undefined) { el.width = Math.max(8, Math.round(patch.width)); el.sizeOverridden = true }
-        if (patch.height !== undefined) { el.height = Math.max(8, Math.round(patch.height)); el.sizeOverridden = true }
-        if (patch.x !== undefined) { el.x = Math.round(patch.x); el.positionOverridden = true }
-        if (patch.y !== undefined) { el.y = Math.round(patch.y); el.positionOverridden = true }
+        if (breakpoint === 'desktop') {
+          if (patch.width !== undefined) { el.width = Math.max(8, Math.round(patch.width)); el.sizeOverridden = true }
+          if (patch.height !== undefined) { el.height = Math.max(8, Math.round(patch.height)); el.sizeOverridden = true }
+          if (patch.x !== undefined) { el.x = Math.round(patch.x); el.positionOverridden = true }
+          if (patch.y !== undefined) { el.y = Math.round(patch.y); el.positionOverridden = true }
+        } else {
+          const current = el.responsive[breakpoint] ?? {}
+          const next = { ...current }
+          if (patch.width !== undefined) next.width = Math.max(8, Math.round(patch.width))
+          if (patch.height !== undefined) next.height = Math.max(8, Math.round(patch.height))
+          if (patch.x !== undefined) next.x = Math.round(patch.x)
+          if (patch.y !== undefined) next.y = Math.round(patch.y)
+          el.responsive = { ...el.responsive, [breakpoint]: next }
+        }
       })
     }),
 
@@ -206,12 +264,13 @@ export function PageBuilderProvider({
     resetDraft: () => {
       setPage(cloneConfig(initialRef.current))
       setSelectedId(null)
+      setSelectedSectionId(null)
     },
 
     findElement,
-  }), [mutate, allElements, findElement])
+  }), [mutate, allElements, findElement, breakpoint])
 
-  const value: PageBuilderContextValue = { mode, page, selectedId, breakpoint, ...actions }
+  const value: PageBuilderContextValue = { mode, page, selectedId, selectedSectionId, breakpoint, ...actions }
 
   return <PageBuilderCtx.Provider value={value}>{children}</PageBuilderCtx.Provider>
 }

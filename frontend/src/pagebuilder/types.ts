@@ -260,6 +260,30 @@ export interface ElementConfig {
   children?: ElementConfig[]
 }
 
+export type SectionBackgroundType = 'none' | 'color' | 'gradient' | 'image' | 'video'
+
+/** Section backgrounds as a first-class editable layer, distinct from `SectionConfig.background`
+ * (the existing raw CSS value the current, not-yet-approved page's own classes supply — kept
+ * untouched for visual fidelity). This is ADDITIVE: `type: 'none'` (the default on every existing
+ * section) renders nothing extra and changes nothing visually; setting a real type layers an
+ * actual, editable background (color/gradient/image/video) with its own fit/crop/focal/opacity
+ * controls, reusing the same ImageProps shape Section 8's image elements already use so an image
+ * background gets the identical replace/fit/focal/zoom/opacity capabilities. `responsive` allows
+ * a light per-breakpoint treatment (Section 12) without inventing a second, parallel override
+ * system — opacity/focal-point/visibility are the fields actually worth tuning per breakpoint for
+ * a background layer; position/size follow the section's own responsive width automatically. */
+export interface SectionBackgroundConfig {
+  type: SectionBackgroundType
+  color?: string
+  gradient?: string
+  image?: ImageProps
+  videoSrc?: string
+  opacity: number
+  responsive?: Partial<Record<Breakpoint, { opacity?: number; focalX?: number; focalY?: number; visible?: boolean }>>
+}
+
+export const DEFAULT_SECTION_BACKGROUND: SectionBackgroundConfig = { type: 'none', opacity: 1 }
+
 export interface SectionConfig {
   id: string
   name: string
@@ -268,6 +292,7 @@ export interface SectionConfig {
   fullscreen?: boolean
   sticky?: 'normal' | 'sticky' | 'fixed' | 'pinned-for-duration'
   background?: string
+  backgroundLayer?: SectionBackgroundConfig
   className?: string
   elements: ElementConfig[]
 }

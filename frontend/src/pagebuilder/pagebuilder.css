@@ -45,9 +45,17 @@
 .pb-body { display: grid; grid-template-columns: 220px 1fr 280px; min-height: calc(100vh - 52px); }
 
 .pb-canvas-wrap { overflow: auto; padding: 24px; display: flex; justify-content: center; background: #e7e4da; }
-.pb-canvas-wrap.pb-bp-desktop .pb-page { width: 100%; max-width: 1280px; }
-.pb-canvas-wrap.pb-bp-tablet .pb-page { width: 768px; box-shadow: 0 0 0 1px var(--pb-hairline), 0 20px 50px -20px rgba(0,0,0,0.35); }
-.pb-canvas-wrap.pb-bp-mobile .pb-page { width: 375px; box-shadow: 0 0 0 1px var(--pb-hairline), 0 20px 50px -20px rgba(0,0,0,0.35); }
+/* flex-shrink: 0 (bug fix, responsive-architecture audit): .pb-page is a direct child of this
+   flex container, so without this its declared preview width was only a SUGGESTION the flex
+   algorithm could — and on a narrow editor window, silently did — shrink to fit the available
+   panel space. The whole point of the Tablet/Mobile preview is to show an HONEST simulated width
+   for the container queries below to measure against; a shrunk preview both looks wrong and
+   (harmlessly, but confusingly) reports a narrower effective breakpoint than the one requested.
+   overflow: auto above already lets the wrap scroll horizontally if the real panel is narrower
+   than the simulated canvas — exactly the right tradeoff for a design-tool preview. */
+.pb-canvas-wrap.pb-bp-desktop .pb-page { width: 100%; max-width: 1280px; flex-shrink: 0; }
+.pb-canvas-wrap.pb-bp-tablet .pb-page { width: 768px; flex-shrink: 0; box-shadow: 0 0 0 1px var(--pb-hairline), 0 20px 50px -20px rgba(0,0,0,0.35); }
+.pb-canvas-wrap.pb-bp-mobile .pb-page { width: 375px; flex-shrink: 0; box-shadow: 0 0 0 1px var(--pb-hairline), 0 20px 50px -20px rgba(0,0,0,0.35); }
 .pb-page { background: var(--pl-cream, #F5F0E8); position: relative; }
 
 /* --------------------------------------------------------------- layers ---- */
@@ -119,6 +127,20 @@
   position: absolute; bottom: 8px; right: 8px; font-size: 11px; font-weight: 700; padding: 5px 10px;
   border-radius: 6px; border: none; background: rgba(30,61,42,0.85); color: #fff; cursor: pointer; z-index: 5;
 }
+
+/* --------------------------------------------------- section background layer chrome ---- */
+.pb-bg-layer img { width: 100%; height: 100%; display: block; }
+.pb-role-top-nav, .pb-role-footer, header.pb-role-content, section.pb-role-content { isolation: isolate; }
+
+.pb-section-bg-btn {
+  position: absolute; top: 6px; left: 6px; z-index: 50;
+  font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
+  border: 1px dashed rgba(30,61,42,0.35); background: rgba(255,255,255,0.85); color: #1E3D2A;
+  cursor: pointer; opacity: 0; transition: opacity 0.12s ease;
+}
+:is(header, nav, section, footer):hover > .pb-section-bg-btn,
+.pb-section-selected > .pb-section-bg-btn { opacity: 1; }
+.pb-section-selected { outline: 2px solid var(--pb-accent-2, #C89A2E); outline-offset: -2px; }
 
 .pb-badge {
   display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px;

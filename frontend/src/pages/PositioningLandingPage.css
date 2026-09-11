@@ -15,6 +15,27 @@
      <a href="#..."> instead (no per-element onClick concept in the config), so smooth scrolling
      is restored here at the page level rather than reintroducing bespoke JS per button. */
   scroll-behavior: smooth;
+
+  /* ROOT-CAUSE FIX (responsive-architecture audit): every breakpoint rule below is now a CSS
+     CONTAINER query (@container pl-page (...)), not a viewport @media query. A viewport query
+     answers "how wide is the browser window?" -- which is wrong the moment ANYTHING (the Page
+     Builder's own Edit Mode preview box, a future embed, a sidebar layout) renders this page at a
+     width that differs from the actual window. A container query answers "how wide is THIS
+     ELEMENT actually rendered?", which is what every one of these rules has always semantically
+     meant. Declaring container-type here makes .pl-page itself the measurement boundary for every
+     @container rule below, so:
+       - a real visitor's browser (View Mode, or Edit Mode desktop) -- .pl-page fills its ancestor,
+         which fills the viewport, so this behaves exactly as the old @media rules did;
+       - the Page Builder's own Tablet/Mobile preview toggle, which works by giving .pb-page (this
+         same element) an explicit CSS width via .pb-canvas-wrap.pb-bp-mobile/.pb-bp-tablet (see
+         pagebuilder.css) -- these rules now correctly measure THAT width and fire accordingly,
+         which they never did against a viewport query (the real browser window stayed desktop-
+         sized the whole time the preview box was visually 375px wide -- this was the actual root
+         cause of the reported mobile-preview clipping/narrow-column/non-reflow bug: two different
+         coordinate systems that only accidentally agreed when someone resized the REAL window). */
+  container-type: inline-size;
+  container-name: pl-page;
+
   --pl-green: var(--green, #1E3D2A);
   --pl-gold: var(--gold, #C89A2E);
   --pl-cream: var(--cream, #F5F0E8);
@@ -438,7 +459,10 @@
 .pl-footer-brand { font-weight: 800; color: var(--pl-green); }
 
 /* ============================================================ TABLET ==== */
-@media (max-width: 960px) {
+/* Container queries, not viewport media queries (see .pl-page's own container-type declaration
+   near the top of this file for the full explanation). The rule itself is unchanged from before —
+   only WHAT WIDTH it measures against has changed. */
+@container pl-page (max-width: 960px) {
   .pl-hero { padding: 72px 0 64px; }
   .pl-hero-inner { grid-template-columns: 1fr; gap: 40px; }
   .pl-hero-glow { top: -80px; right: -140px; width: 440px; height: 440px; }
@@ -451,7 +475,7 @@
 }
 
 /* ============================================================ MOBILE ==== */
-@media (max-width: 640px) {
+@container pl-page (max-width: 640px) {
   .pl-container { padding: 0 18px; }
   .pl-nav-inner { height: 64px; }
   .pl-nav-cta { padding: 9px 16px; font-size: 13px; }
@@ -471,10 +495,16 @@
   .pl-cta-section { padding: 60px 0 72px; }
   .pl-form-card { padding: 24px; }
   .pl-footer-inner { flex-direction: column; text-align: center; }
+
+  /* Belt-and-suspenders against horizontal clipping (Section: acceptance test "no horizontal
+     content clipping") -- every section/card/form participates in the mobile column's own width
+     rather than ever exceeding it, regardless of what any individual element's own sizing does. */
+  .pl-section, .pl-hero, .pl-cta-section, .pl-nav { overflow-x: hidden; }
+  .pl-vtc-card, .pl-stat-item, .pl-form-card, .pl-hero-card { max-width: 100%; }
 }
 
 /* ======================================================== LARGE / 4K ==== */
-@media (min-width: 1600px) {
+@container pl-page (min-width: 1600px) {
   .pl-container { max-width: 1360px; }
   .pl-hero-glow { width: 760px; height: 760px; }
 }

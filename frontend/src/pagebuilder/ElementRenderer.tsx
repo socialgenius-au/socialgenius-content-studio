@@ -7,20 +7,31 @@ import { Icon } from './icons'
 import { LeadCaptureForm } from './LeadCaptureForm'
 
 /** Merges an element's base box-model fields with its active-breakpoint override (Section 12).
- * Desktop values are the base; tablet/mobile layer their own override dict on top when present —
- * an unset field on the current breakpoint's override falls through to the base value, never to a
- * hard "0". */
+ *
+ * BUG FIX (responsive-architecture audit): this previously fell through an UNSET tablet/mobile
+ * override straight to the DESKTOP base value and then applied it as a real position/size
+ * override regardless — i.e. "no mobile override" silently meant "reuse the desktop pixels
+ * anyway," which is exactly backwards from the required behaviour ("absence of a mobile override
+ * must NOT mean reuse desktop pixels blindly — it should mean participate in the responsive
+ * parent layout"). `positionActive`/`sizeActive` now say explicitly, per breakpoint, whether an
+ * override genuinely exists to apply: on desktop that's the element's own overridden flags; on
+ * tablet/mobile it's "does THIS breakpoint's own override dict actually define x/y (or width/
+ * height)" — never inherited from desktop. boxStyle() below only ever reads resolved.x/y/width/
+ * height when the matching *Active flag is true. */
 function useResolvedBox(element: ElementConfig) {
   const { breakpoint } = usePageBuilder()
-  const override = breakpoint === 'desktop' ? undefined : element.responsive[breakpoint]
+  const isDesktop = breakpoint === 'desktop'
+  const override = isDesktop ? undefined : element.responsive[breakpoint]
   return {
-    x: override?.x ?? element.x,
-    y: override?.y ?? element.y,
-    width: override?.width ?? element.width,
-    height: override?.height ?? element.height,
+    x: isDesktop ? element.x : (override?.x ?? element.x),
+    y: isDesktop ? element.y : (override?.y ?? element.y),
+    width: isDesktop ? element.width : (override?.width ?? element.width),
+    height: isDesktop ? element.height : (override?.height ?? element.height),
     visible: override?.visible ?? element.visible,
     align: override?.align,
     fontSizePx: override?.fontSizePx,
+    positionActive: isDesktop ? element.positionOverridden : (override?.x !== undefined || override?.y !== undefined),
+    sizeActive: isDesktop ? element.sizeOverridden : (override?.width !== undefined || override?.height !== undefined),
   }
 }
 
@@ -33,14 +44,15 @@ function boxStyle(element: ElementConfig, resolved: ReturnType<typeof useResolve
     overflow: element.overflow,
   }
   // Deliberate v1 rule (see types.ts docstring): only apply explicit position/size once the
-  // element has actually been dragged/resized — otherwise the page's own normal-flow CSS decides,
-  // so VIEW MODE looks exactly like today's design until someone edits something.
-  if (element.positionOverridden) {
+  // element has actually been dragged/resized AT THE CURRENT BREAKPOINT — otherwise the page's own
+  // normal-flow (now container-query-aware) CSS decides, so VIEW MODE looks exactly like today's
+  // design until someone edits something, at every breakpoint independently.
+  if (resolved.positionActive) {
     style.position = 'relative'
     style.left = resolved.x
     style.top = resolved.y
   }
-  if (element.sizeOverridden) {
+  if (resolved.sizeActive) {
     if (typeof resolved.width === 'number') style.width = resolved.width
     if (typeof resolved.height === 'number') style.height = resolved.height
   }
@@ -184,7 +196,11 @@ export function RenderElement({ element }: { element: ElementConfig }) {
 
   if (!resolved.visible && mode !== 'edit') return null
 
-  const hasOverride = element.positionOverridden || element.sizeOverridden
+  // Breakpoint-aware (see useResolvedBox's own bug-fix docstring): whether an override is
+  // "active" now depends on the CURRENT breakpoint, not just "was this ever edited on desktop" —
+  // an element edited only at desktop takes the zero-wrapper fast path again at mobile if mobile
+  // has no override of its own, exactly the "participate in the responsive parent layout" rule.
+  const hasOverride = resolved.positionActive || resolved.sizeActive
   const animationActive = isWired && element.animation.preset !== 'none'
 
   // Nothing edited, no animation, not in Edit Mode: render with ZERO extra DOM wrapper, so the
