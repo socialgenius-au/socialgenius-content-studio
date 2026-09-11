@@ -1,6 +1,7 @@
+import type { CSSProperties } from 'react'
 import { usePageBuilder } from './PageBuilderContext'
 import { MediaSelector } from './MediaSelector'
-import { DEFAULT_IMAGE_PROPS } from './types'
+import { DEFAULT_IMAGE_PROPS, isElementDeletable } from './types'
 import type { SectionBackgroundType } from './types'
 
 /**
@@ -24,6 +25,16 @@ function BackgroundPanel({ sectionId }: { sectionId: string }) {
     const url = URL.createObjectURL(file)
     updateSectionBackground(sectionId, { image: { ...(bg.image ?? DEFAULT_IMAGE_PROPS), src: url } })
   }
+  const handleRemoveImage = () => {
+    updateSectionBackground(sectionId, { image: { ...(bg.image ?? DEFAULT_IMAGE_PROPS), src: null } })
+  }
+
+  // Requirement B — "show current background preview": a small swatch reflecting whatever is
+  // actually stored in `backgroundLayer` right now (colour/gradient/image thumbnail/none), so the
+  // panel always shows the true current state, not just controls to change it.
+  const previewStyle: CSSProperties = { width: '100%', height: 56, borderRadius: 8, border: '1px solid var(--pve-hairline)', overflow: 'hidden', backgroundColor: '#fff' }
+  if (bg.type === 'color') previewStyle.background = bg.color ?? '#1E3D2A'
+  if (bg.type === 'gradient') previewStyle.background = bg.gradient || 'repeating-linear-gradient(45deg,#eee,#eee 6px,#fafafa 6px,#fafafa 12px)'
 
   return (
     <div className="pve-panel">
@@ -33,6 +44,18 @@ function BackgroundPanel({ sectionId }: { sectionId: string }) {
 
       <div className="pve-section">
         <div className="pve-section-title">BACKGROUND</div>
+        <div className="pve-field-row">
+          <div style={previewStyle}>
+            {bg.type === 'image' && bg.image?.src && (
+              <img src={bg.image.src} alt="" style={{ width: '100%', height: '100%', objectFit: bg.image.fit, objectPosition: `${bg.image.focalX}% ${bg.image.focalY}%` }} />
+            )}
+            {(bg.type === 'none' || (bg.type === 'image' && !bg.image?.src)) && (
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 11, color: 'var(--pve-muted)' }}>
+                {bg.type === 'none' ? 'No background layer (existing design)' : 'No image set'}
+              </span>
+            )}
+          </div>
+        </div>
         <div className="pve-field-row">
           <label>Type
             <select value={bg.type} onChange={e => updateSectionBackground(sectionId, { type: e.target.value as SectionBackgroundType })}>
@@ -60,6 +83,7 @@ function BackgroundPanel({ sectionId }: { sectionId: string }) {
           <>
             <div className="pve-field-row">
               <MediaSelector label={bg.image?.src ? 'Replace' : 'Upload'} onUpload={handleReplace} />
+              {bg.image?.src && <button className="pve-danger-btn" onClick={handleRemoveImage}>Remove image</button>}
             </div>
             <div className="pve-field-row">
               <label>Fit
@@ -93,7 +117,7 @@ function BackgroundPanel({ sectionId }: { sectionId: string }) {
 export function VisualEditorPropertyPanel() {
   const {
     selectedId, selectedSectionId, findElement, updateElement, resizeElement, moveElement,
-    setLocked, breakpoint, select,
+    setLocked, breakpoint, select, deleteElement,
   } = usePageBuilder()
   const element = findElement(selectedId)
 
@@ -140,6 +164,21 @@ export function VisualEditorPropertyPanel() {
           <button className={`pve-lock-btn ${element.locked ? 'active' : ''}`} onClick={() => setLocked(element.id, !element.locked)}>
             {element.locked ? '🔒 Locked' : '🔓 Lock'}
           </button>
+        </div>
+        {/* DELETE FIX (requirement A — "deleting from ... Properties ... must remove it"): this
+           panel previously had no Delete control at all (the retained old Page Builder's own
+           PropertyPanel.tsx already had one — this is the same action, just missing from this
+           newer panel). Protected elements (currently only the lead-capture form) show a plain
+           note instead of a non-functional button, per "do not show a Delete action for objects
+           that cannot actually be deleted." */}
+        <div className="pve-field-row">
+          {isElementDeletable(element) ? (
+            <button className="pve-danger-btn" onClick={() => { deleteElement(element.id); select(null) }}>
+              🗑 Delete
+            </button>
+          ) : (
+            <span className="pve-bp-note" style={{ margin: 0 }}>Protected — this object cannot be deleted.</span>
+          )}
         </div>
       </div>
 
@@ -222,6 +261,11 @@ export function VisualEditorPropertyPanel() {
             <label>Border<input value={element.border ?? ''} placeholder="1px solid #17191233" onChange={e => updateElement(element.id, { border: e.target.value })} /></label>
             <label>Radius<input type="number" value={element.borderRadius ?? 0} onChange={e => updateElement(element.id, { borderRadius: Number(e.target.value) })} /></label>
           </div>
+          {(element.type === 'container' || element.type === 'card') && (
+            <div className="pve-field-row">
+              <label>Padding<input value={element.padding ?? ''} placeholder="e.g. 24px or 16px 24px" onChange={e => updateElement(element.id, { padding: e.target.value })} /></label>
+            </div>
+          )}
         </div>
       )}
 

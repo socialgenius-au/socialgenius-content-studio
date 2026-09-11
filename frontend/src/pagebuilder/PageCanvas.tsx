@@ -78,6 +78,14 @@ function SectionShell({ section, breakpoint }: { section: SectionConfig; breakpo
         top: isSticky ? 0 : undefined,
       }}
       id={section.id === 'why-positioning' || section.id === 'positioning-audit' ? section.id : undefined}
+      // BACKGROUND FIX (requirement B — "clicking empty canvas/background space should select
+      // Background when no foreground object is hit"): every foreground element and the 🎨
+      // button already call e.stopPropagation() in their own onClick, so a click reaching all
+      // the way here, by construction, hit neither — i.e. exactly the "empty space" case. Select
+      // this section's background instead of letting it bubble up to PageContent's onClick,
+      // which only deselects. The 🎨 button stays too, as an explicit, always-visible affordance
+      // for the same action.
+      onClick={mode === 'edit' ? (e) => { e.stopPropagation(); selectSection(section.id) } : undefined}
     >
       <SectionBackgroundLayer section={section} breakpoint={breakpoint} />
       {mode === 'edit' && (

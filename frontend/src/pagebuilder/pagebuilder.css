@@ -122,6 +122,11 @@
   position: absolute; bottom: -30px; left: 0; pointer-events: auto; font-size: 11px; font-weight: 700;
   padding: 3px 8px; border-radius: 6px; border: 1px solid var(--pb-accent-2, #C89A2E); background: #fff; color: var(--pb-accent); cursor: pointer;
 }
+.pb-delete-btn {
+  position: absolute; bottom: -30px; right: 0; pointer-events: auto; font-size: 11px; font-weight: 700;
+  padding: 3px 8px; border-radius: 6px; border: 1px solid #E74C3C; background: #fff; color: #c0392b; cursor: pointer;
+}
+.pb-delete-btn:hover { background: #fdecea; }
 
 .pb-image-replace-btn {
   position: absolute; bottom: 8px; right: 8px; font-size: 11px; font-weight: 700; padding: 5px 10px;
@@ -298,6 +303,11 @@
   border-radius: 6px; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
 }
 .pve-lock-btn.active { background: rgba(30,61,42,0.12); border-color: var(--pve-accent); color: var(--pve-accent); }
+.pve-danger-btn {
+  flex: 1; border: 1px solid #E74C3C; background: #fff; color: #c0392b;
+  border-radius: 6px; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.pve-danger-btn:hover { background: #fdecea; }
 
 @media (max-width: 1200px) {
   .pve-body { grid-template-columns: 220px 1fr 260px; }

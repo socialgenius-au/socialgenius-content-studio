@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { usePageBuilder } from './PageBuilderContext'
 import { ANIMATION_PRESET_LIBRARY } from './AnimationPresets'
 import { MediaSelector } from './MediaSelector'
@@ -20,6 +21,13 @@ function SectionBackgroundPanel({ sectionId }: { sectionId: string }) {
     const url = URL.createObjectURL(file)
     updateSectionBackground(sectionId, { image: { ...(bg.image ?? DEFAULT_IMAGE_PROPS), src: url } })
   }
+  const handleRemoveImage = () => {
+    updateSectionBackground(sectionId, { image: { ...(bg.image ?? DEFAULT_IMAGE_PROPS), src: null } })
+  }
+
+  const previewStyle: CSSProperties = { width: '100%', height: 52, borderRadius: 6, border: '1px solid var(--pb-hairline)', overflow: 'hidden', background: '#fff' }
+  if (bg.type === 'color') previewStyle.background = bg.color ?? '#1E3D2A'
+  if (bg.type === 'gradient') previewStyle.background = bg.gradient || 'repeating-linear-gradient(45deg,#eee,#eee 6px,#fafafa 6px,#fafafa 12px)'
 
   return (
     <div className="pb-panel">
@@ -28,6 +36,15 @@ function SectionBackgroundPanel({ sectionId }: { sectionId: string }) {
         <button className="pb-icon-btn" onClick={() => selectSection(null)}>✕</button>
       </div>
       <div className="pb-panel-sub">section · {bg.type === 'none' ? 'no background layer (section CSS unchanged)' : `${bg.type} layer active`}</div>
+
+      {/* Requirement B — current background preview */}
+      <div className="pb-field-row">
+        <div style={previewStyle}>
+          {bg.type === 'image' && bg.image?.src && (
+            <img src={bg.image.src} alt="" style={{ width: '100%', height: '100%', objectFit: bg.image.fit, objectPosition: `${bg.image.focalX}% ${bg.image.focalY}%` }} />
+          )}
+        </div>
+      </div>
 
       <div className="pb-field-row">
         <label>Type
@@ -63,6 +80,7 @@ function SectionBackgroundPanel({ sectionId }: { sectionId: string }) {
         <>
           <div className="pb-field-row">
             <MediaSelector label={bg.image?.src ? 'Replace image' : 'Add image'} onUpload={handleReplace} />
+            {bg.image?.src && <button className="pb-toggle pb-danger" onClick={handleRemoveImage}>Remove image</button>}
           </div>
           <div className="pb-field-row">
             <label>Fit
@@ -265,9 +283,12 @@ export function PropertyPanel() {
             <label>Border<input value={element.border ?? ''} placeholder="1px solid #17191214" onChange={e => updateElement(element.id, { border: e.target.value })} /></label>
             <label>Radius<input type="number" value={element.borderRadius ?? 0} onChange={e => updateElement(element.id, { borderRadius: Number(e.target.value) })} /></label>
           </div>
-          {(element.background !== undefined || element.opacity !== undefined || element.border !== undefined || element.borderRadius !== undefined) && (
+          <div className="pb-field-row">
+            <label>Padding<input value={element.padding ?? ''} placeholder="e.g. 24px or 16px 24px" onChange={e => updateElement(element.id, { padding: e.target.value })} /></label>
+          </div>
+          {(element.background !== undefined || element.opacity !== undefined || element.border !== undefined || element.borderRadius !== undefined || element.padding !== undefined) && (
             <div className="pb-field-row">
-              <button className="pb-toggle" onClick={() => updateElement(element.id, { background: undefined, opacity: undefined, border: undefined, borderRadius: undefined })}>
+              <button className="pb-toggle" onClick={() => updateElement(element.id, { background: undefined, opacity: undefined, border: undefined, borderRadius: undefined, padding: undefined })}>
                 ↺ Clear container style overrides
               </button>
             </div>

@@ -2,7 +2,7 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
 } from 'react'
 import {
-  DEFAULT_ANIMATION, DEFAULT_IMAGE_PROPS, DEFAULT_TEXT_PROPS,
+  DEFAULT_ANIMATION, DEFAULT_IMAGE_PROPS, DEFAULT_TEXT_PROPS, isElementDeletable,
 } from './types'
 import type {
   AnimationConfig, Breakpoint, ElementConfig, ElementType, PageBuilderMode, PageConfig,
@@ -293,16 +293,30 @@ export function PageBuilderProvider({
       })
     }),
 
+    // DELETE FIX: two independent bugs, both silent (no error, no console warning — the element
+    // just stayed on the page). (1) previously only checked section.elements (depth 0) and one
+    // level of .children (depth 1) — anything nested two or more containers deep (e.g. an icon
+    // inside a stat card's icon badge) had nowhere left to be found. (2) walking via
+    // `allElements(draft)` (the OTHER shared helper in this file, built with `.flatMap()`) is
+    // fine for actions that mutate a PROPERTY on the found element (moveElement, resizeElement,
+    // setLocked, ...) since flatMap's new array still holds the SAME object references — but
+    // deleteElement needs to mutate the ARRAY the element lives in, and for a top-level element
+    // `walk` hands back that flatMap'd array itself as `siblings`, which is a throwaway copy, NOT
+    // `section.elements` — splicing it does nothing to the real page tree. Walking each section's
+    // own REAL `elements` array directly (same per-section loop `findElement` above already
+    // uses) fixes both: `walk`'s own recursion into `el.children` already handles arbitrary
+    // depth correctly (those ARE real references, since flatMap never clones the objects
+    // themselves), and starting from the real top-level array fixes the depth-0 case too.
+    // `isElementDeletable` is checked here too (not just in the UI offering the button) so this
+    // action can never remove a protected element even if called directly.
     deleteElement: (id) => mutate(draft => {
       for (const section of draft.sections) {
-        const idx = section.elements.findIndex(e => e.id === id)
-        if (idx !== -1) { section.elements.splice(idx, 1); return }
-        for (const el of section.elements) {
-          if (el.children) {
-            const cIdx = el.children.findIndex(c => c.id === id)
-            if (cIdx !== -1) { el.children.splice(cIdx, 1); return }
-          }
-        }
+        const found = walk(section.elements, id, (el, siblings) => {
+          if (!isElementDeletable(el)) return
+          const idx = siblings.indexOf(el)
+          if (idx !== -1) siblings.splice(idx, 1)
+        })
+        if (found) return
       }
     }),
 
@@ -332,6 +346,29 @@ export function PageBuilderProvider({
       setSelectedSectionId(null)
     },
   }), [mutate, allElements, findElement, breakpoint, selectedId, selectedSectionId])
+
+  // DELETE FIX (requirement A — "deleting from the canvas selection ... must remove it"):
+  // Delete/Backspace removes the currently selected element from anywhere in Edit Mode, not just
+  // from a Layers/Properties button click. Skipped while focus is in a real text input (content
+  // edits, the Background gradient/video-URL fields, etc.) so typing "Delete" or Backspace in a
+  // field never deletes the selected object out from under the user. Protected elements are
+  // silently ignored here too (same `isElementDeletable` gate the UI buttons use) rather than
+  // deleting anyway.
+  useEffect(() => {
+    if (mode !== 'edit' || !selectedId) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      const el = findElement(selectedId)
+      if (!el || !isElementDeletable(el)) return
+      e.preventDefault()
+      actions.deleteElement(selectedId)
+      setSelectedId(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mode, selectedId, findElement, actions])
 
   const value: PageBuilderContextValue = { mode, page, selectedId, selectedSectionId, breakpoint, ...actions }
 

@@ -39,10 +39,18 @@ function boxStyle(element: ElementConfig, resolved: ReturnType<typeof useResolve
   const style: CSSProperties = {
     zIndex: element.zIndex,
     background: element.background,
-    padding: element.padding,
     margin: element.margin,
     overflow: element.overflow,
   }
+  // NOT setting `padding` here (PADDING FIX): this object is the OUTER positioning wrapper
+  // RenderElement creates one DOM level above the element's own content — for container/card
+  // (the only types with a Padding control today, see VisualEditorPropertyPanel.tsx), the
+  // element's own visible box (background/border) is painted on the Tag INSIDE that wrapper
+  // (see ElementContent's container case), not on this wrapper itself. Setting padding here
+  // would add an invisible gap OUTSIDE the container's visible box (wrapper padding, pushing the
+  // Tag inward) on top of the real padding the container case already applies INSIDE the Tag —
+  // double space, and the outer gap wouldn't even show the container's own background. Padding is
+  // applied exactly once, at the right DOM level, by the type-specific case in ElementContent.
   if (element.opacity !== undefined) style.opacity = element.opacity
   if (element.border !== undefined) style.border = element.border
   if (element.borderRadius !== undefined) style.borderRadius = element.borderRadius
@@ -58,6 +66,25 @@ function boxStyle(element: ElementConfig, resolved: ReturnType<typeof useResolve
   if (resolved.sizeActive) {
     if (typeof resolved.width === 'number') style.width = resolved.width
     if (typeof resolved.height === 'number') style.height = resolved.height
+    // RESIZE FIX (structural containers) — most of the page's real structural containers
+    // (.pl-hero-inner, .pl-two-col, .pl-vtc-grid are CSS Grid; .pl-nav-inner, .pl-cta-row, most
+    // Section Head/Stat containers are Flexbox) render this element as a grid/flex ITEM of its
+    // own parent. An explicit width/height above is not enough there: a flex item's flex-grow/
+    // flex-shrink can silently stretch or shrink it past the requested size, and a grid item's
+    // default `stretch` alignment silently re-expands it to fill its whole track — so the value
+    // WAS being saved correctly (Properties panel, localStorage, reload all agreed) while the
+    // canvas visually ignored it, which is exactly "selected but cannot properly be enlarged/
+    // reduced." These declarations only fire once the user has actually resized this element
+    // (guarded by `sizeActive`, the same v1 rule as everywhere else in this file), are flex/grid-
+    // item-only properties (a no-op on a plain block/inline parent, so nothing changes for every
+    // element that HASN'T been resized), and never touch the parent's own CSS class — the exact
+    // "expose the correct structural layout properties rather than blocking resize" fix, not a
+    // layout redesign.
+    style.flexGrow = 0
+    style.flexShrink = 0
+    style.flexBasis = 'auto'
+    style.alignSelf = 'flex-start'
+    style.justifySelf = 'start'
   }
   if (element.minWidth) style.minWidth = element.minWidth
   if (element.minHeight) style.minHeight = element.minHeight
@@ -174,13 +201,29 @@ function ElementContent({ element }: { element: ElementConfig }) {
       return <Icon name={element.text?.content ?? 'circle'} size={typeof element.width === 'number' ? element.width : 20} />
     case 'divider':
       return <hr className={element.className} style={{ border: 0, borderTop: '1px solid var(--pb-hairline, rgba(0,0,0,0.1))', width: '100%' }} />
-    case 'shape':
+    case 'shape': {
       // Pure decorative/atmospheric background (Section 9 of the brief — a glow, gradient,
       // texture) — its own className/CSS supplies the entire visual (e.g. .pl-hero-glow's radial
       // gradient), so this renders NO content of its own. Unlike `image`, a shape never shows a
       // "no image set" placeholder — an empty decorative element isn't missing content, it just is
       // what it is.
-      return <div className={element.className} aria-hidden="true" />
+      //
+      // RESIZE FIX: width/height go directly on THIS div once resized, the same "override the
+      // actual visible box, not an ancestor" rule the container case below already follows for
+      // background/border — a shipped shape's own className (e.g. `.pl-hero-glow{width:620px;
+      // height:620px}`) is a real, definite CSS size that only a same-element inline style can
+      // out-rank; setting it two DOM levels up on the outer wrapper doesn't reach it. This also
+      // fixes a shape added via the Elements tab (no className at all): before this, its empty,
+      // dimensionless div had nothing giving EditableWrapper's own selection/handle box any
+      // height, collapsing it to an unusable sliver even though the outer wrapper (painting the
+      // shape's colour) was visibly the right size.
+      const shapeStyle: CSSProperties = {}
+      if (resolved.sizeActive) {
+        if (typeof resolved.width === 'number') shapeStyle.width = resolved.width
+        if (typeof resolved.height === 'number') shapeStyle.height = resolved.height
+      }
+      return <div className={element.className} aria-hidden="true" style={Object.keys(shapeStyle).length ? shapeStyle : undefined} />
+    }
     case 'badge':
       return <span className={element.className ?? 'pb-badge'}>{element.text?.content}</span>
     case 'container':
@@ -197,6 +240,21 @@ function ElementContent({ element }: { element: ElementConfig }) {
       if (element.opacity !== undefined) boxOverride.opacity = element.opacity
       if (element.border !== undefined) boxOverride.border = element.border
       if (element.borderRadius !== undefined) boxOverride.borderRadius = element.borderRadius
+      if (element.padding !== undefined) boxOverride.padding = element.padding
+      // RESIZE FIX (structural containers — Nav Inner / Hero Left / Hero Promise Card and any
+      // other container): same reasoning as background/border above, extended to width/height.
+      // A structural container commonly has its OWN explicit size from its className (e.g.
+      // `.pl-nav-inner{height:72px}`) — the outer wrapper's own width/height (set one DOM level
+      // up, for the wrapper's position:relative/left/top math) can never out-rank that; only an
+      // inline style on this SAME Tag can. This is also what lets EditableWrapper's own
+      // `.pb-editable` selection box size itself correctly: its normal block height comes from
+      // its content, and this Tag having a genuine explicit height now gives it real content to
+      // size around — no separate chrome-collapse fix needed once the real box is actually
+      // resized.
+      if (resolved.sizeActive) {
+        if (typeof resolved.width === 'number') boxOverride.width = resolved.width
+        if (typeof resolved.height === 'number') boxOverride.height = resolved.height
+      }
       return (
         <Tag className={element.className} style={Object.keys(boxOverride).length ? boxOverride : undefined}>
           {element.children?.map(child => <RenderElement key={child.id} element={child} />)}
@@ -225,7 +283,7 @@ export function RenderElement({ element }: { element: ElementConfig }) {
   // radius edit would work in the editor (which always renders the wrapper) and silently vanish
   // for a real visitor (the exact "control that doesn't actually work" the brief forbids).
   const hasStyleOverride = element.background !== undefined || element.opacity !== undefined
-    || element.border !== undefined || element.borderRadius !== undefined
+    || element.border !== undefined || element.borderRadius !== undefined || element.padding !== undefined
   const hasOverride = resolved.positionActive || resolved.sizeActive || hasStyleOverride
   const animationActive = isWired && element.animation.preset !== 'none'
 

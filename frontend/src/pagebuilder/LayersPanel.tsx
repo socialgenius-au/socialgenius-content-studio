@@ -1,11 +1,19 @@
 import { usePageBuilder } from './PageBuilderContext'
+import { isElementDeletable } from './types'
 import type { ElementConfig } from './types'
 
-/** Minimal layer list (Section 19) — click to select, inline lock/visibility toggles. Nested
- * children render indented under their parent container so containment stays legible without a
- * full drag-to-reorder tree (out of scope for the first checkpoint). */
+/** Minimal layer list (Section 19) — click to select, inline lock/visibility toggles, delete.
+ * Nested children render indented under their parent container so containment stays legible
+ * without a full drag-to-reorder tree (out of scope for the first checkpoint).
+ *
+ * DELETE FIX (requirement A — "deleting from ... Layers must remove it"): this row previously had
+ * no delete action at all. The 🗑 button only renders for elements `isElementDeletable` allows —
+ * per requirement A, an object that can't actually be deleted (currently just the lead-capture
+ * form) must not show a Delete action in the first place, rather than showing one that silently
+ * fails or needs its own error state. */
 function LayerRow({ element, depth }: { element: ElementConfig; depth: number }) {
-  const { selectedId, select, setLocked, setVisible } = usePageBuilder()
+  const { selectedId, select, setLocked, setVisible, deleteElement } = usePageBuilder()
+  const deletable = isElementDeletable(element)
   return (
     <>
       <div
@@ -21,6 +29,18 @@ function LayerRow({ element, depth }: { element: ElementConfig; depth: number })
           <button onClick={(e) => { e.stopPropagation(); setLocked(element.id, !element.locked) }} title="Toggle lock">
             {element.locked ? '🔒' : '🔓'}
           </button>
+          {deletable && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                deleteElement(element.id)
+                if (selectedId === element.id) select(null)
+              }}
+              title="Delete"
+            >
+              🗑
+            </button>
+          )}
         </span>
       </div>
       {element.children?.map(child => <LayerRow key={child.id} element={child} depth={depth + 1} />)}

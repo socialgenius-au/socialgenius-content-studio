@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { usePageBuilder } from './PageBuilderContext'
 import { useZoom } from './ZoomContext'
+import { isElementDeletable } from './types'
 import type { ElementConfig } from './types'
 
 type HandlePos = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
@@ -24,7 +25,7 @@ const HANDLES: HandlePos[] = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se']
 export function EditableWrapper({
   element, editMode, selected, children,
 }: { element: ElementConfig; editMode: boolean; selected: boolean; children: ReactNode }) {
-  const { select, moveElement, resizeElement, setLocked } = usePageBuilder()
+  const { select, moveElement, resizeElement, setLocked, deleteElement } = usePageBuilder()
   const zoom = useZoom()
   const ref = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -132,6 +133,22 @@ export function EditableWrapper({
               onClick={(e) => { e.stopPropagation(); setLocked(element.id, false) }}
             >
               Unlock
+            </button>
+          )}
+          {/* DELETE FIX (requirement A — "deleting from the canvas selection ... must remove
+             it"): a locked element must be unlocked first (same rule move/resize already follow
+             here), and a protected element (currently only the lead-capture form) never shows a
+             Delete control at all, per "do not show a Delete action for objects that cannot
+             actually be deleted." Delete/Backspace on the keyboard does the same thing (see
+             PageBuilderContext.tsx) — this button is the discoverable, click-only equivalent. */}
+          {!element.locked && isElementDeletable(element) && (
+            <button
+              className="pb-delete-btn"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); deleteElement(element.id); select(null) }}
+              title="Delete"
+            >
+              🗑 Delete
             </button>
           )}
         </div>

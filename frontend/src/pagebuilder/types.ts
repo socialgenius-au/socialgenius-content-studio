@@ -272,6 +272,19 @@ export interface ElementConfig {
   children?: ElementConfig[]
 }
 
+/** Delete-fix requirement A: protected/core-functional objects must be explicitly non-deletable,
+ * and no UI may offer a Delete action for one. Today that's only the lead-capture form — it's
+ * real, interactive React wired via `custom: 'lead-capture-form'` (see ElementRenderer.tsx),
+ * so deleting it would remove genuine working functionality, not just page content. Every other
+ * element — including pre-existing structural containers, not just user-added ones — is
+ * deletable; there is no other protected category today. Every Delete affordance in this engine
+ * (canvas chrome, Layers, Properties, the Delete/Backspace shortcut) must gate on this one
+ * function so "deletable in the data model" and "shows a Delete action" never disagree.
+ */
+export function isElementDeletable(element: ElementConfig): boolean {
+  return element.custom !== 'lead-capture-form'
+}
+
 export type SectionBackgroundType = 'none' | 'color' | 'gradient' | 'image' | 'video'
 
 /** Section backgrounds as a first-class editable layer, distinct from `SectionConfig.background`
