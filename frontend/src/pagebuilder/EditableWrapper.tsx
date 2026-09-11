@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { usePageBuilder } from './PageBuilderContext'
+import { useZoom } from './ZoomContext'
 import type { ElementConfig } from './types'
 
 type HandlePos = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
@@ -24,6 +25,7 @@ export function EditableWrapper({
   element, editMode, selected, children,
 }: { element: ElementConfig; editMode: boolean; selected: boolean; children: ReactNode }) {
   const { select, moveElement, resizeElement, setLocked } = usePageBuilder()
+  const zoom = useZoom()
   const ref = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState(false)
 
@@ -43,8 +45,8 @@ export function EditableWrapper({
     let lastX = startX
     let lastY = startY
     const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - lastX
-      const dy = ev.clientY - lastY
+      const dx = (ev.clientX - lastX) / zoom
+      const dy = (ev.clientY - lastY) / zoom
       lastX = ev.clientX
       lastY = ev.clientY
       moveElement(element.id, dx, dy)
@@ -56,23 +58,26 @@ export function EditableWrapper({
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
-  }, [editMode, element.id, element.locked, moveElement, select])
+  }, [editMode, element.id, element.locked, moveElement, select, zoom])
 
   const onHandlePointerDown = useCallback((pos: HandlePos) => (e: ReactPointerEvent) => {
     if (!editMode || element.locked) return
     e.stopPropagation()
     e.preventDefault()
+    // getBoundingClientRect() reports POST-TRANSFORM (visually scaled) screen pixels -- divide by
+    // zoom so the starting size is back in the same CSS-pixel space resizeElement expects (and
+    // that the zoom-compensated dx/dy below are already in), not a mix of the two.
     const rect = ref.current?.getBoundingClientRect()
-    startWidth.current = rect?.width ?? 0
-    startHeight.current = rect?.height ?? 0
+    startWidth.current = (rect?.width ?? 0) / zoom
+    startHeight.current = (rect?.height ?? 0) / zoom
     aspectRatio.current = startHeight.current > 0 ? startWidth.current / startHeight.current : 1
     const startX = e.clientX
     const startY = e.clientY
     const lockRatio = element.type === 'image' && element.image?.aspectRatioLocked
 
     const onMove = (ev: PointerEvent) => {
-      const dx = ev.clientX - startX
-      const dy = ev.clientY - startY
+      const dx = (ev.clientX - startX) / zoom
+      const dy = (ev.clientY - startY) / zoom
       let w = startWidth.current
       let h = startHeight.current
       if (pos.includes('e')) w = startWidth.current + dx
@@ -90,7 +95,7 @@ export function EditableWrapper({
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
-  }, [editMode, element.id, element.locked, element.type, element.image?.aspectRatioLocked, resizeElement])
+  }, [editMode, element.id, element.locked, element.type, element.image?.aspectRatioLocked, resizeElement, zoom])
 
   if (!editMode) {
     return <>{children}</>

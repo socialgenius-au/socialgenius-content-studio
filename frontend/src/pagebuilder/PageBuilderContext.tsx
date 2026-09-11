@@ -1,9 +1,12 @@
 import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode,
 } from 'react'
+import {
+  DEFAULT_ANIMATION, DEFAULT_IMAGE_PROPS, DEFAULT_TEXT_PROPS,
+} from './types'
 import type {
-  AnimationConfig, Breakpoint, ElementConfig, PageBuilderMode, PageConfig, ResponsiveOverride,
-  SectionBackgroundConfig,
+  AnimationConfig, Breakpoint, ElementConfig, ElementType, PageBuilderMode, PageConfig,
+  ResponsiveOverride, SectionBackgroundConfig,
 } from './types'
 
 /**
@@ -46,6 +49,12 @@ interface PageBuilderActions {
   deleteElement: (id: string) => void
   resetDraft: () => void
   findElement: (id: string | null) => ElementConfig | null
+  /** Visual Editor V1 "Elements" tab — creates one new element of `type`, appends it to the
+   * currently active section (the section owning the current selection, falling back to Hero /
+   * the first section), and selects it immediately so it appears on canvas + Layers + Properties
+   * in one action (Section 3/10 of the UX-correction brief). Uses the SAME shared page model as
+   * every other mutation here — never a separate canvas-object model. */
+  addElement: (type: ElementType) => void
 }
 
 type PageBuilderContextValue = PageBuilderState & PageBuilderActions
@@ -81,9 +90,45 @@ function findInElements(elements: ElementConfig[], id: string): ElementConfig | 
 }
 
 let uid = 0
-function nextId(prefix: string) {
+function nextId(prefix: string, tag: string) {
   uid += 1
-  return `${prefix}-copy-${Date.now()}-${uid}`
+  return `${prefix}-${tag}-${Date.now()}-${uid}`
+}
+
+const NEW_ELEMENT_LABEL: Record<ElementType, string> = {
+  text: 'Text', image: 'Image', button: 'Button', icon: 'Icon', shape: 'Shape',
+  container: 'Container', card: 'Card', navigation: 'Navigation', video: 'Video',
+  badge: 'Badge', divider: 'Divider',
+}
+
+/** New-element defaults for the Elements tab (Section 10 of the UX-correction brief) — only the
+ * five V1 add-able types get real defaults; every new element is placed with an explicit position/
+ * size override so it is immediately visible and draggable, exactly like any element a user has
+ * already dragged/resized once (the same `positionOverridden`/`sizeOverridden` v1 rule everywhere
+ * else in this engine). Container/Shape get a visible default fill/border via the SAME generic
+ * background/border/borderRadius fields the Appearance panel edits, so an empty container or a
+ * shape with no className is still visually locatable on the canvas the instant it's added. */
+function makeDefaultElement(type: ElementType): ElementConfig {
+  const base: ElementConfig = {
+    id: nextId(type, 'new'), type, parentId: null, name: NEW_ELEMENT_LABEL[type],
+    x: 40, y: 40, width: 200, height: 60, zIndex: 20,
+    visible: true, locked: false, positionOverridden: true, sizeOverridden: true,
+    responsive: {}, animation: { ...DEFAULT_ANIMATION }, interactions: [],
+  }
+  switch (type) {
+    case 'text':
+      return { ...base, height: 40, text: { ...DEFAULT_TEXT_PROPS, content: 'New text', as: 'p' } }
+    case 'image':
+      return { ...base, width: 240, height: 160, image: { ...DEFAULT_IMAGE_PROPS } }
+    case 'button':
+      return { ...base, width: 160, height: 46, button: { label: 'Button', href: '#', variant: 'primary' } }
+    case 'container':
+      return { ...base, width: 260, height: 160, background: '#ffffff', border: '1px dashed rgba(23,25,18,0.3)', children: [] }
+    case 'shape':
+      return { ...base, width: 160, height: 100, background: '#C89A2E', borderRadius: 8 }
+    default:
+      return base
+  }
 }
 
 export function PageBuilderProvider({
@@ -240,7 +285,7 @@ export function PageBuilderProvider({
     duplicateElement: (id) => mutate(draft => {
       walk(allElements(draft), id, (el, siblings) => {
         const copy: ElementConfig = JSON.parse(JSON.stringify(el))
-        copy.id = nextId(el.type)
+        copy.id = nextId(el.type, 'copy')
         copy.name = `${el.name} copy`
         copy.x += 24
         copy.y += 24
@@ -268,7 +313,25 @@ export function PageBuilderProvider({
     },
 
     findElement,
-  }), [mutate, allElements, findElement, breakpoint])
+
+    addElement: (type) => {
+      const el = makeDefaultElement(type)
+      mutate(draft => {
+        let sectionId = selectedSectionId
+        if (!sectionId && selectedId) {
+          for (const s of draft.sections) {
+            if (findInElements(s.elements, selectedId)) { sectionId = s.id; break }
+          }
+        }
+        const section = draft.sections.find(s => s.id === sectionId)
+          ?? draft.sections.find(s => s.id === 'hero')
+          ?? draft.sections[0]
+        section?.elements.push(el)
+      })
+      setSelectedId(el.id)
+      setSelectedSectionId(null)
+    },
+  }), [mutate, allElements, findElement, breakpoint, selectedId, selectedSectionId])
 
   const value: PageBuilderContextValue = { mode, page, selectedId, selectedSectionId, breakpoint, ...actions }
 
