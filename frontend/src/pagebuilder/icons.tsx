@@ -1,6 +1,6 @@
 import {
   ArrowRight, Eye, ShieldCheck, Award, CheckCircle2, Compass, TrendingDown, Layers, Megaphone,
-  Circle, type LucideIcon,
+  Circle, BarChart3, BookOpen, Settings, Users, FileText, Lightbulb, ChartNoAxesColumnIncreasing, Gem, type LucideIcon,
 } from 'lucide-react'
 
 /**
@@ -20,6 +20,14 @@ const ICONS: Record<string, LucideIcon> = {
   layers: Layers,
   megaphone: Megaphone,
   circle: Circle,
+  'bar-chart-3': BarChart3,
+  'book-open': BookOpen,
+  settings: Settings,
+  users: Users,
+  'file-text': FileText,
+  lightbulb: Lightbulb,
+  'chart-no-axes-column-increasing': ChartNoAxesColumnIncreasing,
+  gem: Gem,
 }
 
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {
