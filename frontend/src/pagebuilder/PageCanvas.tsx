@@ -77,7 +77,7 @@ function SectionShell({ section, breakpoint }: { section: SectionConfig; breakpo
         position: isSticky ? (section.sticky === 'fixed' ? 'fixed' : 'sticky') : 'relative',
         top: isSticky ? 0 : undefined,
       }}
-      id={section.id === 'why-positioning' || section.id === 'positioning-audit' ? section.id : undefined}
+      id={section.id}
       // BACKGROUND FIX (requirement B — "clicking empty canvas/background space should select
       // Background when no foreground object is hit"): every foreground element and the 🎨
       // button already call e.stopPropagation() in their own onClick, so a click reaching all
