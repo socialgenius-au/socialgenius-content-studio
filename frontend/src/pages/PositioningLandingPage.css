@@ -1,0 +1,475 @@
+/* Social Genius — Public Positioning Landing Page ("/positioning").
+   A premium, public marketing page — deliberately NOT styled like the internal AppShell/dashboard.
+   Uses the same brand tokens already defined globally in index.css (--green/--gold/--cream, Inter)
+   rather than inventing a new palette, but every layout/section rule here is bespoke to this page.
+
+   VISUAL STORYTELLING CONTRACT (do not casually "simplify" this away when touching breakpoints):
+   the hero's focal order is always eyebrow -> headline -> subhead -> CTA, with the gold "focal
+   glow" staying visually *behind* and *anchoring* the headline at every breakpoint. Each
+   responsive rule below repositions/rescales that glow and reflows the grid — it must never
+   change which element is the focal subject or the reading order. */
+
+.pl-page {
+  --pl-green: var(--green, #1E3D2A);
+  --pl-gold: var(--gold, #C89A2E);
+  --pl-cream: var(--cream, #F5F0E8);
+  --pl-ink: #171912;
+  --pl-ink-soft: #4B5347;
+  --pl-hairline: rgba(23, 25, 18, 0.1);
+
+  background: var(--pl-cream);
+  color: var(--pl-ink);
+  font-family: 'Inter', system-ui, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.pl-page * { box-sizing: border-box; }
+
+.pl-container {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ---------------------------------------------------------------- nav ---- */
+
+.pl-nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(245, 240, 232, 0.86);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--pl-hairline);
+}
+
+.pl-nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 72px;
+}
+
+.pl-brand {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.pl-brand-name {
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  color: var(--pl-green);
+}
+
+.pl-brand-tag {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pl-gold);
+}
+
+.pl-nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 999px;
+  background: var(--pl-green);
+  color: var(--pl-cream);
+  font-weight: 600;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.pl-nav-cta:hover { background: #142a1c; transform: translateY(-1px); }
+
+/* --------------------------------------------------------------- hero ---- */
+
+.pl-hero {
+  position: relative;
+  padding: 96px 0 88px;
+}
+
+/* The focal glow — deliberately behind the headline, never a separate "thing to look at" on its
+   own. Repositioned/rescaled per breakpoint below, never removed (removing it collapses the
+   intended focal hierarchy, not just the layout). */
+.pl-hero-glow {
+  position: absolute;
+  top: -120px;
+  right: -160px;
+  width: 620px;
+  height: 620px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(200, 154, 46, 0.5), rgba(200, 154, 46, 0) 70%);
+  filter: blur(2px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pl-hero-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 56px;
+  align-items: center;
+}
+
+.pl-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pl-green);
+  margin-bottom: 20px;
+}
+.pl-eyebrow::before {
+  content: "";
+  width: 22px;
+  height: 2px;
+  background: var(--pl-gold);
+  display: inline-block;
+}
+
+.pl-h1 {
+  font-size: clamp(40px, 5.4vw, 72px);
+  line-height: 1.04;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--pl-green);
+  margin-bottom: 24px;
+  max-width: 14ch;
+}
+.pl-h1 .pl-dot { color: var(--pl-gold); }
+
+.pl-subhead {
+  font-size: clamp(17px, 1.6vw, 20px);
+  line-height: 1.55;
+  color: var(--pl-ink-soft);
+  max-width: 46ch;
+  margin-bottom: 36px;
+}
+
+.pl-cta-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.pl-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 28px;
+  border-radius: 999px;
+  background: var(--pl-green);
+  color: var(--pl-cream);
+  font-weight: 700;
+  font-size: 15px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 10px 30px -12px rgba(30, 61, 42, 0.55);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.pl-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 34px -10px rgba(30, 61, 42, 0.6); }
+
+.pl-link-secondary {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--pl-green);
+  text-decoration: none;
+  border-bottom: 1px solid var(--pl-gold);
+  padding-bottom: 2px;
+}
+.pl-link-secondary:hover { color: #142a1c; }
+
+/* Hero side card — a compact "promise" card, secondary focal element. Always visually subordinate
+   to the H1 (smaller, positioned beside/below it, never competing for first-read attention). */
+.pl-hero-card {
+  background: #fff;
+  border: 1px solid var(--pl-hairline);
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 24px 60px -30px rgba(23, 25, 18, 0.35);
+}
+.pl-hero-card-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pl-gold);
+  margin-bottom: 10px;
+}
+.pl-hero-card-text {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--pl-green);
+}
+
+/* -------------------------------------------------------- generic section ---- */
+
+.pl-section {
+  padding: 84px 0;
+  border-top: 1px solid var(--pl-hairline);
+}
+.pl-section-alt { background: #FBF8F2; }
+
+.pl-section-head {
+  max-width: 640px;
+  margin: 0 0 48px;
+}
+
+.pl-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pl-gold);
+  margin-bottom: 12px;
+}
+
+.pl-h2 {
+  font-size: clamp(28px, 3.4vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--pl-green);
+  line-height: 1.15;
+  margin-bottom: 16px;
+}
+
+.pl-lede {
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--pl-ink-soft);
+}
+
+/* ------------------------------------------------------------- two-col ---- */
+
+.pl-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: start;
+}
+
+.pl-stat-list { display: flex; flex-direction: column; gap: 24px; }
+.pl-stat-item { display: flex; gap: 16px; align-items: flex-start; }
+.pl-stat-icon {
+  flex: 0 0 auto;
+  width: 40px; height: 40px;
+  border-radius: 12px;
+  background: var(--pl-green);
+  color: var(--pl-cream);
+  display: flex; align-items: center; justify-content: center;
+}
+.pl-stat-body h3 { font-size: 16px; font-weight: 700; color: var(--pl-green); margin-bottom: 4px; }
+.pl-stat-body p { font-size: 14.5px; line-height: 1.55; color: var(--pl-ink-soft); }
+
+/* ------------------------------------------------------------ VTC grid ---- */
+
+.pl-vtc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.pl-vtc-card {
+  background: #fff;
+  border: 1px solid var(--pl-hairline);
+  border-radius: 20px;
+  padding: 32px 28px;
+  position: relative;
+  overflow: hidden;
+}
+.pl-vtc-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: var(--pl-gold);
+}
+.pl-vtc-icon {
+  width: 48px; height: 48px;
+  border-radius: 14px;
+  background: rgba(30, 61, 42, 0.06);
+  color: var(--pl-green);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+}
+.pl-vtc-title { font-size: 20px; font-weight: 800; color: var(--pl-green); margin-bottom: 10px; }
+.pl-vtc-text { font-size: 14.5px; line-height: 1.6; color: var(--pl-ink-soft); }
+
+/* --------------------------------------------------------------- quote ---- */
+
+.pl-quote {
+  text-align: center;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.pl-quote-mark {
+  font-size: 34px;
+  font-weight: 800;
+  color: var(--pl-gold);
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+.pl-quote-text {
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 800;
+  color: var(--pl-green);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+/* ---------------------------------------------------------------- CTA ---- */
+
+.pl-cta-section {
+  padding: 88px 0 100px;
+  background: var(--pl-green);
+  color: var(--pl-cream);
+}
+
+.pl-cta-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 420px;
+  gap: 56px;
+  align-items: start;
+}
+
+.pl-cta-section .pl-kicker { color: var(--pl-gold); }
+.pl-cta-section .pl-h2 { color: var(--pl-cream); }
+.pl-cta-section .pl-lede { color: rgba(245, 240, 232, 0.78); }
+
+.pl-cta-points { list-style: none; margin-top: 28px; display: flex; flex-direction: column; gap: 14px; }
+.pl-cta-points li {
+  display: flex; gap: 12px; align-items: flex-start;
+  font-size: 15px; color: rgba(245, 240, 232, 0.9); line-height: 1.5;
+}
+.pl-cta-points li svg { flex: 0 0 auto; color: var(--pl-gold); margin-top: 2px; }
+
+.pl-form-card {
+  background: var(--pl-cream);
+  color: var(--pl-ink);
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 30px 70px -30px rgba(0, 0, 0, 0.45);
+}
+.pl-form-title { font-size: 19px; font-weight: 800; color: var(--pl-green); margin-bottom: 6px; }
+.pl-form-sub { font-size: 13.5px; color: var(--pl-ink-soft); margin-bottom: 22px; }
+
+.pl-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.pl-field label { font-size: 12.5px; font-weight: 700; color: var(--pl-green); }
+.pl-field input,
+.pl-field textarea {
+  border: 1px solid var(--pl-hairline);
+  border-radius: 10px;
+  padding: 11px 13px;
+  font-size: 14.5px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--pl-ink);
+  resize: vertical;
+}
+.pl-field input:focus,
+.pl-field textarea:focus {
+  outline: none;
+  border-color: var(--pl-green);
+  box-shadow: 0 0 0 3px rgba(30, 61, 42, 0.12);
+}
+.pl-field-error { font-size: 12px; color: #B3261E; }
+
+.pl-form-submit {
+  width: 100%;
+  margin-top: 6px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  border: none;
+  background: var(--pl-green);
+  color: var(--pl-cream);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+.pl-form-submit:hover { background: #142a1c; }
+.pl-form-submit:disabled { opacity: 0.6; cursor: default; }
+
+.pl-form-note { font-size: 12px; color: var(--pl-ink-soft); margin-top: 12px; text-align: center; }
+
+.pl-success {
+  text-align: center;
+  padding: 20px 4px 8px;
+}
+.pl-success-icon {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: rgba(30, 61, 42, 0.08);
+  color: var(--pl-green);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+}
+.pl-success h3 { font-size: 18px; font-weight: 800; color: var(--pl-green); margin-bottom: 8px; }
+.pl-success p { font-size: 14px; color: var(--pl-ink-soft); line-height: 1.55; }
+
+/* -------------------------------------------------------------- footer ---- */
+
+.pl-footer {
+  padding: 40px 0;
+  border-top: 1px solid var(--pl-hairline);
+  background: var(--pl-cream);
+}
+.pl-footer-inner {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+}
+.pl-footer-tag { font-size: 13px; color: var(--pl-ink-soft); }
+.pl-footer-brand { font-weight: 800; color: var(--pl-green); }
+
+/* ============================================================ TABLET ==== */
+@media (max-width: 960px) {
+  .pl-hero { padding: 72px 0 64px; }
+  .pl-hero-inner { grid-template-columns: 1fr; gap: 40px; }
+  .pl-hero-glow { top: -80px; right: -140px; width: 440px; height: 440px; }
+  .pl-hero-card { max-width: 420px; }
+
+  .pl-two-col { grid-template-columns: 1fr; gap: 36px; }
+  .pl-vtc-grid { grid-template-columns: 1fr 1fr; }
+  .pl-cta-grid { grid-template-columns: 1fr; gap: 40px; }
+  .pl-form-card { max-width: 480px; }
+}
+
+/* ============================================================ MOBILE ==== */
+@media (max-width: 640px) {
+  .pl-container { padding: 0 18px; }
+  .pl-nav-inner { height: 64px; }
+  .pl-nav-cta { padding: 9px 16px; font-size: 13px; }
+
+  .pl-hero { padding: 48px 0 44px; }
+  /* Focal glow moves BEHIND/ABOVE the headline block (centered, smaller) rather than beside it —
+     same subject (the glow anchors the H1), same story, adapted arrangement for a narrow column. */
+  .pl-hero-glow { top: -60px; right: -100px; left: auto; width: 320px; height: 320px; opacity: 0.85; }
+  .pl-h1 { max-width: none; }
+  .pl-subhead { max-width: none; }
+  .pl-cta-row { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .pl-btn-primary { width: 100%; justify-content: center; }
+
+  .pl-section { padding: 56px 0; }
+  .pl-vtc-grid { grid-template-columns: 1fr; }
+  .pl-quote-text { font-size: 24px; }
+  .pl-cta-section { padding: 60px 0 72px; }
+  .pl-form-card { padding: 24px; }
+  .pl-footer-inner { flex-direction: column; text-align: center; }
+}
+
+/* ======================================================== LARGE / 4K ==== */
+@media (min-width: 1600px) {
+  .pl-container { max-width: 1360px; }
+  .pl-hero-glow { width: 760px; height: 760px; }
+}

@@ -41,6 +41,7 @@ const KnowledgePage = lazy(() => import('./pages/KnowledgePage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const PostCreatorV2 = lazy(() => import('./pages/post-creator-v2/PostCreatorV2'))
 const VideoStudioV2 = lazy(() => import('./pages/video-studio-v2/VideoStudioV2'))
+const PositioningLandingPage = lazy(() => import('./pages/PositioningLandingPage'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
@@ -65,6 +66,21 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+
+      {/* Social Genius Positioning landing page — PUBLIC, unauthenticated, own full-screen chrome
+          (no AppShell/RequireAuth), same convention as /studio and /video-studio-v2 below. This is
+          the marketing page explaining why positioning comes before content spend — a completely
+          separate experience from the authenticated, client-scoped strategist workspace at
+          /clients/:clientId/positioning (PositioningPage, registered further down inside the
+          AppShell route group). Do not merge these two routes/pages. */}
+      <Route
+        path="/positioning"
+        element={
+          <Suspense fallback={<PageFallback />}>
+            <PositioningLandingPage />
+          </Suspense>
+        }
+      />
 
       {/* Studio — the video editor keeps its own full-screen chrome, not the AppShell */}
       <Route
