@@ -101,10 +101,10 @@ function ImageContent({ element }: { element: ElementConfig }) {
   const frameStyle: CSSProperties = {
     position: 'relative',
     width: '100%',
-    height: typeof element.height === 'number' ? '100%' : 220,
+    height: typeof element.height === 'number' ? '100%' : (element.className ? undefined : 220),
     overflow: 'hidden',
     borderRadius: img.borderRadius,
-    background: img.src ? undefined : 'repeating-linear-gradient(45deg, rgba(0,0,0,0.04), rgba(0,0,0,0.04) 10px, rgba(0,0,0,0.02) 10px, rgba(0,0,0,0.02) 20px)',
+    background: img.src || mode !== 'edit' ? undefined : 'repeating-linear-gradient(45deg, rgba(0,0,0,0.04), rgba(0,0,0,0.04) 10px, rgba(0,0,0,0.02) 10px, rgba(0,0,0,0.02) 20px)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   }
 
@@ -116,7 +116,7 @@ function ImageContent({ element }: { element: ElementConfig }) {
   }
 
   return (
-    <div style={frameStyle}>
+    <div className={element.className} style={frameStyle}>
       {img.src ? (
         <img
           src={img.src}
