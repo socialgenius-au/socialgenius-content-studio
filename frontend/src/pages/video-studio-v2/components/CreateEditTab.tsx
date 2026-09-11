@@ -1970,10 +1970,15 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       border: t.bgBorderWidth ? `${t.bgBorderWidth}px solid ${t.bgBorderColor ?? "#000000"}` : undefined,
       backdropFilter: t.bgBlur ? "blur(6px)" : undefined,
       WebkitBackdropFilter: t.bgBlur ? "blur(6px)" : undefined,
-      // "Banner" shape (Requirement: pill / rectangle / banner): the background spans the full
-      // canvas width regardless of the text's own (narrower) width — left/right pulled back to
-      // the canvas edges via negative margins matched to the box's own left offset.
-      ...(t.bgFullWidth ? { marginLeft: `-${t.x}%`, marginRight: `-${100 - t.x - t.width}%`, textAlign: t.align ?? "center" } : {}),
+      // "Banner" shape (Requirement: pill / rectangle / banner): the background should span the
+      // full canvas width regardless of the text's own (narrower) width. Negative margins can't
+      // do that here — `width` above is a fixed `${t.width}%`, and for an absolutely positioned
+      // box with `left`, `width` AND both margins all explicitly set, the margins only shift the
+      // box's position (solving the leftover 'right'); they never stretch a non-auto width. That
+      // left the chip rendering at its original narrow width, just shifted to start at x=0 —
+      // never actually reaching the right edge. Overriding left/width directly is what actually
+      // fills the container.
+      ...(t.bgFullWidth ? { left: "0%", width: "100%", textAlign: t.align ?? "center" } : {}),
     };
     if (gradientActive) {
       return {
@@ -3156,7 +3161,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // Phase 4 (Video Studio V2 — Independent Shapes): real Shape items on canvas — same
   // gated-to-startTime/endTime, draggable/resizable pattern as every other real visual layer.
   // 'circle' overrides borderRadius with a hard 50%; 'banner'/fullWidth extends the box to the
-  // full canvas width via negative margins, same technique TextOverlay.bgFullWidth uses.
+  // full canvas width by overriding left/width directly (same fix as TextOverlay.bgFullWidth —
+  // negative margins can't stretch a box whose width is already fixed to `${sh.width}%`; they
+  // only reposition it, leaving it short of the right edge).
   const shapeEntries = shapes
     .filter(sh => timeline.currentTime >= sh.startTime && timeline.currentTime < sh.endTime)
     .map(sh => {
@@ -3171,7 +3178,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         background: composeHexAlpha(sh.fillColor, sh.opacity),
         borderRadius: sh.kind === "circle" ? "50%" : sh.borderRadius ?? 0,
         border: sh.borderWidth ? `${sh.borderWidth}px solid ${sh.borderColor ?? "#000000"}` : undefined,
-        ...(sh.fullWidth ? { marginLeft: `-${sh.x}%`, marginRight: `-${100 - sh.x - sh.width}%` } : {}),
+        ...(sh.fullWidth ? { left: "0%", width: "100%" } : {}),
       }}
       onMouseDown={beginShapeDrag(sh.id)}
       onClick={e => e.stopPropagation()}
