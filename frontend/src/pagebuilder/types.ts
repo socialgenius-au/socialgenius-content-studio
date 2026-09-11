@@ -186,6 +186,13 @@ export interface ButtonProps {
   href?: string
   variant: 'primary' | 'secondary' | 'link'
   icon?: string
+  /** Optional style overrides — undefined by default so the button keeps its existing CSS-class
+   * appearance until an editor explicitly sets one (same "inline only on explicit edit" rule as
+   * TextProps). Applied directly to the rendered <a>, not the wrapper div, since the class already
+   * paints an opaque background there — a wrapper-level override would be invisible. */
+  background?: string
+  color?: string
+  borderRadius?: number
 }
 
 /** Positioning/sizing override for ONE breakpoint. Every field optional — an unset field means
@@ -222,6 +229,11 @@ export interface ElementConfig {
   padding?: string
   margin?: string
   background?: string
+  /** Container/Card style controls (Visual Editor V1) — optional, undefined by default, so an
+   * element renders exactly as its existing className dictates until explicitly edited. */
+  opacity?: number
+  border?: string
+  borderRadius?: number
   overflow?: 'visible' | 'hidden' | 'auto'
   zIndex: number
 

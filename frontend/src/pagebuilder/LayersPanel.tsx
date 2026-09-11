@@ -28,6 +28,23 @@ function LayerRow({ element, depth }: { element: ElementConfig; depth: number })
   )
 }
 
+/** A section's Background as its own selectable Layers row (Section 8 of the Visual Editor brief
+ * — background must be a first-class object in Layers, not reachable only via the canvas's
+ * floating 🎨 button). Selecting it opens the exact same SectionBackgroundPanel the canvas button
+ * already opens — same `selectSection` action, same underlying `backgroundLayer` data. */
+function BackgroundRow({ sectionId, sectionName }: { sectionId: string; sectionName: string }) {
+  const { selectedSectionId, selectSection } = usePageBuilder()
+  return (
+    <div
+      className={`pb-layer-row ${selectedSectionId === sectionId ? 'active' : ''}`}
+      style={{ paddingLeft: 10 }}
+      onClick={() => selectSection(sectionId)}
+    >
+      <span className="pb-layer-name">🎨 Background</span>
+    </div>
+  )
+}
+
 export function LayersPanel() {
   const { page } = usePageBuilder()
   return (
@@ -36,6 +53,7 @@ export function LayersPanel() {
       {page.sections.map(section => (
         <div key={section.id} className="pb-layer-section">
           <div className="pb-layer-section-name">{section.name}</div>
+          <BackgroundRow sectionId={section.id} sectionName={section.name} />
           {section.elements.map(el => <LayerRow key={el.id} element={el} depth={0} />)}
         </div>
       ))}

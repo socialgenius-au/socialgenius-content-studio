@@ -107,7 +107,15 @@ export function useElementAnimation(ref: RefObject<HTMLElement>, animation: Anim
     played
   )
 
-  const style: CSSProperties = active
+  // BUG FIX (Visual Editor V1 acceptance testing): the effect above already correctly refuses to
+  // auto-play while editing ("the element must stay put to select/drag") -- but the style below
+  // previously still forced the PRE-animation start state (e.g. `opacity: 0` for fade-in)
+  // whenever `editMode` was true, since `isPlaying` is unconditionally false there. That made any
+  // element with a wired, non-'none' preset invisible/off-canvas in BOTH the Page Builder and the
+  // Visual Editor -- selectable only via Layers, never visible or clickable on the canvas itself.
+  // Edit Mode now renders with no animation-driven style at all, so every element is always fully
+  // visible/in-place while editing; the real start/end states only apply in View Mode / Preview.
+  const style: CSSProperties = active && !editMode
     ? {
         ...(isPlaying ? endStyle(animation.preset) : startStyle(animation.preset, animation.intensity ?? 32)),
         transition: `opacity ${animation.durationMs}ms ${animation.easing ?? 'ease'}, transform ${animation.durationMs}ms ${animation.easing ?? 'ease'}, filter ${animation.durationMs}ms ${animation.easing ?? 'ease'}`,

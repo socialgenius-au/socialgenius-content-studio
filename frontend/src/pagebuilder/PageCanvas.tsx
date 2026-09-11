@@ -96,22 +96,20 @@ function SectionShell({ section, breakpoint }: { section: SectionConfig; breakpo
 }
 
 /**
- * Top-level page renderer. VIEW MODE renders sections/elements with zero extra chrome — this is
- * what a public visitor gets, byte-for-byte the same DOM shape the original hard-coded
+ * The page's real, editable DOM. VIEW MODE renders sections/elements with zero extra chrome —
+ * this is what a public visitor gets, byte-for-byte the same DOM shape the original hard-coded
  * PositioningLandingPage produced (a `type: 'none'` background layer renders nothing, and the
- * section-select button only renders in Edit Mode). EDIT MODE adds a toolbar + layers panel +
- * property panel around the exact same rendered content (Section 2: the two modes share one
- * render path, edit chrome is additive, never a fork that could drift out of sync with what
- * visitors see).
+ * section-select button only renders in Edit Mode).
  *
- * Edit Mode is entered via `?edit=1` on the URL (see PositioningLandingPage.tsx) — deliberately
- * not a public button, since this is an internal/admin capability, not a visitor-facing feature.
+ * Extracted as its own component so any shell (PageCanvas's own Edit Mode below, or the newer
+ * Visual Editor workspace in VisualEditorShell.tsx) can mount the SAME render path against the
+ * SAME `usePageBuilder()` state, instead of each shell owning its own copy of this markup
+ * (Section 3 of the Visual Editor brief: "one engine, not two builders").
  */
-export function PageCanvas() {
-  const { mode, setMode, page, select, selectSection, breakpoint, setBreakpoint, resetDraft } = usePageBuilder()
+export function PageContent() {
+  const { mode, page, select, selectSection, breakpoint } = usePageBuilder()
   const canvasRef = useRef<HTMLDivElement>(null)
-
-  const content = (
+  return (
     <div
       ref={canvasRef}
       className={`pl-page pb-page pb-bp-${breakpoint}`}
@@ -120,8 +118,18 @@ export function PageCanvas() {
       {page.sections.map(section => <SectionShell key={section.id} section={section} breakpoint={breakpoint} />)}
     </div>
   )
+}
 
-  if (mode === 'view') return content
+/** EDIT MODE adds a toolbar + layers panel + property panel around the exact same rendered
+ * content `PageContent` produces in View Mode (Section 2: the two modes share one render path,
+ * edit chrome is additive, never a fork that could drift out of sync with what visitors see).
+ * Entered via `?edit=1` on the URL (see PositioningLandingPage.tsx) — deliberately not a public
+ * button, since this is an internal/admin capability, not a visitor-facing feature. Retained
+ * as-is per the Visual Editor brief (Section 2: "preserve the existing Page Builder"). */
+export function PageCanvas() {
+  const { mode, setMode, breakpoint, setBreakpoint, resetDraft, page } = usePageBuilder()
+
+  if (mode === 'view') return <PageContent />
 
   return (
     <div className="pb-shell">
@@ -144,7 +152,7 @@ export function PageCanvas() {
       </div>
       <div className="pb-body">
         <LayersPanel />
-        <div className={`pb-canvas-wrap pb-bp-${breakpoint}`}>{content}</div>
+        <div className={`pb-canvas-wrap pb-bp-${breakpoint}`}><PageContent /></div>
         <PropertyPanel />
       </div>
     </div>

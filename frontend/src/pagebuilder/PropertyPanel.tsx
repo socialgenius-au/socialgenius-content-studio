@@ -1,6 +1,6 @@
-import { useRef } from 'react'
 import { usePageBuilder } from './PageBuilderContext'
 import { ANIMATION_PRESET_LIBRARY } from './AnimationPresets'
+import { MediaSelector } from './MediaSelector'
 import { DEFAULT_IMAGE_PROPS } from './types'
 import type { AnimationTrigger, SectionBackgroundType } from './types'
 
@@ -12,14 +12,11 @@ import type { AnimationTrigger, SectionBackgroundType } from './types'
 function SectionBackgroundPanel({ sectionId }: { sectionId: string }) {
   const { page, selectSection, updateSectionBackground, breakpoint } = usePageBuilder()
   const section = page.sections.find(s => s.id === sectionId)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   if (!section) return null
 
   const bg = section.backgroundLayer ?? { type: 'none' as SectionBackgroundType, opacity: 1 }
 
-  const handleReplace = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleReplace = (file: File) => {
     const url = URL.createObjectURL(file)
     updateSectionBackground(sectionId, { image: { ...(bg.image ?? DEFAULT_IMAGE_PROPS), src: url } })
   }
@@ -65,8 +62,7 @@ function SectionBackgroundPanel({ sectionId }: { sectionId: string }) {
       {bg.type === 'image' && (
         <>
           <div className="pb-field-row">
-            <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleReplace} />
-            <button className="pb-toggle" onClick={() => fileInputRef.current?.click()}>{bg.image?.src ? 'Replace image' : 'Add image'}</button>
+            <MediaSelector label={bg.image?.src ? 'Replace image' : 'Add image'} onUpload={handleReplace} />
           </div>
           <div className="pb-field-row">
             <label>Fit
@@ -196,6 +192,12 @@ export function PropertyPanel() {
         <div className="pb-section">
           <div className="pb-section-title">Image</div>
           <div className="pb-field-row">
+            <MediaSelector
+              label={element.image.src ? 'Replace image' : 'Add image'}
+              onUpload={(file) => updateElement(element.id, { image: { ...element.image!, src: URL.createObjectURL(file) } })}
+            />
+          </div>
+          <div className="pb-field-row">
             <label>Fit
               <select value={element.image.fit} onChange={e => updateElement(element.id, { image: { ...element.image!, fit: e.target.value as any } })}>
                 <option value="cover">Fill (cover)</option>
@@ -224,7 +226,17 @@ export function PropertyPanel() {
         <div className="pb-section">
           <div className="pb-section-title">Text</div>
           <div className="pb-field-row">
-            <label>Size<input type="number" value={element.text.fontSizePx} onChange={e => updateElement(element.id, { text: { ...element.text!, fontSizePx: Number(e.target.value) } })} /></label>
+            <label style={{ flex: '1 1 100%' }}>Content
+              <textarea
+                rows={element.text.content.length > 60 ? 4 : 2}
+                value={element.text.content}
+                onChange={e => updateElement(element.id, { text: { ...element.text!, content: e.target.value } })}
+                style={{ width: '100%', resize: 'vertical', border: '1px solid var(--pb-hairline)', borderRadius: 6, padding: '6px 8px', fontSize: 12.5, fontFamily: 'inherit', color: '#171912' }}
+              />
+            </label>
+          </div>
+          <div className="pb-field-row">
+            <label>Size<input type="number" value={element.text.fontSizePx ?? ''} placeholder="inherited" onChange={e => updateElement(element.id, { text: { ...element.text!, fontSizePx: Number(e.target.value) } })} /></label>
             <label>Weight
               <select value={element.text.fontWeight} onChange={e => updateElement(element.id, { text: { ...element.text!, fontWeight: Number(e.target.value) } })}>
                 {[400, 500, 600, 700, 800].map(w => <option key={w} value={w}>{w}</option>)}
@@ -239,6 +251,50 @@ export function PropertyPanel() {
             </label>
             <label>Colour<input type="color" value={element.text.color && /^#/.test(element.text.color) ? element.text.color : '#171912'} onChange={e => updateElement(element.id, { text: { ...element.text!, color: e.target.value } })} /></label>
           </div>
+        </div>
+      )}
+
+      {(element.type === 'container' || element.type === 'card') && !element.custom && (
+        <div className="pb-section">
+          <div className="pb-section-title">Container</div>
+          <div className="pb-field-row">
+            <label>Background<input type="color" value={element.background && /^#/.test(element.background) ? element.background : '#ffffff'} onChange={e => updateElement(element.id, { background: e.target.value })} /></label>
+            <label>Opacity<input type="range" min={0} max={1} step={0.05} value={element.opacity ?? 1} onChange={e => updateElement(element.id, { opacity: Number(e.target.value) })} /></label>
+          </div>
+          <div className="pb-field-row">
+            <label>Border<input value={element.border ?? ''} placeholder="1px solid #17191214" onChange={e => updateElement(element.id, { border: e.target.value })} /></label>
+            <label>Radius<input type="number" value={element.borderRadius ?? 0} onChange={e => updateElement(element.id, { borderRadius: Number(e.target.value) })} /></label>
+          </div>
+          {(element.background !== undefined || element.opacity !== undefined || element.border !== undefined || element.borderRadius !== undefined) && (
+            <div className="pb-field-row">
+              <button className="pb-toggle" onClick={() => updateElement(element.id, { background: undefined, opacity: undefined, border: undefined, borderRadius: undefined })}>
+                ↺ Clear container style overrides
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {element.type === 'button' && element.button && (
+        <div className="pb-section">
+          <div className="pb-section-title">Button</div>
+          <div className="pb-field-row">
+            <label>Label<input value={element.button.label} onChange={e => updateElement(element.id, { button: { ...element.button!, label: e.target.value } })} /></label>
+          </div>
+          <div className="pb-field-row">
+            <label>Background<input type="color" value={element.button.background && /^#/.test(element.button.background) ? element.button.background : '#1E3D2A'} onChange={e => updateElement(element.id, { button: { ...element.button!, background: e.target.value } })} /></label>
+            <label>Text colour<input type="color" value={element.button.color && /^#/.test(element.button.color) ? element.button.color : '#ffffff'} onChange={e => updateElement(element.id, { button: { ...element.button!, color: e.target.value } })} /></label>
+          </div>
+          <div className="pb-field-row">
+            <label>Radius<input type="number" value={element.button.borderRadius ?? 0} onChange={e => updateElement(element.id, { button: { ...element.button!, borderRadius: Number(e.target.value) } })} /></label>
+          </div>
+          {(element.button.background !== undefined || element.button.color !== undefined || element.button.borderRadius !== undefined) && (
+            <div className="pb-field-row">
+              <button className="pb-toggle" onClick={() => updateElement(element.id, { button: { ...element.button!, background: undefined, color: undefined, borderRadius: undefined } })}>
+                ↺ Clear button style overrides
+              </button>
+            </div>
+          )}
         </div>
       )}
 

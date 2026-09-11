@@ -43,6 +43,9 @@ function boxStyle(element: ElementConfig, resolved: ReturnType<typeof useResolve
     margin: element.margin,
     overflow: element.overflow,
   }
+  if (element.opacity !== undefined) style.opacity = element.opacity
+  if (element.border !== undefined) style.border = element.border
+  if (element.borderRadius !== undefined) style.borderRadius = element.borderRadius
   // Deliberate v1 rule (see types.ts docstring): only apply explicit position/size once the
   // element has actually been dragged/resized AT THE CURRENT BREAKPOINT — otherwise the page's own
   // normal-flow (now container-query-aware) CSS decides, so VIEW MODE looks exactly like today's
@@ -153,8 +156,15 @@ function ElementContent({ element }: { element: ElementConfig }) {
     case 'button': {
       const b = element.button!
       const cls = element.className ?? (b.variant === 'primary' ? 'pl-btn-primary' : b.variant === 'secondary' ? 'pl-nav-cta' : 'pl-link-secondary')
+      // Style overrides go directly on the <a>, not the wrapper — the class already paints an
+      // opaque background/border-radius here, so a wrapper-level override would sit invisibly
+      // underneath it (see ButtonProps' own docstring in types.ts).
+      const btnStyle: CSSProperties = {}
+      if (b.background !== undefined) btnStyle.background = b.background
+      if (b.color !== undefined) btnStyle.color = b.color
+      if (b.borderRadius !== undefined) btnStyle.borderRadius = b.borderRadius
       return (
-        <a className={cls} href={b.href ?? '#'}>
+        <a className={cls} href={b.href ?? '#'} style={Object.keys(btnStyle).length ? btnStyle : undefined}>
           {b.label}
           {b.icon && <Icon name={b.icon} size={16} />}
         </a>
@@ -175,14 +185,24 @@ function ElementContent({ element }: { element: ElementConfig }) {
       return <span className={element.className ?? 'pb-badge'}>{element.text?.content}</span>
     case 'container':
     case 'card':
-    case 'navigation':
+    case 'navigation': {
       if (element.custom === 'lead-capture-form') return <LeadCaptureForm />
       const Tag = (element.tag ?? 'div') as 'div' | 'ul' | 'li'
+      // Container style overrides (Visual Editor V1) go directly on this Tag, not the outer
+      // wrapper -- for a container like `.pl-hero-card` the CLASS itself paints the visible box
+      // (background, radius), so a wrapper-level override one DOM level up would sit invisibly
+      // underneath it (same reasoning as the button fix above).
+      const boxOverride: CSSProperties = {}
+      if (element.background !== undefined) boxOverride.background = element.background
+      if (element.opacity !== undefined) boxOverride.opacity = element.opacity
+      if (element.border !== undefined) boxOverride.border = element.border
+      if (element.borderRadius !== undefined) boxOverride.borderRadius = element.borderRadius
       return (
-        <Tag className={element.className}>
+        <Tag className={element.className} style={Object.keys(boxOverride).length ? boxOverride : undefined}>
           {element.children?.map(child => <RenderElement key={child.id} element={child} />)}
         </Tag>
       )
+    }
     default:
       return null
   }
@@ -200,7 +220,13 @@ export function RenderElement({ element }: { element: ElementConfig }) {
   // "active" now depends on the CURRENT breakpoint, not just "was this ever edited on desktop" —
   // an element edited only at desktop takes the zero-wrapper fast path again at mobile if mobile
   // has no override of its own, exactly the "participate in the responsive parent layout" rule.
-  const hasOverride = resolved.positionActive || resolved.sizeActive
+  // Container/Card style overrides (Visual Editor V1) live on the WRAPPER via boxStyle(), so they
+  // must also force the wrapper to render in View Mode -- otherwise a background/opacity/border/
+  // radius edit would work in the editor (which always renders the wrapper) and silently vanish
+  // for a real visitor (the exact "control that doesn't actually work" the brief forbids).
+  const hasStyleOverride = element.background !== undefined || element.opacity !== undefined
+    || element.border !== undefined || element.borderRadius !== undefined
+  const hasOverride = resolved.positionActive || resolved.sizeActive || hasStyleOverride
   const animationActive = isWired && element.animation.preset !== 'none'
 
   // Nothing edited, no animation, not in Edit Mode: render with ZERO extra DOM wrapper, so the
