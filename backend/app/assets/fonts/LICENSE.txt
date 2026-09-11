@@ -1,0 +1,20 @@
+DejaVu Sans / DejaVu Sans Bold — bundled font files for Phase 7 (Video Studio V2 export text
+rendering — see backend/app/services/canvas_render_svc.py's own module docstring for why these
+are bundled directly rather than relying on a system font package).
+
+Source: https://dejavu-fonts.github.io/
+License: Bitstream Vera License (public-domain-equivalent for DejaVu's own changes; the original
+Bitstream Vera portions are licensed for free use, copy, merge, publish, distribute, and/or sell,
+per the license text below), same terms as this project's own Debian sandbox environment's
+fonts-dejavu-core package (see /usr/share/doc/fonts-dejavu-core/copyright there).
+
+Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is a trademark of
+Bitstream, Inc. DejaVu changes are in the public domain.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of the fonts
+accompanying this license ("Fonts") and associated documentation files (the "Font Software"), to
+reproduce and distribute the Font Software, including without limitation the rights to use, copy,
+merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom
+the Font Software is furnished to do so, subject to the standard Bitstream Vera conditions
+(retain copyright/trademark notices; modified versions must be renamed) — see
+https://dejavu-fonts.github.io/License.html for the complete text.

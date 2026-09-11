@@ -22,6 +22,7 @@ import numpy as np
 from PIL import Image
 
 from app.config import settings
+from app.services import canvas_render_svc
 
 FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
 
@@ -715,6 +716,214 @@ async def mix_audio_tracks(base_video_path: str, tracks: list[dict], user_id: in
     return out
 
 
+async def composite_video_inserts(input_path: str, inserts: list[dict], user_id: int) -> Path:
+    """Phase 7 (deferred item A/D — V2 Insert/B-roll export parity): a real, independent second
+    video LAYER composited on top of the base timeline — Phase 1's own "true V2 insert", not the
+    older add_media_overlays/composite_media_overlays shape (which treats a video overlay
+    identically to a looping image and never respects a start-in-source trim point, since
+    MediaOverlay itself has no trim_in field at all). Reuses `-itsoffset`+`-ss` (the standard
+    ffmpeg pattern for aligning a secondary input's own decoded content to a specific point on a
+    DIFFERENT base timeline) so each insert's video visibly starts playing from its own trim_in
+    exactly when the base timeline reaches its start_time — not from t=0 of the whole export,
+    which is what add_media_overlays' own video-overlay path does today (a real, pre-existing,
+    out-of-scope-to-fix gap in that older function).
+
+    Each insert dict: {path, start_time, end_time, trim_in, color_grade, brightness, contrast,
+    saturation, fit_mode, crop_x, crop_y, insert_x, insert_y, insert_width, insert_height,
+    opacity} — mirrors ExportAdditionalVideoClip exactly. No audio is ever mapped from an
+    insert's own stream (`-map` never references its `:a`), matching the live Create/Edit
+    preview's own V2 <video> element, which Phase 1 built permanently muted — B-roll audio the
+    user chose to "Keep" already flows through as an ordinary audio_tracks entry instead.
+    """
+    if not inserts:
+        raise RuntimeError("composite_video_inserts requires at least one insert")
+
+    base_w, base_h = await _get_video_dimensions(input_path)
+    out = _out(user_id, "mp4")
+
+    inputs: list[str] = ["-i", input_path]
+    for ins in inserts:
+        dur = max(0.05, ins["end_time"] - ins["start_time"])
+        inputs += [
+            "-itsoffset", str(ins["start_time"]),
+            "-ss", str(ins.get("trim_in", 0)),
+            "-t", str(dur),
+            "-i", ins["path"],
+        ]
+
+    filter_parts = []
+    base_label = "0:v"
+    for i, ins in enumerate(inserts, start=1):
+        w = max(2, round(base_w * ins.get("insert_width", 38) / 100 / 2) * 2)
+        h = max(2, round(base_h * ins.get("insert_height", 38) / 100 / 2) * 2)
+        x = round(base_w * ins.get("insert_x", 56) / 100)
+        y = round(base_h * ins.get("insert_y", 56) / 100)
+
+        if ins.get("fit_mode", "fit") == "fit":
+            scale_vf = (
+                f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+                f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
+            )
+        else:
+            cx = max(0.0, min(1.0, ins.get("crop_x", 50.0) / 100))
+            cy = max(0.0, min(1.0, ins.get("crop_y", 50.0) / 100))
+            scale_vf = (
+                f"scale={w}:{h}:force_original_aspect_ratio=increase,"
+                f"crop={w}:{h}:(in_w-out_w)*{cx:.4f}:(in_h-out_h)*{cy:.4f},setsar=1"
+            )
+        vf_parts = [scale_vf]
+        preset = _COLOR_PRESETS.get(ins.get("color_grade", "none"))
+        if preset:
+            vf_parts.append(preset)
+        b, c, s = ins.get("brightness", 0), ins.get("contrast", 0), ins.get("saturation", 0)
+        if b or c or s:
+            bb = max(-1.0, min(1.0, b / 100))
+            cc = max(0.1, 1 + c / 100)
+            ss = max(0.0, 1 + s / 100)
+            vf_parts.append(f"eq=brightness={bb:.4f}:contrast={cc:.4f}:saturation={ss:.4f}")
+        opacity = max(0.0, min(1.0, ins.get("opacity", 1.0)))
+        vf_parts.append(f"format=rgba,colorchannelmixer=aa={opacity}")
+
+        scaled = f"ins{i}s"
+        filter_parts.append(f"[{i}:v]{','.join(vf_parts)}[{scaled}]")
+        merged = f"insm{i}"
+        filter_parts.append(
+            f"[{base_label}][{scaled}]overlay=x={x}:y={y}:"
+            f"enable='between(t,{ins['start_time']},{ins['end_time']})'[{merged}]"
+        )
+        base_label = merged
+
+    filter_complex = ";".join(filter_parts)
+    await _run([
+        FFMPEG_BIN, "-y", *inputs,
+        "-filter_complex", filter_complex,
+        "-map", f"[{base_label}]", "-map", "0:a?",
+        "-c:v", "libx264", "-c:a", "aac",
+        "-shortest",
+        str(out),
+    ])
+    return out
+
+
+async def composite_image_overlays(input_path: str, overlays: list[dict], user_id: int) -> Path:
+    """The one shared time-gated positioned-PNG compositor behind every Phase 7 Pillow-rendered
+    canvas element (see canvas_render_svc.py's own module docstring for why PNG+overlay replaced
+    drawtext/drawbox entirely this phase) — Text Overlays, Lower Thirds, Shapes, and Subtitles
+    all reduce to this same shape by the time they reach here.
+
+    Each overlay dict: {path, start, end, x, y}. `path` is an already fully-rendered RGBA PNG at
+    its own true final pixel size (every canvas_render_svc.render_*_png function returns that
+    exact size) — no further scaling or opacity is applied in this filter graph; the PNG already
+    IS the exact final pixels, alpha included. `x`/`y` is that image's top-left corner in pixels
+    on the base canvas.
+    """
+    if not overlays:
+        raise RuntimeError("composite_image_overlays requires at least one overlay")
+
+    out = _out(user_id, "mp4")
+    inputs: list[str] = ["-i", input_path]
+    for ov in overlays:
+        # Images have no intrinsic duration — loop them so they persist through their own
+        # enable window, bounded to `end` so the encoder doesn't stall waiting on an infinite
+        # source (same technique add_media_overlays already uses for its own image overlays).
+        inputs += ["-loop", "1", "-t", str(max(ov["end"], 0.1)), "-i", ov["path"]]
+
+    filter_parts = []
+    base_label = "0:v"
+    for i, ov in enumerate(overlays, start=1):
+        merged = f"img{i}"
+        filter_parts.append(
+            f"[{base_label}][{i}:v]overlay=x={ov['x']}:y={ov['y']}:"
+            f"enable='between(t,{ov['start']},{ov['end']})'[{merged}]"
+        )
+        base_label = merged
+
+    filter_complex = ";".join(filter_parts)
+    await _run([
+        FFMPEG_BIN, "-y", *inputs,
+        "-filter_complex", filter_complex,
+        "-map", f"[{base_label}]", "-map", "0:a?",
+        "-c:v", "libx264", "-c:a", "aac",
+        "-shortest",
+        str(out),
+    ])
+    return out
+
+
+def _cleanup(paths: list[str]) -> None:
+    """Best-effort delete of intermediate render artifacts (segments, rendered PNGs) — never let
+    a cleanup failure mask an otherwise-successful export, matching render_project's own existing
+    end-of-function cleanup loop."""
+    for p in paths:
+        try:
+            Path(p).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+async def _build_shape_overlays(shapes: list[dict], cw: int, ch: int, user_id: int) -> list[dict]:
+    """Phase 7 (deferred item L). full_width shapes (banners) render at 100% canvas width
+    starting at x=0, same "spans the full frame edge to edge" convention CreateEditTab.tsx's own
+    full-width Shape rendering uses in the live preview."""
+    overlays = []
+    for sh in shapes:
+        item = dict(sh)
+        if item.get("full_width"):
+            item["width"] = 100
+        path, _w, _h = await asyncio.to_thread(canvas_render_svc.render_shape_png, item, cw, ch, user_id)
+        x = 0 if item.get("full_width") else round(cw * item.get("x", 0) / 100)
+        y = round(ch * item.get("y", 0) / 100)
+        overlays.append({"path": str(path), "start": sh["start_time"], "end": sh["end_time"], "x": x, "y": y})
+    return overlays
+
+
+async def _build_lower_third_overlays(lower_thirds: list[dict], cw: int, ch: int, user_id: int) -> list[dict]:
+    """Phase 7 (deferred item F)."""
+    overlays = []
+    for lt in lower_thirds:
+        path, _w, _h = await asyncio.to_thread(canvas_render_svc.render_lower_third_png, lt, cw, ch, user_id)
+        x = round(cw * lt.get("x", 5) / 100)
+        y = round(ch * lt.get("y", 78) / 100)
+        overlays.append({"path": str(path), "start": lt["start_time"], "end": lt["end_time"], "x": x, "y": y})
+    return overlays
+
+
+async def _build_text_overlay_pngs(text_overlays: list[dict], cw: int, ch: int, user_id: int) -> list[dict]:
+    """Phase 7 (deferred item J — Advanced Text Properties export parity). bg_full_width is
+    approximated by rendering the whole styled box (text wrap AND background chip together) at
+    100% canvas width rather than only stretching the background behind an unchanged text
+    width — a documented simplification (render_styled_text_box has no separate text-wrap-width-
+    vs-background-width concept); visually equivalent for centered/short text, the common case,
+    and never worse than the pre-Phase-7 baseline (this text style path did not render at all
+    before this phase, since drawtext is unavailable in this deployment's ffmpeg build)."""
+    overlays = []
+    for t in text_overlays:
+        item = dict(t)
+        full = bool(item.get("bg_full_width"))
+        if full:
+            item["width_pct"] = 100
+        path, _w, _h = await asyncio.to_thread(canvas_render_svc.render_text_overlay_png, item, cw, ch, user_id)
+        x = 0 if full else round(cw * item.get("x", 0) / 100)
+        y = round(ch * item.get("y", 0) / 100)
+        overlays.append({"path": str(path), "start": t["start_time"], "end": t["end_time"], "x": x, "y": y})
+    return overlays
+
+
+async def _build_subtitle_overlays(subtitles: list[dict], subtitle_style: dict, cw: int, ch: int, user_id: int) -> list[dict]:
+    """Phase 7 (deferred item N). Resolves each segment's real style the same
+    global-style-merged-with-per-segment-override way the live preview's own
+    resolveSubtitleStyle does (canvas_render_svc.resolve_subtitle_style is a direct Python port)
+    before rendering, so export and preview show the same styled captions."""
+    overlays = []
+    for sub in subtitles:
+        resolved = canvas_render_svc.resolve_subtitle_style(subtitle_style, sub.get("style_override"))
+        path, _w, _h = await asyncio.to_thread(canvas_render_svc.render_subtitle_png, sub, resolved, cw, ch, user_id)
+        x = round(cw * sub.get("x", 10) / 100)
+        y = round(ch * sub.get("y", 82) / 100)
+        overlays.append({"path": str(path), "start": sub["start_time"], "end": sub["end_time"], "x": x, "y": y})
+    return overlays
+
+
 async def render_project(project: dict, user_id: int) -> Path:
     """The single entry point the router calls. `project` shape (all paths already resolved to
     real files on disk by the router, via each item's assetId — this function never touches the
@@ -725,10 +934,24 @@ async def render_project(project: dict, user_id: int) -> Path:
       "video_clips": [{path, trim_in, start_time, end_time, speed, color_grade,
                         brightness, contrast, saturation, transition, transition_duration,
                         has_separated_audio}],   # ordered by start_time
-      "text_overlays": [{text, start, end, x, y, font_size, font_color}],
+      "additional_video_clips": [{...ExportAdditionalVideoClip fields, path}],  # Phase 7
+      "text_overlays": [{...ExportTextOverlay fields, text}],                   # Phase 7 shape
+      "shapes": [{...ExportShape fields}],                                      # Phase 7
+      "lower_thirds": [{...ExportLowerThird fields}],                           # Phase 7
       "media_overlays": [{path, is_image, start, end, x, y, width, height, opacity}],
+      "subtitles": [{...ExportSubtitle fields}],                                # Phase 7
+      "subtitle_style": {...ExportSubtitleStyle fields},                        # Phase 7
       "audio_tracks": [{path, trim_in, start_time, end_time, volume}],
     }
+
+    Phase 7 (Video Studio V2 — Export/FFmpeg Compositing Parity) compositing order, base to top:
+    V1 concat -> V2 inserts/B-roll -> media overlays (image/video) -> shapes -> lower thirds ->
+    text overlays -> subtitles -> A1 audio mix. Every new step is skipped entirely (identical
+    pre-Phase-7 behaviour) when its list is empty/absent, so a pre-Phase-7 request/draft renders
+    exactly as it always did. text_overlays' own shape changed this phase (start/end -> start_
+    time/end_time, plus the full Phase 3 style fields) — see video_export.py's router, the only
+    caller that builds this dict; the OLD drawtext-based add_text_overlays() above is untouched
+    and still used as-is by the separate, older /process/export endpoint.
     """
     clips = project["video_clips"]
     if not clips:
@@ -771,9 +994,10 @@ async def render_project(project: dict, user_id: int) -> Path:
 
     current = base
     intermediates = [p for p in segment_paths if p != str(base)]
+    rendered_pngs: list[str] = []
 
-    if project.get("text_overlays"):
-        next_path = await add_text_overlays(str(current), project["text_overlays"], user_id)
+    if project.get("additional_video_clips"):
+        next_path = await composite_video_inserts(str(current), project["additional_video_clips"], user_id)
         intermediates.append(str(current))
         current = next_path
 
@@ -783,6 +1007,42 @@ async def render_project(project: dict, user_id: int) -> Path:
         next_path = await composite_media_overlays(str(current), project["media_overlays"], user_id)
         intermediates.append(str(current))
         current = next_path
+
+    if project.get("shapes"):
+        shape_overlays = await _build_shape_overlays(project["shapes"], cw, ch, user_id)
+        next_path = await composite_image_overlays(str(current), shape_overlays, user_id)
+        intermediates.append(str(current))
+        current = next_path
+        rendered_pngs += [o["path"] for o in shape_overlays]
+
+    if project.get("lower_thirds"):
+        lt_overlays = await _build_lower_third_overlays(project["lower_thirds"], cw, ch, user_id)
+        next_path = await composite_image_overlays(str(current), lt_overlays, user_id)
+        intermediates.append(str(current))
+        current = next_path
+        rendered_pngs += [o["path"] for o in lt_overlays]
+
+    if project.get("text_overlays"):
+        # Phase 7: replaces the old drawtext-based add_text_overlays() call here — this project's
+        # real ffmpeg binary has no drawtext filter at all (see canvas_render_svc.py's own module
+        # docstring), so text is now rendered as a real Pillow image and composited via the same
+        # `overlay` filter every other new element type this phase uses.
+        text_overlays = await _build_text_overlay_pngs(project["text_overlays"], cw, ch, user_id)
+        next_path = await composite_image_overlays(str(current), text_overlays, user_id)
+        intermediates.append(str(current))
+        current = next_path
+        rendered_pngs += [o["path"] for o in text_overlays]
+
+    if project.get("subtitles"):
+        sub_overlays = await _build_subtitle_overlays(
+            project["subtitles"], project.get("subtitle_style", {}), cw, ch, user_id
+        )
+        next_path = await composite_image_overlays(str(current), sub_overlays, user_id)
+        intermediates.append(str(current))
+        current = next_path
+        rendered_pngs += [o["path"] for o in sub_overlays]
+
+    _cleanup(rendered_pngs)
 
     if project.get("audio_tracks"):
         next_path = await mix_audio_tracks(str(current), project["audio_tracks"], user_id)
