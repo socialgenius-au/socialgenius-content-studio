@@ -10,6 +10,11 @@
    change which element is the focal subject or the reading order. */
 
 .pl-page {
+  /* Page Builder migration note: the original hard-coded page used scrollIntoView({behavior:
+     'smooth'}) on click for the two anchor CTAs; the generic button element model uses a plain
+     <a href="#..."> instead (no per-element onClick concept in the config), so smooth scrolling
+     is restored here at the page level rather than reintroducing bespoke JS per button. */
+  scroll-behavior: smooth;
   --pl-green: var(--green, #1E3D2A);
   --pl-gold: var(--gold, #C89A2E);
   --pl-cream: var(--cream, #F5F0E8);
