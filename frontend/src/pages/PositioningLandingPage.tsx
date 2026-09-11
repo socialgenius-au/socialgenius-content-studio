@@ -4,6 +4,7 @@ import { PageBuilderProvider, usePageBuilder } from '../pagebuilder/PageBuilderC
 import { PageCanvas } from '../pagebuilder/PageCanvas'
 import { VisualEditorShell } from '../pagebuilder/VisualEditorShell'
 import { positioningPageConfig } from '../pagebuilder/positioningPageConfig'
+import PositioningGatewayPage from './PositioningGatewayPage'
 import './PositioningLandingPage.css'
 
 /**
@@ -24,11 +25,27 @@ function ModeGate() {
   const { setMode } = usePageBuilder()
   const studio = params.get('studio') === '1'
   const edit = params.get('edit') === '1'
+  const website = params.get('website') === '1'
+  const experience = params.get('experience') === '1'
+
   useEffect(() => {
     if (studio || edit) setMode('edit')
+    else setMode('view')
   }, [studio, edit, setMode])
+
+  useEffect(() => {
+    if (!experience) return
+    // The existing Positioning page already contains the real lead-capture/audit CTA. The gateway
+    // sends Experience visitors directly there without duplicating another form in the landing UI.
+    const timer = window.setTimeout(() => {
+      document.getElementById('positioning-audit')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+    return () => window.clearTimeout(timer)
+  }, [experience])
+
   if (studio) return <VisualEditorShell />
-  return <PageCanvas />
+  if (edit || website || experience) return <PageCanvas />
+  return <PositioningGatewayPage />
 }
 
 export default function PositioningLandingPage() {
