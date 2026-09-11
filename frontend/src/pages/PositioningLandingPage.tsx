@@ -8,35 +8,17 @@ import PositioningGatewayPage from './PositioningGatewayPage'
 import './PositioningLandingPage.css'
 
 /**
- * Social Genius — Public Positioning Landing Page, rendered by the shared Page Builder engine
- * (see frontend/src/pagebuilder/) instead of hard-coded JSX.
- *
- * Still PUBLIC at /positioning, still unauthenticated, still its own full-screen chrome — none of
- * that changed. What changed is HOW the page is produced: `positioningPageConfig.ts` is the data,
- * and THREE shells can mount it, all reading/writing the SAME `PageBuilderProvider` state (Section
- * 3 of the Visual Editor brief — "one engine, not two builders"):
- *   - no query param    -> VIEW MODE, what every visitor gets, by default.
- *   - `?edit=1`         -> the original Page Builder (`PageCanvas`) — retained unmodified.
- *   - `?studio=1`       -> the new Visual Editor (`VisualEditorShell`), today's primary interface.
- * Neither `edit` nor `studio` is a public button — both are internal/admin-only entry points.
+ * /positioning                 -> object-based Social Genius gateway landing page
+ * /positioning?studio=1        -> gateway Visual Editor (same objects, same renderer)
+ * /positioning?website=1       -> existing Social Genius positioning website
+ * /positioning?experience=1    -> existing website, scrolled to the Positioning Audit
+ * /positioning?website=1&studio=1 -> existing website Visual Editor
  */
-function ModeGate() {
-  const [params] = useSearchParams()
+function ExistingSiteGate({ studio, edit, experience }: { studio: boolean; edit: boolean; experience: boolean }) {
   const { setMode } = usePageBuilder()
-  const studio = params.get('studio') === '1'
-  const edit = params.get('edit') === '1'
-  const website = params.get('website') === '1'
-  const experience = params.get('experience') === '1'
-
-  useEffect(() => {
-    if (studio || edit) setMode('edit')
-    else setMode('view')
-  }, [studio, edit, setMode])
-
+  useEffect(() => setMode(studio || edit ? 'edit' : 'view'), [studio, edit, setMode])
   useEffect(() => {
     if (!experience) return
-    // The existing Positioning page already contains the real lead-capture/audit CTA. The gateway
-    // sends Experience visitors directly there without duplicating another form in the landing UI.
     const timer = window.setTimeout(() => {
       document.getElementById('positioning-audit')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 80)
@@ -44,14 +26,23 @@ function ModeGate() {
   }, [experience])
 
   if (studio) return <VisualEditorShell />
-  if (edit || website || experience) return <PageCanvas />
-  return <PositioningGatewayPage />
+  return <PageCanvas />
 }
 
 export default function PositioningLandingPage() {
+  const [params] = useSearchParams()
+  const website = params.get('website') === '1'
+  const experience = params.get('experience') === '1'
+  const studio = params.get('studio') === '1'
+  const edit = params.get('edit') === '1'
+
+  // Gateway is now the primary /positioning page AND its primary Visual Editor target.
+  if (!website && !experience) return <PositioningGatewayPage studio={studio || edit} />
+
+  // Preserve Sameena's existing Positioning page and functionality as the Website/Experience route.
   return (
     <PageBuilderProvider initialConfig={positioningPageConfig} storageKey="pb-positioning-draft-v1">
-      <ModeGate />
+      <ExistingSiteGate studio={studio} edit={edit} experience={experience} />
     </PageBuilderProvider>
   )
 }
