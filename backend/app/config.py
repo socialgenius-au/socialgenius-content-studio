@@ -1,6 +1,26 @@
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Stage 11.3 pre-lock correction — the ONE place a currently-available Anthropic model id is
+# defined for the three Deconstructor reasoners (Semantic Boundary / Story Beat / Hook) below.
+# Before this fix, each of SEMANTIC_REASONER_MODEL/STORY_BEAT_REASONER_MODEL/HOOK_REASONER_MODEL
+# independently hard-coded the identical literal "claude-sonnet-4-20250514" -- a since-retired
+# model id that Anthropic now returns 404 for. That was a genuine system-level defect (a value
+# meant to be "one shared default" was actually three separately-typed copies that could only be
+# fixed by editing three places, and silently drifted out of date together) rather than a
+# validation inconvenience specific to any one reasoner. Each reasoner's own *_MODEL setting
+# remains an INTENTIONAL, independent override point (see each section's own docstring below for
+# why) -- only the DEFAULT it falls back to is now deduplicated to this one constant. Bump this
+# single value when Anthropic retires the current default; an operator who wants one specific
+# reasoner on a different model still sets that reasoner's own *_MODEL env var, unaffected by this
+# shared default either way.
+#
+# Deliberately NOT applied to CLAUDE_MODEL/AI_TEXT_MODEL above/below (both share this exact same
+# stale literal too, and are almost certainly affected by the same retirement) -- those belong to
+# the separate, pre-existing AI Tools / Job Planner surface this Deconstructor-stage task has no
+# authorization to modify. Flagged, not fixed, in this pass -- see the Stage 11.3 pre-lock report.
+_DEFAULT_ANTHROPIC_REASONER_MODEL = "claude-sonnet-5"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -41,9 +61,10 @@ class Settings(BaseSettings):
     # ANTHROPIC_API_KEY, reused as-is from above, is also actually set) — never a silent default,
     # exactly like AnthropicProvider.is_configured() already gates every app/services/ai/ call.
     # SEMANTIC_REASONER_MODEL has a real default (unlike PROVIDER) since a provider, once
-    # selected, needs *some* valid model name — matching CLAUDE_MODEL/AI_TEXT_MODEL's own default.
+    # selected, needs *some* valid model name — _DEFAULT_ANTHROPIC_REASONER_MODEL above (Stage
+    # 11.3 pre-lock correction; previously an independently-hard-coded, now-retired literal).
     SEMANTIC_REASONER_PROVIDER: str = ""
-    SEMANTIC_REASONER_MODEL: str = "claude-sonnet-4-20250514"
+    SEMANTIC_REASONER_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
 
     # ── Stage 10.3B — Story Beat Reasoner (app/services/story_beat_reasoner/) ─────────────────
     # A SIBLING pair to SEMANTIC_REASONER_PROVIDER/MODEL above, never a reuse of it: Story Beat
@@ -56,7 +77,7 @@ class Settings(BaseSettings):
     # AnthropicStoryBeatReasoner.is_configured() still gates every call on ANTHROPIC_API_KEY
     # actually being set.
     STORY_BEAT_REASONER_PROVIDER: str = ""
-    STORY_BEAT_REASONER_MODEL: str = "claude-sonnet-4-20250514"
+    STORY_BEAT_REASONER_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
 
     # ── Stage 11.3 — Hook Reasoner (app/services/hook_reasoner/) ──────────────────────────────
     # A SIBLING pair to SEMANTIC_REASONER_PROVIDER/MODEL and STORY_BEAT_REASONER_PROVIDER/MODEL
@@ -70,7 +91,7 @@ class Settings(BaseSettings):
     # AnthropicHookReasoner.is_configured() still gates every call on ANTHROPIC_API_KEY actually
     # being set.
     HOOK_REASONER_PROVIDER: str = ""
-    HOOK_REASONER_MODEL: str = "claude-sonnet-4-20250514"
+    HOOK_REASONER_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
 
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 500
