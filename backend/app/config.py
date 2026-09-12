@@ -58,6 +58,20 @@ class Settings(BaseSettings):
     STORY_BEAT_REASONER_PROVIDER: str = ""
     STORY_BEAT_REASONER_MODEL: str = "claude-sonnet-4-20250514"
 
+    # ── Stage 11.3 — Hook Reasoner (app/services/hook_reasoner/) ──────────────────────────────
+    # A SIBLING pair to SEMANTIC_REASONER_PROVIDER/MODEL and STORY_BEAT_REASONER_PROVIDER/MODEL
+    # above, never a reuse of either: Hook classification answers a genuinely different question
+    # (what kind of hook appears inside an already-derived, fixed Hook Window — see
+    # hook_reasoner/contract.py's own docstring) and may run under a different provider/model, or
+    # none at all, independently of whether the other two reasoners are configured. Same honest-
+    # unconfigured discipline: HOOK_REASONER_PROVIDER empty ("") means no Hook reasoner runs, even
+    # though a real AnthropicHookReasoner is registered (see hook_reasoner/router.py's own
+    # _REASONER_PROVIDERS) — an operator must explicitly opt in, and
+    # AnthropicHookReasoner.is_configured() still gates every call on ANTHROPIC_API_KEY actually
+    # being set.
+    HOOK_REASONER_PROVIDER: str = ""
+    HOOK_REASONER_MODEL: str = "claude-sonnet-4-20250514"
+
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 500
 
