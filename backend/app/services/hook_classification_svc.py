@@ -1,31 +1,36 @@
 """Video Deconstructor — Stage 11.3: HOOK CLASSIFICATION V1 orchestration + persistence.
 
-Wires together, for one exact VideoAnalysis, exactly three existing/newly-built pieces in the
-order they require -- adding no reasoning or construction logic of its own:
+Wires together, for one exact VideoAnalysis, four existing/newly-built pieces in the order they
+require -- adding no reasoning or construction logic of its own:
   1. `hook_evidence_assembly_svc.assemble_hook_evidence_bundle` -- reads the LOCKED Stage 11.2
      hook_window and gathers the bounded, factual evidence bundle scoped to it.
   2. `hook_reasoner.classify_hook` -- the provider-independent reasoning call over that bundle.
-  3. Persistence as a single `StrategicInsight(category="hook")` row.
+     If this raises HookReasoningError, execution stops HERE -- neither step 3 nor step 4 below
+     ever runs, so a failed call leaves both the attempt history and the existing accepted insight
+     completely untouched (see hook_reasoning_store_svc's own docstring for why this mirrors the
+     existing Stage 10 "no failure record" convention exactly, rather than inventing a new one).
+  3. `hook_reasoning_store_svc.persist_hook_reasoning_attempt` -- durably records THIS attempt,
+     append-only, before the accepted conclusion is ever touched (Stage 11.3 pre-lock durability
+     correction: evidence -> reasoning attempt -> accepted conclusion, the same discipline Stage
+     10 already established for Scene/Story Beat).
+  4. Persistence of the single EFFECTIVE `StrategicInsight(category="hook")` row, which now
+     references the exact attempt that produced it via `details.reasoning_attempt_id` -- never
+     relying on duplicated provider/model strings alone for that traceability.
 
-WHY StrategicInsight, NOT A NEW ATTEMPT-STORE TABLE (Section 8 of the Stage 11.3 brief): the
-Scene/Story-Beat durable-attempt-store pattern (append-only, "latest per candidate timestamp",
-`find_unreasoned_candidates`) exists specifically to handle MANY independent candidates per video,
-reasoned about incrementally over multiple runs. A Hook Window is exactly ONE fixed target per
-video -- there is no "which candidates are still unreasoned" question to ask, so that pattern does
-not cleanly apply here (per the brief's own "if that architecture already exists and can be reused
-CLEANLY" qualifier). What IS reused is the same SHAPE that pattern already establishes for a
-reasoning conclusion (provider/model/prompt_version/confidence/reasoning/evidence_references),
-written directly onto the one StrategicInsight row this stage ever produces per video -- an
-existing, already-designed-for-exactly-this table (its own documented `category` list already
-names "hook"), not a new one.
+WHY StrategicInsight FOR THE ACCEPTED CONCLUSION, STILL DELETE-THEN-REPLACE: a Hook Window is
+exactly one fixed target per video -- there is only ever one CURRENTLY EFFECTIVE Hook conclusion,
+so idempotent replace (not Story Beat's own "latest wins, but every historical attempt stays
+queryable via a merge" pattern) remains the right choice for THIS row specifically. What changed
+in the durability correction is that the ATTEMPT itself is no longer discarded when the insight is
+replaced -- it now lives on, forever, in hook_reasoning_store_svc's own append-only history,
+findable by `reasoning_attempt_id` from the insight, or independently via
+`load_hook_reasoning_attempts` for the full run-to-run history (including any earlier attempt that
+is no longer the one referenced by the current effective insight).
 
-IDEMPOTENCY: delete-then-replace of this VideoAnalysis's own single `category="hook"`
-StrategicInsight row, one commit -- the same convention Stage 11.1/11.2 already established,
-chosen over Story Beat's own append-only-history pattern for the same single-target reason above.
-
-certainty="INFERRED": this IS a genuine semantic judgment (unlike Stage 11.1/11.2's deterministic
-MEASURED outputs) -- classifying hook type/elements/intent from evidence content is exactly the
-kind of AI interpretation this project's own certainty vocabulary reserves INFERRED for.
+certainty="INFERRED" on both the attempt and the insight: this IS a genuine semantic judgment
+(unlike Stage 11.1/11.2's deterministic MEASURED outputs) -- classifying hook type/elements/intent
+from evidence content is exactly the kind of AI interpretation this project's own certainty
+vocabulary reserves INFERRED for.
 """
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +39,7 @@ from app.models.strategic_insight import StrategicInsight
 from app.models.video_analysis import VideoAnalysis
 from app.services.hook_evidence_assembly_svc import assemble_hook_evidence_bundle
 from app.services.hook_reasoner import HookReasoningError, classify_hook
+from app.services.hook_reasoning_store_svc import persist_hook_reasoning_attempt
 
 HOOK_STRATEGIC_CATEGORY = "hook"
 HOOK_CLASSIFICATION_PASS_NAME = "hook_classification_v1"
@@ -59,11 +65,17 @@ async def classify_and_persist_hook(db: AsyncSession, video_analysis_id: int) ->
         raise HookClassificationError(f"VideoAnalysis {video_analysis_id} does not exist.")
 
     bundle = await assemble_hook_evidence_bundle(db, video_analysis_id)
-    result = await classify_hook(bundle)
+    result = await classify_hook(bundle)  # HookReasoningError here stops everything below -- see module docstring
     decision = result.decision
+
+    # Durable, append-only attempt record FIRST -- committed before the effective insight is ever
+    # touched, so a crash between this line and the insight update below still leaves this attempt
+    # fully auditable (Stage 11.3 pre-lock durability correction).
+    attempt = await persist_hook_reasoning_attempt(db, video_analysis_id, bundle["hook_window"], result)
 
     details = {
         "hook_window_id": bundle["hook_window"]["hook_window_id"],
+        "reasoning_attempt_id": attempt.id,
         "start_time": bundle["hook_window"]["start_time"],
         "end_time": bundle["hook_window"]["end_time"],
         "primary_type": decision.primary_type,
@@ -96,4 +108,4 @@ async def classify_and_persist_hook(db: AsyncSession, video_analysis_id: int) ->
     await db.commit()
     await db.refresh(row)
 
-    return {**details, "confidence": decision.confidence, "strategic_insight_id": row.id}
+    return {**details, "confidence": decision.confidence, "strategic_insight_id": row.id, "reasoning_attempt_id": attempt.id}
