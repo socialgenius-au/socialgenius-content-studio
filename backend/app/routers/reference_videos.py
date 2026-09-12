@@ -104,11 +104,19 @@ from app.schemas.reference_video import (
     TransitionPhaseCorrelationPairSummary, TransitionSimilarityEvidenceSummary,
     VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
 )
+from app.schemas.stage10_deconstruction import Stage10DeconstructionResponse, Stage10RunResponse
 from app.services import (
     audio_structure_svc, ffmpeg_svc, local_motion_dynamics_svc, local_motion_evidence_svc, ocr_svc,
     speech_analysis_svc, transition_evidence_svc, transition_similarity_evidence_svc,
     visual_composition_svc, visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
+from app.services.scene_construction_svc import SceneConstructionError
+from app.services.semantic_reasoner.contract import SemanticReasoningError
+from app.services.stage10_deconstruction_svc import (
+    Stage10PipelineError, get_stage10_deconstruction, run_stage10_pipeline,
+)
+from app.services.story_beat_construction_svc import StoryBeatConstructionError
+from app.services.story_beat_reasoner.contract import StoryBeatReasoningError
 
 router = APIRouter()
 
@@ -3424,3 +3432,102 @@ async def analyze_reference_video_transition_similarity(
     await db.commit()
     await db.refresh(rv)
     return await _to_response(db, rv, asset)
+
+
+# =====================================================================================
+# STAGE 10 APPLICATION ACCESS CHECKPOINT — the two endpoints identified by the Stage 10
+# Completion Audit as the smallest remaining piece of work: without these, the already-built,
+# already-locked Scene (Stage 10.2) and Story Beat (Stage 10.3, locked at ffa0fe5) pipelines were
+# reachable only from a Python test file. Neither endpoint adds new reasoning, construction, or
+# schema — both call straight through to app.services.stage10_deconstruction_svc, which itself
+# only sequences the existing, already-tested service functions. See that module's own docstring
+# for the exact call order and idempotency guarantees.
+# =====================================================================================
+
+async def _resolve_reference_video_and_latest_analysis(
+    db: AsyncSession, reference_video_id: int, user: User,
+) -> tuple[ReferenceVideo, VideoAnalysis]:
+    """Shared resolution for both Stage 10 endpoints below — identical ownership/lookup shape
+    every other endpoint in this router already uses (ReferenceVideo scoped to the current user,
+    then its latest VideoAnalysis), factored out here since neither Stage 10 endpoint otherwise
+    needs the full `Asset`/`_to_response` machinery every analyze-* endpoint does."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+    return rv, latest
+
+
+@router.post("/{reference_video_id}/deconstruct", response_model=Stage10RunResponse)
+async def deconstruct_reference_video(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """RUN SURFACE (Stage 10 Application Access Checkpoint). Runs the existing, locked Scene +
+    Story Beat construction pipelines for this reference video's latest VideoAnalysis — see
+    app.services.stage10_deconstruction_svc.run_stage10_pipeline's own docstring for the exact
+    call order it preserves and why repeated calls are safe (each step's own existing idempotent
+    persistence behaviour, not new logic added here).
+
+    Does NOT require any prior Stage 1-9 pass to have explicitly completed first — Stage 10's own
+    candidate assembly already degrades gracefully to "zero nominations of that type" for any
+    missing evidence (see semantic_boundary_assembly_svc's own docstring); running this against a
+    freshly-created analysis with no evidence yet is a valid, well-defined (if unhelpful) call.
+
+    A reasoning-provider configuration error (SemanticReasoningError / equivalent Story Beat error
+    — e.g. no SEMANTIC_REASONER_PROVIDER configured) or a construction invariant violation
+    (SceneConstructionError / StoryBeatConstructionError) surfaces as 502/409 respectively, never
+    silently swallowed or retried."""
+    rv, latest = await _resolve_reference_video_and_latest_analysis(db, reference_video_id, user)
+
+    try:
+        result = await run_stage10_pipeline(db, latest.id)
+    except Stage10PipelineError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    except (SceneConstructionError, StoryBeatConstructionError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except (SemanticReasoningError, StoryBeatReasoningError) as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+    return Stage10RunResponse(
+        video_analysis_id=result.video_analysis_id,
+        scene_candidates_reasoned=result.scene_candidates_reasoned,
+        story_beat_candidates_reasoned=result.story_beat_candidates_reasoned,
+        scenes_count=result.scenes_count,
+        story_beats_count=result.story_beats_count,
+    )
+
+
+@router.get("/{reference_video_id}/deconstruction", response_model=Stage10DeconstructionResponse)
+async def get_reference_video_deconstruction(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """READ SURFACE (Stage 10 Application Access Checkpoint). Returns `Video -> ordered Scenes ->
+    Story Beats (associated by time-range overlap, computed at read time) -> lightweight, ID-based
+    evidence/provenance references` for this reference video's latest VideoAnalysis — see
+    app.services.stage10_deconstruction_svc.get_stage10_deconstruction's own docstring for the
+    exact shape and why no Scene<->StoryBeat foreign key or persisted nesting exists.
+
+    Read-only: never runs construction itself (see the POST endpoint above for that) — a
+    VideoAnalysis with no Scene/Story Beat rows yet simply returns an empty `scenes` list, never a
+    404 (the analysis itself exists; it just hasn't been deconstructed yet)."""
+    rv, latest = await _resolve_reference_video_and_latest_analysis(db, reference_video_id, user)
+
+    try:
+        result = await get_stage10_deconstruction(db, latest.id)
+    except Stage10PipelineError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    return result
