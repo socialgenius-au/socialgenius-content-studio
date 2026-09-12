@@ -41,6 +41,18 @@ constrains the SHAPE of a decision, never which evidence justifies which type):
     bare structural "?" with no supporting content.
   - `pattern_interrupt` / `emphasis` require a genuine COMBINATION of evidence signals, never a
     single ordinary cut or an ordinary shot change alone.
+  - `text_reveal` requires more than a TextElement merely existing at this timestamp (Stage 11.4's
+    own text-reveal correction, prompt v2): a candidate nominated only by "text_appearance" must be
+    weighed against routine caption/subtitle progression (text echoing concurrent speech as part of
+    a steady stream of similar fragments) and persistent-watermark/garbled-OCR noise (near-identical
+    variants of the same short string recurring across nearby candidates) -- both default to
+    "unclear", not "text_reveal", absent a genuinely distinctive signal. KNOWN V1 LIMITATION: this
+    system cannot yet reliably distinguish ordinary scrolling/karaoke-style subtitle progression
+    from a deliberate visual reveal using structural/text-content evidence alone; the reasoner is
+    instructed to prefer "unclear" when genuinely uncertain rather than guess. Candidate generation
+    itself is deliberately left UNCHANGED and still sensitive (every TextElement appearance still
+    nominates a candidate) -- this correction narrows semantic ACCEPTANCE only, per the intended
+    "sensitive candidate nomination -> conservative semantic acceptance" architecture.
 """
 from dataclasses import dataclass, field
 

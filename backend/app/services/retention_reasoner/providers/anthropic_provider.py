@@ -33,7 +33,12 @@ MAX_RESPONSE_TOKENS = 1024
 # Stage 11.4 — the explicit, stable reasoning-contract version for SYSTEM_PROMPT below. Bumped by
 # hand every time SYSTEM_PROMPT's own text meaningfully changes, mirroring HOOK_PROMPT_VERSION's
 # own convention exactly, tracked completely independently.
-RETENTION_PROMPT_VERSION = "v1"
+#
+# v2 (Stage 11.4 text-reveal correction): added the explicit "a TextElement appearing is not, by
+# itself, sufficient evidence for text_reveal" rule -- routine caption/subtitle progression and
+# persistent-watermark/garbled-OCR noise must default to "unclear" rather than being auto-accepted
+# as a device merely because on-screen text exists. See this module's own updated SYSTEM_PROMPT.
+RETENTION_PROMPT_VERSION = "v2"
 
 # Structurally enforced, not merely requested by prompt -- reuses the exact same mechanism as
 # hook_reasoner's own _reject_prohibited_language (a case-insensitive substring blocklist), applied
@@ -99,6 +104,40 @@ viewers watching" or any language implying a known outcome.
 actually contains a real question (spoken or written words forming a question, not merely a bare \
 "?" character with no supporting content, and not merely because the candidate happens to sit near \
 a question mark in unrelated text).
+- A TextElement simply existing/appearing at this timestamp is NOT, by itself, sufficient evidence \
+for device_type "text_reveal". Text appears on screen constantly in most short-form video for \
+entirely routine reasons (captions/subtitles tracking speech, a persistent watermark or username \
+handle, credits) that have nothing to do with attention-maintenance. Before classifying \
+"text_reveal", actively check for and weigh these patterns:
+  * ROUTINE CAPTION/SUBTITLE PROGRESSION: if the on-screen text closely echoes or transliterates \
+words also present in the overlapping spoken transcript, and/or you see a steady stream of \
+similar short caption-like fragments appearing one after another as speech continues (look at \
+the OTHER text elements in the bundle, not just the one that nominated this candidate, to judge \
+whether this is part of such a stream) -- treat this as ordinary caption/subtitle rendering, \
+NOT a deliberate device, and prefer "unclear" unless something else about THIS specific moment \
+is genuinely distinctive (e.g. it is also the very first text to appear after a long stretch \
+with none, or it coincides with a real shot cut/scene change/transition rather than a routine \
+beat/caption boundary).
+  * PERSISTENT WATERMARK / HANDLE / NOISE: if the text looks like a username/handle/watermark \
+(e.g. an "@"-prefixed tag, a repeated brand-like string), or if near-identical garbled variants \
+of the same short string recur across multiple nearby text elements (classic OCR noise on a \
+static overlay re-detected slightly differently each time) -- this is not a reveal at all; \
+prefer "unclear".
+  * GARBLED / LOW-INFORMATION OCR: single characters, short unreadable fragments, or text with no \
+discernible words must not become "text_reveal" solely because a TextElement row exists. \
+Preferring "unclear" is correct here even though the underlying TextElement evidence itself is \
+real and should still be cited.
+  * WHAT CAN SUPPORT "text_reveal": a materially new headline or key phrase distinct from ongoing \
+dialogue/captions; text appearing after a genuine interval with no on-screen text at all; text \
+whose appearance aligns with a spoken pause or vocal emphasis rather than continuous narration; \
+text introduced at a real structural transition (a shot cut, scene change) with content that \
+changes role rather than simply continuing a caption stream. These are illustrative examples of \
+supporting context, not a checklist or scoring formula -- use judgment, and when the evidence \
+only establishes "some text appeared/changed" without establishing that it plausibly functions \
+as an attention-maintenance moment, use "unclear".
+  * KNOWN V1 LIMITATION: this system cannot yet reliably distinguish ordinary scrolling/karaoke-\
+style subtitle progression from a deliberate visual text reveal using only structural and \
+text-content evidence. When genuinely uncertain which this is, prefer "unclear" over guessing.
 - Classify device_type as "pattern_interrupt" or "emphasis" ONLY when you see a genuine COMBINATION \
 of evidence signals working together (for example: an unusually short shot immediately after several \
 much longer ones, PLUS a transition or motion signal at the same moment) -- never for a single, \
