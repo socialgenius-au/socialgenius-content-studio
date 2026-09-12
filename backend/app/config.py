@@ -93,6 +93,21 @@ class Settings(BaseSettings):
     HOOK_REASONER_PROVIDER: str = ""
     HOOK_REASONER_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
 
+    # ── Stage 11.4 — Retention Reasoner (app/services/retention_reasoner/) ────────────────────
+    # A SIBLING pair to the three reasoner settings above, never a reuse of any of them: Retention
+    # Device classification answers a genuinely different question (does this already-generated,
+    # already-grouped candidate moment appear designed to maintain attention, and if so which kind
+    # — see retention_reasoner/contract.py's own docstring), runs ONCE PER CANDIDATE rather than
+    # once per video, and may run under a different provider/model, or none at all, independently
+    # of whether the other reasoners are configured. Same honest-unconfigured discipline:
+    # RETENTION_REASONER_PROVIDER empty ("") means no Retention reasoner runs, even though a real
+    # AnthropicRetentionReasoner is registered (see retention_reasoner/router.py's own
+    # _REASONER_PROVIDERS) — an operator must explicitly opt in, and
+    # AnthropicRetentionReasoner.is_configured() still gates every call on ANTHROPIC_API_KEY
+    # actually being set.
+    RETENTION_REASONER_PROVIDER: str = ""
+    RETENTION_REASONER_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
+
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 500
 
