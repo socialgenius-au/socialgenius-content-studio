@@ -160,23 +160,71 @@ async def _transition_evidence_coverage(db: AsyncSession, video_analysis_id: int
     }
 
 
-def _shots_in_range(shots: list[Shot], range_start: float, range_end: float) -> list[Shot]:
-    """Half-open [start, end) on the shot's own start_time -- safe and non-double-counting for
-    every phase including the last, since no Shot's start_time ever equals the video's own
-    duration (the last Shot's start is strictly before duration; its END is what equals it)."""
-    return [s for s in shots if range_start <= s.start_time < range_end]
+def _shots_overlapping_range(shots: list[Shot], range_start: float, range_end: float) -> list[Shot]:
+    """A Shot is VISUALLY PRESENT in a phase whenever its own range overlaps the phase's range at
+    all -- `shot.start_time < range_end AND shot.end_time > range_start` -- never merely "did this
+    Shot's own START happen to fall inside the phase." A Shot that began before the phase and is
+    still on screen when the phase begins is genuinely present in it; a start-time-only test (the
+    Stage 11.1 V1 mistake this corrects) would silently make such a phase look visually empty."""
+    return [s for s in shots if s.start_time < range_end and s.end_time > range_start]
 
 
-def _pacing_phase(partition_type: str, partition_id: int, start: float, end: float, shots_in_phase: list[Shot]) -> dict:
-    stats = _shot_duration_stats(shots_in_phase)
+def _clipped_exposure_duration(shot: Shot, range_start: float, range_end: float) -> float:
+    """The Shot's own visible duration WITHIN this range only -- never its full original
+    duration. Never reads or writes anything on the Shot row itself (no mutation)."""
+    overlap_start = max(shot.start_time, range_start)
+    overlap_end = min(shot.end_time, range_end)
+    return overlap_end - overlap_start
+
+
+def _shot_exposure_stats(shots_in_phase: list[Shot], phase_start: float, phase_end: float) -> dict:
+    """`average_shot_exposure_duration` is explicitly named to never be confused with a Shot's own
+    full duration (see `_shot_duration_stats`, a genuinely different measurement at the
+    video-level) -- it is the mean of each overlapping Shot's own CLIPPED, phase-local visible
+    span. `shot_exposures` preserves each individual clipped value (and which Shot it belongs to)
+    so a caller can derive anything else (min/max/distribution) without re-querying Shots."""
+    if not shots_in_phase:
+        return {"overlapping_shot_count": 0, "average_shot_exposure_duration": None, "shot_exposures": []}
+    exposures = [
+        {"shot_id": s.id, "exposure_duration": _clipped_exposure_duration(s, phase_start, phase_end)}
+        for s in shots_in_phase
+    ]
+    return {
+        "overlapping_shot_count": len(shots_in_phase),
+        "average_shot_exposure_duration": sum(e["exposure_duration"] for e in exposures) / len(exposures),
+        "shot_exposures": exposures,
+    }
+
+
+def _cuts_in_phase(cut_timestamps: list[float], phase_start: float, phase_end: float) -> list[float]:
+    """A cut is a TIMESTAMP EVENT (the shared boundary between two consecutive Shots), attributed
+    to whichever phase's own interval contains it -- entirely independent of which phase either
+    adjacent Shot's own start_time happens to fall in (the Stage 11.1 V1 mistake this corrects: a
+    cut whose two Shots started in different phases was previously invisible to both). Half-open
+    [phase_start, phase_end) is the one deterministic boundary convention used everywhere in this
+    module -- a cut exactly on a shared edge between two phases belongs to the phase it OPENS,
+    never both, never neither. No special-casing is needed for the video's final phase: a cut
+    timestamp is always strictly less than the video's own duration (it is always some Shot's own
+    end_time, and every Shot's end_time is <= duration with the LAST Shot's end_time == duration
+    only where no further cut exists to be counted anyway), so it is always correctly captured by
+    a plain `< phase_end` test even when phase_end == duration."""
+    return [t for t in cut_timestamps if phase_start <= t < phase_end]
+
+
+def _pacing_phase(partition_type: str, partition_id: int, start: float, end: float, shots: list[Shot], cut_timestamps: list[float]) -> dict:
+    shots_in_phase = _shots_overlapping_range(shots, start, end)
+    exposure = _shot_exposure_stats(shots_in_phase, start, end)
     duration = end - start
+    cuts = _cuts_in_phase(cut_timestamps, start, end)
     return {
         "partition_type": partition_type,  # "scene" | "story_beat"
         "partition_id": partition_id,  # Scene.id, or the story_beat AnalysisAnnotation.id
         "start_time": start, "end_time": end, "duration": duration,
-        "shot_count": stats["shot_count"],
-        "average_shot_duration": stats["average_shot_duration"],
-        "cuts_per_minute": _cuts_per_minute(stats["shot_count"], duration),
+        "overlapping_shot_count": exposure["overlapping_shot_count"],
+        "average_shot_exposure_duration": exposure["average_shot_exposure_duration"],
+        "shot_exposures": exposure["shot_exposures"],
+        "cuts_in_phase": len(cuts),
+        "cuts_per_minute": (len(cuts) / (duration / 60.0)) if duration > 0 else None,
         "contributing_shot_ids": [s.id for s in shots_in_phase],
     }
 
@@ -259,12 +307,16 @@ async def compute_and_persist_editing_rhythm(db: AsyncSession, video_analysis_id
         "contributing_shot_ids": [s.id for s in shots],
     }
 
+    # Computed once, shared by every phase's own _cuts_in_phase lookup AND the cut-alignment loop
+    # below -- a cut is a single global timestamp, never recomputed per-phase.
+    cut_timestamps = [shots[i].end_time for i in range(len(shots) - 1)]
+
     scene_phases = [
-        _pacing_phase("scene", scene.id, scene.start_time, scene.end_time, _shots_in_range(shots, scene.start_time, scene.end_time))
+        _pacing_phase("scene", scene.id, scene.start_time, scene.end_time, shots, cut_timestamps)
         for scene in scenes
     ]
     story_beat_phases = [
-        _pacing_phase("story_beat", beat.id, beat.start_time, beat.end_time, _shots_in_range(shots, beat.start_time, beat.end_time))
+        _pacing_phase("story_beat", beat.id, beat.start_time, beat.end_time, shots, cut_timestamps)
         for beat in story_beats
     ]
 

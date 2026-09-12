@@ -26,7 +26,8 @@ from app.models.video_analysis import VideoAnalysis
 from app.services.editing_rhythm_svc import (
     CUT_NEAR_SILENCE_TOLERANCE_SECONDS, CUT_NEAR_SPEECH_BOUNDARY_TOLERANCE_SECONDS,
     EDITING_CUT_ALIGNMENT_CATEGORY, EDITING_PACING_PHASE_CATEGORY, EDITING_RHYTHM_PROFILE_CATEGORY,
-    EditingRhythmError, _classify_cut, _cuts_per_minute, _shot_duration_stats,
+    EditingRhythmError, _classify_cut, _clipped_exposure_duration, _cuts_in_phase, _cuts_per_minute,
+    _shot_duration_stats, _shots_overlapping_range,
     compute_and_persist_editing_rhythm,
 )
 from app.services.story_beat_construction_svc import STORY_BEAT_CATEGORY
@@ -157,6 +158,48 @@ def test_classify_cut_unclassified_when_evidence_exists_but_not_nearby():
 
 
 # ---------------------------------------------------------------------------
+# Phase attribution methodology correction — the four fixtures explicitly required.
+# ---------------------------------------------------------------------------
+
+def test_long_shot_spans_multiple_phases():
+    """Fixture 1: one Shot 0-10, phases 0-3 / 3-7 / 7-10. Each phase must report
+    overlapping_shot_count=1 -- NOT 0 for phases 2 and 3, which is exactly what the old
+    start-time-only attribution incorrectly produced."""
+    shot = _shot(1, 0, 10)
+    for phase_start, phase_end in [(0, 3), (3, 7), (7, 10)]:
+        overlapping = _shots_overlapping_range([shot], phase_start, phase_end)
+        assert len(overlapping) == 1, f"phase [{phase_start},{phase_end}) incorrectly shows the shot as absent"
+
+
+def test_cut_inside_phase_where_first_shot_began_earlier():
+    """Fixture 2: Shot A 0-6, Shot B 6-10, phase 4-8. Must report overlapping_shot_count=2 and
+    cuts_in_phase=1 -- the cut at t=6 must be visible even though Shot A started before the phase."""
+    shot_a, shot_b = _shot(1, 0, 6), _shot(2, 6, 10)
+    overlapping = _shots_overlapping_range([shot_a, shot_b], 4, 8)
+    assert len(overlapping) == 2
+    cuts = _cuts_in_phase([6.0], 4, 8)
+    assert len(cuts) == 1
+
+
+def test_cut_exactly_on_phase_boundary_assigned_to_exactly_one_phase():
+    """Fixture 3: a cut at t=5 sitting exactly on the shared edge between phase [0,5) and phase
+    [5,10) must be counted in exactly one of them -- the half-open convention assigns it to the
+    phase it OPENS, never both, never neither."""
+    cut_timestamps = [5.0]
+    phase_a = _cuts_in_phase(cut_timestamps, 0, 5)   # [0,5) -- does NOT contain 5.0
+    phase_b = _cuts_in_phase(cut_timestamps, 5, 10)  # [5,10) -- DOES contain 5.0
+    assert len(phase_a) == 0
+    assert len(phase_b) == 1
+
+
+def test_clipped_exposure_duration_is_the_visible_span_not_the_full_shot():
+    """Fixture 4: Shot 0-10, phase 3-5. Contribution must be 2s, never the shot's own full 10s
+    duration."""
+    shot = _shot(1, 0, 10)
+    assert _clipped_exposure_duration(shot, 3, 5) == 2.0
+
+
+# ---------------------------------------------------------------------------
 # Full end-to-end DB tests.
 # ---------------------------------------------------------------------------
 
@@ -230,16 +273,36 @@ async def test_full_fixture_video_level_and_two_independent_phase_segmentations(
             assert vl["cuts_per_minute"] == pytest.approx(18.0)
             assert vl["contributing_shot_ids"] is not None and len(vl["contributing_shot_ids"]) == 4
 
+            # Shots: [0,2] [2,5] [5,6] [6,10] -- cut timestamps [2, 5, 6].
             scene_phases = result["scene_phases"]
             assert len(scene_phases) == 2
-            assert scene_phases[0]["shot_count"] == 2
+            # Scene0 [0,5): overlaps shot0(0-2), shot1(2-5) (shot1 ends exactly at 5, excluded
+            # from scene1 by the half-open convention). 1 cut (t=2) falls in [0,5).
+            assert scene_phases[0]["overlapping_shot_count"] == 2
+            assert scene_phases[0]["cuts_in_phase"] == 1
             assert scene_phases[0]["cuts_per_minute"] == pytest.approx(12.0)  # 1 cut / (5s/60)
-            assert scene_phases[1]["shot_count"] == 2
+            # Scene1 [5,10): overlaps shot2(5-6), shot3(6-10) -- NOT shot1, which ends exactly at
+            # 5. Two cuts (t=5 AND t=6) now correctly fall in [5,10) -- t=5 was previously
+            # invisible to both phases under start-time-only attribution; this is the fix.
+            assert scene_phases[1]["overlapping_shot_count"] == 2
+            assert scene_phases[1]["cuts_in_phase"] == 2
+            assert scene_phases[1]["cuts_per_minute"] == pytest.approx(24.0)  # 2 cuts / (5s/60)
 
             beat_phases = result["story_beat_phases"]
             assert len(beat_phases) == 2
+            # Beat0 [0,4): overlaps shot0(0-2) and shot1(2-5) -- shot1 STRADDLES into beat1 too
+            # (it ends at 5, past beat0's own end at 4). 1 cut (t=2) falls in [0,4).
+            assert beat_phases[0]["overlapping_shot_count"] == 2
+            assert beat_phases[0]["cuts_in_phase"] == 1
             assert beat_phases[0]["cuts_per_minute"] == pytest.approx(15.0)  # 1 cut / (4s/60)
-            assert beat_phases[1]["cuts_per_minute"] == pytest.approx(10.0)  # 1 cut / (6s/60)
+            # Beat1 [4,10): overlaps shot1 (straddling, clipped to [4,5)), shot2, and shot3 --
+            # THREE overlapping shots, not two, because shot1 is genuinely visible here even
+            # though it started in beat0. Two cuts (t=5, t=6) fall in [4,10).
+            assert beat_phases[1]["overlapping_shot_count"] == 3
+            assert beat_phases[1]["cuts_in_phase"] == 2
+            assert beat_phases[1]["cuts_per_minute"] == pytest.approx(20.0)  # 2 cuts / (6s/60)
+            straddling_exposure = next(e for e in beat_phases[1]["shot_exposures"] if e["shot_id"] == beat_phases[0]["shot_exposures"][1]["shot_id"])
+            assert straddling_exposure["exposure_duration"] == pytest.approx(1.0)  # clipped [4,5), not the shot's full 3s
 
             # Scene boundary (5.0) and Story Beat boundary (4.0) are genuinely different --
             # confirms the two segmentations are independent, never merged.
@@ -445,14 +508,16 @@ async def test_edge_case_scene_but_no_accepted_story_beat_boundary():
             result = await compute_and_persist_editing_rhythm(db, va_id)
             assert len(result["scene_phases"]) == 1
             assert len(result["story_beat_phases"]) == 1
-            assert result["story_beat_phases"][0]["shot_count"] == 2
+            assert result["story_beat_phases"][0]["overlapping_shot_count"] == 2
         finally:
             await _cleanup(db, asset_id, rv_id)
 
 
 async def test_edge_case_story_beat_crossing_a_scene_boundary():
     """The real, observed VA5368 shape: a Story Beat's own range straddles a Scene cut. Both
-    segmentations must still compute correctly and independently -- neither is forced to align."""
+    segmentations must still compute correctly and independently -- neither is forced to align.
+    Also proves a long Shot spanning into the straddling Beat is correctly counted as visually
+    present there (overlap, not start-time-only attribution)."""
     async with _TestSessionLocal() as db:
         user = await _existing_test_user(db)
         rv_id, asset_id, va_id = await _make_analysis(db, user, duration=10.0)
@@ -466,9 +531,12 @@ async def test_edge_case_story_beat_crossing_a_scene_boundary():
             assert len(result["story_beat_phases"]) == 3
             straddling_beat = result["story_beat_phases"][1]
             assert (straddling_beat["start_time"], straddling_beat["end_time"]) == (4.0, 7.0)
-            # Shot [3,6] starts inside the straddling beat's own range -- confirms it's assigned
-            # there under the story_beat segmentation regardless of what the (different) Scene
-            # segmentation does with the same shot.
-            assert straddling_beat["shot_count"] == 1
+            # Shot [3,6] began BEFORE the straddling beat (at t=3, inside beat0) but is still
+            # visually on screen when the beat opens at t=4 -- it must be counted as present here.
+            # Shot [6,10] also begins inside this beat. Both correctly overlap -> count of 2, not
+            # the 1 that start-time-only attribution incorrectly produced.
+            assert straddling_beat["overlapping_shot_count"] == 2
+            # The cut at t=6 (between shot [3,6] and shot [6,10]) genuinely falls inside [4,7).
+            assert straddling_beat["cuts_in_phase"] == 1
         finally:
             await _cleanup(db, asset_id, rv_id)
