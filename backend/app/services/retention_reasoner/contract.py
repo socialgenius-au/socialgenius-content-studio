@@ -25,6 +25,17 @@ enforcement mechanism and term list):
 A RetentionReasoningError is raised, not a fabricated RetentionDecision, if a provider's response
 contains any such claim.
 
+CANDIDATE != DEVICE (the Stage 11.4 acceptance-gate correction): a candidate merely means "something
+happened here worth examining" -- it is never itself a strategic conclusion. `device_type` describes
+the STRUCTURAL FORM of what happened (a cut, a scene change, text appearing, ...) and is set
+regardless of whether the moment is accepted. `is_retention_device` is the SEPARATE, explicit
+acceptance decision: whether the evidence plausibly supports this moment serving an attention-
+maintenance FUNCTION, not merely that a structural event of some describable type occurred. Knowing
+"there was a cut" (device_type="scene_switch") is not, by itself, evidence of a retention function
+-- ordinary editing is an expected, legitimate, non-accepted outcome, not a failure. Acceptance is
+never inferred from device_type or from confidence (see PROBABLE ATTENTION FUNCTION below and
+providers/anthropic_provider.py's own prompt for the exact non-threshold-based judgment required).
+
 DEVICE TYPE VOCABULARY (Stage 11.4's own deliberately small V1 set, per the brief's own explicit
 list -- "do not invent proof/demo, open_loop, long-range curiosity_gap, or payoff_delay unless
 evidence genuinely supports them" led to those four being left OUT of V1 entirely rather than
@@ -33,6 +44,13 @@ text_reveal, question, emphasis, pattern_interrupt, other, unclear. Exactly one 
 candidate -- this contract does not attempt Hook's own multi-element/secondary-types shape, since a
 retention candidate is already a single, bounded, pre-grouped moment (the grouping step is where
 multiple co-occurring signals get combined), not a multi-part opening sequence.
+
+PROBABLE ATTENTION FUNCTION (new, acceptance-gate correction): required (one of
+RETENTION_FUNCTION_VALUES) when `is_retention_device` is True, and required to be None when False --
+the contract enforces this pairing structurally so orchestration never has to guess whether an
+accepted device actually carries a stated function. Always an INFERENCE about apparent design
+("appears designed to renew attention..."), never a claim about actual viewer response, exactly
+like Hook's own `probable_intent` field.
 
 CONSERVATIVE-CLASSIFICATION RULES (Stage 11.4's own explicit requirement, enforced by the SYSTEM
 PROMPT the Anthropic provider ships, not by this contract's own validation -- this contract only
@@ -62,6 +80,7 @@ __all__ = [
     "VALID_CONFIDENCE_LEVELS",
     "RETENTION_DEVICE_TYPE_VALUES",
     "RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR",
+    "RETENTION_FUNCTION_VALUES",
     "VALID_EVIDENCE_REFERENCE_KEYS",
     "RetentionReasoningError",
     "RetentionDecision",
@@ -81,6 +100,16 @@ RETENTION_DEVICE_TYPE_VALUES = frozenset({
 # device_type additionally allows "unclear" -- a candidate is never forced into a named type the
 # local evidence does not actually support.
 RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR = RETENTION_DEVICE_TYPE_VALUES | {"unclear"}
+
+# Bounded V1 vocabulary for the inferred FUNCTION an ACCEPTED device appears designed to serve
+# (Stage 11.4 acceptance-gate correction, Section 7's own named examples). "other" is the escape
+# hatch for a genuinely accepted device whose function doesn't fit any named one. Only meaningful
+# when is_retention_device is True -- see RetentionDecision's own __post_init__ for the enforced
+# pairing.
+RETENTION_FUNCTION_VALUES = frozenset({
+    "renew_attention", "reset_visual_rhythm", "introduce_new_information",
+    "create_emphasis", "prompt_mental_response", "other",
+})
 
 # The bounded evidence-reference vocabulary a candidate's local evidence bundle
 # (retention_candidate_assembly_svc.assemble_candidate_evidence_bundle) can ever supply --
@@ -104,10 +133,13 @@ class RetentionReasoningError(Exception):
     device_type value, or language claiming actual retention/attention/engagement/performance) --
     a deliberately SEPARATE exception type from HookReasoningError, never a shared/aliased class.
 
-    Raising this is NEVER equivalent to "this candidate is not a retention device" -- a genuine
-    "the evidence doesn't clearly support a device type" is a normal, successfully-returned
-    RetentionDecision with device_type="unclear", not an error. Orchestration decides separately
-    whether an "unclear" decision is still worth persisting (see retention_classification_svc)."""
+    Raising this is NEVER equivalent to "this candidate is not a retention device" -- a genuine,
+    considered "no, the evidence doesn't support an attention-maintenance function here" is a
+    normal, successfully-returned RetentionDecision with is_retention_device=False (device_type may
+    still be a real structural label, or "unclear"), not an error. Orchestration persists a durable
+    reasoning attempt for EVERY successfully-returned decision regardless of is_retention_device,
+    and includes only is_retention_device=True decisions in the effective retention_device set (see
+    retention_classification_svc)."""
 
 
 def _validate_evidence_references(evidence_references: dict) -> None:
@@ -126,11 +158,26 @@ def _validate_evidence_references(evidence_references: dict) -> None:
 class RetentionDecision:
     """The structured Retention Device classification for ONE candidate -- provider-independent.
 
-    device_type: one of RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR -- required. Never forced to a
-        real type when the local evidence does not actually support one.
+    is_retention_device: REQUIRED, explicit acceptance decision -- whether the evidence plausibly
+        supports this moment serving an attention-maintenance FUNCTION. Never inferred from
+        device_type or confidence by any caller; this field IS the acceptance gate (Stage 11.4
+        acceptance-gate correction). False is a normal, expected, non-failure outcome -- ordinary
+        editing with no evidence of a specific function.
+
+    device_type: one of RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR -- required, REGARDLESS of
+        is_retention_device. Describes the structural FORM of the candidate event (a cut, a scene
+        change, text appearing, ...), never by itself a claim that the moment is an accepted
+        device. Never forced to a real type when the local evidence does not actually support one.
+
+    probable_attention_function: one of RETENTION_FUNCTION_VALUES when is_retention_device is True
+        -- REQUIRED in that case, and REQUIRED to be None when is_retention_device is False (the
+        pairing is structurally enforced below). Always an inference about apparent DESIGN
+        ("appears designed to renew attention..."), never a claim about actual viewer response.
 
     confidence: one of VALID_CONFIDENCE_LEVELS -- required, categorical, never fabricated
-        precision.
+        precision. NEVER used by any caller as an acceptance threshold -- a low-confidence
+        attention-function inference may still be accepted, and a high-confidence "there was a
+        cut" alone must not be accepted merely because confidence is high.
 
     reasoning: short prose justification -- factual/evidence-grounded, structurally forbidden (see
         RetentionReasoningError) from claiming actual retention, attention, engagement, watch time,
@@ -143,19 +190,34 @@ class RetentionDecision:
     reasoning_contract_version: which version of the PROMPT/reasoning instructions actually
         produced this decision.
     """
+    is_retention_device: bool
     device_type: str
     confidence: str
     reasoning: str
+    probable_attention_function: str | None = None
     evidence_references: dict = field(default_factory=dict)
     reasoning_contract_version: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.is_retention_device, bool):
+            raise ValueError(f"is_retention_device must be a bool, got {self.is_retention_device!r}.")
         if self.device_type not in RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR:
             raise ValueError(
                 f"device_type must be one of {sorted(RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR)}, got {self.device_type!r}."
             )
         if self.confidence not in VALID_CONFIDENCE_LEVELS:
             raise ValueError(f"confidence must be one of {VALID_CONFIDENCE_LEVELS}, got {self.confidence!r}.")
+        if self.is_retention_device:
+            if self.probable_attention_function not in RETENTION_FUNCTION_VALUES:
+                raise ValueError(
+                    f"probable_attention_function must be one of {sorted(RETENTION_FUNCTION_VALUES)} "
+                    f"when is_retention_device is True, got {self.probable_attention_function!r}."
+                )
+        elif self.probable_attention_function is not None:
+            raise ValueError(
+                f"probable_attention_function must be None when is_retention_device is False, "
+                f"got {self.probable_attention_function!r} -- a non-accepted candidate has no accepted function."
+            )
         _validate_evidence_references(self.evidence_references)
 
 

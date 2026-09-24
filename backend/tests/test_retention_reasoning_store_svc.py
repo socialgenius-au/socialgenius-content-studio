@@ -58,10 +58,11 @@ async def _cleanup(db, asset_id, rv_id):
     await db.commit()
 
 
-def _make_result(device_type="question"):
+def _make_result(device_type="question", is_retention_device=False, probable_attention_function=None):
     return RetentionResult(
         decision=RetentionDecision(
-            device_type=device_type, confidence="medium", reasoning="test reasoning",
+            is_retention_device=is_retention_device, device_type=device_type, confidence="medium",
+            reasoning="test reasoning", probable_attention_function=probable_attention_function,
             evidence_references={"supporting_speech_segment_ids": [1]},
         ),
         provider="anthropic", model="claude-sonnet-5", reasoning_contract_version="v1",
@@ -81,6 +82,8 @@ async def test_persist_creates_row_with_correct_shape():
             assert (row.start_time, row.end_time) == (10.0, 10.4)
             assert row.details["candidate_center"] == 10.2
             assert row.details["source_nominations"] == _CANDIDATE["source_nominations"]
+            assert row.details["is_retention_device"] is False
+            assert row.details["probable_attention_function"] is None
             assert row.reasoning == "test reasoning"
         finally:
             await _cleanup(db, asset_id, rv_id)
@@ -115,6 +118,23 @@ async def test_load_returns_full_history_oldest_first_across_candidates():
             attempts = await load_retention_reasoning_attempts(db, va_id)
             assert [x.id for x in attempts] == [a.id, b.id, c.id]
             assert [x.details["device_type"] for x in attempts] == ["question", "pacing_change", "unclear"]
+        finally:
+            await _cleanup(db, asset_id, rv_id)
+
+
+async def test_persist_records_accepted_decision_shape():
+    """An ACCEPTED decision's attempt row carries both is_retention_device=True and its
+    probable_attention_function -- the acceptance gate is visible in the durable audit trail, not
+    only in the effective retention_device row."""
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, va_id = await _make_analysis(db, user)
+        try:
+            row = await persist_retention_reasoning_attempt(
+                db, va_id, _CANDIDATE, _make_result("scene_switch", is_retention_device=True, probable_attention_function="renew_attention")
+            )
+            assert row.details["is_retention_device"] is True
+            assert row.details["probable_attention_function"] == "renew_attention"
         finally:
             await _cleanup(db, asset_id, rv_id)
 

@@ -10,7 +10,7 @@ import pytest
 
 from app.services.retention_reasoner import RetentionReasoningError, classify_retention_candidate
 from app.services.retention_reasoner.contract import (
-    RETENTION_DEVICE_TYPE_VALUES, RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR,
+    RETENTION_DEVICE_TYPE_VALUES, RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR, RETENTION_FUNCTION_VALUES,
     VALID_EVIDENCE_REFERENCE_KEYS, RetentionDecision,
 )
 from app.services.retention_reasoner.providers.anthropic_provider import (
@@ -38,24 +38,66 @@ _SAMPLE_BUNDLE = {
 
 def test_retention_decision_rejects_invalid_device_type():
     with pytest.raises(ValueError):
-        RetentionDecision(device_type="proof_or_demo", confidence="high", reasoning="x")
+        RetentionDecision(is_retention_device=False, device_type="proof_or_demo", confidence="high", reasoning="x")
 
 
-def test_retention_decision_accepts_unclear():
-    d = RetentionDecision(device_type="unclear", confidence="low", reasoning="insufficient evidence")
+def test_retention_decision_accepts_unclear_when_not_a_retention_device():
+    d = RetentionDecision(is_retention_device=False, device_type="unclear", confidence="low", reasoning="insufficient evidence")
     assert d.device_type == "unclear"
+    assert d.is_retention_device is False
 
 
 def test_retention_decision_rejects_invalid_confidence():
     with pytest.raises(ValueError):
-        RetentionDecision(device_type="question", confidence="certain", reasoning="x")
+        RetentionDecision(is_retention_device=False, device_type="question", confidence="certain", reasoning="x")
 
 
 def test_retention_decision_validates_evidence_references():
     with pytest.raises(ValueError):
-        RetentionDecision(device_type="question", confidence="high", reasoning="x", evidence_references={"bogus_key": [1]})
-    d = RetentionDecision(device_type="question", confidence="high", reasoning="x", evidence_references={"supporting_speech_segment_ids": [501]})
+        RetentionDecision(is_retention_device=False, device_type="question", confidence="high", reasoning="x", evidence_references={"bogus_key": [1]})
+    d = RetentionDecision(is_retention_device=False, device_type="question", confidence="high", reasoning="x", evidence_references={"supporting_speech_segment_ids": [501]})
     assert d.evidence_references == {"supporting_speech_segment_ids": [501]}
+
+
+# ---------------------------------------------------------------------------
+# Acceptance-gate correction: is_retention_device / probable_attention_function pairing.
+# ---------------------------------------------------------------------------
+
+def test_retention_decision_rejects_non_bool_is_retention_device():
+    with pytest.raises(ValueError):
+        RetentionDecision(is_retention_device="yes", device_type="question", confidence="high", reasoning="x")
+
+
+def test_accepted_decision_requires_a_valid_probable_attention_function():
+    with pytest.raises(ValueError):
+        RetentionDecision(is_retention_device=True, device_type="question", confidence="high", reasoning="x", probable_attention_function=None)
+    with pytest.raises(ValueError):
+        RetentionDecision(is_retention_device=True, device_type="question", confidence="high", reasoning="x", probable_attention_function="not_a_real_function")
+    d = RetentionDecision(is_retention_device=True, device_type="question", confidence="high", reasoning="x", probable_attention_function="prompt_mental_response")
+    assert d.probable_attention_function == "prompt_mental_response"
+
+
+def test_rejected_decision_requires_null_probable_attention_function():
+    with pytest.raises(ValueError):
+        RetentionDecision(is_retention_device=False, device_type="visual_change", confidence="high", reasoning="x", probable_attention_function="renew_attention")
+    d = RetentionDecision(is_retention_device=False, device_type="visual_change", confidence="high", reasoning="x")
+    assert d.probable_attention_function is None
+
+
+def test_ordinary_structural_type_may_be_assigned_regardless_of_acceptance():
+    """device_type describes the structural FORM -- it is assignable whether or not the candidate
+    is accepted as a retention device. A rejected 'ordinary cut' still gets a real device_type."""
+    d = RetentionDecision(is_retention_device=False, device_type="visual_change", confidence="high",
+                           reasoning="An ordinary shot cut with no other supporting signal.")
+    assert d.device_type == "visual_change"
+    assert d.is_retention_device is False
+
+
+def test_retention_function_vocabulary_is_small_with_other_escape_hatch():
+    assert len(RETENTION_FUNCTION_VALUES) <= 8
+    assert "other" in RETENTION_FUNCTION_VALUES
+    assert "renew_attention" in RETENTION_FUNCTION_VALUES
+    assert "create_emphasis" in RETENTION_FUNCTION_VALUES
 
 
 def test_device_type_vocabulary_is_small_and_excludes_deferred_categories():
@@ -118,8 +160,10 @@ def _fake_client_returning(response_json: dict | str):
 def _valid_question_response():
     return {
         "device_type": "question",
+        "is_retention_device": True,
+        "probable_attention_function": "prompt_mental_response",
         "confidence": "high",
-        "reasoning": "A spoken question ('what if you're wrong?') is reinforced by matching on-screen text at the same moment.",
+        "reasoning": "A spoken question ('what if you're wrong?') is reinforced by matching on-screen text at the same moment -- this appears designed to prompt a mental response from the viewer.",
         "evidence_references": {"supporting_speech_segment_ids": [501], "supporting_text_element_ids": [601]},
     }
 
@@ -153,19 +197,67 @@ async def test_missing_api_key_raises_never_calls_client(monkeypatch):
 async def test_valid_question_response_parses(monkeypatch):
     result = await _run_with_response(monkeypatch, _valid_question_response())
     assert result.decision.device_type == "question"
+    assert result.decision.is_retention_device is True
+    assert result.decision.probable_attention_function == "prompt_mental_response"
     assert result.decision.confidence == "high"
     assert result.decision.reasoning_contract_version == RETENTION_PROMPT_VERSION
     assert result.provider == "anthropic"
 
 
-async def test_unclear_device_type_is_accepted(monkeypatch):
+async def test_unclear_device_type_not_accepted_is_parsed(monkeypatch):
     response = {
-        "device_type": "unclear", "confidence": "low",
+        "device_type": "unclear", "is_retention_device": False, "probable_attention_function": None,
+        "confidence": "low",
         "reasoning": "The available evidence does not clearly support any single device type.",
         "evidence_references": {},
     }
     result = await _run_with_response(monkeypatch, response)
     assert result.decision.device_type == "unclear"
+    assert result.decision.is_retention_device is False
+
+
+async def test_ordinary_cut_with_real_device_type_but_not_accepted_is_parsed(monkeypatch):
+    """The central acceptance-gate case: a confidently-identified structural type (visual_change)
+    that is explicitly NOT accepted as a retention device."""
+    response = {
+        "device_type": "visual_change", "is_retention_device": False, "probable_attention_function": None,
+        "confidence": "high",
+        "reasoning": "An ordinary shot cut with no other supporting signal -- routine editing, not a designed attention device.",
+        "evidence_references": {},
+    }
+    result = await _run_with_response(monkeypatch, response)
+    assert result.decision.device_type == "visual_change"
+    assert result.decision.is_retention_device is False
+    assert result.decision.probable_attention_function is None
+
+
+async def test_accepted_response_missing_probable_attention_function_is_rejected(monkeypatch):
+    response = _valid_question_response()
+    response["probable_attention_function"] = None
+    with pytest.raises(RetentionReasoningError):
+        await _run_with_response(monkeypatch, response)
+
+
+async def test_rejected_response_with_nonnull_probable_attention_function_is_rejected(monkeypatch):
+    response = _valid_question_response()
+    response["is_retention_device"] = False
+    # probable_attention_function left non-null -- inconsistent pairing must be rejected.
+    with pytest.raises(RetentionReasoningError):
+        await _run_with_response(monkeypatch, response)
+
+
+async def test_invalid_probable_attention_function_value_is_rejected(monkeypatch):
+    response = _valid_question_response()
+    response["probable_attention_function"] = "boost_engagement"  # not in the vocabulary
+    with pytest.raises(RetentionReasoningError):
+        await _run_with_response(monkeypatch, response)
+
+
+async def test_missing_is_retention_device_field_is_rejected(monkeypatch):
+    response = _valid_question_response()
+    del response["is_retention_device"]
+    with pytest.raises(RetentionReasoningError):
+        await _run_with_response(monkeypatch, response)
 
 
 async def test_fabricated_evidence_id_is_rejected(monkeypatch):
@@ -221,15 +313,16 @@ def test_prompt_requires_fact_vs_interpretation_separation():
 
 
 # ---------------------------------------------------------------------------
-# Stage 11.4 text-reveal correction (prompt v2): a TextElement appearing is not, by itself,
-# sufficient evidence for device_type "text_reveal". These tests confirm the corrected guidance is
-# actually present in the shipped prompt and that the reasoning-contract version was bumped --
-# the model's own live judgment against real evidence is verified separately by the real-data rerun
-# (VA159/VA5368), not by a mocked unit test, since no unit test can assert what a live LLM decides.
+# Stage 11.4 text-reveal correction (prompt v2, re-expressed in v3's acceptance-gate terms): a
+# TextElement appearing is not, by itself, sufficient evidence to ACCEPT device_type "text_reveal".
+# These tests confirm the corrected guidance is actually present in the shipped prompt and that the
+# reasoning-contract version was bumped -- the model's own live judgment against real evidence is
+# verified separately by the real-data rerun (VA159/VA5368), not by a mocked unit test, since no
+# unit test can assert what a live LLM decides.
 # ---------------------------------------------------------------------------
 
-def test_retention_prompt_version_is_v2_after_text_reveal_correction():
-    assert RETENTION_PROMPT_VERSION == "v2"
+def test_retention_prompt_version_is_v3_after_acceptance_gate_correction():
+    assert RETENTION_PROMPT_VERSION == "v3"
 
 
 def test_prompt_states_text_appearance_alone_is_not_sufficient_for_text_reveal():
@@ -258,6 +351,40 @@ def test_prompt_gives_illustrative_not_hardcoded_support_criteria_for_text_revea
 
 
 # ---------------------------------------------------------------------------
+# Stage 11.4 acceptance-gate correction (prompt v3): candidate != retention device. device_type is
+# a structural/form label; is_retention_device is the separate, explicit acceptance decision.
+# ---------------------------------------------------------------------------
+
+def test_prompt_separates_device_type_from_acceptance_decision():
+    assert "STEP 1" in SYSTEM_PROMPT and "STEP 2" in SYSTEM_PROMPT
+    assert "A candidate is NEVER itself a strategic conclusion" in SYSTEM_PROMPT
+
+
+def test_prompt_lists_ordinary_editing_rejection_examples():
+    assert '"there was a cut"' in SYSTEM_PROMPT
+    assert '"the scene changed"' in SYSTEM_PROMPT
+    assert '"text appeared"' in SYSTEM_PROMPT
+    assert '"the camera moved"' in SYSTEM_PROMPT
+    assert '"there was a pause"' in SYSTEM_PROMPT
+
+
+def test_prompt_states_acceptance_is_not_a_confidence_threshold():
+    assert "ACCEPTANCE IS NEVER A CONFIDENCE THRESHOLD" in SYSTEM_PROMPT
+    assert "does NOT by itself" in SYSTEM_PROMPT
+
+
+def test_prompt_requires_probable_attention_function_vocabulary_when_accepted():
+    assert "probable_attention_function" in SYSTEM_PROMPT
+    for value in sorted(RETENTION_FUNCTION_VALUES):
+        assert value in SYSTEM_PROMPT
+
+
+def test_prompt_json_schema_includes_acceptance_fields():
+    assert '"is_retention_device": true | false' in SYSTEM_PROMPT
+    assert '"probable_attention_function"' in SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
 # Section 8 required fixtures — mocked round-trips proving the ARCHITECTURE accepts the desired
 # outcome for each named scenario (the live model's actual judgment is separately confirmed by the
 # real-data rerun).
@@ -279,25 +406,28 @@ _SUBTITLE_LIKE_BUNDLE = {
 }
 
 
-async def test_routine_subtitle_progression_may_be_classified_unclear(monkeypatch):
-    """A candidate whose only evidence is caption-like text closely echoing concurrent speech,
-    amid a stream of similar fragments, must not be forced into text_reveal by the contract --
-    "unclear" is a normal, accepted outcome for exactly this shape."""
-    response = {"device_type": "unclear", "confidence": "low",
-                "reasoning": "The on-screen text closely tracks the concurrently spoken line as part of an ongoing caption stream; this appears to be routine subtitle rendering rather than a distinct designed reveal.",
+async def test_routine_subtitle_progression_may_be_rejected_with_honest_structural_type(monkeypatch):
+    """A candidate whose only evidence is caption-like text closely echoing concurrent speech, amid
+    a stream of similar fragments, must not be auto-accepted by the contract -- is_retention_device
+    =False is the normal, accepted outcome for exactly this shape, while device_type may still
+    honestly describe the structural form (text_reveal) since it was, structurally, text appearing."""
+    response = {"device_type": "text_reveal", "is_retention_device": False, "probable_attention_function": None,
+                "confidence": "low",
+                "reasoning": "The on-screen text closely tracks the concurrently spoken line as part of an ongoing caption stream; this is routine subtitle rendering, not a designed reveal.",
                 "evidence_references": {"supporting_speech_segment_ids": [705], "supporting_text_element_ids": [1255]}}
     monkeypatch.setattr(retention_router.settings, "RETENTION_REASONER_PROVIDER", "anthropic")
     fake_client = _fake_client_returning(response)
     with patch("app.services.retention_reasoner.providers.anthropic_provider.get_client", return_value=fake_client), \
          patch("app.services.retention_reasoner.providers.anthropic_provider.settings.ANTHROPIC_API_KEY", "sk-ant-fake"):
         result = await classify_retention_candidate(_SUBTITLE_LIKE_BUNDLE)
-    assert result.decision.device_type == "unclear"
+    assert result.decision.device_type == "text_reveal"
+    assert result.decision.is_retention_device is False
 
 
-async def test_genuine_text_reveal_may_still_be_classified(monkeypatch):
+async def test_genuine_text_reveal_may_still_be_accepted(monkeypatch):
     """A candidate where a new headline appears after a gap with no text, aligned with a structural
-    transition, may still be classified text_reveal -- the correction narrows acceptance, it does
-    not eliminate the category."""
+    transition, may still be accepted -- the correction narrows acceptance, it does not eliminate
+    the possibility of a genuine text-driven device."""
     bundle = {
         "candidate_window": {"start_time": 8.0, "end_time": 11.0, "candidate_start": 9.5, "candidate_end": 9.5},
         "source_nominations": [{"source_type": "text_appearance", "source_id": 2001, "timestamp": 9.5}, {"source_type": "scene_boundary", "source_id": 55, "timestamp": 9.5}],
@@ -307,7 +437,8 @@ async def test_genuine_text_reveal_may_still_be_classified(monkeypatch):
         "visual_objects": [], "motion_evidence": [], "transition_evidence": [{"id": 900, "category": "transition_evidence", "start_time": 9.4, "end_time": 9.6, "fact": "Detected hard cut."}],
         "audio_silence": [], "scenes": [{"id": 55, "order": 1, "start_time": 9.5, "end_time": 20.0}], "story_beats": [], "editing_pacing_phases": [],
     }
-    response = {"device_type": "text_reveal", "confidence": "medium",
+    response = {"device_type": "text_reveal", "is_retention_device": True, "probable_attention_function": "renew_attention",
+                "confidence": "medium",
                 "reasoning": "A new headline-style phrase appears exactly at a scene cut, with no prior on-screen text in this window -- this appears designed to renew attention at the scene transition.",
                 "evidence_references": {"supporting_text_element_ids": [2001], "supporting_annotation_ids": [900]}}
     monkeypatch.setattr(retention_router.settings, "RETENTION_REASONER_PROVIDER", "anthropic")
@@ -316,10 +447,13 @@ async def test_genuine_text_reveal_may_still_be_classified(monkeypatch):
          patch("app.services.retention_reasoner.providers.anthropic_provider.settings.ANTHROPIC_API_KEY", "sk-ant-fake"):
         result = await classify_retention_candidate(bundle)
     assert result.decision.device_type == "text_reveal"
+    assert result.decision.is_retention_device is True
+    assert result.decision.probable_attention_function == "renew_attention"
 
 
-async def test_garbled_ocr_only_may_be_classified_unclear(monkeypatch):
-    response = {"device_type": "unclear", "confidence": "low",
+async def test_garbled_ocr_only_is_rejected(monkeypatch):
+    response = {"device_type": "unclear", "is_retention_device": False, "probable_attention_function": None,
+                "confidence": "low",
                 "reasoning": "The only evidence is a single unreadable OCR fragment with no supporting speech, cut, or transition -- too low-information to establish an attention-maintenance function.",
                 "evidence_references": {"supporting_text_element_ids": [344]}}
     bundle = {**_SAMPLE_BUNDLE, "text_elements": [{"id": 344, "start_time": 0.15, "end_time": 0.15, "text": "٨u"}], "speech_segments": []}
@@ -329,13 +463,15 @@ async def test_garbled_ocr_only_may_be_classified_unclear(monkeypatch):
          patch("app.services.retention_reasoner.providers.anthropic_provider.settings.ANTHROPIC_API_KEY", "sk-ant-fake"):
         result = await classify_retention_candidate(bundle)
     assert result.decision.device_type == "unclear"
+    assert result.decision.is_retention_device is False
 
 
-async def test_text_with_structural_emphasis_may_classify_emphasis_or_text_reveal(monkeypatch):
+async def test_text_with_structural_emphasis_may_be_accepted_as_emphasis(monkeypatch):
     """Text appearing alongside matching speech AND a structural/motion emphasis combination may be
-    classified as either text_reveal or emphasis, whichever the evidence better supports -- the
-    contract does not force one over the other."""
-    response = {"device_type": "emphasis", "confidence": "medium",
+    accepted as device_type "emphasis" -- the contract does not force rejection just because the
+    triggering signal is text."""
+    response = {"device_type": "emphasis", "is_retention_device": True, "probable_attention_function": "create_emphasis",
+                "confidence": "medium",
                 "reasoning": "New on-screen text appears exactly as speech pauses, combined with a short shot immediately following several longer ones -- this combination appears designed to create emphasis at this moment.",
                 "evidence_references": {"supporting_text_element_ids": [601], "supporting_speech_segment_ids": [501]}}
     monkeypatch.setattr(retention_router.settings, "RETENTION_REASONER_PROVIDER", "anthropic")
@@ -344,6 +480,8 @@ async def test_text_with_structural_emphasis_may_classify_emphasis_or_text_revea
          patch("app.services.retention_reasoner.providers.anthropic_provider.settings.ANTHROPIC_API_KEY", "sk-ant-fake"):
         result = await classify_retention_candidate(_SAMPLE_BUNDLE)
     assert result.decision.device_type == "emphasis"
+    assert result.decision.is_retention_device is True
+    assert result.decision.probable_attention_function == "create_emphasis"
 
 
 async def test_performance_language_guard_matches_brief_prohibited_examples(monkeypatch):

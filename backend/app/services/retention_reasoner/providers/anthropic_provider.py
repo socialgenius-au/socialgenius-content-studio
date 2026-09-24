@@ -20,6 +20,7 @@ from app.config import settings
 from app.services.claude import get_client
 from app.services.retention_reasoner.contract import (
     RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR,
+    RETENTION_FUNCTION_VALUES,
     VALID_CONFIDENCE_LEVELS,
     VALID_EVIDENCE_REFERENCE_KEYS,
     RetentionDecision,
@@ -35,10 +36,16 @@ MAX_RESPONSE_TOKENS = 1024
 # own convention exactly, tracked completely independently.
 #
 # v2 (Stage 11.4 text-reveal correction): added the explicit "a TextElement appearing is not, by
-# itself, sufficient evidence for text_reveal" rule -- routine caption/subtitle progression and
-# persistent-watermark/garbled-OCR noise must default to "unclear" rather than being auto-accepted
-# as a device merely because on-screen text exists. See this module's own updated SYSTEM_PROMPT.
-RETENTION_PROMPT_VERSION = "v2"
+# itself, sufficient evidence for text_reveal" rule.
+#
+# v3 (Stage 11.4 acceptance-gate correction): split the single device_type field's overloaded
+# meaning into two separate, explicit decisions -- device_type now ALWAYS describes the structural
+# FORM of the candidate event (a cut, a scene change, text appearing, ...) regardless of whether it
+# is accepted, and the new is_retention_device/probable_attention_function pair is the ONLY
+# acceptance decision. "A candidate is not itself a retention device" -- v2's "prefer unclear"
+# guidance for routine captions/watermark noise is re-expressed as "prefer is_retention_device=
+# False" so device_type can stay an honest structural label even for a rejected candidate.
+RETENTION_PROMPT_VERSION = "v3"
 
 # Structurally enforced, not merely requested by prompt -- reuses the exact same mechanism as
 # hook_reasoner's own _reject_prohibited_language (a case-insensitive substring blocklist), applied
@@ -88,9 +95,40 @@ given the specific "source_nominations" that caused this moment to be nominated 
 all (e.g. a shot cut, a Story Beat boundary, a pacing change, on-screen text appearing) -- use these \
 as your starting point, not as something to independently re-derive.
 
-Your job is to decide: does this moment appear structurally designed to maintain a viewer's \
-attention or interest at that point in the video -- and if so, what KIND of device does it appear \
-to be? You are NOT deciding whether it actually worked. You have no viewer data of any kind.
+Your job has TWO SEPARATE parts, and you must never collapse them into one:
+
+STEP 1 -- DEVICE TYPE (the structural FORM of what happened, regardless of acceptance): identify \
+what kind of observable event this candidate represents (a cut, a scene change, text appearing, a \
+question, a pacing change, ...). This is a purely descriptive/structural classification. A \
+candidate is NEVER itself a strategic conclusion -- "something happened here worth examining" is \
+all a candidate means. Assign a real device_type whenever the structural form is clear, EVEN IF you \
+will go on to decide in Step 2 that this is ordinary editing with no retention function. Reserve \
+device_type "unclear" for when you cannot even confidently identify the structural form itself, not \
+merely because you doubt it serves a retention function (that is Step 2's job, not this one's).
+
+STEP 2 -- ACCEPTANCE DECISION (is_retention_device): decide, separately, whether the LOCAL EVIDENCE \
+plausibly supports this specific moment serving an attention-maintenance FUNCTION -- not merely that \
+a structural event of some describable type occurred. Ordinary editing (a normal cut, a routine \
+scene change, an ordinary caption update, a normal camera move, a routine pause) is an expected, \
+legitimate, NON-accepted outcome, not a failure or an "unclear" result. If accepted \
+(is_retention_device=true), you must also name a probable_attention_function from the fixed list \
+below -- an inference about apparent DESIGN, never a claim about actual viewer response. If not \
+accepted (is_retention_device=false), probable_attention_function MUST be null.
+
+ACCEPTANCE IS NEVER A CONFIDENCE THRESHOLD: do not accept or reject based on how confident you are \
+in the structural fact itself. A LOW-confidence but genuinely evidence-supported attention function \
+may still be accepted; a HIGH-confidence "there was definitely a cut here" does NOT by itself \
+justify acceptance. The question is always whether the FUNCTION inference is supported, not how \
+sure you are that the structural event happened.
+
+WHEN TO REJECT (is_retention_device=false) -- if the only thing you can honestly say is one of \
+these, reject:
+  * "there was a cut" / "the scene changed" (with nothing else distinguishing this cut from any \
+other ordinary cut in the video)
+  * "text appeared" (with nothing beyond the bare appearance -- see the text-specific guidance below)
+  * "the camera moved" (an ordinary camera movement with no other supporting signal)
+  * "there was a pause" (an ordinary pause in speech with nothing else notable)
+None of these structural facts, alone, establish a plausible attention-maintenance function.
 
 STRICT RULES YOU MUST FOLLOW:
 - Classify ONLY from the supplied evidence. Never invent, assume, or imagine visuals, audio, or \
@@ -105,48 +143,51 @@ actually contains a real question (spoken or written words forming a question, n
 "?" character with no supporting content, and not merely because the candidate happens to sit near \
 a question mark in unrelated text).
 - A TextElement simply existing/appearing at this timestamp is NOT, by itself, sufficient evidence \
-for device_type "text_reveal". Text appears on screen constantly in most short-form video for \
-entirely routine reasons (captions/subtitles tracking speech, a persistent watermark or username \
-handle, credits) that have nothing to do with attention-maintenance. Before classifying \
-"text_reveal", actively check for and weigh these patterns:
+to ACCEPT this candidate (is_retention_device=true). Text appears on screen constantly in most \
+short-form video for entirely routine reasons (captions/subtitles tracking speech, a persistent \
+watermark or username handle, credits) that have nothing to do with attention-maintenance. Before \
+accepting a text-driven candidate, actively check for and weigh these patterns (device_type may \
+still honestly be "text_reveal" even when you reject it -- device_type describes the form, not the \
+acceptance):
   * ROUTINE CAPTION/SUBTITLE PROGRESSION: if the on-screen text closely echoes or transliterates \
 words also present in the overlapping spoken transcript, and/or you see a steady stream of \
 similar short caption-like fragments appearing one after another as speech continues (look at \
 the OTHER text elements in the bundle, not just the one that nominated this candidate, to judge \
-whether this is part of such a stream) -- treat this as ordinary caption/subtitle rendering, \
-NOT a deliberate device, and prefer "unclear" unless something else about THIS specific moment \
-is genuinely distinctive (e.g. it is also the very first text to appear after a long stretch \
-with none, or it coincides with a real shot cut/scene change/transition rather than a routine \
-beat/caption boundary).
+whether this is part of such a stream) -- treat this as ordinary caption/subtitle rendering and \
+set is_retention_device=false, UNLESS something else about THIS specific moment is genuinely \
+distinctive (e.g. it is also the very first text to appear after a long stretch with none, or it \
+coincides with a real shot cut/scene change/transition rather than a routine beat/caption boundary).
   * PERSISTENT WATERMARK / HANDLE / NOISE: if the text looks like a username/handle/watermark \
 (e.g. an "@"-prefixed tag, a repeated brand-like string), or if near-identical garbled variants \
 of the same short string recur across multiple nearby text elements (classic OCR noise on a \
-static overlay re-detected slightly differently each time) -- this is not a reveal at all; \
-prefer "unclear".
+static overlay re-detected slightly differently each time) -- this is not a reveal at all; set \
+is_retention_device=false.
   * GARBLED / LOW-INFORMATION OCR: single characters, short unreadable fragments, or text with no \
-discernible words must not become "text_reveal" solely because a TextElement row exists. \
-Preferring "unclear" is correct here even though the underlying TextElement evidence itself is \
-real and should still be cited.
-  * WHAT CAN SUPPORT "text_reveal": a materially new headline or key phrase distinct from ongoing \
-dialogue/captions; text appearing after a genuine interval with no on-screen text at all; text \
-whose appearance aligns with a spoken pause or vocal emphasis rather than continuous narration; \
-text introduced at a real structural transition (a shot cut, scene change) with content that \
-changes role rather than simply continuing a caption stream. These are illustrative examples of \
-supporting context, not a checklist or scoring formula -- use judgment, and when the evidence \
-only establishes "some text appeared/changed" without establishing that it plausibly functions \
-as an attention-maintenance moment, use "unclear".
+discernible words must not be accepted solely because a TextElement row exists. Set \
+is_retention_device=false; the underlying TextElement evidence itself is still real and should \
+still be cited.
+  * WHAT CAN SUPPORT ACCEPTING a text-driven candidate: a materially new headline or key phrase \
+distinct from ongoing dialogue/captions; text appearing after a genuine interval with no on-screen \
+text at all; text whose appearance aligns with a spoken pause or vocal emphasis rather than \
+continuous narration; text introduced at a real structural transition (a shot cut, scene change) \
+with content that changes role rather than simply continuing a caption stream. These are \
+illustrative examples of supporting context, not a checklist or scoring formula -- use judgment, \
+and when the evidence only establishes "some text appeared/changed" without establishing that it \
+plausibly functions as an attention-maintenance moment, reject it (is_retention_device=false; \
+device_type may still be "text_reveal").
   * KNOWN V1 LIMITATION: this system cannot yet reliably distinguish ordinary scrolling/karaoke-\
 style subtitle progression from a deliberate visual text reveal using only structural and \
-text-content evidence. When genuinely uncertain which this is, prefer "unclear" over guessing.
+text-content evidence. When genuinely uncertain which this is, prefer rejecting (is_retention_\
+device=false) over guessing acceptance.
 - Classify device_type as "pattern_interrupt" or "emphasis" ONLY when you see a genuine COMBINATION \
 of evidence signals working together (for example: an unusually short shot immediately after several \
 much longer ones, PLUS a transition or motion signal at the same moment) -- never for a single, \
 ordinary cut or an ordinary shot change with nothing else notable about it. An ordinary shot cut \
 with no other supporting signal should usually be classified as "visual_change" or "scene_switch" \
-instead, or "unclear" if even that is not well supported.
-- If the evidence is genuinely insufficient to confidently choose any device_type, or the moment \
-does not appear to be a real attention-maintenance device at all, set device_type to "unclear" -- \
-never force a listed type onto weak or absent evidence.
+instead (this is a device_type/Step-1 choice; it does NOT by itself imply acceptance in Step 2).
+- If the evidence is genuinely insufficient to confidently choose any device_type, set device_type \
+to "unclear" -- never force a listed type onto weak or absent evidence. This is independent of \
+whether you accept the candidate.
 - Clearly separate FACT from INTERPRETATION in your own reasoning: cite what is factually present \
 (spoken text, on-screen text, a cut, a visible person, a camera move, a pacing-phase change) \
 separately from what you infer it suggests about apparent design.
@@ -159,17 +200,21 @@ translation as private working reasoning only, never presented as if it were tra
 - Keep your reasoning concise (1-3 sentences) and free of any of the prohibited claims above.
 
 Valid device_type values: {device_types}
+Valid probable_attention_function values (required when is_retention_device is true, null otherwise): {function_values}
 
 Respond with ONLY a single JSON object, no markdown fencing, no commentary before or after it, \
 matching exactly this schema:
 {{
   "device_type": "one of the valid device_type values",
+  "is_retention_device": true | false,
+  "probable_attention_function": "one of the valid probable_attention_function values, or null",
   "confidence": "low" | "medium" | "high",
   "reasoning": "concise, fact-then-interpretation justification, never a retention/attention/performance claim",
   "evidence_references": {{"supporting_speech_segment_ids": [], "supporting_text_element_ids": [], "supporting_shot_ids": [], "supporting_visual_object_ids": [], "supporting_scene_ids": [], "supporting_story_beat_ids": [], "supporting_annotation_ids": []}}
 }}
 Omit any evidence_references key you have nothing to cite for, or give it an empty list.""".format(
     device_types=", ".join(sorted(RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR)),
+    function_values=", ".join(sorted(RETENTION_FUNCTION_VALUES)),
 )
 
 
@@ -229,7 +274,7 @@ def _validate_response_shape(data: dict) -> None:
     if not isinstance(data, dict):
         raise RetentionReasoningError(f"Anthropic response JSON must be an object, got {type(data).__name__}.")
 
-    required_keys = {"device_type", "confidence", "reasoning", "evidence_references"}
+    required_keys = {"device_type", "is_retention_device", "probable_attention_function", "confidence", "reasoning", "evidence_references"}
     missing = required_keys - set(data)
     if missing:
         raise RetentionReasoningError(f"Anthropic response is missing required field(s): {sorted(missing)}.")
@@ -237,6 +282,21 @@ def _validate_response_shape(data: dict) -> None:
     if data["device_type"] not in RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR:
         raise RetentionReasoningError(
             f"device_type must be one of {sorted(RETENTION_DEVICE_TYPE_VALUES_WITH_UNCLEAR)} -- got {data['device_type']!r}."
+        )
+
+    if not isinstance(data["is_retention_device"], bool):
+        raise RetentionReasoningError(f"is_retention_device must be a boolean -- got {data['is_retention_device']!r}.")
+
+    if data["is_retention_device"]:
+        if data["probable_attention_function"] not in RETENTION_FUNCTION_VALUES:
+            raise RetentionReasoningError(
+                f"probable_attention_function must be one of {sorted(RETENTION_FUNCTION_VALUES)} when "
+                f"is_retention_device is true -- got {data['probable_attention_function']!r}."
+            )
+    elif data["probable_attention_function"] is not None:
+        raise RetentionReasoningError(
+            f"probable_attention_function must be null when is_retention_device is false -- got "
+            f"{data['probable_attention_function']!r}."
         )
 
     if data["confidence"] not in VALID_CONFIDENCE_LEVELS:
@@ -302,9 +362,11 @@ class AnthropicRetentionReasoner(RetentionReasonerProvider):
 
         try:
             return RetentionDecision(
+                is_retention_device=data["is_retention_device"],
                 device_type=data["device_type"],
                 confidence=data["confidence"],
                 reasoning=data["reasoning"],
+                probable_attention_function=data["probable_attention_function"],
                 evidence_references=data["evidence_references"],
                 reasoning_contract_version=RETENTION_PROMPT_VERSION,
             )

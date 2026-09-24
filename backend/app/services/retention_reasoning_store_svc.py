@@ -27,6 +27,16 @@ exactly like hook_reasoning_store_svc, a raised RetentionReasoningError is never
 nothing is persisted for a failed candidate classification, and retention_classification_svc's own
 call order (assemble -> reason -> [this store] -> retention_device row) means a failed call for one
 candidate leaves that candidate's own attempt history exactly as it already was.
+
+ACCEPTANCE-GATE CORRECTION: a SUCCESSFUL reasoning call is persisted here EVERY time, regardless of
+`decision.is_retention_device` -- this store is the complete audit trail of every candidate ever
+examined, accepted or not, distinct from `AnalysisAnnotation(category="retention_device")`, which
+holds ONLY the currently-effective ACCEPTED conclusions (see retention_classification_svc). A
+rejected candidate's attempt row still carries its own `device_type`, `is_retention_device=False`,
+`probable_attention_function=None`, and the model's own stated reason (the `reasoning` column) for
+non-acceptance -- nothing about an examined-but-rejected candidate is ever lost. No dedicated
+`retention_candidate` table or persistence layer was introduced: this existing store's own
+`AnalysisAnnotation` reuse was inspected first and found fully adequate for this purpose too.
 """
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,6 +66,8 @@ async def persist_retention_reasoning_attempt(
         "candidate_center": candidate["candidate_center"],
         "source_nominations": candidate["source_nominations"],
         "device_type": decision.device_type,
+        "is_retention_device": decision.is_retention_device,
+        "probable_attention_function": decision.probable_attention_function,
         "confidence": decision.confidence,
         "evidence_references": decision.evidence_references,
         "provider": result.provider,

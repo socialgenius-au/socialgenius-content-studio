@@ -17,25 +17,33 @@ reasoning or candidate-generation logic of its own:
         recovery path, exactly like Story Beat's own resumable-attempt model.
      c. `retention_reasoning_store_svc.persist_retention_reasoning_attempt` -- durably records
         THIS candidate's attempt, append-only, before the effective row set is ever touched.
+        Persisted for EVERY successfully-returned decision, regardless of
+        `decision.is_retention_device` -- this is the complete audit trail of every candidate
+        EXAMINED, not just the accepted ones (Stage 11.4 acceptance-gate correction).
+     d. ACCEPTANCE GATE: only candidates whose decision has `is_retention_device=True` are added to
+        the effective device set below. "The evidence supports classifying this AS a structural
+        event" (a real device_type) is not the same question as "the evidence supports this event
+        serving a retention FUNCTION" (is_retention_device) -- a candidate is never itself a
+        retention device merely because it was examined, however confidently its structural form
+        was identified.
   3. ATOMIC REPLACE: only once every candidate has been successfully classified does this module
-     delete the video's entire prior `retention_device` row set and write the fresh one -- an
-     all-or-nothing swap, never a partial update, so a failed run never leaves some candidates from
-     the new run mixed with stale candidates from an older one.
+     delete the video's entire prior `retention_device` row set and write the fresh ACCEPTED-ONLY
+     set -- an all-or-nothing swap, never a partial update, so a failed run never leaves some
+     candidates from the new run mixed with stale candidates from an older one. Zero accepted
+     candidates in a run is a normal outcome and yields zero effective rows, not an error and not a
+     reason to force one.
 
 WHY delete-then-replace-the-whole-SET (Story Beat's own multi-row pattern), NOT Hook's own single-
-row delete-then-replace: a video may have zero, one, or many retention_device candidates, exactly
-like Story Beat's own many-row-per-video `story_beat` category -- never Hook's "exactly one target"
-shape. `retention_reasoning_attempt` rows, by contrast, are NEVER deleted here or anywhere -- only
-the effective `retention_device` conclusions are ever replaced; the durable attempt history that
-produced every past run remains permanently queryable via `load_retention_reasoning_attempts`.
+row delete-then-replace: a video may have zero, one, or many accepted retention_device candidates,
+exactly like Story Beat's own many-row-per-video `story_beat` category -- never Hook's "exactly one
+target" shape. `retention_reasoning_attempt` rows, by contrast, are NEVER deleted here or anywhere --
+they are the complete audit trail of every candidate ever examined (accepted or rejected); only the
+effective, ACCEPTED-ONLY `retention_device` conclusions are ever replaced.
 
 certainty="INFERRED" on every retention_device row (Hook's own precedent): this IS a genuine
 semantic judgment, not a deterministic measurement -- classifying whether/what kind of device a
-candidate represents is exactly the AI-interpretation category this project's own certainty
-vocabulary reserves INFERRED for. `device_type="unclear"` is a legitimate, first-class outcome
-(Hook's own primary_type="unclear" precedent) and IS persisted as a normal row, not filtered out --
-downstream aggregation (explicitly deferred to a later Stage 11.4.x) can choose to exclude
-"unclear" rows itself if it wants only confidently-typed devices.
+candidate represents, and whether it plausibly serves a retention function, is exactly the
+AI-interpretation category this project's own certainty vocabulary reserves INFERRED for.
 """
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,8 +74,10 @@ async def classify_and_persist_retention_devices(db: AsyncSession, video_analysi
     candidate's response violated the contract) propagate unchanged, stopping the whole run (see
     module docstring) without touching the existing effective retention_device row set.
 
-    Returns `{"candidates_considered": int, "devices": [...]}` — one entry per persisted
-    retention_device row, each carrying its own `reasoning_attempt_id`.
+    Returns `{"candidates_examined": int, "devices": [...]}` — one entry per persisted
+    retention_device row (ACCEPTED candidates only; see module docstring's acceptance gate), each
+    carrying its own `reasoning_attempt_id`. Every examined candidate -- accepted or not -- has a
+    durable reasoning attempt persisted regardless of whether it appears in `devices`.
     """
     video_analysis = await db.get(VideoAnalysis, video_analysis_id)
     if video_analysis is None:
@@ -81,10 +91,14 @@ async def classify_and_persist_retention_devices(db: AsyncSession, video_analysi
         result = await classify_retention_candidate(bundle)  # RetentionReasoningError here stops the whole run -- see module docstring
         decision = result.decision
 
-        # Durable, append-only attempt record FIRST -- committed before the effective row set is
-        # ever touched, so a crash between this line and the atomic replace below still leaves
-        # every already-classified candidate's attempt fully auditable.
+        # Durable, append-only attempt record FIRST -- for EVERY examined candidate, accepted or
+        # not, committed before the effective row set is ever touched, so a crash between this line
+        # and the atomic replace below still leaves every already-examined candidate's attempt
+        # fully auditable.
         attempt = await persist_retention_reasoning_attempt(db, video_analysis_id, candidate, result)
+
+        if not decision.is_retention_device:
+            continue  # examined, durably recorded, but NOT an accepted retention device
 
         device_rows.append({
             "candidate_start": candidate["candidate_start"],
@@ -92,6 +106,7 @@ async def classify_and_persist_retention_devices(db: AsyncSession, video_analysi
             "source_nominations": candidate["source_nominations"],
             "reasoning_attempt_id": attempt.id,
             "device_type": decision.device_type,
+            "probable_attention_function": decision.probable_attention_function,
             "confidence": decision.confidence,
             "reasoning": decision.reasoning,
             "evidence_references": decision.evidence_references,
@@ -100,7 +115,8 @@ async def classify_and_persist_retention_devices(db: AsyncSession, video_analysi
             "prompt_version": result.reasoning_contract_version,
         })
 
-    # ATOMIC REPLACE -- only reached once every candidate above was classified successfully.
+    # ATOMIC REPLACE -- only reached once every candidate above was classified successfully. The
+    # fresh set contains ACCEPTED candidates only; zero acceptances yields zero rows.
     await db.execute(delete(AnalysisAnnotation).where(
         AnalysisAnnotation.video_analysis_id == video_analysis_id,
         AnalysisAnnotation.category == RETENTION_DEVICE_CATEGORY,
@@ -117,6 +133,7 @@ async def classify_and_persist_retention_devices(db: AsyncSession, video_analysi
                 "source_nominations": device["source_nominations"],
                 "reasoning_attempt_id": device["reasoning_attempt_id"],
                 "device_type": device["device_type"],
+                "probable_attention_function": device["probable_attention_function"],
                 "confidence": device["confidence"],
                 "evidence_references": device["evidence_references"],
                 "provider": device["provider"],
@@ -137,13 +154,14 @@ async def classify_and_persist_retention_devices(db: AsyncSession, video_analysi
         await db.refresh(row)
 
     return {
-        "candidates_considered": len(candidates),
+        "candidates_examined": len(candidates),
         "devices": [
             {
                 "id": row.id,
                 "start_time": row.start_time,
                 "end_time": row.end_time,
                 "device_type": row.details["device_type"],
+                "probable_attention_function": row.details["probable_attention_function"],
                 "confidence": row.details["confidence"],
                 "reasoning_attempt_id": row.details["reasoning_attempt_id"],
             }
