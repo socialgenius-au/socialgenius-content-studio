@@ -105,6 +105,7 @@ from app.schemas.reference_video import (
     VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
 )
 from app.schemas.content_anatomy import ContentAnatomyResponse
+from app.schemas.transferable_mechanism import MechanismAttemptsResponse, MechanismSetResponse
 from app.schemas.deconstruction_full import (
     DeconstructionFullResponse, DeconstructionRunResponse, DeconstructionStatusResponse,
 )
@@ -115,6 +116,10 @@ from app.services import (
     visual_composition_svc, visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
 from app.services.content_anatomy_svc import ContentAnatomyError, ContentAnatomyNotReady, get_content_anatomy
+from app.services.mechanism_reasoner import MechanismInputError, MechanismReasoningError
+from app.services.transferable_mechanism_svc import (
+    MechanismAnatomyChanged, derive_and_persist_mechanisms, get_effective_mechanisms, list_mechanism_attempts,
+)
 from app.services.deconstruction_aggregate_svc import build_full_deconstruction
 from app.services.deconstruction_orchestrator_svc import (
     OrchestrationConflict, OrchestrationError, OrchestrationNotFound, claim_orchestration,
@@ -3656,3 +3661,74 @@ async def get_reference_video_anatomy(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except ContentAnatomyError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+# =====================================================================================
+# C3 — TRANSFERABLE MECHANISM V1
+#
+# Derives the design mechanisms that APPEAR to operate in a video, and separates what is transferable to new
+# content from what belongs only to the source. Consumes ONLY the C2 anatomy above (pinned by fingerprint).
+# See app.services.transferable_mechanism_svc.
+# =====================================================================================
+
+@router.post("/{reference_video_id}/mechanisms", response_model=MechanismSetResponse)
+async def derive_reference_video_mechanisms(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    anatomy_fingerprint: str | None = None,
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Derives Transferable Mechanisms from this video's Content Anatomy with ONE reasoner call (a PAID call when
+    MECHANISM_REASONER_PROVIDER is configured; with none configured it fails with 502 and spends nothing).
+    `anatomy_fingerprint` pins the anatomy you read (409 if the evidence has changed since). If the effective
+    result already came from this exact anatomy/provider/model/prompt it is returned with `reused=true` and no
+    call is made, unless `force=true`. 404 unknown/foreign video; 422 anatomy not ready or zero sections;
+    409 fingerprint mismatch; 502 no/failed/invalid reasoner (nothing persisted). `mechanisms: []` is a valid,
+    successful result."""
+    try:
+        return await derive_and_persist_mechanisms(
+            db, user, reference_video_id, video_analysis_id=video_analysis_id,
+            expected_fingerprint=anatomy_fingerprint, force=force,
+        )
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except (ContentAnatomyError, MechanismInputError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except MechanismAnatomyChanged as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except MechanismReasoningError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.get("/{reference_video_id}/mechanisms", response_model=MechanismSetResponse)
+async def get_reference_video_mechanisms(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The EFFECTIVE Transferable Mechanisms for this analysis. Pure read - never calls a reasoner. `status` is
+    `not_run` (never derived), `current` (derived from the anatomy as it is now), `stale` (the anatomy has
+    changed since; the old result is still returned, never hidden) or `unknown` (the current anatomy cannot be
+    built to compare)."""
+    try:
+        return await get_effective_mechanisms(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+@router.get("/{reference_video_id}/mechanisms/attempts", response_model=MechanismAttemptsResponse)
+async def get_reference_video_mechanism_attempts(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The full append-only history of mechanism derivation attempts (each with the mechanisms it produced and
+    whether it is the effective one). Pure read."""
+    try:
+        return await list_mechanism_attempts(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)

@@ -108,6 +108,15 @@ class Settings(BaseSettings):
     RETENTION_REASONER_PROVIDER: str = ""
     RETENTION_REASONER_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
 
+    # ── C3 — Mechanism Reasoner (app/services/mechanism_reasoner/) ────────────────────────────
+    # A SIBLING of the reasoner settings above, never a reuse: transferable-mechanism derivation runs ONCE PER
+    # CONTENT ANATOMY and may run under a different provider/model, or none at all. Same honest-unconfigured
+    # discipline: MECHANISM_REASONER_PROVIDER empty ("") means no Mechanism reasoner runs (and no paid call is
+    # ever made) even though a real AnthropicMechanismReasoner is registered; an operator must opt in explicitly,
+    # and it still gates every call on ANTHROPIC_API_KEY actually being set.
+    MECHANISM_REASONER_PROVIDER: str = ""
+    MECHANISM_REASONER_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
+
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 500
 
