@@ -199,6 +199,8 @@ class BlueprintDecision:
     limitations: list[str] = field(default_factory=list)
     reasoning_contract_version: str | None = None
     ignored_null_fields: list[str] = field(default_factory=list)   # unknown keys whose value was null (dropped by the parser)
+    response_meta: dict | None = None    # non-sensitive metadata about the response that produced this decision (stop_reason, token counts, and for a
+                                         # replay of a saved response its sha256) -- recorded on the blueprint's provenance
 
     def __post_init__(self) -> None:
         if not isinstance(self.structural_approach, str) or not self.structural_approach.strip() or len(self.structural_approach) > 2 * MAX_FIELD_CHARS:

@@ -29,7 +29,8 @@ from app.services.blueprint_reasoner.guards import (
 from app.services.blueprint_reasoner.intent import intent_gaps, intent_tokens, mandatory_point_ids
 from app.services.blueprint_reasoner.parsing import decision_from_payload, parse_json_object
 from app.services.blueprint_reasoner.provider_input import build_reasoner_input
-from app.services.blueprint_reasoner.validation import quality_findings
+from app.services.blueprint_reasoner.validation import quality_findings, quality_notes
+from app.services.blueprint_reasoner.guards import check_text, reject_directive_source_terms
 from app.services.blueprint_reasoner.providers import anthropic_provider
 from app.services.blueprint_reasoner.providers.anthropic_provider import (
     BLUEPRINT_EFFORT, BLUEPRINT_PROMPT_VERSION, MAX_RESPONSE_TOKENS, SYSTEM_PROMPT, AnthropicBlueprintReasoner, build_user_prompt,
@@ -315,9 +316,6 @@ def test_not_every_mechanism_has_to_be_used_and_using_all_is_also_valid_when_eac
     (lambda p: p["mechanism_dispositions"].append(dict(p["mechanism_dispositions"][0])), "more than once"),
     (lambda p: p["sections"][0].update(mechanisms_applied=["M77"]), "unknown mechanism"),
     (lambda p: p["sections"][0].update(mechanisms_applied=["M04"]), "NOT_USED"),
-    (lambda p: p["sections"][4].update(mechanisms_applied=["M02"]), "does not include it"),
-    (lambda p: p["sections"][2].update(mechanisms_applied=[]), "does not list it"),
-    (lambda p: p["mechanism_dispositions"][0].update(applied_in_sections=[1, 2, 9]), "does not exist"),
 ])
 def test_mechanism_ids_and_dispositions_are_validated_against_the_c3_result(mutation, match):
     rejects(edit(mutation), match)
@@ -365,11 +363,12 @@ def test_a_non_transferable_source_term_in_any_field_is_rejected(word):
     rejects(edit(lambda p: p.update(structural_approach=f"Contrast two outcomes using a {word} theme.")), "NON-TRANSFERABLE")
 
 
-def test_a_not_used_reason_or_limitation_may_not_smuggle_source_subject_matter_either():
-    def leaky_reason(p):
+def test_explanatory_reasons_and_limitations_may_use_source_associated_words_analytically():
+    def analytic_reason(p):
         p["mechanism_dispositions"][3]["reason"] = "The pacing suits a story about betrayal rather than a product explanation."
-    rejects(edit(leaky_reason), "NON-TRANSFERABLE")
-    rejects(edit(lambda p: p["sections"][0].update(limitations=["Avoid the woman archetype used by the reference."])), "NON-TRANSFERABLE")
+    validate(edit(analytic_reason))
+    validate(edit(lambda p: p["sections"][0].update(limitations=["Avoid the woman archetype used by the reference."])))
+    validate(edit(lambda p: p.update(limitations=["No narrative, emotional, or messaging role data was available from the reference."])))
 
 
 def test_source_wording_is_blocked_even_when_lightly_lifted():
@@ -683,7 +682,7 @@ async def test_the_adapter_sends_the_documented_request_and_parses_a_valid_respo
     prompt = kwargs["messages"][0]["content"]
     assert prompt.startswith("Blueprint input (compact JSON):\n") and "\n  " not in prompt
     assert all(t not in prompt for _, _, _, t in SOURCE_LINES)
-    assert out.reasoning_contract_version == BLUEPRINT_PROMPT_VERSION == "v3" and len(out.sections) == 5
+    assert out.reasoning_contract_version == BLUEPRINT_PROMPT_VERSION == "v4" and len(out.sections) == 5
 
 
 async def test_truncated_empty_and_abnormal_responses_are_rejected_with_diagnostics(monkeypatch):
@@ -715,7 +714,7 @@ def test_the_system_prompt_states_the_non_negotiables():
                    "PROHIBITED", "desired_cta", "15%", "blocked_source_terms", "do_not_carry_over", "NO PERFORMANCE CLAIMS", "begin with"):
         assert phrase in SYSTEM_PROMPT, phrase
     assert "even to say you are avoiding it" in SYSTEM_PROMPT
-    assert "<<" not in SYSTEM_PROMPT and BLUEPRINT_PROMPT_VERSION == "v3"
+    assert "<<" not in SYSTEM_PROMPT and BLUEPRINT_PROMPT_VERSION == "v4"
 
 
 def _max_blueprint_payload(scale: float) -> dict:
@@ -947,13 +946,14 @@ def test_the_first_real_response_wording_is_classified_correctly():
 def test_prompt_v3_states_the_corrections_without_hard_coding_any_business_domain():
     for phrase in ("Return ONLY the fields defined by this schema", "do not add null fields outside the schema", "DISTINCT SECTIONS", "distinct structural job",
                    "could be combined without losing structural meaning", "EXAMPLE of progression, not a template", "DO NOT try to use every mechanism",
-                   "materially improve this NEW", "PRESERVE THE EXACT PRINCIPLE", "DEFINING RELATIONSHIP", "same situation with choice A versus the same situation with choice B",
+                   "materially improve this NEW", "PRESERVE THE EXACT PRINCIPLE", "DEFINING STRUCTURE", "same situation with choice A versus the same situation with choice B",
                    "application_rationale", "at most 400 characters", "NOT satisfied by contrast between two DIFFERENT subjects"):
         assert phrase in SYSTEM_PROMPT, phrase
     lowered = SYSTEM_PROMPT.lower()
     for domain_word in ("tile", "renovation", "showroom", "bathroom"):
         assert domain_word not in lowered, f"the prompt must not hard-code a business domain ({domain_word!r})"
-    assert BLUEPRINT_PROMPT_VERSION == "v3"
+    assert BLUEPRINT_PROMPT_VERSION == "v4"
+    assert "defining relationship" not in lowered, "the prompt must not induce the model to write 'relationship' (a source-associated word for some references)"
 
 
 # ── application_rationale ───────────────────────────────────────────────────────────────────────
@@ -999,26 +999,39 @@ def test_a_not_used_mechanism_must_not_carry_an_application_rationale():
         decide(p)
 
 
-def test_the_rationale_must_say_where_the_principle_is_instantiated():
+def test_a_rationale_without_a_section_number_is_a_quality_note_not_a_rejection():
     def rewrite(text):
         def go(p):
             p["mechanism_dispositions"][1]["application_rationale"] = text
         return go
-    rejects(edit(rewrite("The contrast principle is applied faithfully to the new subject and preserved in the plan overall.")), "does not name any section")
-    rejects(edit(rewrite("Section 5 holds the room constant while contrasting two tile choices in the plan overall.")), "does not name any section")   # M02 is in section 3
-    validate(edit(rewrite("Section 3 holds the room and layout constant while contrasting two tile choices and their consequences.")))
-    validate(edit(rewrite("Sections 2\u20133 hold the room constant while contrasting two tile choices and their consequences.")))   # a range that includes 3
-    validate(edit(rewrite("Across sections 3, and 4 the same room is held constant while only the tile choice changes in the plan.")))
+    good_but_unnumbered = "The same room and layout are held constant while only the tile choice changes, so the two outcomes form a controlled contrast."
+    p = edit(rewrite(good_but_unnumbered))
+    validate(p)                                                       # contract PASS, safety PASS
+    notes = quality_notes(decide(p), default_ctx())
+    assert any(n["code"] == "application_rationale_names_no_section" and n["mechanism_id"] == "M02" for n in notes)
+    bp = finalize_blueprint(decide(p), default_ctx(), PINS, [])
+    assert any(g["kind"] == "quality_note" and g["field"] == "application_rationale_names_no_section:M02" for g in bp["gaps"])
+    # with a section number (single, list or range) there is no such note
+    for numbered in ("Section 3 holds the room and layout constant while contrasting two tile choices and their consequences.",
+                     "Sections 2\u20133 hold the room constant while contrasting two tile choices and their consequences.",
+                     "Across sections 3, and 4 the same room is held constant while only the tile choice changes in the plan."):
+        assert not any(n["code"] == "application_rationale_names_no_section" for n in quality_notes(decide(edit(rewrite(numbered))), default_ctx()))
+    # the requirement that a USED mechanism EXPLAINS how the principle is instantiated is unchanged (presence + length)
+    q = tile_payload()
+    q["mechanism_dispositions"][1]["application_rationale"] = "too short"
+    with pytest.raises(BlueprintReasoningError, match="40-600 characters"):
+        decide(q)
 
 
-def test_the_rationale_passes_the_same_text_guards_as_every_other_field():
+def test_the_rationale_still_passes_the_copy_claim_and_final_copy_guards_and_may_not_direct_reproduction_of_the_source():
     def rewrite(text):
         def go(p):
             p["mechanism_dispositions"][1]["application_rationale"] = text
         return go
-    rejects(edit(rewrite("Section 3 contrasts a betrayal story with the tile choice to show two outcomes in the plan.")), "NON-TRANSFERABLE")
     rejects(edit(rewrite("Section 3 holds the room constant, and this contrast increases retention for the plan overall.")), "claim")
     rejects(edit(rewrite('Section 3 holds the room constant and says "this one choice changes everything for you" here.')), "final copy")
+    rejects(edit(rewrite("Section 3 holds the room constant, then never turns around and looks back at the end.")), "reproduces")
+    rejects(edit(rewrite("Section 3 should use the woman's betrayal storyline to frame the contrast in the plan.")), "directs the reproduction")
 
 
 def test_the_rationale_is_carried_into_the_finalised_blueprint_and_the_response_schema():
@@ -1070,3 +1083,149 @@ def test_the_first_real_response_shape_now_passes_the_contract_and_fails_only_on
         validate_decision(d, default_ctx())
     p["sections"][3]["section_purpose"] = "Summarize the core takeaway that matching the tile to the room matters"
     validate_decision(decision_from_payload(p, reasoning_contract_version="v2"), default_ctx())
+
+
+# ══ FINAL C4 VALIDATOR CORRECTION (after the second real response) ══════════════════════════════
+
+# ── under/outperform: domain description vs a claim about the content ────────────────────────────
+
+@pytest.mark.parametrize("text", [
+    "Explain why this tile underperforms in wet areas.", "Show why this finish underperforms near a shower.",
+    "The porcelain outperforms the ceramic option in a bathroom.", "Explain why this tile choice underperforms in this context.",
+    "The section shows why this tile underperforms.", "Describe how a glossy tile outperforms a matte one on a kitchen wall.",
+])
+def test_underperform_and_outperform_are_allowed_when_they_describe_the_domain_subject(text):
+    assert find_claim(text) is None, find_claim(text)
+    validate(edit(lambda p: p["sections"][1].update(speech_direction=text)))
+
+
+@pytest.mark.parametrize("claim", [
+    "This video underperforms.", "This hook outperforms the other hook.", "The reel will underperform.", "This section may outperform the previous one.",
+    "The opening underperformed.", "This content outperforms competitors.", "The video will outperform.",
+])
+def test_underperform_and_outperform_about_the_content_are_rejected(claim):
+    assert find_claim(claim) is not None, claim
+    rejects(edit(lambda p: p["sections"][1].update(speech_direction=f"Keep the tone calm. {claim}")), "claim")
+
+
+# ── field-scoped subject-term guard ──────────────────────────────────────────────────────────────
+
+def test_explanatory_fields_may_use_relationship_and_emotional_analytically():
+    def rationale(p):
+        p["mechanism_dispositions"][1]["application_rationale"] = (
+            "Section 3 holds the same room constant and varies only the tile choice, preserving the same-subject opposing-outcome relationship.")
+    validate(edit(rationale))
+    validate(edit(lambda p: p["mechanism_dispositions"][3].update(reason="Its pacing suits a relationship story, not a product explanation, on this platform.")))
+    validate(edit(lambda p: p.update(limitations=["No emotional-role evidence was available from the reference."])))
+    validate(edit(lambda p: p["sections"][2].update(limitations=["The reference gave no relationship or emotional data, so none is assumed."])))
+
+
+@pytest.mark.parametrize("field", ["content_instruction", "visual_direction", "text_direction", "speech_direction", "pacing_direction", "section_purpose"])
+@pytest.mark.parametrize("word", ["relationship", "emotional", "woman", "betrayal"])
+def test_execution_instruction_fields_keep_the_full_source_subject_guard(field, word):
+    rejects(edit(lambda p: p["sections"][2].update({field: f"Frame the two tile outcomes around a {word} theme for the audience."})), "NON-TRANSFERABLE")
+
+
+def test_execution_fields_transition_cta_and_required_information_also_keep_the_full_guard():
+    rejects(edit(lambda p: p["sections"][2].update(transition_direction="Cut to a relationship scene.")), "NON-TRANSFERABLE")
+    rejects(edit(lambda p: p["sections"][4].update(cta_direction="Invite the audience, echoing the emotional tone of the reference.")), "NON-TRANSFERABLE")
+    rejects(edit(lambda p: p["sections"][1].update(required_information=["A relationship example (to be supplied)"])), "NON-TRANSFERABLE")
+
+
+@pytest.mark.parametrize("directive", [
+    "Use the woman's betrayal storyline.", "Recreate the relationship arc from the reference.", "Include the emotional withdrawal scene.",
+    "Follow the betrayal narrative of the reference.", "Mirror the woman in the opening.",
+])
+def test_an_explanatory_field_may_never_direct_the_reproduction_of_the_source(directive):
+    rejects(edit(lambda p: p["mechanism_dispositions"][3].update(reason=directive + " It suits the format.")), "directs the reproduction")
+    rejects(edit(lambda p: p["sections"][0].update(limitations=[directive])), "directs the reproduction")
+    rejects(edit(lambda p: p.update(limitations=[directive])), "directs the reproduction")
+    rejects(edit(lambda p: p["mechanism_dispositions"][1].update(application_rationale="Section 3 holds the room constant. " + directive)), "directs the reproduction")
+
+
+def test_a_negated_directive_and_analytic_verbs_are_not_treated_as_reproduction_instructions():
+    ctx = default_ctx()
+    for ok in ("Do not use the woman's betrayal storyline.", "Never include the emotional withdrawal scene.", "It avoids the relationship narrative entirely.",
+               "Preserves the same-subject opposing-outcome relationship.", "Holds the room constant and alternates the outcomes of the tile choice."):
+        reject_directive_source_terms("f", ok, ctx.guard.blocked_terms)
+
+
+def test_the_scoping_is_per_field_class_the_same_text_passes_as_explanation_and_fails_as_instruction():
+    ctx = default_ctx()
+    text = "This keeps the same-subject opposing-outcome relationship."
+    check_text("rationale", text, ctx.guard, instruction=False)
+    with pytest.raises(BlueprintReasoningError, match="NON-TRANSFERABLE"):
+        check_text("content_instruction", text, ctx.guard, instruction=True)
+
+
+def test_explanatory_fields_still_get_the_copy_claim_and_final_copy_guards():
+    ctx = default_ctx()
+    for bad, match in (("Explain that the structure will increase retention.", "claim"), ('Say "this one choice changes everything for you" here.', "final copy"),
+                       ("Then never turn around and look back.", "reproduces")):
+        with pytest.raises(BlueprintReasoningError, match=match):
+            check_text("reason", bad, ctx.guard, instruction=False)
+
+
+# ── authoritative mechanism mapping: section.mechanisms_applied ──────────────────────────────────
+
+def test_a_disposition_that_declares_a_section_the_authoritative_mapping_does_not_have_is_a_note_not_a_rejection():
+    p = edit(lambda p: p["mechanism_dispositions"][1].update(applied_in_sections=[3, 5]))    # M02 declares 3 and 5; only section 3 lists it
+    validate(p)
+    d = decide(p)
+    notes = [n for n in quality_notes(d, default_ctx()) if n["code"] == "mechanism_section_mapping_mismatch"]
+    assert len(notes) == 1 and notes[0]["mechanism_id"] == "M02" and notes[0]["declared_sections"] == [3, 5] and notes[0]["authoritative_sections"] == [3]
+    bp = finalize_blueprint(d, default_ctx(), PINS, [])
+    m02 = next(x for x in bp["mechanism_dispositions"] if x["mechanism_id"] == "M02")
+    assert m02["applied_in_sections"] == [3, 5] and m02["authoritative_sections"] == [3], "both are shown, NOT reconciled"
+    assert bp["sections"][4]["mechanisms_applied"] == [], "the mechanism was NOT automatically added to section 5"
+    gap = next(g for g in bp["gaps"] if g["field"] == "mechanism_section_mapping_mismatch:M02")
+    assert gap["kind"] == "quality_note" and "[3, 5]" in gap["reason"] and "[3]" in gap["reason"]
+
+
+def test_the_two_mismatches_seen_in_the_second_real_response_are_notes():
+    def real_shape(p):
+        p["mechanism_dispositions"][1]["applied_in_sections"] = [3, 4, 5]        # M02 declared in 5; section 4 lists it, section 5 does not
+        p["sections"][3]["mechanisms_applied"] = ["M03", "M02"]
+        p["mechanism_dispositions"][2]["applied_in_sections"] = [4, 5]            # M03 declared in 5, but section 5 lists nobody
+    p = edit(real_shape)
+    validate(p)
+    codes = [(n["code"], n["mechanism_id"]) for n in quality_notes(decide(p), default_ctx())]
+    assert ("mechanism_section_mapping_mismatch", "M02") in codes and ("mechanism_section_mapping_mismatch", "M03") in codes
+
+
+def test_a_disposition_that_names_a_nonexistent_section_or_no_matching_section_is_also_only_a_note():
+    validate(edit(lambda p: p["mechanism_dispositions"][0].update(applied_in_sections=[1, 2, 9])))
+    validate(edit(lambda p: p["sections"][2].update(mechanisms_applied=[])))      # M02 declares section 3, but no section lists M02
+    notes = quality_notes(decide(edit(lambda p: p["sections"][2].update(mechanisms_applied=[]))), default_ctx())
+    assert any(n["code"] == "mechanism_section_mapping_mismatch" and n["mechanism_id"] == "M02" and n["authoritative_sections"] == [] for n in notes)
+
+
+def test_what_stays_blocking_unknown_or_not_used_mechanisms_in_sections_and_a_mapping_that_transfers_nothing():
+    rejects(edit(lambda p: p["sections"][0].update(mechanisms_applied=["M77"])), "unknown mechanism")
+    rejects(edit(lambda p: p["sections"][0].update(mechanisms_applied=["M04"])), "NOT_USED")
+    rejects(edit(lambda p: [s.update(mechanisms_applied=[]) for s in p["sections"]]), "no section applies any mechanism")
+
+
+def test_the_c6_facing_mapping_comes_only_from_section_mechanisms_applied_never_from_the_dispositions():
+    def divergent(p):
+        p["mechanism_dispositions"][2].update(applied_in_sections=[4])          # M03 declared in section 4 ...
+        p["sections"][3]["mechanisms_applied"] = []                              # ... but section 4 does not list it
+    bp = finalize_blueprint(decide(edit(divergent)), default_ctx(), PINS, [])
+    assert "M03" not in bp["mechanisms_used"], "mechanisms_used is derived from the sections, not from the disposition's claim"
+    assert bp["mechanisms_used"] == ["M01", "M02"]
+    assert all(set(s["evidence_refs"]["mechanism_ids"]) == set(s["mechanisms_applied"]) for s in bp["sections"])
+    assert bp["provenance"]["mechanism_mapping_authority"] == "section.mechanisms_applied"
+    assert next(x for x in bp["mechanism_dispositions"] if x["mechanism_id"] == "M03")["authoritative_sections"] == []
+    from app.schemas.reconstruction_blueprint import Blueprint
+    Blueprint.model_validate(bp)
+
+
+def test_response_metadata_is_recorded_on_the_blueprint_provenance():
+    d = decide(tile_payload())
+    d.response_meta = {"stop_reason": "end_turn", "input_tokens": 5522, "output_tokens": 3308}
+    assert finalize_blueprint(d, default_ctx(), PINS, [])["provenance"]["response_meta"] == {"stop_reason": "end_turn", "input_tokens": 5522, "output_tokens": 3308}
+
+
+async def test_the_adapter_records_response_metadata_on_the_decision(monkeypatch):
+    out, _ = await _adapter_call(monkeypatch, _message([_text(json.dumps(tile_payload()))], input_tokens=5522, output_tokens=3308))
+    assert out.response_meta == {"stop_reason": "end_turn", "input_tokens": 5522, "output_tokens": 3308}

@@ -26,7 +26,8 @@ from app.services.mechanism_reasoner.language_guard import tokenize
 
 __all__ = [
     "SOURCE_COPY_LIMIT", "META_STOPWORDS", "GuardContext", "build_guard_context", "blocked_source_terms", "check_text",
-    "reject_final_copy", "reject_prohibited_elements", "reject_blocked_terms", "reject_performance", "reject_source_copy",
+    "reject_final_copy", "reject_prohibited_elements", "reject_blocked_terms", "reject_directive_source_terms", "reject_performance",
+    "reject_source_copy",
 ]
 
 SOURCE_COPY_LIMIT = 5   # a blueprint field may not contain a 5-word run (or a whole short line of >= 4 words) from the source
@@ -142,6 +143,34 @@ def reject_blocked_terms(field_name: str, text: str | None, blocked: list[str]) 
             )
 
 
+# Verbs that direct a generator to PRODUCE something from the source ("use the woman's betrayal storyline"). Deliberately narrow: analytic verbs
+# ("preserves", "holds", "alternates", "shows") are not here, so "preserves the same-subject opposing-outcome relationship" is not a directive.
+_DIRECTIVES = frozenset({
+    "use", "using", "uses", "reuse", "reusing", "include", "including", "includes", "reproduce", "reproducing", "recreate", "recreating",
+    "replicate", "replicating", "copy", "copying", "adopt", "adopting", "follow", "following", "mirror", "mirroring", "borrow", "borrowing",
+    "retell", "retelling", "depict", "depicting", "portray", "portraying", "import", "importing",
+})
+
+
+def reject_directive_source_terms(field_name: str, text: str | None, blocked: list[str]) -> None:
+    """For EXPLANATORY text only (rationales, NOT_USED reasons, limitations). Such text may use a source-associated word analytically or
+    structurally ("preserves the same-subject opposing-outcome relationship", "no emotional-role evidence was available") but it must never
+    become an INSTRUCTION to reproduce the source element: a blocked term preceded (within eight words, same clause) by a reproduce/use
+    directive is rejected unless that directive is negated ("do not use ...")."""
+    if not text or not blocked:
+        return
+    stems = {_stem(t) for t in blocked}
+    for clause in re.split(r"[.;:!?]+", text):
+        toks = tokenize(clause)
+        for i, tok in enumerate(toks):
+            if _stem(tok) in stems:
+                window = toks[max(0, i - 8):i]
+                if any(w in _DIRECTIVES for w in window) and not any(w in _NEGATORS for w in window):
+                    raise BlueprintReasoningError(
+                        f"{field_name} directs the reproduction of a source element ({tok!r}) -- explanatory text may use such a word analytically, "
+                        f"but must never instruct the downstream generator to use, include or recreate the reference's subject matter: {text!r}")
+
+
 # ── 4. final creative copy ────────────────────────────────────────────────────────────────────
 
 _QUOTED = (
@@ -242,14 +271,24 @@ def build_guard_context(anatomy: dict, mechanisms: list[dict], canonical_intent:
 
 
 def check_text(field_name: str, text: str | None, ctx: GuardContext, *, instruction: bool = True) -> None:
-    """Every free-text field of a blueprint passes through this single gate. `instruction=False` is for explanatory
-    text (a NOT_USED reason, a limitation) that may need to NAME a prohibited element in order to say it was avoided;
-    every other guard still applies to it."""
+    """Every free-text field of a blueprint passes through this single gate, FIELD-SCOPED:
+
+      instruction=True  -- EXECUTION / GENERATION instructions (content_instruction, visual / text / speech / pacing / transition / CTA
+                           direction, section_purpose, required_information, structural_approach). FULL guard, including the source-subject
+                           lexicon and the prohibited-element rule.
+      instruction=False -- EXPLANATORY / AUDIT metadata (application_rationale, NOT_USED reason, limitations, unassigned reasons). These
+                           explain WHY and never become generation instructions, so a source-associated word used analytically is allowed
+                           (the lexicon is replaced by the directive check: it must not tell anyone to reproduce the source element) and
+                           they may NAME a prohibited element to say it was avoided. Source copy, performance / causal claims and final-copy
+                           safeguards apply to both classes."""
     if not text:
         return
     reject_performance(field_name, _mask_prohibited(text, ctx.prohibited, only_negated=instruction))
     reject_source_copy(field_name, text, ctx.source_index)
-    reject_blocked_terms(field_name, text, ctx.blocked_terms)
+    if instruction:
+        reject_blocked_terms(field_name, text, ctx.blocked_terms)
+    else:
+        reject_directive_source_terms(field_name, text, ctx.blocked_terms)
     reject_final_copy(field_name, text)
     if instruction:
         reject_prohibited_elements(field_name, text, ctx.prohibited)

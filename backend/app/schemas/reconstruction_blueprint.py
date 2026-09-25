@@ -130,7 +130,8 @@ class MechanismDisposition(BaseModel):
     decision: str                                 # USED | NOT_USED
     reason_category: str | None = None
     reason: str | None = None
-    applied_in_sections: list[int] = []
+    applied_in_sections: list[int] = []           # what the disposition DECLARES (explanatory / audit metadata only)
+    authoritative_sections: list[int] = []        # computed from section.mechanisms_applied -- the AUTHORITATIVE execution mapping C6 consumes
     application_rationale: str | None = None      # USED (prompt v3+): HOW the transferable principle is instantiated in this blueprint
     transferable_principle: str                   # carried from C3 verbatim (the ONLY thing transferred)
 

@@ -16,7 +16,8 @@ are not claims about the CONTENT. This guard therefore distinguishes:
 Three tiers, all raising BlueprintReasoningError (never editing text):
   1. METRICS       -- always rejected (retention, engagement, viral, watch time, conversions driven, "keeps viewers", ...).
   2. CONTENT CLAIMS -- rejected only when a CONTENT noun is the subject ("this structure performs better", "the opening is highly
-                         effective", "this approach works because...", "this hook improves results").
+                         effective", "this approach works because...", "this hook improves results", "this video underperforms",
+                         "this hook outperforms the other hook"). "This tile underperforms in wet areas" is domain description.
   3. CAUSAL OUTCOME -- "leads/results in <better|higher|improved|greater|...>", "produces better results", certainty words,
                          viewer predictions, and 'guarantee(s)' unless explicitly negated ("avoid guaranteed results").
 
@@ -40,7 +41,7 @@ _F = re.IGNORECASE
 # 1. viewer-behaviour metrics: never a description of a business domain in this pipeline
 METRIC_PATTERNS = tuple(re.compile(p, _F) for p in (
     r"\bretention\b", r"\bengagement\b", r"\bengaging\b", r"\bviral\w*", r"\bwatch[- ]?time\b", r"\battention span\b", r"\bclick[- ]?through\b",
-    r"\bdrop[- ]?off\b", r"\bunderperform\w*", r"\boutperform\w*", r"\bhigh[- ]performing\b",
+    r"\bdrop[- ]?off\b", r"\bhigh[- ]performing\b",
     r"\bengage(?:s|d)?\s+(?:the\s+)?(?:viewers?|audiences?|people|customers?)\b",
     r"\bperform(?:s|ed|ing)?\s+(?:well|poorly|better|worse|best)\b",
     r"\b(?:more|higher|better|greater)\s+(?:views|reach|likes|shares|clicks|sales|conversions?|traffic|leads|engagement|retention)\b",
@@ -62,6 +63,9 @@ CONTENT_CLAIM_PATTERNS = tuple(re.compile(p, _F) for p in (
     rf"\b{_CONTENT}\b{_GAP}(?:will\W+|would\W+|can\W+)?(?:improv|enhanc|boost|increas|maximi[sz]|driv|rais|lift)\w*\W+(?:\w+\W+){{0,2}}?"
     r"(?:performance|results?|effectiveness|impact|conversions?|sales|reach|awareness)\b",
     rf"\b{_CONTENT}\b{_GAP}(?:will\W+|would\W+|can\W+)?succeed\w*\b",
+    # under/outperform is a claim about the CONTENT only when a content noun is (almost) the direct subject: "this video underperforms",
+    # "this hook outperforms the other hook". "this tile underperforms in wet areas" describes the caller's subject matter and is allowed.
+    rf"\b{_CONTENT}\b(?:\W+\w+){{0,2}}?\W+(?:will\W+|would\W+|can\W+|may\W+)?(?:under|out)perform\w*\b",
 ))
 
 # 3. unsupported causal / certainty claims

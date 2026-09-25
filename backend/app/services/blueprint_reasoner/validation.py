@@ -5,8 +5,12 @@ Called by router.derive_blueprint() for EVERY provider. A response that violates
 edited, never persisted.
 
 MECHANISM SELECTION -- every C3 mechanism gets exactly ONE choice (USED / NOT_USED); ids must exist in the effective C3
-result; USED needs sections that actually list it and NOT_USED needs a categorised reason; at least one mechanism must be
-USED (otherwise nothing was transferred). Not every mechanism has to be used -- the provider decides suitability.
+result; NOT_USED needs a categorised reason; at least one mechanism must be USED and at least one section must apply a mechanism
+(otherwise nothing was transferred). Not every mechanism has to be used -- the provider decides suitability.
+AUTHORITATIVE MAPPING -- `section.mechanisms_applied` is the ONLY mechanism-to-section mapping downstream (C6) consumes. The
+disposition-level `applied_in_sections` and the `application_rationale` are explanatory / audit metadata: a mismatch between them and the
+authoritative mapping is recorded as a `mechanism_section_mapping_mismatch` quality note, never silently reconciled and never a rejection.
+Still blocking: a section that applies an unknown mechanism id, or one the disposition marked NOT_USED.
 MANDATORY POINTS -- each is assigned to >= 1 section or explicitly reported unassigned with a reason; never both, never
 neither, never an unknown id.
 STRUCTURE -- sections are numbered 1..n in order; anatomy references must exist; planned durations must sum to within 15%
@@ -31,7 +35,7 @@ from app.services.mechanism_reasoner.anatomy_input import source_texts, valid_se
 from app.services.mechanism_reasoner.language_guard import tokenize
 
 __all__ = ["BlueprintContext", "build_context", "validate_decision", "finalize_blueprint", "blueprint_id_for", "quality_findings",
-           "SIMILARITY_THRESHOLD"]
+           "quality_notes", "SIMILARITY_THRESHOLD"]
 
 SIMILARITY_THRESHOLD = 0.3   # two sections whose instructions share >= 30% of their content words are flagged as repetitive (a NOTE, not a rejection)
 _QUALITY_STOP = frozenset("""
@@ -95,29 +99,16 @@ def _validate_mechanisms(decision: BlueprintDecision, ctx: BlueprintContext) -> 
     choices = {c.mechanism_id: c for c in decision.mechanism_choices}
     if known and not any(c.decision == "USED" for c in choices.values()):
         _fail("no C3 mechanism is USED -- a blueprint that transfers nothing from the reference is not a reconstruction.")
-    for c in decision.mechanism_choices:
-        if c.decision == "USED" and c.application_rationale and not (_referenced_numbers(c.application_rationale) & set(c.applied_in_sections)):
-            _fail(f"{c.mechanism_id}.application_rationale does not name any section where the mechanism is applied ({sorted(c.applied_in_sections)}) -- "
-                  "it must say HOW the transferable principle is instantiated, and where.")
-    numbers = {s.section_number for s in decision.sections}
-    by_section = {s.section_number: set(s.mechanisms_applied) for s in decision.sections}
-    for s in decision.sections:
-        for mid in s.mechanisms_applied:
+    # AUTHORITATIVE MAPPING = section.mechanisms_applied. Blocking only what makes it unsafe or self-contradictory.
+    for sec in decision.sections:
+        for mid in sec.mechanisms_applied:
             c = choices.get(mid)
             if c is None:
-                _fail(f"section {s.section_number} applies unknown mechanism {mid!r} -- rejecting rather than allowing invented provenance.")
+                _fail(f"section {sec.section_number} applies unknown mechanism {mid!r} -- rejecting rather than allowing invented provenance.")
             if c.decision != "USED":
-                _fail(f"section {s.section_number} applies {mid}, which is NOT_USED.")
-            if s.section_number not in c.applied_in_sections:
-                _fail(f"section {s.section_number} lists {mid}, but {mid}'s applied_in_sections does not include it.")
-    for c in decision.mechanism_choices:
-        if c.decision != "USED":
-            continue
-        for n in c.applied_in_sections:
-            if n not in numbers:
-                _fail(f"{c.mechanism_id} is applied in section {n}, which does not exist (sections 1..{len(numbers)}).")
-            if c.mechanism_id not in by_section[n]:
-                _fail(f"{c.mechanism_id} says it is applied in section {n}, but that section does not list it in mechanisms_applied.")
+                _fail(f"section {sec.section_number} applies {mid}, which the disposition marked NOT_USED.")
+    if known and not any(sec.mechanisms_applied for sec in decision.sections):
+        _fail("no section applies any mechanism (every section.mechanisms_applied is empty) -- the authoritative mapping transfers nothing from the reference.")
     return choices
 
 
@@ -210,27 +201,59 @@ def _content_words(section) -> set[str]:
     return {_stem(t) for t in tokenize(text) if len(t) >= 4 and t not in _QUALITY_STOP}
 
 
-def quality_findings(decision: BlueprintDecision, ctx: BlueprintContext) -> list[str]:
-    """NON-BLOCKING quality notes (recorded on the blueprint as `quality_note` gaps, never a rejection): repetitive sections, every mechanism
-    used mechanically, a USED mechanism with no application_rationale (a pre-v3 response). Deterministic and inspectable downstream."""
-    notes: list[str] = []
-    words = {s.section_number: _content_words(s) for s in decision.sections}
+def _authoritative_sections(decision: BlueprintDecision) -> dict[str, list[int]]:
+    """{mechanism_id: [section numbers whose mechanisms_applied list it]} -- the mapping downstream consumers use."""
+    out: dict[str, list[int]] = {}
+    for sec in decision.sections:
+        for mid in sec.mechanisms_applied:
+            out.setdefault(mid, []).append(sec.section_number)
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def quality_notes(decision: BlueprintDecision, ctx: BlueprintContext) -> list[dict]:
+    """NON-BLOCKING, structured quality / audit notes (recorded on the blueprint as `quality_note` gaps, never a rejection): repetitive sections,
+    every mechanism used, a USED mechanism with no rationale or a rationale that names no applied section, and any mismatch between a
+    disposition's declared sections and the authoritative section.mechanisms_applied mapping. Deterministic and inspectable downstream."""
+    notes: list[dict] = []
+
+    def add(code: str, message: str, mechanism_id: str | None = None, **extra) -> None:
+        notes.append({"code": code, "message": message, "mechanism_id": mechanism_id, **extra})
+
+    words = {sec.section_number: _content_words(sec) for sec in decision.sections}
     ids = sorted(words)
     for i, a in enumerate(ids):
         for b in ids[i + 1:]:
             union = words[a] | words[b]
             sim = len(words[a] & words[b]) / len(union) if union else 0.0
             if sim >= SIMILARITY_THRESHOLD:
-                notes.append(f"sections {a} and {b} have very similar instructions ({int(sim * 100)}% shared content words) -- consider combining them "
-                             "unless each contributes a genuinely different reasoning step.")
+                add("similar_sections", f"sections {a} and {b} have very similar instructions ({int(sim * 100)}% shared content words) -- consider combining them "
+                    "unless each contributes a genuinely different reasoning step.")
     choices = decision.mechanism_choices
     if len(choices) >= 3 and all(c.decision == "USED" for c in choices):
-        notes.append(f"all {len(choices)} mechanisms were marked USED -- the reasoner did not exercise NOT_USED; check that each is genuinely applied "
-                     "rather than mechanically transferred.")
+        add("all_mechanisms_used", f"all {len(choices)} mechanisms were marked USED -- the reasoner did not exercise NOT_USED; check that each is genuinely applied "
+            "rather than mechanically transferred.")
+    authoritative = _authoritative_sections(decision)
     for c in choices:
-        if c.decision == "USED" and not c.application_rationale:
-            notes.append(f"{c.mechanism_id} is USED without an application_rationale, so how its transferable principle is instantiated is not inspectable.")
+        if c.decision != "USED":
+            continue
+        if not c.application_rationale:
+            add("missing_application_rationale", f"{c.mechanism_id} is USED without an application_rationale, so how its transferable principle is instantiated "
+                "is not inspectable.", c.mechanism_id)
+        elif not (_referenced_numbers(c.application_rationale) & (set(c.applied_in_sections) | set(authoritative.get(c.mechanism_id, [])))):
+            add("application_rationale_names_no_section", f"{c.mechanism_id}.application_rationale explains how the principle is instantiated but names no section, "
+                "which would make it easier to inspect.", c.mechanism_id)
+        declared, actual = sorted(set(c.applied_in_sections)), authoritative.get(c.mechanism_id, [])
+        if declared != actual:
+            add("mechanism_section_mapping_mismatch",
+                f"{c.mechanism_id}: the disposition declares sections {declared} but the authoritative section.mechanisms_applied mapping is {actual}; "
+                "downstream uses only section.mechanisms_applied (the two were not reconciled).", c.mechanism_id,
+                declared_sections=declared, authoritative_sections=actual)
     return notes
+
+
+def quality_findings(decision: BlueprintDecision, ctx: BlueprintContext) -> list[str]:
+    """The messages of quality_notes()."""
+    return [n["message"] for n in quality_notes(decision, ctx)]
 
 
 def blueprint_id_for(pins: dict) -> str:
@@ -245,12 +268,14 @@ def finalize_blueprint(decision: BlueprintDecision, ctx: BlueprintContext, pins:
     intent = ctx.intent
     mech = {m["mechanism_id"]: m for m in ctx.mechanisms}
     choices = {c.mechanism_id: c for c in decision.mechanism_choices}
+    authoritative = _authoritative_sections(decision)
     dispositions = []
     for m in ctx.mechanisms:
         c = choices[m["mechanism_id"]]
         dispositions.append({
             "mechanism_id": c.mechanism_id, "mechanism_type": m.get("mechanism_type"), "decision": c.decision,
             "reason_category": c.reason_category, "reason": c.reason, "applied_in_sections": sorted(c.applied_in_sections),
+            "authoritative_sections": authoritative.get(c.mechanism_id, []),
             "application_rationale": c.application_rationale, "transferable_principle": m.get("transferable_principle"),
         })
     assigned: dict[str, list[int]] = {}
@@ -287,8 +312,8 @@ def finalize_blueprint(decision: BlueprintDecision, ctx: BlueprintContext, pins:
         gaps.append({"field": f"mandatory_points.{u.id}", "kind": "unassigned_mandatory_point", "reason": f"{ctx.mandatory_points[u.id]} -- {u.reason}"})
     for text in decision.limitations:
         gaps.append({"field": "blueprint", "kind": "provider_limitation", "reason": text})
-    for text in quality_findings(decision, ctx):
-        gaps.append({"field": "blueprint:quality", "kind": "quality_note", "reason": text})
+    for note in quality_notes(decision, ctx):
+        gaps.append({"field": note["code"] + (f":{note['mechanism_id']}" if note["mechanism_id"] else ""), "kind": "quality_note", "reason": note["message"]})
     seen, unique_gaps = set(), []
     for g in gaps:
         key = (g["field"], g["kind"], g["reason"])
@@ -303,7 +328,7 @@ def finalize_blueprint(decision: BlueprintDecision, ctx: BlueprintContext, pins:
         "intent": intent, "intent_summary": intent_summary(intent),
         "structural_approach": decision.structural_approach,
         "target": {"platform": dpc.get("platform"), "target_duration_seconds": dpc.get("target_duration_seconds"), "planned_total_seconds": planned},
-        "mechanisms_used": sorted(mid for mid, c in choices.items() if c.decision == "USED"),
+        "mechanisms_used": sorted(authoritative),   # from section.mechanisms_applied -- the authoritative execution mapping
         "mechanisms_not_used": [d for d in dispositions if d["decision"] == "NOT_USED"],
         "mechanism_dispositions": dispositions,
         "constraints": {
@@ -316,5 +341,6 @@ def finalize_blueprint(decision: BlueprintDecision, ctx: BlueprintContext, pins:
         "sections": sections, "mandatory_point_accounting": accounting, "gaps": unique_gaps,
         "limitations": list(decision.limitations),
         "provenance": {**pins, "blueprint_version": BLUEPRINT_VERSION, "certainty": "INFERRED", "source_mechanism_count": len(mech),
-                       "ignored_null_fields": list(decision.ignored_null_fields)},
+                       "ignored_null_fields": list(decision.ignored_null_fields), "response_meta": decision.response_meta,
+                       "mechanism_mapping_authority": "section.mechanisms_applied"},
     }

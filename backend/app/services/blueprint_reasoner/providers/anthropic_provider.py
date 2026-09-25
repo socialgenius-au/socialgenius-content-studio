@@ -37,7 +37,7 @@ BLUEPRINT_EFFORT = "low"
 
 # Explicit, stable reasoning-contract version for SYSTEM_PROMPT; bumped by hand whenever its meaning changes and recorded on
 # every durable attempt.
-BLUEPRINT_PROMPT_VERSION = "v3"
+BLUEPRINT_PROMPT_VERSION = "v4"
 # v2 (before the first real call): forbidden source words may not be mentioned even to say they are being avoided.
 
 _TEMPLATE = """You are a content-construction planner. You are given: (1) a NEW CONTENT INTENT (what the new piece is for), (2) \
@@ -61,11 +61,11 @@ mechanisms_applied) and an application_rationale: one or two sentences (at most 
 transferable_principle is instantiated in your blueprint and WHERE, naming the section numbers (for example: "Sections 2-3 hold the \
 situation constant while contrasting two choices and their different consequences."). The rationale explains the plan to a reviewer; it \
 is not content.
-PRESERVE THE EXACT PRINCIPLE. Do not reduce a mechanism to its taxonomy label. Every USED mechanism must keep the DEFINING RELATIONSHIP \
+PRESERVE THE EXACT PRINCIPLE. Do not reduce a mechanism to its taxonomy label. Every USED mechanism must keep the DEFINING STRUCTURE \
 stated in its transferable_principle, not merely resemble its category. Example: a principle of "the same subject with opposing \
 outcomes" is NOT satisfied by contrast between two DIFFERENT subjects; hold the subject or decision constant and vary only the choice or \
 its consequence (same situation with choice A versus the same situation with choice B). Changing several things at once weakens a \
-controlled contrast. If you cannot preserve the defining relationship for this intent, mark the mechanism NOT_USED. Apply ONLY the \
+controlled contrast. If you cannot preserve the defining structure for this intent, mark the mechanism NOT_USED. Apply ONLY the \
 principle to the new subject -- translate it, do not restate it.
 
 DISTINCT SECTIONS. Every section must perform a distinct structural job. Do not create several sections that merely repeat "example, \
@@ -198,4 +198,7 @@ class AnthropicBlueprintReasoner(BlueprintReasonerProvider):
             payload = parse_json_object(raw_text)
         except BlueprintReasoningError as exc:
             raise BlueprintReasoningError(f"{exc} Response metadata: {response_diagnostics(message)}", diagnostics=response_diagnostics(message)) from exc
-        return decision_from_payload(payload, reasoning_contract_version=BLUEPRINT_PROMPT_VERSION)
+        decision = decision_from_payload(payload, reasoning_contract_version=BLUEPRINT_PROMPT_VERSION)
+        diag = response_diagnostics(message)
+        decision.response_meta = {k: diag[k] for k in ("stop_reason", "input_tokens", "output_tokens")}
+        return decision
