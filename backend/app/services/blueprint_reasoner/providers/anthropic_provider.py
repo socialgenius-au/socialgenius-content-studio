@@ -37,7 +37,8 @@ BLUEPRINT_EFFORT = "low"
 
 # Explicit, stable reasoning-contract version for SYSTEM_PROMPT; bumped by hand whenever its meaning changes and recorded on
 # every durable attempt.
-BLUEPRINT_PROMPT_VERSION = "v1"
+BLUEPRINT_PROMPT_VERSION = "v2"
+# v2 (before the first real call): forbidden source words may not be mentioned even to say they are being avoided.
 
 _TEMPLATE = """You are a content-construction planner. You are given: (1) a NEW CONTENT INTENT (what the new piece is for), (2) \
 the structural SKELETON of a reference video (numbers, timing, kinds of evidence -- never its words), and (3) the reference's \
@@ -60,7 +61,8 @@ you use a mechanism, apply ONLY its transferable_principle to the new subject --
 
 DO NOT CARRY OVER: every entry in `do_not_carry_over` and every word in `blocked_source_terms` is forbidden in your output \
 (the words are checked). Do not reuse the reference's subject matter, people, story, names, wording, visuals or audio. Do not \
-lightly paraphrase anything from the reference. Use only the caller's own subject matter (their intent).
+lightly paraphrase anything from the reference. Use only the caller's own subject matter (their intent). Do not write a forbidden \
+word even to say you are avoiding it: describe the exclusion in neutral terms (e.g. "keep the subject matter entirely the caller's own").
 
 MANDATORY POINTS. Each id in valid.mandatory_point_ids must be assigned to at least one section (list the id in that section's \
 mandatory_points_assigned) OR be listed in unassigned_mandatory_points with a concrete reason. Never drop one silently. A point \

@@ -67,10 +67,11 @@ def intent_gaps(canonical: dict) -> list[dict]:
 
 
 def intent_tokens(canonical: dict) -> set[str]:
-    """Every word the caller's own intent uses -- words the blueprint may legitimately use even if the reference did."""
+    """Every word the caller's own intent USES -- words the blueprint may legitimately use even if the reference did (a tile retailer
+    may say 'tile'). Words that appear ONLY in the caller's PROHIBITED list are deliberately excluded: the caller is naming things to
+    keep OUT, so 'relationship' in "no relationship narrative" must not exempt the word from the source-subject guard."""
     parts = [canonical.get(k) or "" for k in ("product_service_or_topic", "target_audience", "objective", "business_or_brand", "desired_cta")]
     parts += list(canonical.get("tone_style_constraints") or []) + list(canonical.get("mandatory_points") or [])
-    parts += list(canonical.get("prohibited_claims_or_elements") or [])
     dpc = canonical.get("duration_platform_constraints") or {}
     parts += [dpc.get("platform") or "", dpc.get("notes") or ""]
     return {t for p in parts for t in tokenize(p)}

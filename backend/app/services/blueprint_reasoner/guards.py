@@ -47,7 +47,7 @@ story stories text texts line lines exact exactly placement spoken speech captio
 recurring describing describes described versus type types kind kinds video videos second seconds source original reference
 particular elements element style tone voice speaker person people visual visuals audio sound music shot shots frame frames
 timing length lengths structure structural spacing used using uses use like look looks feel feeling appears appear seems
-opening closing claim claims statement subject matter topic theme themes brand name names handle watermark creator creators
+opening closing claim claims statement subject matter topic theme themes brand name names handle creator creators
 format formats delivery presentation moment moments part parts section sections piece pieces thing things way ways
 """.split())
 
@@ -55,7 +55,15 @@ _STOP_SHORT = frozenset({"a", "an", "the", "and", "or", "of", "to", "in", "on", 
 
 
 def _stem(t: str) -> str:
-    return t[:-1] if len(t) > 3 and t.endswith("s") and not t.endswith("ss") else t
+    """A light suffix stemmer (-ing / -ed / plural -s): 'gendered' -> 'gender', 'turns'/'turned'/'turning' -> 'turn'. Used for the
+    source-copy, subject-term and prohibited-element matchers so a light inflection change cannot evade them."""
+    if len(t) > 5 and t.endswith("ing"):
+        t = t[:-3]
+    elif len(t) > 4 and t.endswith("ed"):
+        t = t[:-2]
+    if len(t) > 3 and t.endswith("s") and not t.endswith("ss"):
+        t = t[:-1]
+    return t
 
 
 def _wrap(fn, *args):
@@ -204,7 +212,7 @@ def _mask_prohibited(text: str, prohibited: list[str], *, only_negated: bool) ->
     visible to the guards; `only_negated=False` (explanatory text) masks every mention, since it is merely naming the element."""
     masked = text
     for phrase in prohibited:
-        toks = [re.escape(_stem(t)) + "s?" for t in tokenize(phrase)]
+        toks = [re.escape(_stem(t)) + r"\w{0,3}" for t in tokenize(phrase)]   # stem + a short inflection ('guarante' + 'ed', 'result' + 's')
         if not toks:
             continue
         pattern = re.compile(r"\b" + r"\W+".join(toks) + r"\b", re.IGNORECASE)

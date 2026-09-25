@@ -675,7 +675,7 @@ async def test_the_adapter_sends_the_documented_request_and_parses_a_valid_respo
     prompt = kwargs["messages"][0]["content"]
     assert prompt.startswith("Blueprint input (compact JSON):\n") and "\n  " not in prompt
     assert all(t not in prompt for _, _, _, t in SOURCE_LINES)
-    assert out.reasoning_contract_version == BLUEPRINT_PROMPT_VERSION == "v1" and len(out.sections) == 5
+    assert out.reasoning_contract_version == BLUEPRINT_PROMPT_VERSION == "v2" and len(out.sections) == 5
 
 
 async def test_truncated_empty_and_abnormal_responses_are_rejected_with_diagnostics(monkeypatch):
@@ -706,7 +706,8 @@ def test_the_system_prompt_states_the_non_negotiables():
     for phrase in ("STRUCTURE, never SUBJECT", "INSTRUCTIONS, NOT COPY", "Are you tired of wasting money on bad accountants?", "NOT_USED", "MANDATORY POINTS",
                    "PROHIBITED", "desired_cta", "15%", "blocked_source_terms", "do_not_carry_over", "NO PERFORMANCE CLAIMS", "begin with"):
         assert phrase in SYSTEM_PROMPT, phrase
-    assert "<<" not in SYSTEM_PROMPT and BLUEPRINT_PROMPT_VERSION == "v1"
+    assert "even to say you are avoiding it" in SYSTEM_PROMPT
+    assert "<<" not in SYSTEM_PROMPT and BLUEPRINT_PROMPT_VERSION == "v2"
 
 
 def _max_blueprint_payload(scale: float) -> dict:
@@ -788,3 +789,44 @@ async def test_safeguards_apply_to_real_provider_output_through_the_router(monke
     mutation(p)
     with pytest.raises(BlueprintReasoningError, match=match):
         await _through_router(monkeypatch, p)
+
+
+# ── the caller's PROHIBITED words never exempt source-subject terms (found in the pre-run dry run on the real intent) ──
+
+REAL_LIKE_INTENT = {
+    **tile_intent_min(), "business_or_brand": "generic tile retailer", "desired_cta": "visit the showroom or contact the business for guidance",
+    "mandatory_points": ["different tile choices can create different finished outcomes", "customers can seek guidance before choosing"],
+    "prohibited_claims_or_elements": ["guaranteed results", "unsupported performance claims", "copying the reference creator's relationship/gender narrative",
+                                      "source-specific names, wording, watermark or identity"],
+}
+
+
+def test_words_the_caller_prohibits_do_not_count_as_the_callers_own_vocabulary():
+    canonical = normalize_intent(REAL_LIKE_INTENT)
+    used = intent_tokens(canonical)
+    assert not {"relationship", "gender", "watermark", "identity", "guaranteed"} & used, "words that appear only in the prohibited list are not the caller's vocabulary"
+    assert {"tile", "showroom", "guidance"} <= used
+    blocked = set(default_ctx(REAL_LIKE_INTENT).guard.blocked_terms)
+    assert {"relationship", "gendered", "watermark", "woman", "betrayal"} <= blocked
+
+
+@pytest.mark.parametrize("word", ["relationship", "gender", "gendered", "genders", "watermark", "woman", "betrayal"])
+def test_the_source_subject_and_the_named_exclusions_cannot_slip_into_a_blueprint_for_the_real_style_intent(word):
+    ctx = default_ctx(REAL_LIKE_INTENT)
+    p = tile_payload(cta=True)
+    p["sections"][2]["content_instruction"] += f" Frame the contrast around {word}."
+    with pytest.raises(BlueprintReasoningError, match="NON-TRANSFERABLE|PROHIBITED|prohibited"):
+        validate(p, ctx)
+
+
+def test_a_business_whose_own_topic_is_relationships_may_still_use_the_word():
+    ctx = default_ctx({**REAL_LIKE_INTENT, "product_service_or_topic": "relationship coaching for couples"})
+    assert "relationship" not in ctx.guard.blocked_terms and "betrayal" in ctx.guard.blocked_terms
+
+
+def test_the_light_stemmer_catches_inflected_lifts_and_still_recognises_the_prohibited_phrases():
+    from app.services.blueprint_reasoner.guards import _stem
+    assert _stem("gendered") == "gender" == _stem("genders") and _stem("turned") == _stem("turning") == _stem("turns") == "turn"
+    assert _stem("guaranteed") == "guarante" and _stem("results") == "result" and _stem("class") == "class"
+    rejects(edit(lambda p: p["sections"][3].update(speech_direction="Promise guaranteed results for either finish.")), "PROHIBITED element|prohibited")
+    validate(edit(lambda p: p["sections"][4].update(speech_direction="Warm, reassuring close; avoid price comparisons and guaranteed results.")))

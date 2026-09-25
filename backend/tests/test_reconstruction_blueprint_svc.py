@@ -128,11 +128,11 @@ async def test_a_derivation_persists_an_attempt_and_the_effective_blueprint_with
                                         "current_mechanism_attempt_id": 777, "intent_hash": ihash}
             bp, prov = out["blueprint"], out["provenance"]
             assert prov["llm_calls"] == 1 and prov["certainty"] == "INFERRED" and prov["blueprint_version"] == BLUEPRINT_VERSION
-            assert (prov["provider"], prov["model"], prov["prompt_version"], prov["taxonomy_version"]) == ("anthropic", "test-model", "v1", "v1")
+            assert (prov["provider"], prov["model"], prov["prompt_version"], prov["taxonomy_version"]) == ("anthropic", "test-model", BLUEPRINT_PROMPT_VERSION, "v1")
             p = bp["provenance"]
             assert (p["anatomy_fingerprint"], p["mechanism_attempt_id"], p["mechanism_provider"], p["mechanism_model"], p["mechanism_prompt_version"],
                     p["taxonomy_version"], p["intent_hash"], p["provider"], p["model"], p["prompt_version"]) == (
-                fp, 777, "anthropic", "claude-sonnet-5", "v2", "v1", ihash, "anthropic", "test-model", "v1")
+                fp, 777, "anthropic", "claude-sonnet-5", "v2", "v1", ihash, "anthropic", "test-model", BLUEPRINT_PROMPT_VERSION)
             assert p["reasoning_attempt_id"] == prov["reasoning_attempt_id"] and p["video_analysis_id"] == va_id and p["reference_video_id"] == rv_id
             assert bp["blueprint_id"].startswith("bp-") and bp["mechanisms_used"] == ["M01", "M02", "M03"]
             assert any(g["kind"] == "reference_limitation" and "retention devices" in g["reason"] for g in bp["gaps"]), "zero accepted retention devices stays valid"
