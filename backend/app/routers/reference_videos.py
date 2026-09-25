@@ -104,6 +104,7 @@ from app.schemas.reference_video import (
     TransitionPhaseCorrelationPairSummary, TransitionSimilarityEvidenceSummary,
     VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
 )
+from app.schemas.content_anatomy import ContentAnatomyResponse
 from app.schemas.deconstruction_full import (
     DeconstructionFullResponse, DeconstructionRunResponse, DeconstructionStatusResponse,
 )
@@ -113,6 +114,7 @@ from app.services import (
     speech_analysis_svc, transition_evidence_svc, transition_similarity_evidence_svc,
     visual_composition_svc, visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
+from app.services.content_anatomy_svc import ContentAnatomyError, ContentAnatomyNotReady, get_content_anatomy
 from app.services.deconstruction_aggregate_svc import build_full_deconstruction
 from app.services.deconstruction_orchestrator_svc import (
     OrchestrationConflict, OrchestrationError, OrchestrationNotFound, claim_orchestration,
@@ -3625,3 +3627,32 @@ async def get_full_deconstruction(
         return await build_full_deconstruction(db, user, reference_video_id, video_analysis_id=video_analysis_id)
     except OrchestrationError as exc:
         raise _orchestration_http_error(exc)
+
+
+# =====================================================================================
+# C2 — CONTENT ANATOMY V1
+#
+# A deterministic structural map derived purely from the C1 aggregate above (see
+# app.services.content_anatomy_svc): ordered sections, what happens when, the evidence behind each,
+# and explicit gaps. No LLM call, nothing persisted; recomputed (and fingerprinted) on every read.
+# =====================================================================================
+
+@router.get("/{reference_video_id}/anatomy", response_model=ContentAnatomyResponse)
+async def get_reference_video_anatomy(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Content Anatomy V1 for this reference video's latest analysis (or the exact `video_analysis_id`).
+    404 for an unknown/foreign video or analysis; 422 if shot/cut detection has not completed yet (run
+    `deconstruct-all` first). Story Beats are NOT required - missing ones fall back to shots, then to
+    pacing phases, and the chosen skeleton is reported in `section_source`."""
+    try:
+        return await get_content_anatomy(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except ContentAnatomyNotReady as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except ContentAnatomyError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
