@@ -20,8 +20,8 @@ created only when the anatomy supports it, never to make a result look complete.
 WHAT THIS CONTRACT MUST NEVER CLAIM (enforced structurally in app.services.mechanism_reasoner.validation,
 provider-independently, not merely requested by prompt): that anything made a video successful, retained or
 engaged viewers, went viral, or converted; any effectiveness score or strong/weak rating; any unsupported
-causal claim. A mechanism states only what a structure APPEARS DESIGNED to do ("appears designed to...",
-"places...", "introduces...", "creates a structural...").
+causal claim. Observed structure may be described directly; any INFERRED intent/purpose/function must be
+cautiously hedged ("appears designed to...", "may function as...", "creates a structural...").
 
 TRANSFERABILITY: every mechanism separates the TRANSFERABLE PRINCIPLE (an abstract, source-independent
 structure that could be applied to entirely different content) from the NON-TRANSFERABLE SOURCE ELEMENTS
@@ -67,7 +67,7 @@ EVIDENCE_ID_KEYS = frozenset({
 # The bounded vocabulary of anatomy features a mechanism may say it used. Each is checked against the
 # anatomy itself (validation.py), so a mechanism cannot claim to use a feature the anatomy does not show.
 ANATOMY_FEATURE_KEYS = frozenset({
-    # section-level (must be present in at least one cited section)
+    # section-level (section scope: present in a cited section; video scope: present anywhere in the video)
     "transcript", "speech", "on_screen_text", "visual_objects", "silence", "cuts", "pacing", "transitions",
     "motion", "hook_window", "accepted_retention_device",
     # video-level (must be present at video level)
@@ -110,10 +110,12 @@ class Mechanism:
     """One apparent design mechanism, as returned by a provider (before anatomy-aware validation).
 
     mechanism_type: one of MECHANISM_TYPES. `other` additionally requires `other_label` + `other_rationale`.
-    statement: cautious design language only ("appears designed to...", "places...", "introduces...").
+    statement: observed structure may be stated directly; any asserted intent/purpose/function must be hedged
+        ("appears designed to...", "may function as...", "creates a structural...").
     scope: "video" or "sections"; `section_numbers` must be non-empty for "sections".
     supporting_evidence_ids: {anatomy evidence category: [ids]} -- REFERENCES ONLY, every id must exist in
-        the anatomy (and, for a "sections" scope, inside the cited sections). At least one is required.
+        the SAME pinned anatomy (for a "sections" scope, inside the cited sections; for a "video" scope, anywhere in
+        it). At least one is required.
     anatomy_features_used: which anatomy features the inference rests on (ANATOMY_FEATURE_KEYS); at least one.
     transferable_principle: the abstract, source-independent structure -- required.
     non_transferable_elements: the source-specific things NOT to carry over -- at least one required.

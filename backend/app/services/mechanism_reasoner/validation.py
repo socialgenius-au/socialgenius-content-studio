@@ -7,8 +7,12 @@ rejected whole, never edited, never persisted (existing Stage 10/11 discipline).
 
 EVIDENCE SAFEGUARDS
   * every cited section number exists in the anatomy;
-  * every cited evidence id exists in the anatomy (and, when sections are cited, inside those sections);
-  * every claimed anatomy feature is actually PRESENT in the cited sections / at video level;
+  * every cited evidence id exists in the SAME pinned anatomy. A SECTION-scoped mechanism may cite ids only from its
+    cited sections; a VIDEO-scoped mechanism may cite ids from anywhere in the anatomy (its `section_numbers` only
+    name where it is most visible) -- existence in the anatomy is never relaxed;
+  * every claimed anatomy feature is actually PRESENT: for a SECTION-scoped mechanism in its cited sections; for a
+    VIDEO-scoped mechanism anywhere in the same video (listed sections only say where it is most visible); the
+    video-level features must exist at video level;
   * type gates: a mechanism type whose structural precondition the anatomy does not show is rejected (e.g.
     text_attention with no on-screen text; pacing_rhythm with no cuts; hook_curiosity away from the hook);
   * interpretive-dependent types (emotional_progression, cta_next_step) cannot be `high` confidence while the
@@ -20,8 +24,9 @@ TRANSFERABILITY SAFEGUARDS
     contract), a principle that carries no source section numbers/timestamps, and no reproduction of source
     wording (short run limit for the principle, longer for other fields).
 LANGUAGE SAFEGUARDS
-  * no performance/outcome claim, no causal/certainty claim (language_guard), and a statement that reads as
-    apparent design.
+  * no performance/outcome claim, no causal/certainty claim (language_guard). A statement may describe OBSERVED
+    structure directly, but any asserted INTENT / PURPOSE / FUNCTION must be cautiously hedged ("appears designed
+    to...", "may function as...").
 """
 from app.services.mechanism_reasoner.anatomy_input import (
     section_features, section_map, source_texts, valid_evidence_ids, valid_section_numbers, video_features, anatomy_pin,
@@ -29,8 +34,8 @@ from app.services.mechanism_reasoner.anatomy_input import (
 )
 from app.services.mechanism_reasoner.contract import MechanismDecision, MechanismReasoningError, Mechanism, TAXONOMY_VERSION
 from app.services.mechanism_reasoner.language_guard import (
-    OTHER_VERBATIM_LIMIT, PRINCIPLE_VERBATIM_LIMIT, build_source_index, has_design_language, reject_prohibited_language,
-    reject_source_reproduction, reject_source_specific_references,
+    OTHER_VERBATIM_LIMIT, PRINCIPLE_VERBATIM_LIMIT, build_source_index, reject_prohibited_language,
+    reject_source_reproduction, reject_source_specific_references, reject_unhedged_intent,
 )
 
 __all__ = ["MAX_MECHANISMS", "validate_decision", "finalize_mechanisms", "derive_overall_limitations"]
@@ -85,11 +90,14 @@ def _validate_evidence(label: str, m: Mechanism, anatomy: dict, sections: dict[i
     unknown_sections = sorted(set(m.section_numbers) - set(sections))
     if unknown_sections:
         _fail(label, f"cites section number(s) {unknown_sections} that do not exist in the anatomy (valid: {valid_section_numbers(anatomy)}).")
-    allowed = valid_evidence_ids(anatomy, m.section_numbers or None)
+    # SECTION scope: ids must belong to the cited sections. VIDEO scope: ids may come from anywhere in this same
+    # anatomy (the listed sections only say where the mechanism is most visible); they must still exist in it.
+    section_scoped = m.scope == "sections"
+    allowed = valid_evidence_ids(anatomy, m.section_numbers if section_scoped else None)
     for key, ids in m.supporting_evidence_ids.items():
         outside = sorted(set(ids) - set(allowed.get(key, [])))
         if outside:
-            where = "the cited sections" if m.section_numbers else "the anatomy"
+            where = "the cited sections" if section_scoped else "the anatomy"
             _fail(label, f"cites supporting_evidence_ids['{key}'] {outside} that are not in {where} "
                          f"(allowed: {allowed.get(key, [])}) -- rejecting rather than allowing invented provenance.")
 
@@ -101,7 +109,8 @@ def _validate_features(label: str, m: Mechanism, anatomy: dict, selected: list[d
     for feature in sorted(used):
         present = present_video if feature in _VIDEO_LEVEL_FEATURES else present_in_sections
         if feature not in present:
-            scope = "at video level" if feature in _VIDEO_LEVEL_FEATURES else "in the cited sections"
+            scope = ("at video level" if feature in _VIDEO_LEVEL_FEATURES
+                     else "in the cited sections" if m.scope == "sections" else "anywhere in the video")
             _fail(label, f"claims to use anatomy feature {feature!r}, but it is not present {scope}.")
     return used
 
@@ -116,7 +125,7 @@ def _validate_type_gate(label: str, m: Mechanism, anatomy: dict, selected: list[
         if not (on_hook or used & {"hook_window", "hook_classification"}):
             _fail(label, "a 'hook_curiosity' mechanism must be anchored to the opening/hook (an opening or hook-window section, or the hook window/classification).")
     if t == "pacing_rhythm":
-        cuts = (sum(int(_d(s.get("pacing")).get("cut_count") or 0) for s in selected) if m.section_numbers
+        cuts = (sum(int(_d(s.get("pacing")).get("cut_count") or 0) for s in selected) if m.scope == "sections"
                 else int(_d(_d(anatomy.get("video")).get("pacing_profile")).get("cut_count") or 0))
         if cuts < 1:
             _fail(label, "a 'pacing_rhythm' mechanism needs measured cuts in its scope; the anatomy shows none there.")
@@ -142,9 +151,7 @@ def _validate_text(label: str, m: Mechanism, principle_index: dict, other_index:
     named += [(f"limitations[{i}]", x) for i, x in enumerate(m.limitations)]
     for name, text in named:
         reject_prohibited_language(text)
-    if not has_design_language(m.statement):
-        _fail(label, "statement must use cautious design language (e.g. 'appears designed to...', 'places...', 'introduces...', "
-                     f"'creates a structural...'), got {m.statement!r}.")
+    reject_unhedged_intent(f"{label}: statement", m.statement)
     reject_source_reproduction(f"{label}: transferable_principle", m.transferable_principle, principle_index)
     reject_source_specific_references(f"{label}: transferable_principle", m.transferable_principle)
     for name, text in named:
@@ -171,7 +178,8 @@ def validate_decision(decision: MechanismDecision, anatomy: dict) -> None:
         label = f"mechanism {n} ({m.mechanism_type})"
         _validate_evidence(label, m, anatomy, sections)
         selected = _selected_sections(m, sections)
-        used = _validate_features(label, m, anatomy, selected)
+        # SECTION scope: features must be present in the cited sections. VIDEO scope: anywhere in the same video.
+        used = _validate_features(label, m, anatomy, selected if m.scope == "sections" else list(sections.values()))
         _validate_type_gate(label, m, anatomy, selected, sections, used)
         _validate_text(label, m, principle_index, other_index)
         key = (m.mechanism_type, (m.other_label or "").strip().lower(), tuple(sorted(m.section_numbers)), tuple(sorted(used)))

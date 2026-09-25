@@ -9,6 +9,7 @@ Three independent guards, all raising MechanismReasoningError (never silently ed
      a retention *claim*.)
   2. CAUSAL / CERTAINTY claims -- "this caused...", "which is why it worked", "viewers will...", "proves...",
      "guarantees...". A mechanism describes what a structure APPEARS DESIGNED to do, never what it did.
+  2b. INFERRED INTENT -- observed structure may be described directly; asserted intent/purpose/function must be hedged.
   3. VERBATIM SOURCE REPRODUCTION -- a run of consecutive words copied from the anatomy's transcript /
      on-screen text. The transferable principle must be abstract (short run limit); every other field may
      quote at most a few words of the source, never a passage.
@@ -18,8 +19,9 @@ import re
 from app.services.mechanism_reasoner.contract import MechanismReasoningError
 
 __all__ = [
-    "PERFORMANCE_PATTERNS", "CAUSAL_PATTERNS", "DESIGN_LANGUAGE", "PRINCIPLE_VERBATIM_LIMIT", "OTHER_VERBATIM_LIMIT",
-    "reject_prohibited_language", "has_design_language", "reject_source_reproduction", "reject_source_specific_references",
+    "PERFORMANCE_PATTERNS", "CAUSAL_PATTERNS", "INTENT_MARKERS", "HEDGES", "PRINCIPLE_VERBATIM_LIMIT", "OTHER_VERBATIM_LIMIT",
+    "reject_prohibited_language", "find_unhedged_intent", "reject_unhedged_intent", "reject_source_reproduction",
+    "reject_source_specific_references",
     "tokenize",
 ]
 
@@ -48,13 +50,33 @@ CAUSAL_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
     r"\b(?:made|makes|make|making)\s+(?:the\s+)?(?:video|it|content|viewers?|audiences?)\s+(?:work|perform|succeed|popular|stick|watch)\b",
     r"\b(?:keep|kept|keeps|stay|stayed|stays)\s+(?:the\s+)?(?:viewers?\s+|audience\s+)?(?:watching|engaged|hooked|glued|tuned|scrolling)\b",
     r"\bbecause\b[^.;]{0,80}\b(?:viewers?|audience|people|watch\w*|scroll\w*|click\w*|retention)\b",
+    # outcome causation named in the C3 approval: "makes viewers continue watching", "improves performance",
+    # "works because...", "works well"
+    r"\b(?:make|makes|made|making)\s+(?:the\s+)?(?:viewers?|audiences?|people|users?)\s+(?:continue|keep|stay|watch|scroll|click|buy|convert|engage|care|stick|return|linger|listen|share|follow|subscribe)\b",
+    r"\b(?:improv|enhanc|optimi[sz]|boost|increas|maximi[sz]|rais|lift|strengthen|elevat|driv)\w*\s+(?:the\s+|its\s+|overall\s+)?(?:performance|results?|outcomes?|effectiveness|impact|conversion\w*|engagement|retention|views?|reach|sales|completion|clicks?)\b",
+    r"\bwork(?:s|ed)?\s+because\b", r"\bwork(?:s|ed)?\s+(?:so\s+)?(?:well|effectively|brilliantly)\b", r"\bwhy (?:it|this|the \w+) works\b",
 ))
 
-# A mechanism STATEMENT must read as a description of apparent design. This is the accepted vocabulary
-# (the brief's own examples plus close structural verbs); the guard checks presence, not quality.
-DESIGN_LANGUAGE = re.compile(
-    r"\b(?:appears?|seems?|creates? a structural|places?|introduces?|positions?|sets? up|sequences?|withholds?|delays?|"
-    r"presents?|opens?|structures?|pairs?|juxtaposes?|frames?|arranges?)\b", re.IGNORECASE)
+# ── 2b. inferred intent / purpose / function must be hedged ───────────────────────────────────
+# A mechanism STATEMENT may describe OBSERVED, evidence-supported structure directly ("The video sustains a single
+# continuous shot...", "Captions mirror the spoken lines...", "The cut occurs near the end...") -- no hedge needed.
+# But the moment it asserts INTENT, PURPOSE or FUNCTION ("is designed to...", "aims to...", "in order to...",
+# "so that...", "serves to...") that is an inference about a creator's design and must be cautiously qualified
+# ("appears designed to...", "may function as...", "seems intended to..."). Performance / causal / outcome claims
+# remain prohibited outright (sections 1-2 above), hedged or not.
+INTENT_MARKERS = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r"\b(?:is|are|was|were|been|being)\s+(?:designed|intended|meant|built|engineered|crafted|calibrated|structured|deployed|used)\s+(?:to|for|as)\b",
+    r"\b(?:designed|intended|meant|engineered|calibrated)\s+(?:to|so)\b",
+    r"\b(?:aims?|aimed|aiming|seeks?|sought|strives?|striving|tries|tried|trying|attempts?|attempted|wants?|wanted)\s+to\b",
+    r"\b(?:serves?|served|serving|functions?|functioned|functioning)\s+(?:to|as)\b",
+    r"\bin order to\b", r"\bso that\b", r"\bso as to\b",
+    r"\b(?:the|its|their|this|that)\s+(?:purpose|goal|aim|intent|intention|objective)\b",
+    r"\bpurposely\b|\bdeliberately\b|\bintentionally\b",
+))
+# A hedge earlier in the same sentence qualifies an intent marker after it.
+HEDGES = re.compile(
+    r"\b(?:appears?|appearing|appeared|seems?|seeming|seemingly|may|might|could|possibly|plausibly|probably|likely|"
+    r"suggests?|suggesting|arguably|potentially|perhaps)\b", re.IGNORECASE)
 
 
 def _reject(text: str, patterns, label: str) -> None:
@@ -78,8 +100,26 @@ def reject_prohibited_language(*texts: str | None) -> None:
         _reject(text, CAUSAL_PATTERNS, "causal/certainty claim")
 
 
-def has_design_language(statement: str) -> bool:
-    return bool(DESIGN_LANGUAGE.search(statement or ""))
+def find_unhedged_intent(statement: str) -> str | None:
+    """Returns the offending intent/purpose/function phrase if `statement` asserts one WITHOUT a hedge earlier in the
+    same sentence, else None. Purely descriptive structural statements return None."""
+    for sentence in re.split(r"(?<=[.!?;])\s+", statement or ""):
+        for marker in INTENT_MARKERS:
+            match = marker.search(sentence)
+            if match and not HEDGES.search(sentence[:match.start()]):
+                return match.group(0)
+    return None
+
+
+def reject_unhedged_intent(field_name: str, statement: str | None) -> None:
+    """Raises MechanismReasoningError if `statement` asserts intent/purpose/function without cautious qualification."""
+    phrase = find_unhedged_intent(statement or "")
+    if phrase:
+        raise MechanismReasoningError(
+            f"{field_name} asserts intent/purpose/function without qualification (matched {phrase!r}). Observed structure may "
+            "be stated directly, but inferred intent must be hedged (e.g. 'appears designed to...', 'may function as...', "
+            f"'seems intended to...'): {statement!r}"
+        )
 
 
 # ── 3. source reproduction ────────────────────────────────────────────────────────────────────

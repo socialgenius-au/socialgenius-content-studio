@@ -21,7 +21,7 @@ from app.services.mechanism_reasoner.anatomy_input import (
     build_reasoner_input, section_features, serialize_reasoner_input, valid_evidence_ids, valid_section_numbers, video_features,
 )
 from app.services.mechanism_reasoner.language_guard import (
-    build_source_index, reject_prohibited_language, reject_source_reproduction, tokenize,
+    build_source_index, find_unhedged_intent, reject_prohibited_language, reject_source_reproduction, tokenize,
 )
 from app.services.mechanism_reasoner.parsing import decision_from_payload, parse_json_object
 from app.services.mechanism_reasoner.providers import anthropic_provider
@@ -347,8 +347,8 @@ def test_every_prose_field_is_language_guarded_not_just_the_statement():
     rejected_with("prohibited", decision(mech(limitations=["Effective only for this audience."])))
 
 
-def test_a_statement_without_design_language_is_rejected():
-    rejected_with("cautious design language", decision(mech(statement="Opening question about the topic.")))
+def test_a_statement_asserting_intent_without_a_hedge_is_rejected():
+    rejected_with("without qualification", decision(mech(statement="The opening is designed to pose a question about the topic.")))
 
 
 # ── transferability safeguards ───────────────────────────────────────────────────────────────
@@ -843,3 +843,212 @@ async def test_provider_disabled_makes_zero_client_calls(monkeypatch):
         with pytest.raises(MechanismReasoningError, match="MECHANISM_REASONER_PROVIDER is empty"):
             await derive_mechanisms(rich_anatomy())
     get_client_spy.assert_not_called()
+
+
+# ── evidence-scope rule (second real VA5368 response: video-scope mechanism citing evidence outside its listed sections) ──
+
+def video_rhythm(**over):
+    """Video-scoped; names sections [2, 3] as where it is most visible, but its evidence is spread over sections 1-3."""
+    base = dict(
+        mechanism_type="pacing_rhythm", statement="The piece places its cuts sparsely, creating a structural low-cut rhythm across the video.",
+        scope="video", section_numbers=[2, 3],
+        supporting_evidence_ids={"shots": [1, 2, 3], "speech_segments": [1, 2], "silence_intervals": [41]},
+        anatomy_features_used=["cuts", "pacing_profile"],
+        transferable_principle="Keep the camera on one framing for long stretches and change it only rarely.",
+        non_transferable_elements=[NonTransferableElement("timing_specific", "The exact spacing of the cuts in this source")],
+        confidence="low",
+    )
+    base.update(over)
+    return mech(**base)
+
+
+def test_a_video_scoped_mechanism_may_cite_valid_evidence_distributed_across_different_sections():
+    a = rich_anatomy()
+    m = video_rhythm()
+    # shot 1, speech 1 and silence 41 all live in section 1 -- outside the listed sections [2, 3]
+    assert 1 not in m.section_numbers
+    validate_decision(decision(m), a)
+    [out] = finalize_mechanisms(decision(m), a, {})
+    assert out["scope"] == "video" and out["section_numbers"] == [2, 3]
+    assert out["supporting_evidence_ids"] == {"shots": [1, 2, 3], "silence_intervals": [41], "speech_segments": [1, 2]}
+
+
+def test_a_section_scoped_mechanism_still_cannot_cite_unrelated_evidence_from_another_section():
+    a = rich_anatomy()
+    same_evidence_section_scope = video_rhythm(scope="sections")
+    rejected_with("not in the cited sections", decision(same_evidence_section_scope), a)
+    # the cited section's own evidence is fine
+    validate_decision(decision(video_rhythm(scope="sections", section_numbers=[2, 3], supporting_evidence_ids={"shots": [2, 3], "speech_segments": [2]},
+                                            anatomy_features_used=["cuts", "pacing"])), a)
+    # a single-section mechanism cannot borrow another section's ids
+    rejected_with("not in the cited sections", decision(mech(section_numbers=[1], supporting_evidence_ids={"speech_segments": [1], "shots": [2]})), a)
+
+
+def test_a_nonexistent_evidence_id_still_fails_at_video_scope_too():
+    a = rich_anatomy()
+    for key, bad in (("shots", 4242), ("speech_segments", 999), ("text_elements", 55), ("silence_intervals", 7), ("pacing_phases", 5951)):
+        rejected_with("invented provenance", decision(video_rhythm(supporting_evidence_ids={"shots": [2, 3], key: [bad]})), a)
+    # ...and a real id under the WRONG category is not the same id
+    rejected_with("invented provenance", decision(video_rhythm(supporting_evidence_ids={"shots": [2, 3], "text_elements": [1]})), a)
+
+
+def test_evidence_from_another_anatomy_still_fails_at_both_scopes():
+    a = rich_anatomy()
+    other = rich_anatomy(speeches=[speech(901, 0.0, 4.0, "A completely different opening sentence about gardening tools")],
+                         shots=[shot(801, 0, 0.0, 10.0, texts=[text(821, "Pruning basics", 1.0, 2.0)]), shot(802, 1, 10.0, 20.0), shot(803, 2, 20.0, 30.0)])
+    other_ids = valid_evidence_ids(other)
+    assert set(other_ids["shots"]) == {801, 802, 803} and not set(other_ids["shots"]) & set(valid_evidence_ids(a)["shots"])
+    foreign = dict(shots=[801, 802], speech_segments=[901])
+    rejected_with("invented provenance", decision(video_rhythm(supporting_evidence_ids=foreign)), a)                      # video scope
+    rejected_with("invented provenance", decision(video_rhythm(scope="sections", supporting_evidence_ids=foreign)), a)    # section scope
+    # the same decision is valid against the anatomy it actually came from
+    validate_decision(decision(video_rhythm(supporting_evidence_ids={"shots": [801, 802, 803], "speech_segments": [901]})), other)
+
+
+def test_the_scope_correction_leaves_every_other_safeguard_unchanged_at_video_scope():
+    a = rich_anatomy()
+    # language
+    rejected_with("prohibited", decision(video_rhythm(statement="The piece places cuts sparsely and is highly effective.")), a)
+    rejected_with("prohibited", decision(video_rhythm(statement="The sparse cuts led to more views and appear designed that way.")), a)
+    # copying / source-specific references
+    rejected_with("reproduces", decision(video_rhythm(transferable_principle="Ask have you ever wondered why your videos before anything else.")), a)
+    rejected_with("own section numbers or timestamps", decision(video_rhythm(transferable_principle="Hold one framing until section 3 arrives.")), a)
+    # unhedged intent
+    rejected_with("without qualification", decision(video_rhythm(statement="Sparse cuts are used to signal a change of pace.")), a)
+    # features: a video-level feature that is absent, and a section-level feature absent from the listed sections
+    rejected_with("'hook_classification'.*not present at video level", decision(video_rhythm(anatomy_features_used=["cuts", "hook_classification"])), a)
+    rejected_with("'on_screen_text'.*not present in the cited sections", decision(video_rhythm(scope="sections", section_numbers=[2, 3],
+                  supporting_evidence_ids={"shots": [2, 3]}, anatomy_features_used=["cuts", "on_screen_text"])), a)   # section scope: cited sections only
+    rejected_with("'transitions'.*not present anywhere in the video", decision(video_rhythm(anatomy_features_used=["cuts", "transitions"])), a)  # video scope: nowhere in the video
+    # type gates and taxonomy / other
+    rejected_with("must rest on at least one of", decision(video_rhythm(mechanism_type="text_attention", statement="Text appears designed to draw the eye.",
+                                                                        anatomy_features_used=["pacing_profile"])), a)
+    with pytest.raises(ValueError, match="mechanism_type must be one of"):
+        video_rhythm(mechanism_type="viral_formula")
+    # unknown sections, duplicates, transferability split, certainty
+    rejected_with("do not exist in the anatomy", decision(video_rhythm(section_numbers=[2, 9])), a)
+    rejected_with("duplicates another mechanism", decision(video_rhythm(), video_rhythm()), a)
+    with pytest.raises(ValueError, match="at least one non_transferable element"):
+        video_rhythm(non_transferable_elements=[])
+    with pytest.raises(ValueError, match="certainty must be 'INFERRED'"):
+        video_rhythm(certainty="MEASURED")
+
+
+def test_provenance_is_still_pinned_to_the_anatomy_for_a_video_scoped_mechanism():
+    a = rich_anatomy()
+    [m] = finalize_mechanisms(decision(video_rhythm()), a, {"provider": "anthropic", "model": "claude-x", "prompt_version": "v2"})
+    assert m["provenance"]["anatomy_fingerprint"] == a["provenance"]["fingerprint"] and m["provenance"]["taxonomy_version"] == "v1"
+    assert (m["provenance"]["provider"], m["provenance"]["model"], m["provenance"]["prompt_version"]) == ("anthropic", "claude-x", "v2")
+
+
+# ── design-language rule: observed structure may be stated directly; inferred intent must be hedged ──
+
+NEUTRAL_OBSERVATIONS = [
+    "The video sustains a single continuous shot for nearly its entire duration.",
+    "Captions mirror the spoken lines in near-synchrony.",
+    "The middle sections contrast one behaviour with another.",
+    "The cut occurs near the end of the video.",
+    # the exact statement of mechanism 4 in the second real VA5368 response
+    "The video sustains a single continuous shot for nearly its entire duration with only one cut near the end, producing a low-cut, "
+    "steady rhythm that shifts abruptly at the close with a transition and silences.",
+]
+UNHEDGED_INTENT = [
+    "The opening is designed to pose a question.",
+    "The caption aims to restate the speech.",
+    "The pause is intended to signal an ending.",
+    "The cut occurs in order to change the pace.",
+    "The text is shown so that the speech is visible.",
+    "The section serves to introduce the topic.",
+    "The line is meant to create curiosity.",
+    "The purpose of the opening is to pose a question.",
+    "The opening is designed to pose a question, it seems.",   # a hedge AFTER the marker does not qualify it
+    "The opening appears designed to pose a question. The pause is intended to close.",  # a hedge in another sentence does not qualify it
+]
+HEDGED_INTENT = [
+    "The opening appears designed to pose a question.",
+    "The pause appears intended to signal an ending.",
+    "The text may function as a reinforcement of the speech.",
+    "The opening creates a structural setup before the explanation.",
+    "The opening positions a claim before its explanation.",
+    "The pause seems intended to mark closure.",
+    "The section might serve to introduce the topic.",
+]
+
+
+@pytest.mark.parametrize("statement", NEUTRAL_OBSERVATIONS)
+def test_a_neutral_structural_observation_passes_without_any_hedge(statement):
+    assert find_unhedged_intent(statement) is None
+    validate_decision(decision(mech(statement=statement)), rich_anatomy())
+
+
+@pytest.mark.parametrize("statement", UNHEDGED_INTENT)
+def test_inferred_intent_purpose_or_function_without_a_hedge_is_rejected(statement):
+    assert find_unhedged_intent(statement) is not None
+    rejected_with("without qualification", decision(mech(statement=statement)))
+
+
+@pytest.mark.parametrize("statement", HEDGED_INTENT)
+def test_appropriately_hedged_inferred_intent_passes(statement):
+    assert find_unhedged_intent(statement) is None
+    validate_decision(decision(mech(statement=statement)), rich_anatomy())
+
+
+@pytest.mark.parametrize("statement", [
+    "The hook increases retention.", "The captions cause engagement.", "The cut makes viewers continue watching.",
+    "The pacing improves performance.", "The video went viral because of the hook.", "The structure works because it is tight.",
+    "The CTA drives conversions.", "The cut is what makes people keep going.", "This structure works well.", "The design improves results.",
+    # hedging does not launder a performance / causal claim
+    "The hook appears to make viewers continue watching.", "The pacing may improve performance.", "The structure appears to work because it is tight.",
+    "The opening appears designed to increase retention.", "The captions may cause engagement.", "It possibly drives conversions.",
+])
+def test_performance_and_causal_claims_stay_prohibited_hedged_or_not(statement):
+    rejected_with("prohibited", decision(mech(statement=statement)))
+
+
+def test_the_guard_does_not_over_block_ordinary_structural_prose():
+    for ok in ("The opening places a question before the answer.", "The pacing raises a question before the reveal.",
+               "A succession of cuts creates a structural cadence.", "The design improves clarity of the layout.",
+               "This structure works as a bookend.", "The caption makes the speech visible on screen."):
+        reject_prohibited_language(ok)
+        assert find_unhedged_intent(ok) is None
+
+
+def test_the_intent_rule_applies_to_the_statement_only_not_to_prescriptive_principles():
+    """A principle is advice for NEW content ('do X so that Y'), not a claim about the source, so it is not intent-checked."""
+    validate_decision(decision(mech(transferable_principle="Open with a question so that the explanation arrives as a payoff.")), rich_anatomy())
+
+
+# ── video-scope feature semantics ────────────────────────────────────────────────────────────
+
+def test_a_video_scoped_feature_may_be_established_anywhere_in_the_same_video_but_a_section_scoped_one_may_not():
+    a = rich_anatomy()
+    # 'on_screen_text' (section 1), 'speech' (sections 1-2) and 'silence' (section 1) are absent from the listed section 3
+    assert not {"on_screen_text", "speech", "silence"} & section_features(a["sections"][2])
+    video_scoped = mech(mechanism_type="information_reveal", statement="Section three follows a spoken setup and a caption elsewhere in the video.",
+                        scope="video", section_numbers=[3], supporting_evidence_ids={"speech_segments": [1, 2], "text_elements": [21], "shots": [3]},
+                        anatomy_features_used=["speech", "on_screen_text", "silence", "progression"])
+    validate_decision(decision(video_scoped), a)
+    section_scoped = mech(mechanism_type="information_reveal", statement="Section three follows a spoken setup and a caption elsewhere in the video.",
+                          scope="sections", section_numbers=[3], supporting_evidence_ids={"shots": [3]},
+                          anatomy_features_used=["speech", "on_screen_text"])
+    rejected_with("'speech'.*not present in the cited sections|'on_screen_text'.*not present in the cited sections", decision(section_scoped), a)
+
+
+def test_a_video_scoped_pacing_mechanism_uses_the_whole_video_for_cuts_but_a_section_scoped_one_still_needs_cuts_in_its_sections():
+    a = rich_anatomy()
+    assert a["sections"][0]["pacing"]["cut_count"] == 0 and a["video"]["pacing_profile"]["cut_count"] >= 1
+    validate_decision(decision(video_rhythm(section_numbers=[1], supporting_evidence_ids={"shots": [1, 2, 3]})), a)
+    rejected_with("needs measured cuts", decision(mech(mechanism_type="pacing_rhythm", statement="The cut pattern places a rhythm.", section_numbers=[1],
+                                                         supporting_evidence_ids={"shots": [1]}, anatomy_features_used=["pacing"])), a)
+
+
+def test_video_scope_still_rejects_unsupported_features_nonexistent_and_foreign_evidence():
+    a = rich_anatomy()
+    rejected_with("'accepted_retention_device'.*not present anywhere in the video",
+                  decision(video_rhythm(anatomy_features_used=["cuts", "accepted_retention_device"])), a)
+    rejected_with("'hook_classification'.*not present at video level", decision(video_rhythm(anatomy_features_used=["cuts", "hook_classification"])), a)
+    rejected_with("invented provenance", decision(video_rhythm(supporting_evidence_ids={"shots": [2], "speech_segments": [4242]})), a)
+    other = rich_anatomy(speeches=[speech(901, 0.0, 4.0, "A different opening sentence about gardening tools today")],
+                         shots=[shot(801, 0, 0.0, 10.0), shot(802, 1, 10.0, 20.0), shot(803, 2, 20.0, 30.0)])
+    rejected_with("invented provenance", decision(video_rhythm(supporting_evidence_ids={"shots": [801], "speech_segments": [901]})), a)
+    validate_decision(decision(video_rhythm(supporting_evidence_ids={"shots": [801, 802], "speech_segments": [901]})), other)
