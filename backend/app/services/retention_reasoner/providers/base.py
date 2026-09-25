@@ -25,18 +25,22 @@ class RetentionReasonerProvider(ABC):
 
     @abstractmethod
     async def classify_retention_candidate(self, evidence_bundle: dict, *, model: str) -> RetentionDecision:
-        """Answers exactly one question: given the bounded local evidence around one already-
-        grouped candidate moment, does it appear to function as a retention device, and if so which
-        kind? Never decides the candidate's own boundaries or grouping -- that is
-        retention_candidate_assembly_svc's own, already-complete job.
+        """Answers two separate questions about one already-grouped candidate moment, given only the
+        bounded local evidence around it: what structural form does it take (device_type, assigned
+        regardless of acceptance), and does it appear to function as a retention device
+        (is_retention_device, with probable_attention_function when accepted)? Never decides the
+        candidate's own boundaries or grouping -- that is retention_candidate_assembly_svc's own,
+        already-complete job.
 
         Raises RetentionReasoningError (never returns a fabricated decision) if this provider is
         unconfigured, the underlying call fails for any reason, its response cannot be parsed into
         a RetentionDecision at all, or its response violates this contract's own structural
         prohibitions (an invented evidence id, an unsupported device_type value, or any actual-
-        retention/attention/engagement/performance claim). A genuine "the evidence does not clearly
-        support a device type" outcome is NOT an error -- it is a real RetentionDecision with
-        device_type="unclear".
+        retention/attention/engagement/performance claim). A genuine, considered "the evidence
+        does not support an attention-maintenance function here" outcome is NOT an error -- it is a
+        real RetentionDecision with is_retention_device=False and probable_attention_function=None
+        (device_type still describes the structural form, e.g. an ordinary cut, and is "unclear"
+        only when even that structural form cannot be confidently identified).
 
         Must NEVER: invent evidence not present in `evidence_bundle`; infer or claim actual viewer
         retention, attention, engagement, or watch time; assign an effectiveness/quality score or a

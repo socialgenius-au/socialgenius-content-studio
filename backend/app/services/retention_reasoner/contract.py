@@ -6,8 +6,10 @@ DELIBERATELY A SIBLING of app.services.hook_reasoner.contract, never a reuse or 
 -- this contract answers a genuinely different question:
 
   "Given the bounded local evidence around one ALREADY-GENERATED, ALREADY-GROUPED candidate moment
-   (Stage 11.4's own deterministic candidate assembly, never adjusted by this reasoner), does this
-   moment appear to function as an attention-maintenance / retention device, and if so, which kind?"
+   (Stage 11.4's own deterministic candidate assembly, never adjusted by this reasoner), what
+   structural form does this moment take (device_type), and, separately, does it appear to function
+   as an attention-maintenance / retention device (is_retention_device), and if so, in what way
+   (probable_attention_function)?"
 
 Unlike Hook classification (exactly one fixed window per video), Retention classification runs
 ONCE PER CANDIDATE -- a video may produce zero, one, or many RetentionResult calls. Nothing here
@@ -59,18 +61,24 @@ constrains the SHAPE of a decision, never which evidence justifies which type):
     bare structural "?" with no supporting content.
   - `pattern_interrupt` / `emphasis` require a genuine COMBINATION of evidence signals, never a
     single ordinary cut or an ordinary shot change alone.
-  - `text_reveal` requires more than a TextElement merely existing at this timestamp (Stage 11.4's
-    own text-reveal correction, prompt v2): a candidate nominated only by "text_appearance" must be
-    weighed against routine caption/subtitle progression (text echoing concurrent speech as part of
-    a steady stream of similar fragments) and persistent-watermark/garbled-OCR noise (near-identical
-    variants of the same short string recurring across nearby candidates) -- both default to
-    "unclear", not "text_reveal", absent a genuinely distinctive signal. KNOWN V1 LIMITATION: this
-    system cannot yet reliably distinguish ordinary scrolling/karaoke-style subtitle progression
-    from a deliberate visual reveal using structural/text-content evidence alone; the reasoner is
-    instructed to prefer "unclear" when genuinely uncertain rather than guess. Candidate generation
-    itself is deliberately left UNCHANGED and still sensitive (every TextElement appearance still
-    nominates a candidate) -- this correction narrows semantic ACCEPTANCE only, per the intended
-    "sensitive candidate nomination -> conservative semantic acceptance" architecture.
+  - A text-driven candidate requires more than a TextElement merely existing at this timestamp to
+    be ACCEPTED as a retention device (Stage 11.4's text-reveal correction, introduced in prompt v2
+    and re-expressed in prompt v3's acceptance-gate terms): a candidate nominated only by
+    "text_appearance" must be weighed against routine caption/subtitle progression (text echoing
+    concurrent speech as part of a steady stream of similar fragments) and persistent-watermark/
+    garbled-OCR noise (near-identical variants of the same short string recurring across nearby
+    candidates) -- both resolve to is_retention_device=False, absent a genuinely distinctive
+    signal. device_type may still honestly be "text_reveal" in that case, since device_type
+    describes structural FORM and is not the acceptance decision; a rejected candidate is
+    represented by is_retention_device=False (with probable_attention_function=None), never merely
+    by device_type="unclear". KNOWN V1 LIMITATION: this system cannot yet reliably distinguish
+    ordinary scrolling/karaoke-style subtitle progression from a deliberate visual reveal using
+    structural/text-content evidence alone; the reasoner is instructed to prefer
+    is_retention_device=False when genuinely uncertain, rather than guess acceptance. Candidate
+    generation itself is deliberately left UNCHANGED and still sensitive (every TextElement
+    appearance still nominates a candidate) -- this correction narrows semantic ACCEPTANCE only,
+    per the intended "sensitive candidate nomination -> conservative semantic acceptance"
+    architecture.
 """
 from dataclasses import dataclass, field
 

@@ -30,9 +30,11 @@ async def classify_retention_candidate(evidence_bundle: dict) -> RetentionResult
     is configured (RETENTION_REASONER_PROVIDER is empty — the default, until an operator opts in);
     the configured name is not registered; the registered provider reports itself unconfigured
     (e.g. ANTHROPIC_API_KEY missing); the underlying call itself fails; or the response violates
-    this contract's own structural prohibitions. A genuine "the evidence does not clearly support a
-    device type" outcome is NOT one of these — it is a normal, successfully-returned
-    RetentionResult whose own decision.device_type is "unclear".
+    this contract's own structural prohibitions. A genuine, considered "the evidence does not
+    support an attention-maintenance function here" outcome is NOT one of these — it is a normal,
+    successfully-returned RetentionResult whose own decision.is_retention_device is False (with
+    probable_attention_function None); decision.device_type still describes the structural form and
+    is "unclear" only when even that form cannot be confidently identified.
     """
     provider_name = settings.RETENTION_REASONER_PROVIDER
     if not provider_name:
