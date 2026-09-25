@@ -83,7 +83,14 @@ class MechanismReasoningError(Exception):
 
     NEVER equivalent to "no mechanisms": a genuine, considered "the anatomy does not support any mechanism"
     is a normal, successfully-returned MechanismDecision with `mechanisms == []`. Nothing is persisted for a
-    raised error (existing Stage 10/11 convention), so the prior effective result is left untouched."""
+    raised error (existing Stage 10/11 convention), so the prior effective result is left untouched.
+
+    `diagnostics` (optional) carries non-sensitive response METADATA for a provider-level failure -- stop_reason,
+    block types, whether text existed, text length, token counts -- never the API key and never the payload."""
+
+    def __init__(self, message: str, diagnostics: dict | None = None):
+        super().__init__(message)
+        self.diagnostics = diagnostics
 
 
 @dataclass

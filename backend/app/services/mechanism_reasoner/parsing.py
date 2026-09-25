@@ -24,7 +24,7 @@ def parse_json_object(raw_text: str) -> dict:
         start = raw_text.find("{") if isinstance(raw_text, str) else -1
         end = raw_text.rfind("}") + 1 if isinstance(raw_text, str) else 0
         if start == -1 or end <= start:
-            raise MechanismReasoningError(f"Mechanism response was not valid JSON and contained no JSON object: {raw_text!r}")
+            raise MechanismReasoningError(f"Mechanism response was not valid JSON and contained no JSON object: {str(raw_text)[:300]!r}")
         try:
             data = json.loads(raw_text[start:end])
         except json.JSONDecodeError as exc:

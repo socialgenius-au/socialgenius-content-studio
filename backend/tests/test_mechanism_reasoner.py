@@ -17,14 +17,17 @@ from app.services.mechanism_reasoner import (
     NonTransferableElement, derive_mechanisms,
 )
 from app.services.mechanism_reasoner import router as mech_router
-from app.services.mechanism_reasoner.anatomy_input import build_reasoner_input, valid_evidence_ids, valid_section_numbers
+from app.services.mechanism_reasoner.anatomy_input import (
+    build_reasoner_input, section_features, serialize_reasoner_input, valid_evidence_ids, valid_section_numbers, video_features,
+)
 from app.services.mechanism_reasoner.language_guard import (
     build_source_index, reject_prohibited_language, reject_source_reproduction, tokenize,
 )
 from app.services.mechanism_reasoner.parsing import decision_from_payload, parse_json_object
 from app.services.mechanism_reasoner.providers import anthropic_provider
 from app.services.mechanism_reasoner.providers.anthropic_provider import (
-    MECHANISM_PROMPT_VERSION, SYSTEM_PROMPT, AnthropicMechanismReasoner,
+    MAX_RESPONSE_TOKENS, MECHANISM_EFFORT, MECHANISM_PROMPT_VERSION, SYSTEM_PROMPT, AnthropicMechanismReasoner, build_user_prompt,
+    extract_text_or_raise, response_diagnostics,
 )
 from app.services.mechanism_reasoner.validation import (
     MAX_MECHANISMS, derive_overall_limitations, finalize_mechanisms, validate_decision,
@@ -467,10 +470,89 @@ def test_the_reasoner_input_exposes_exactly_what_may_be_cited():
     a = rich_anatomy()
     ri = build_reasoner_input(a)
     assert ri["valid_section_numbers"] == valid_section_numbers(a) == [1, 2, 3]
-    assert ri["valid_evidence_ids"] == valid_evidence_ids(a)
+    assert ri["valid_evidence_ids"] == {k: v for k, v in valid_evidence_ids(a).items() if v}
     assert ri["valid_evidence_ids"]["speech_segments"] == [1, 2] and ri["valid_evidence_ids"]["text_elements"] == [21]
-    assert ri["gaps"] == a["gaps"] and ri["sections"] == a["sections"]
+    assert [g["field"] for g in ri["gaps"]] == [g["field"] for g in a["gaps"]]
     assert "raw_frames" not in json.dumps(ri)  # nothing beyond the anatomy
+
+
+# ── compact provider input (live-response correction) ────────────────────────────────────────
+
+def rich_with_devices_and_noise():
+    """A richer anatomy: an accepted device, a rejected candidate with a reasoning excerpt, and a recurring caption."""
+    from tests.test_content_anatomy_svc import examined
+    a = rich_anatomy(accepted=[device(60, 1.0, 2.0, dtype="text_reveal")],
+                     examined=[examined(500, 1.0, 1.0, False, reasoning="routine caption progression"), examined(501, 12.0, 12.0, False)])
+    a["sections"][0]["on_screen_text"][0]["recurring_element_id"] = 9
+    return a
+
+
+def test_the_compact_provider_input_keeps_every_citable_id_fact_and_gap():
+    a = rich_with_devices_and_noise()
+    before = copy.deepcopy(a)
+    ri = build_reasoner_input(a)
+    assert a == before, "the canonical anatomy must stay unchanged"
+    assert [s["n"] for s in ri["sections"]] == [s["number"] for s in a["sections"]]
+    for full, comp in zip(a["sections"], ri["sections"]):
+        # evidence ids: every non-empty category preserved exactly
+        assert comp["evidence_ids"] == {k: v for k, v in full["evidence_ids"].items() if v}
+        # facts preserved
+        assert [x["id"] for x in comp.get("speech", [])] == [x["id"] for x in full["speech"]]
+        assert [x["text"] for x in comp.get("speech", [])] == [x["text"] for x in full["speech"]]
+        assert [(x["id"], x["text"]) for x in comp.get("on_screen_text", [])] == [(x["id"], x["text"]) for x in full["on_screen_text"]]
+        assert comp["pacing"]["cuts"] == full["pacing"]["cut_count"] and comp["pacing"]["shots"] == full["pacing"]["shot_count"]
+        assert bool(comp.get("hook")) == full["overlaps_hook_window"] and bool(comp.get("opening")) == full["is_opening"]
+        assert comp.get("transcript") == full.get("transcript_excerpt")
+        assert [d["id"] for d in comp.get("accepted_retention_devices", [])] == [d["id"] for d in full["retention_devices"]]
+        assert [r["attempt"] for r in comp.get("rejected_retention_candidates", [])] == [r["attempt_id"] for r in full["rejected_candidates"]]
+        # the exact feature vocabulary the validator checks is handed to the model
+        assert comp["usable_features"] == sorted(section_features(full))
+    assert ri["video"]["usable_features"] == sorted(video_features(a))
+    assert ri["anatomy_pin"] == {"reference_video_id": a["provenance"]["reference_video_id"], "video_analysis_id": a["provenance"]["video_analysis_id"],
+                                 "anatomy_fingerprint": a["provenance"]["fingerprint"], "anatomy_version": a["provenance"]["anatomy_version"]}
+    assert [(g["field"], g["kind"], g["reason"]) for g in ri["gaps"]] == [(g["field"], g["kind"], g["reason"]) for g in a["gaps"]]
+    assert ri["video"]["hook"]["window"] == a["video"]["hook"]["window"] and ri["video"]["retention"]["accepted_count"] == 1
+    assert ri["video"]["retention"]["analysis_status"] == a["video"]["retention"]["analysis_status"]
+    assert ri["video"]["pacing_profile"] == a["video"]["pacing_profile"]
+
+
+def test_the_compact_view_flags_recurring_text_and_rejected_candidates_remain_references_only():
+    ri = build_reasoner_input(rich_with_devices_and_noise())
+    assert ri["sections"][0]["on_screen_text"][0]["recurring"] == 9
+    rejected = ri["sections"][0]["rejected_retention_candidates"]
+    assert rejected and all(set(r) == {"attempt", "type", "status"} for r in rejected)
+    assert "routine caption progression" not in serialize_reasoner_input(ri), "the per-candidate reasoning excerpt is dropped"
+
+
+def test_the_compact_view_drops_only_redundant_fields():
+    ri = build_reasoner_input(rich_anatomy())
+    sections_text = json.dumps(ri["sections"])
+    for dropped in ("shot_refs", "story_beat_refs", "scene_refs", "source_ref", "keyframe_ids", "pacing_phase_ids",
+                    "cuts_per_minute", "certainty", "transcript_truncated", "source_partition", "duration"):
+        assert dropped not in sections_text, dropped
+    assert "progression" not in ri["video"], "the video-level progression list is exactly the ordered sections"
+    section = ri["sections"][2]  # a bare section: no speech/text/objects/silence -> those keys are absent, not empty
+    assert not {"speech", "on_screen_text", "objects", "silences", "accepted_retention_devices", "interpretive"} & set(section)
+
+
+def test_the_provider_input_is_compact_json_and_much_smaller_than_the_previous_indented_form():
+    a = rich_with_devices_and_noise()
+    ri = build_reasoner_input(a)
+    compact = serialize_reasoner_input(ri)
+    assert "\n" not in compact and '": ' not in compact and '", "' not in compact
+    assert json.loads(compact) == json.loads(json.dumps(ri, default=str))
+    previous = json.dumps({"anatomy_pin": ri["anatomy_pin"], "video": a["video"], "section_source": "story_beats", "sections": a["sections"],
+                           "gaps": a["gaps"], "evidence_coverage": a["evidence_coverage"], "valid_section_numbers": [1, 2, 3],
+                           "valid_evidence_ids": valid_evidence_ids(a), "valid_feature_keys": []}, ensure_ascii=False, indent=1, default=str)
+    assert len(compact) < 0.6 * len(previous), (len(compact), len(previous))
+    assert build_reasoner_input(a) == build_reasoner_input(a) and serialize_reasoner_input(ri) == serialize_reasoner_input(ri)
+
+
+def test_the_user_prompt_carries_the_compact_anatomy_and_never_the_canonical_pretty_form():
+    a = rich_anatomy()
+    prompt = build_user_prompt(build_reasoner_input(a))
+    assert prompt.startswith("Content Anatomy (compact JSON):\n") and "\n  " not in prompt
+    assert OPENING_LINE in prompt and a["provenance"]["fingerprint"] in prompt
 
 
 # ── parsing / malformed provider responses ───────────────────────────────────────────────────
@@ -523,9 +605,23 @@ def test_an_empty_mechanisms_payload_is_a_valid_decision():
 
 # ── provider (Anthropic adapter, client always mocked) ───────────────────────────────────────
 
-def _client_returning(text_out: str):
+def _message(blocks, stop_reason="end_turn", input_tokens=11000, output_tokens=900):
+    return SimpleNamespace(content=blocks, stop_reason=stop_reason, usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens))
+
+
+def _text(t):
+    return SimpleNamespace(type="text", text=t)
+
+
+def _client_returning(text_out: str, **kw):
     client = MagicMock()
-    client.messages.create = AsyncMock(return_value=SimpleNamespace(content=[SimpleNamespace(type="text", text=text_out)]))
+    client.messages.create = AsyncMock(return_value=_message([_text(text_out)], **kw))
+    return client
+
+
+def _client_with(message):
+    client = MagicMock()
+    client.messages.create = AsyncMock(return_value=message)
     return client
 
 
@@ -559,7 +655,7 @@ def test_the_system_prompt_states_the_non_negotiables():
         assert phrase in SYSTEM_PROMPT
     for t in ("hook_curiosity", "cta_next_step", "audio_attention"):
         assert t in SYSTEM_PROMPT
-    assert MECHANISM_PROMPT_VERSION == "v1"
+    assert MECHANISM_PROMPT_VERSION == "v2"
 
 
 # ── router: provider disabled / provider-independent validation ──────────────────────────────
@@ -613,3 +709,137 @@ async def test_the_router_applies_validation_to_any_provider_so_a_bad_response_c
         result = await derive_mechanisms(a)
     assert result.provider == "anthropic" and len(result.decision.mechanisms) == 2
     assert result.model == settings.MECHANISM_REASONER_MODEL
+
+
+# ── live-response handling (first real call: max_tokens, no text) ────────────────────────────
+
+async def _derive_with(monkeypatch, message):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    client = _client_with(message)
+    with patch.object(anthropic_provider, "get_client", return_value=client):
+        return await AnthropicMechanismReasoner().derive_mechanisms(build_reasoner_input(rich_anatomy()), model="test-model"), client
+
+
+async def test_the_request_uses_the_documented_output_budget_low_effort_and_no_unsupported_parameters(monkeypatch):
+    decision_out, client = await _derive_with(monkeypatch, _message([_text(json.dumps({"mechanisms": []}))]))
+    kwargs = client.messages.create.await_args.kwargs
+    assert kwargs["max_tokens"] == MAX_RESPONSE_TOKENS == 10000
+    assert kwargs["output_config"] == {"effort": MECHANISM_EFFORT} and MECHANISM_EFFORT == "low"
+    assert "thinking" not in kwargs, "no undocumented thinking parameter is sent"
+    assert set(kwargs) == {"model", "max_tokens", "system", "output_config", "messages"}
+    assert decision_out.mechanisms == []
+
+
+def test_output_budget_covers_the_largest_valid_response():
+    """12 maximally verbose mechanisms must fit with headroom and parse as a valid decision. Measured with the real
+    tokenizer (count_tokens, claude-sonnet-5) on this same shape of text: 6,631 tokens for 20,564 chars (3.1 chars per
+    token), i.e. ~6.6k of the 10,000 budget; here a 3.0 chars/token bound is used so the test needs no API."""
+    sentence = ("The opening arrangement places a spoken question beside a caption that restates a later idea so the audience meets an "
+                "unresolved tension before any explanation arrives and the following part delays its resolution through a change of framing ").split()
+    words = lambda n: " ".join((sentence * (n // len(sentence) + 1))[:n])
+    one = {"mechanism_type": "information_reveal", "other_label": None, "other_rationale": None, "statement": "Places " + words(45),
+           "scope": "sections", "section_numbers": [1, 2, 3, 4],
+           "supporting_evidence_ids": {"speech_segments": [700, 701, 702, 703], "text_elements": [1250, 1251, 1252, 1253], "shots": [3900, 3901]},
+           "anatomy_features_used": ["speech", "on_screen_text", "transcript", "pacing"], "transferable_principle": words(35),
+           "non_transferable_elements": [{"kind": "wording", "description": words(20)}] * 3, "confidence": "medium", "limitations": [words(20)] * 2}
+    payload = {"mechanisms": [dict(one, mechanism_type="progression") if i % 2 else one for i in range(12)], "overall_limitations": [words(20)] * 4}
+    text = json.dumps(payload, separators=(",", ":"))
+    assert len(text) / 3.0 < MAX_RESPONSE_TOKENS * 0.85, "the largest valid response must fit with >=15% headroom"
+    assert len(decision_from_payload(payload).mechanisms) == 12 == MAX_MECHANISMS
+
+
+async def test_a_response_truncated_at_max_tokens_is_rejected_with_diagnostics_even_if_text_is_present(monkeypatch):
+    valid_looking = json.dumps({"mechanisms": []})
+    with pytest.raises(MechanismReasoningError, match="truncated at max_tokens") as e:
+        await _derive_with(monkeypatch, _message([_text(valid_looking)], stop_reason="max_tokens", output_tokens=10000))
+    d = e.value.diagnostics
+    assert d["stop_reason"] == "max_tokens" and d["output_tokens"] == 10000 and d["input_tokens"] == 11000
+    assert d["block_types"] == ["text"] and d["has_text_block"] is True and d["text_chars"] == len(valid_looking)
+
+
+async def test_the_first_real_calls_failure_shape_no_text_block_at_max_tokens_is_diagnosed(monkeypatch):
+    """Exactly what the first real call looked like: 4,096 output tokens, stop_reason max_tokens, no text block."""
+    thinking = SimpleNamespace(type="thinking", thinking="...", signature="s")
+    with pytest.raises(MechanismReasoningError, match="truncated") as e:
+        await _derive_with(monkeypatch, _message([thinking], stop_reason="max_tokens", input_tokens=28062, output_tokens=4096))
+    d = e.value.diagnostics
+    assert d["block_types"] == ["thinking"] and d["has_text_block"] is False and d["text_chars"] == 0
+    assert (d["input_tokens"], d["output_tokens"]) == (28062, 4096)
+
+
+@pytest.mark.parametrize("blocks", [[], [SimpleNamespace(type="thinking", thinking="x", signature="s")],
+                                    [SimpleNamespace(type="redacted_thinking", data="x")], [_text("")], [_text("   \n ")]])
+async def test_an_empty_or_non_text_response_raises_a_clear_error_instead_of_mechanisms(monkeypatch, blocks):
+    with pytest.raises(MechanismReasoningError, match="contained no text") as e:
+        await _derive_with(monkeypatch, _message(blocks))
+    assert e.value.diagnostics["has_text_block"] in (True, False) and e.value.diagnostics["text_chars"] <= 5
+    assert "block types" in str(e.value)
+
+
+async def test_an_abnormal_stop_reason_is_rejected(monkeypatch):
+    with pytest.raises(MechanismReasoningError, match="unexpected stop_reason 'refusal'"):
+        await _derive_with(monkeypatch, _message([_text('{"mechanisms": []}')], stop_reason="refusal"))
+
+
+async def test_malformed_json_from_a_complete_response_is_rejected_with_metadata_and_a_bounded_excerpt(monkeypatch):
+    with pytest.raises(MechanismReasoningError, match="not valid JSON") as e:
+        await _derive_with(monkeypatch, _message([_text("Sure! " + "blah " * 200)]))
+    assert e.value.diagnostics["stop_reason"] == "end_turn" and len(str(e.value)) < 1500
+    with pytest.raises(MechanismReasoningError):
+        await _derive_with(monkeypatch, _message([_text('{"mechanisms": [{"mechanism_type": "hook_curiosity"}]}')]))
+
+
+async def test_a_normal_valid_response_yields_a_decision_and_multiple_text_blocks_are_joined(monkeypatch):
+    payload = json.dumps({"mechanisms": [_payload_mech()], "overall_limitations": []})
+    half = len(payload) // 2
+    out, _ = await _derive_with(monkeypatch, _message([SimpleNamespace(type="thinking", thinking="t", signature="s"), _text(payload[:half]), _text(payload[half:])]))
+    assert len(out.mechanisms) == 1 and out.reasoning_contract_version == "v2"
+
+
+def test_diagnostics_are_metadata_only_no_payload_no_secrets(monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key-SECRET")
+    msg = _message([_text("private transcript words " * 5)], stop_reason="max_tokens")
+    d = response_diagnostics(msg)
+    assert set(d) == {"stop_reason", "block_types", "has_text_block", "text_chars", "input_tokens", "output_tokens", "max_tokens"}
+    assert "SECRET" not in json.dumps(d) and "private transcript" not in json.dumps(d)
+    with pytest.raises(MechanismReasoningError) as e:
+        extract_text_or_raise(msg)
+    assert "SECRET" not in str(e.value) and "private transcript" not in str(e.value)
+
+
+# ── validation and guards still apply to real-provider output (provider -> router -> validation, client mocked) ──
+
+async def _router_with_client(monkeypatch, text_out, a=None):
+    monkeypatch.setattr(settings, "MECHANISM_REASONER_PROVIDER", "anthropic")
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    client = _client_returning(text_out)
+    with patch.object(anthropic_provider, "get_client", return_value=client):
+        return await derive_mechanisms(a or rich_anatomy()), client
+
+
+async def test_a_valid_provider_response_flows_through_the_real_router_validation(monkeypatch):
+    res, client = await _router_with_client(monkeypatch, json.dumps({"mechanisms": [_payload_mech()], "overall_limitations": []}))
+    assert client.messages.create.await_count == 1 and len(res.decision.mechanisms) == 1 and res.reasoning_contract_version == "v2"
+
+
+@pytest.mark.parametrize("override, match", [
+    ({"supporting_evidence_ids": {"speech_segments": [4242]}}, "invented provenance"),
+    ({"statement": "The opening appears designed to be effective and drive engagement."}, "prohibited"),
+    ({"statement": "The opening appears designed to guarantee curiosity; it led to more views."}, "prohibited"),
+    ({"transferable_principle": "Ask have you ever wondered why your videos before explaining."}, "reproduces"),
+    ({"anatomy_features_used": ["accepted_retention_device"]}, "not present"),
+    ({"non_transferable_elements": []}, "failed contract validation"),
+])
+async def test_validation_and_guards_are_not_weakened_for_real_provider_output(monkeypatch, override, match):
+    with pytest.raises(MechanismReasoningError, match=match):
+        await _router_with_client(monkeypatch, json.dumps({"mechanisms": [_payload_mech(**override)], "overall_limitations": []}))
+
+
+async def test_provider_disabled_makes_zero_client_calls(monkeypatch):
+    monkeypatch.setattr(settings, "MECHANISM_REASONER_PROVIDER", "")
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "test-key")
+    get_client_spy = MagicMock()
+    with patch.object(anthropic_provider, "get_client", get_client_spy):
+        with pytest.raises(MechanismReasoningError, match="MECHANISM_REASONER_PROVIDER is empty"):
+            await derive_mechanisms(rich_anatomy())
+    get_client_spy.assert_not_called()

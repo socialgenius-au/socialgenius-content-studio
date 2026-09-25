@@ -6,11 +6,13 @@ module is the one place that reads that shape: it checks the input is usable, ex
 be cited (section numbers, evidence ids, features), and builds the bounded view a provider sees. Nothing here
 touches the database or any raw Stage 3-11 evidence.
 """
-from app.services.mechanism_reasoner.contract import ANATOMY_FEATURE_KEYS, EVIDENCE_ID_KEYS
+import json
+
+from app.services.mechanism_reasoner.contract import EVIDENCE_ID_KEYS
 
 __all__ = [
     "MechanismInputError", "validate_anatomy_input", "section_map", "valid_section_numbers", "valid_evidence_ids",
-    "section_features", "video_features", "source_texts", "build_reasoner_input", "anatomy_pin",
+    "section_features", "video_features", "source_texts", "build_reasoner_input", "serialize_reasoner_input", "anatomy_pin",
 ]
 
 
@@ -137,17 +139,109 @@ def source_texts(anatomy: dict) -> list[str]:
     return texts
 
 
+def _t(x):
+    """Times are rounded to 2 decimals in the provider view (sub-centisecond precision carries no meaning for
+    structural reasoning)."""
+    return round(x, 2) if isinstance(x, (int, float)) and not isinstance(x, bool) else x
+
+
+def _compact_section(section: dict) -> dict:
+    """The provider-facing form of ONE section. Drops only what is constant, derivable, or duplicated elsewhere in
+    the same payload; keeps every fact and every citable id. ABSENT means empty / false / not established -- the
+    system prompt says so, and `gaps` states what could not be established."""
+    out: dict = {"n": section["number"], "start": _t(section.get("start_time")), "end": _t(section.get("end_time"))}
+    if section.get("is_opening"):
+        out["opening"] = True
+    if section.get("overlaps_hook_window"):
+        out["hook"] = True
+    if section.get("transcript_excerpt"):
+        out["transcript"] = section["transcript_excerpt"]
+        if section.get("transcript_truncated"):
+            out["transcript_truncated"] = True
+    speech = [{"id": s.get("id"), "start": _t(s.get("start_time")), "end": _t(s.get("end_time")), "text": s.get("text"),
+               **({"lang": s["language"]} if s.get("language") else {})} for s in _l(section.get("speech")) if isinstance(s, dict)]
+    if speech:
+        out["speech"] = speech
+    text = [{"id": t.get("id"), "text": t.get("text"), "start": _t(t.get("start_time")), "end": _t(t.get("end_time")),
+             **({"ocr_conf": round(t["confidence_score"], 2)} if isinstance(t.get("confidence_score"), (int, float)) else {}),
+             **({"recurring": t["recurring_element_id"]} if t.get("recurring_element_id") is not None else {})}
+            for t in _l(section.get("on_screen_text")) if isinstance(t, dict)]
+    if text:
+        out["on_screen_text"] = text
+    visual, audio, pacing = _d(section.get("visual")), _d(section.get("audio")), _d(section.get("pacing"))
+    objects = [{"label": o.get("label"), "n": o.get("count")} for o in _l(visual.get("objects")) if isinstance(o, dict)]
+    if objects:
+        out["objects"] = objects
+    if visual.get("persistent_visual_element_count"):
+        out["persistent_visual_elements"] = visual["persistent_visual_element_count"]
+    if _l(visual.get("motion_evidence_shot_ids")):
+        out["motion_evidence"] = True
+    if _l(visual.get("transition_evidence_ids")):
+        out["transition_evidence"] = True
+    silences = [{"id": s.get("id"), "start": _t(s.get("start_time")), "end": _t(s.get("end_time"))}
+                for s in _l(audio.get("silence_intervals")) if isinstance(s, dict)]
+    if silences:
+        out["silences"] = silences
+    out["pacing"] = {"shots": pacing.get("shot_count"), "cuts": pacing.get("cut_count"),
+                     "avg_shot_s": _t(pacing.get("average_shot_exposure_seconds"))}
+    devices = [{"id": d.get("id"), "type": d.get("device_type"), "function": d.get("probable_attention_function"),
+                "confidence": d.get("confidence"), "start": _t(d.get("start_time")), "end": _t(d.get("end_time"))}
+               for d in _l(section.get("retention_devices")) if isinstance(d, dict)]
+    if devices:
+        out["accepted_retention_devices"] = devices
+    rejected = [{"attempt": r.get("attempt_id"), "type": r.get("device_type"), "status": r.get("status")}
+                for r in _l(section.get("rejected_candidates")) if isinstance(r, dict)]
+    if rejected:
+        out["rejected_retention_candidates"] = rejected  # references only -- never mechanisms
+    interp = {k: v for k, v in _d(section.get("interpretive")).items() if k != "status" and v}
+    if interp:
+        out["interpretive"] = interp
+    out["usable_features"] = sorted(section_features(section))  # exactly the vocabulary the validator checks
+    out["evidence_ids"] = {k: v for k, v in _d(section.get("evidence_ids")).items() if v}
+    return out
+
+
 def build_reasoner_input(anatomy: dict) -> dict:
-    """The bounded view a provider receives: the pinned anatomy plus the explicit lists of what may be cited.
-    Deterministic; carries nothing that is not already in the C2 response."""
+    """The COMPACT, provider-facing view of the C2 anatomy. The canonical anatomy is never modified and validation
+    always runs against it, not against this view.
+
+    Removed as redundant (nothing citable or factual is lost): per-section constants (`certainty`, `source_partition`
+    -- recorded once as `section_source`), values derivable from others (`duration`), id lists duplicated inside
+    `evidence_ids` (`source_ref`, `shot_refs`, `story_beat_refs`, `scene_refs`, `pacing_phase_ids`, keyframe /
+    motion / transition id lists), all empty containers and false flags, the per-section all-null `interpretive`
+    block, the per-candidate reasoning excerpt on rejected retention candidates (status and type remain), the
+    video-level `progression` list (it is exactly the ordered `sections` with their `usable_features`) and
+    sub-centisecond time precision. ADDED: `usable_features` per section (and at video level) -- the exact feature
+    names the validator will accept -- so the model cannot cite a feature the anatomy does not show."""
+    video = _d(anatomy.get("video"))
+    hook = _d(video.get("hook"))
+    retention = _d(video.get("retention"))
+    profile = _d(video.get("pacing_profile"))
+    pattern = _d(video.get("structural_pattern"))
+    coverage = _d(anatomy.get("evidence_coverage"))
     return {
         "anatomy_pin": anatomy_pin(anatomy),
-        "video": anatomy.get("video"),
         "section_source": _d(anatomy.get("section_source")).get("selected"),
-        "sections": anatomy.get("sections"),
-        "gaps": anatomy.get("gaps"),
-        "evidence_coverage": anatomy.get("evidence_coverage"),
+        "video": {
+            "duration": _t(video.get("duration")), "section_count": video.get("section_count"),
+            "hook": {"window": hook.get("window"), "hook_sections": hook.get("hook_section_numbers"),
+                     "classification": hook.get("classification")},
+            "pacing_profile": profile,
+            "structural_pattern": {k: v for k, v in pattern.items() if k in ("summary", "section_source", "shot_count", "cut_count")},
+            "retention": {k: v for k, v in retention.items() if k in ("analysis_status", "accepted_count", "accepted_by_type", "examined_count", "rejected_count")},
+            "usable_features": sorted(video_features(anatomy)),
+            "interpretive": {k: v for k, v in _d(video.get("interpretive")).items() if k != "status" and v} or None,
+        },
+        "sections": [_compact_section(s) for s in _l(anatomy.get("sections")) if isinstance(s, dict) and isinstance(s.get("number"), int)],
+        "gaps": [{"field": g.get("field"), "kind": g.get("kind"), "reason": g.get("reason"),
+                  **({"section": g["section_number"]} if g.get("section_number") is not None else {})}
+                 for g in _l(anatomy.get("gaps")) if isinstance(g, dict)],
+        "evidence_coverage": {"stages_not_done": coverage.get("stages_not_done"), "counts": coverage.get("counts")},
         "valid_section_numbers": valid_section_numbers(anatomy),
-        "valid_evidence_ids": valid_evidence_ids(anatomy),
-        "valid_feature_keys": sorted(ANATOMY_FEATURE_KEYS),
+        "valid_evidence_ids": {k: v for k, v in valid_evidence_ids(anatomy).items() if v},
     }
+
+
+def serialize_reasoner_input(reasoner_input: dict) -> str:
+    """Compact JSON (no indentation, no spaces) -- the exact text sent to the provider."""
+    return json.dumps(reasoner_input, ensure_ascii=False, separators=(",", ":"), default=str)
