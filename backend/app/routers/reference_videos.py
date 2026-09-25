@@ -75,7 +75,7 @@ ever presented.
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,11 +104,19 @@ from app.schemas.reference_video import (
     TransitionPhaseCorrelationPairSummary, TransitionSimilarityEvidenceSummary,
     VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
 )
+from app.schemas.deconstruction_full import (
+    DeconstructionFullResponse, DeconstructionRunResponse, DeconstructionStatusResponse,
+)
 from app.schemas.stage10_deconstruction import Stage10DeconstructionResponse, Stage10RunResponse
 from app.services import (
     audio_structure_svc, ffmpeg_svc, local_motion_dynamics_svc, local_motion_evidence_svc, ocr_svc,
     speech_analysis_svc, transition_evidence_svc, transition_similarity_evidence_svc,
     visual_composition_svc, visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
+)
+from app.services.deconstruction_aggregate_svc import build_full_deconstruction
+from app.services.deconstruction_orchestrator_svc import (
+    OrchestrationConflict, OrchestrationError, OrchestrationNotFound, claim_orchestration,
+    get_orchestration_status, run_deconstruction, start_background_deconstruction,
 )
 from app.services.scene_construction_svc import SceneConstructionError
 from app.services.semantic_reasoner.contract import SemanticReasoningError
@@ -3531,3 +3539,89 @@ async def get_reference_video_deconstruction(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
 
     return result
+
+
+# =====================================================================================
+# C1 — ONE-CLICK DECONSTRUCTION ORCHESTRATOR + AGGREGATE READ MODEL
+#
+# Adds no analysis logic: `deconstruct-all` sequences the existing Stage 3-11.4 units in dependency
+# order (see app.services.deconstruction_orchestrator_svc), and `deconstruction/full` assembles
+# everything already persisted into one structure (see app.services.deconstruction_aggregate_svc).
+# The individual analyze-* endpoints above are unchanged and remain usable one at a time.
+# =====================================================================================
+
+def _orchestration_http_error(exc: OrchestrationError) -> HTTPException:
+    if isinstance(exc, OrchestrationNotFound):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, OrchestrationConflict):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+
+@router.post("/{reference_video_id}/deconstruct-all", response_model=DeconstructionRunResponse,
+             status_code=status.HTTP_202_ACCEPTED)
+async def deconstruct_all(
+    reference_video_id: int,
+    response: Response,
+    wait: bool = False,
+    force_ai: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Runs the WHOLE existing deconstruction pipeline (Stages 3-11.4) in dependency order.
+
+    Default (`wait=false`): claims the run, starts it in the background and returns 202 immediately
+    (a full run - OCR, Whisper, motion analysis - can outlast a request timeout); poll
+    `GET .../deconstruct-all/status`. `wait=true` runs inline and returns 200 with the final result.
+
+    Safe to call repeatedly: completed passes are skipped, failed passes are retried, and paid AI
+    stages (Stage 10 reasoning, 11.3, 11.4) run only where the operator has already configured a
+    reasoner provider - unconfigured means `skipped`, never a failure. Stages 11.3/11.4 are not
+    re-run once complete unless `force_ai=true`. 409 if a run is already in progress."""
+    try:
+        if wait:
+            report = await run_deconstruction(db, user, reference_video_id, force_ai=force_ai)
+            response.status_code = status.HTTP_200_OK
+            mode, overall = "inline", report["overall_status"]
+        else:
+            await claim_orchestration(db, user, reference_video_id, force_ai=force_ai)
+            start_background_deconstruction(user.id, reference_video_id, force_ai=force_ai)
+            mode, overall = "background", "running"
+        view = await get_orchestration_status(db, user, reference_video_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    return DeconstructionRunResponse(
+        reference_video_id=reference_video_id, video_analysis_id=view["video_analysis_id"], mode=mode,
+        overall_status=overall, orchestration=view["orchestration"], stages=view["stages"],
+    )
+
+
+@router.get("/{reference_video_id}/deconstruct-all/status", response_model=DeconstructionStatusResponse)
+async def get_deconstruct_all_status(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Lightweight progress read for `deconstruct-all`: per-stage status only, no evidence payload."""
+    try:
+        return await get_orchestration_status(db, user, reference_video_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+@router.get("/{reference_video_id}/deconstruction/full", response_model=DeconstructionFullResponse)
+async def get_full_deconstruction(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """AGGREGATE READ MODEL: everything the Deconstructor currently knows about this source - technical
+    facts, shots and their visual/text/motion evidence, speech, audio, Scenes and Story Beats, editing
+    rhythm, hook window/classification, retention candidates/examined/accepted devices, strategic
+    insights and per-stage status. Pure read. A section whose analysis has not run is null/empty
+    (see `availability`), never fabricated. `video_analysis_id` pins one exact analysis version."""
+    try:
+        return await build_full_deconstruction(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
