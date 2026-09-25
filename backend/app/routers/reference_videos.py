@@ -106,6 +106,7 @@ from app.schemas.reference_video import (
 )
 from app.schemas.content_anatomy import ContentAnatomyResponse
 from app.schemas.transferable_mechanism import MechanismAttemptsResponse, MechanismSetResponse
+from app.schemas.reconstruction_blueprint import BlueprintAttemptsResponse, BlueprintRequest, BlueprintResponse
 from app.schemas.deconstruction_full import (
     DeconstructionFullResponse, DeconstructionRunResponse, DeconstructionStatusResponse,
 )
@@ -119,6 +120,10 @@ from app.services.content_anatomy_svc import ContentAnatomyError, ContentAnatomy
 from app.services.mechanism_reasoner import MechanismInputError, MechanismReasoningError
 from app.services.transferable_mechanism_svc import (
     MechanismAnatomyChanged, derive_and_persist_mechanisms, get_effective_mechanisms, list_mechanism_attempts,
+)
+from app.services.blueprint_reasoner import BlueprintInputError, BlueprintReasoningError
+from app.services.reconstruction_blueprint_svc import (
+    BlueprintStateConflict, derive_and_persist_blueprint, get_effective_blueprint, list_blueprint_attempts,
 )
 from app.services.deconstruction_aggregate_svc import build_full_deconstruction
 from app.services.deconstruction_orchestrator_svc import (
@@ -3730,5 +3735,74 @@ async def get_reference_video_mechanism_attempts(
     whether it is the effective one). Pure read."""
     try:
         return await list_mechanism_attempts(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+# =====================================================================================
+# C4 — RECONSTRUCTION BLUEPRINT V1
+#
+# Turns the C2 anatomy + the persisted C3 transferable mechanisms + a NewContentIntent into a NEW structural construction
+# plan (instructions, never final copy). See app.services.reconstruction_blueprint_svc.
+# =====================================================================================
+
+@router.post("/{reference_video_id}/reconstruction-blueprint", response_model=BlueprintResponse)
+async def derive_reference_video_blueprint(
+    reference_video_id: int,
+    request: BlueprintRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Derives a Reconstruction Blueprint for a NEW piece of content (`request.intent`: required product_service_or_topic,
+    target_audience, objective; optional business_or_brand, desired_cta, tone_style_constraints, duration_platform_constraints,
+    mandatory_points, prohibited_claims_or_elements) from this video's Content Anatomy and its CURRENT C3 mechanisms, with ONE
+    reasoner call (a PAID call when BLUEPRINT_REASONER_PROVIDER is configured; with none configured it fails with 502 and spends
+    nothing). An identical anatomy + C3 result + intent + provider/model/prompt returns the existing result with `reused=true`
+    and no call, unless `force=true`. 404 unknown/foreign video; 422 invalid intent / anatomy not ready / zero sections / no
+    mechanisms; 409 C3 never run or stale against the current anatomy, or a pinned fingerprint / mechanism attempt that no longer
+    matches; 502 no/failed/invalid reasoner (nothing persisted)."""
+    try:
+        return await derive_and_persist_blueprint(
+            db, user, reference_video_id, request.intent, video_analysis_id=request.video_analysis_id,
+            expected_anatomy_fingerprint=request.anatomy_fingerprint, expected_mechanism_attempt_id=request.mechanism_attempt_id,
+            force=request.force,
+        )
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except (ContentAnatomyError, BlueprintInputError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except BlueprintStateConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except BlueprintReasoningError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.get("/{reference_video_id}/reconstruction-blueprint", response_model=BlueprintResponse)
+async def get_reference_video_blueprint(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The EFFECTIVE Reconstruction Blueprint for this analysis. Pure read - never calls a reasoner. `status` is `not_run`,
+    `current` (derived from the anatomy and C3 result as they are now), `stale` (either has changed since; the old blueprint is
+    still returned, never hidden) or `unknown` (the current anatomy cannot be built to compare)."""
+    try:
+        return await get_effective_blueprint(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+@router.get("/{reference_video_id}/reconstruction-blueprint/attempts", response_model=BlueprintAttemptsResponse)
+async def get_reference_video_blueprint_attempts(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The full append-only history of blueprint derivation attempts (each with its blueprint and whether it is the effective
+    one). Pure read."""
+    try:
+        return await list_blueprint_attempts(db, user, reference_video_id, video_analysis_id=video_analysis_id)
     except OrchestrationError as exc:
         raise _orchestration_http_error(exc)

@@ -117,6 +117,14 @@ class Settings(BaseSettings):
     MECHANISM_REASONER_PROVIDER: str = ""
     MECHANISM_REASONER_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
 
+    # ── C4 — Blueprint Reasoner (app/services/blueprint_reasoner/) ────────────────────────────
+    # A SIBLING of the reasoner settings above, never a reuse: reconstruction-blueprint derivation runs ONCE PER REQUEST
+    # (anatomy + C3 mechanisms + NewContentIntent) and may run under a different provider/model, or none at all. Same
+    # honest-unconfigured discipline: BLUEPRINT_REASONER_PROVIDER empty ("") means no Blueprint reasoner runs (and no paid
+    # call is ever made); an operator must opt in explicitly, and ANTHROPIC_API_KEY must still be set.
+    BLUEPRINT_REASONER_PROVIDER: str = ""
+    BLUEPRINT_REASONER_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
+
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 500
 
