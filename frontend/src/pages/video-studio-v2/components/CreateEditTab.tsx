@@ -13,6 +13,10 @@ import {
 } from "../../../components/studio/videoPreviewUtils";
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
 import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, Shape, SubtitleSegment, SubtitleStyle, ReferenceVideo } from "../../../types";
+// C6 (Blueprint -> Video Studio V2): the active blueprint plan travels with every saved draft and is restored when one is opened.
+import { getBlueprintPlan, setBlueprintPlan } from "../blueprint/blueprintPlanStore";
+import { isBlueprintPlan, type BlueprintPlan } from "../blueprint/blueprintPlan";
+import { consumeOpenDraftHint } from "../blueprint/openDraftHint";
 import {
   CANVAS_PLATFORMS, findPlacement, fitCanvasBox, PENDING_REFRAME_NOTE, RESIZE_TARGET_PLATFORMS,
   defaultPlacementForPlatform, type CanvasPlacement,
@@ -164,6 +168,8 @@ interface DraftProjectSnapshot {
   timeline: ReturnType<typeof useStudio>["timeline"];
   canvasItemPositions: Record<string, CanvasItemPosition>;
   clientIdentity: { client: string; campaign: string };
+  // C6: the blueprint (scenes + traceability) this draft was created from; absent for drafts that did not come from one.
+  blueprintPlan?: BlueprintPlan | null;
 }
 
 // List-view shape returned by GET /video-studio-drafts/ — deliberately no project_json (see the
@@ -561,6 +567,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, subtitles, subtitleStyle, mediaAssets,
     canvasFormat, timeline, canvasItemPositions,
     clientIdentity: PROJECT_CLIENT_IDENTITY,
+    blueprintPlan: getBlueprintPlan(),
   });
 
   // Removes every current clip/text/overlay/audio-track (leaves mediaAssets and canvasFormat/
@@ -602,6 +609,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (snap.canvasFormat) setCanvasFormat(snap.canvasFormat);
     if (snap.timeline) setTimeline(snap.timeline);
     Object.entries(snap.canvasItemPositions ?? {}).forEach(([id, pos]) => setCanvasItemPosition(id, pos));
+    setBlueprintPlan(isBlueprintPlan(snap.blueprintPlan) ? snap.blueprintPlan : null);
   };
 
   // Requirement 9: a safe way to start a fresh project without touching any already-saved
@@ -612,6 +620,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const handleNewDraft = () => {
     if (!window.confirm("Start a new project? This clears the current editor (any Saved Draft is not affected — you can reopen it from My Drafts).")) return;
     clearLiveProject();
+    setBlueprintPlan(null);
     setDraftId(null);
     setDraftName("");
     setDraftStatus(null);
@@ -702,6 +711,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       setDraftBusy(false);
     }
   };
+
+  // C6: arriving from "Use blueprint" -- open the draft that action just created (one-shot hint), so this session is attached to it.
+  useEffect(() => {
+    const id = consumeOpenDraftHint();
+    if (id != null) void handleOpenDraft(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const refIngestFileInputRef = useRef<HTMLInputElement>(null);

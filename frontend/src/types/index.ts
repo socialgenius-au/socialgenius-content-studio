@@ -426,6 +426,19 @@ export interface TextOverlay {
   bgBorderWidth?: number // px
   bgBlur?: boolean
   bgFullWidth?: boolean
+
+  // Traceability (Reconstruction Blueprint -> Video Studio V2). Set ONLY on a PLACEHOLDER text overlay created by
+  // "Use Blueprint": it records which blueprint section produced it, so Reference -> Mechanism -> Blueprint -> Scene ->
+  // Final Content stays traceable across Save Draft / Reopen. Additive and optional -- every reader treats undefined as
+  // "not blueprint-created", so nothing predating this field needs a migration.
+  blueprint?: {
+    blueprintId: string
+    sectionNumber: number
+    kind: 'text' | 'cta'
+    mechanismIds: string[]
+    referenceVideoId: number
+    c3AttemptId: number | null
+  }
 }
 
 export interface MediaOverlay {

@@ -41,6 +41,7 @@ const KnowledgePage = lazy(() => import('./pages/KnowledgePage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const PostCreatorV2 = lazy(() => import('./pages/post-creator-v2/PostCreatorV2'))
 const VideoStudioV2 = lazy(() => import('./pages/video-studio-v2/VideoStudioV2'))
+const DeconstructorPage = lazy(() => import('./pages/deconstructor/DeconstructorPage'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
@@ -152,6 +153,8 @@ function AppRoutes() {
         <Route path="/clients/:clientId/tasks" element={<Suspense fallback={<PageFallback />}><TasksPage /></Suspense>} />
         <Route path="/clients/:clientId/analytics" element={<Suspense fallback={<PageFallback />}><AnalyticsPage /></Suspense>} />
         <Route path="/clients/:clientId/service-config" element={<Suspense fallback={<PageFallback />}><ServiceConfiguratorPage /></Suspense>} />
+        <Route path="/deconstructor" element={<Suspense fallback={<PageFallback />}><DeconstructorPage /></Suspense>} />
+        <Route path="/deconstructor/:referenceVideoId" element={<Suspense fallback={<PageFallback />}><DeconstructorPage /></Suspense>} />
         <Route path="/connections" element={<Suspense fallback={<PageFallback />}><ConnectionsPage /></Suspense>} />
         <Route path="/knowledge" element={<Suspense fallback={<PageFallback />}><KnowledgePage /></Suspense>} />
         <Route path="/settings" element={<Suspense fallback={<PageFallback />}><SettingsPage /></Suspense>} />

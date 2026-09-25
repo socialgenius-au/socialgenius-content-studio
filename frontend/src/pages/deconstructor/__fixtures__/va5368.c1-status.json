@@ -1,0 +1,271 @@
+{
+ "reference_video_id": 5127,
+ "video_analysis_id": 5368,
+ "orchestration": null,
+ "stages": [
+  {
+   "key": "technical_probe",
+   "label": "Technical probe",
+   "kind": "endpoint",
+   "depends_on": [],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "scene_segmentation",
+   "label": "Shot / cut detection",
+   "kind": "endpoint",
+   "depends_on": [
+    "technical_probe"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "visual_evidence",
+   "label": "Keyframes",
+   "kind": "endpoint",
+   "depends_on": [
+    "scene_segmentation"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "speech_analysis",
+   "label": "Speech transcription",
+   "kind": "endpoint",
+   "depends_on": [
+    "technical_probe"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "audio_structure",
+   "label": "Audio structure",
+   "kind": "endpoint",
+   "depends_on": [
+    "technical_probe"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "text_analysis",
+   "label": "On-screen text (OCR)",
+   "kind": "endpoint",
+   "depends_on": [
+    "visual_evidence"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "visual_objects",
+   "label": "Visual objects",
+   "kind": "endpoint",
+   "depends_on": [
+    "visual_evidence"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "visual_persistence",
+   "label": "Visual persistence",
+   "kind": "endpoint",
+   "depends_on": [
+    "visual_objects"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "visual_composition",
+   "label": "Visual composition",
+   "kind": "endpoint",
+   "depends_on": [
+    "visual_persistence"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "global_motion_evidence",
+   "label": "Global motion",
+   "kind": "endpoint",
+   "depends_on": [
+    "scene_segmentation"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "transition_evidence",
+   "label": "Transition evidence",
+   "kind": "endpoint",
+   "depends_on": [
+    "scene_segmentation"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "local_motion_evidence",
+   "label": "Local motion",
+   "kind": "endpoint",
+   "depends_on": [
+    "scene_segmentation"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "local_motion_dynamics",
+   "label": "Local motion dynamics",
+   "kind": "endpoint",
+   "depends_on": [
+    "scene_segmentation"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "transition_similarity_evidence",
+   "label": "Transition similarity",
+   "kind": "endpoint",
+   "depends_on": [
+    "scene_segmentation"
+   ],
+   "status": "complete",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "scene_story_beats",
+   "label": "Scenes and Story Beats (Stage 10)",
+   "kind": "service",
+   "depends_on": [
+    "scene_segmentation"
+   ],
+   "status": "not_run",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": true
+  },
+  {
+   "key": "editing_rhythm",
+   "label": "Editing rhythm (Stage 11.1)",
+   "kind": "service",
+   "depends_on": [
+    "scene_segmentation"
+   ],
+   "status": "not_run",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "hook_window",
+   "label": "Hook window (Stage 11.2)",
+   "kind": "service",
+   "depends_on": [
+    "technical_probe"
+   ],
+   "status": "not_run",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": false
+  },
+  {
+   "key": "hook_classification",
+   "label": "Hook classification (Stage 11.3)",
+   "kind": "service",
+   "depends_on": [
+    "hook_window"
+   ],
+   "status": "not_run",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": true
+  },
+  {
+   "key": "retention_devices",
+   "label": "Retention devices (Stage 11.4)",
+   "kind": "service",
+   "depends_on": [
+    "scene_segmentation"
+   ],
+   "status": "not_run",
+   "error": null,
+   "reason": null,
+   "degraded_inputs": [],
+   "summary": null,
+   "requires_ai": true
+  }
+ ]
+}

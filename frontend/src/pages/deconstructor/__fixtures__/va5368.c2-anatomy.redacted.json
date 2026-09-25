@@ -1,0 +1,1814 @@
+{
+ "video": {
+  "duration": 43.9,
+  "section_count": 14,
+  "opening_section_number": 1,
+  "hook": {
+   "window": {
+    "start_time": 0.0,
+    "end_time": 2.904444461538462,
+    "certainty": "MEASURED",
+    "derived_from": "story_beat",
+    "source_id": 5276,
+    "fallback_reason": null
+   },
+   "hook_section_numbers": [
+    1
+   ],
+   "classification": {
+    "primary_type": "bold_claim",
+    "secondary_types": [
+     "relatable_statement"
+    ],
+    "probable_intent": "provoke_attention",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5",
+    "prompt_version": "v1",
+    "certainty": "INFERRED"
+   }
+  },
+  "pacing_profile": {
+   "shot_count": 2,
+   "cut_count": 1,
+   "average_shot_duration_seconds": 21.95,
+   "shortest_shot_seconds": 4.033333,
+   "longest_shot_seconds": 39.866667,
+   "cuts_per_minute": 1.366743,
+   "stage_11_1_profile": {
+    "shot_count": 2,
+    "average_shot_duration": 21.95,
+    "median_shot_duration": 21.95,
+    "minimum_shot_duration": 4.033332999999999,
+    "maximum_shot_duration": 39.866667,
+    "shot_duration_stddev": 17.916667,
+    "cuts_per_minute": 1.366742596810934,
+    "video_duration": 43.9,
+    "transition_evidence": {
+     "total_shot_boundaries": 1,
+     "boundaries_with_transition_evidence": 1,
+     "note": "No transition TYPE classification (hard cut / fade / dissolve / wipe / crossover) exists in the current evidence -- both transition_evidence_svc and transition_similarity_evidence_svc explicitly defer that to a future stage. This is coverage (evidence present or not), never a type distribution."
+    },
+    "contributing_shot_ids": [
+     3907,
+     3908
+    ]
+   },
+   "certainty": "MEASURED"
+  },
+  "structural_pattern": {
+   "section_source": "story_beats",
+   "section_count": 14,
+   "shot_count": 2,
+   "cut_count": 1,
+   "sections_with_speech": 13,
+   "sections_with_on_screen_text": 11,
+   "sections_with_silence": 2,
+   "accepted_retention_device_count": 0,
+   "summary": "14 sections (skeleton: story_beats); 2 shots, 1 cuts; speech in 13 of 14 sections; on-screen text in 11; silence in 2; 0 accepted retention device(s).",
+   "basis": "measured"
+  },
+  "progression": [
+   {
+    "section_number": 1,
+    "start_time": 0.0,
+    "end_time": 2.904444,
+    "features": [
+     "hook_window",
+     "speech"
+    ]
+   },
+   {
+    "section_number": 2,
+    "start_time": 2.904444,
+    "end_time": 7.08,
+    "features": [
+     "speech",
+     "on_screen_text"
+    ]
+   },
+   {
+    "section_number": 3,
+    "start_time": 7.08,
+    "end_time": 10.041667,
+    "features": [
+     "speech",
+     "on_screen_text"
+    ]
+   },
+   {
+    "section_number": 4,
+    "start_time": 10.041667,
+    "end_time": 12.083333,
+    "features": [
+     "speech",
+     "on_screen_text"
+    ]
+   },
+   {
+    "section_number": 5,
+    "start_time": 12.083333,
+    "end_time": 14.46,
+    "features": [
+     "speech",
+     "on_screen_text"
+    ]
+   },
+   {
+    "section_number": 6,
+    "start_time": 14.46,
+    "end_time": 19.961111,
+    "features": [
+     "speech",
+     "on_screen_text"
+    ]
+   },
+   {
+    "section_number": 7,
+    "start_time": 19.961111,
+    "end_time": 22.84,
+    "features": [
+     "speech",
+     "on_screen_text"
+    ]
+   },
+   {
+    "section_number": 8,
+    "start_time": 22.84,
+    "end_time": 24.70625,
+    "features": [
+     "speech",
+     "on_screen_text"
+    ]
+   },
+   {
+    "section_number": 9,
+    "start_time": 24.70625,
+    "end_time": 26.8,
+    "features": [
+     "speech",
+     "on_screen_text"
+    ]
+   },
+   {
+    "section_number": 10,
+    "start_time": 26.8,
+    "end_time": 32.98,
+    "features": [
+     "speech",
+     "on_screen_text"
+    ]
+   },
+   {
+    "section_number": 11,
+    "start_time": 32.98,
+    "end_time": 33.733334,
+    "features": [
+     "speech"
+    ]
+   },
+   {
+    "section_number": 12,
+    "start_time": 33.733334,
+    "end_time": 36.22,
+    "features": [
+     "speech",
+     "on_screen_text"
+    ]
+   },
+   {
+    "section_number": 13,
+    "start_time": 36.22,
+    "end_time": 42.631287,
+    "features": [
+     "speech",
+     "on_screen_text",
+     "silence",
+     "cut"
+    ]
+   },
+   {
+    "section_number": 14,
+    "start_time": 42.631287,
+    "end_time": 43.9,
+    "features": [
+     "silence"
+    ]
+   }
+  ],
+  "retention": {
+   "analysis_status": "examined_none_accepted",
+   "accepted_count": 0,
+   "accepted_by_type": {},
+   "examined_count": 17,
+   "rejected_count": 17,
+   "no_decision_count": 0,
+   "ai_configured": false
+  },
+  "interpretive": {
+   "narrative_role": null,
+   "messaging_role": null,
+   "emotional_function": null,
+   "cta_role": null,
+   "status": "unsupported_in_v1"
+  }
+ },
+ "section_source": {
+  "selected": "story_beats",
+  "reason": "Story Beats available (>= 2): used as the section skeleton",
+  "considered": [
+   {
+    "source": "story_beats",
+    "available": true,
+    "usable": true,
+    "count": 14,
+    "note": null
+   },
+   {
+    "source": "shots",
+    "available": true,
+    "usable": true,
+    "count": 2,
+    "note": null
+   },
+   {
+    "source": "pacing_phases",
+    "available": true,
+    "usable": true,
+    "count": 14,
+    "note": null,
+    "partition_type": "story_beat"
+   }
+  ]
+ },
+ "sections": [
+  {
+   "number": 1,
+   "start_time": 0.0,
+   "end_time": 2.904444,
+   "duration": 2.904444,
+   "source_partition": "story_beat",
+   "is_opening": true,
+   "overlaps_hook_window": true,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 704,
+     "start_time": 0.0,
+     "end_time": 2.44,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 2.44
+    },
+    {
+     "id": 705,
+     "start_time": 2.72,
+     "end_time": 4.8,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 0.184444
+    }
+   ],
+   "on_screen_text": [],
+   "visual": {
+    "objects": [
+     {
+      "label": "person",
+      "category": "person",
+      "count": 1
+     }
+    ],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [
+     1684
+    ],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 2.904444,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5951,
+     5953
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10129,
+     "candidate_start": 0.15,
+     "candidate_end": 0.15,
+     "device_type": "unclear",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "hook_window",
+    "speech"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 2,
+   "start_time": 2.904444,
+   "end_time": 7.08,
+   "duration": 4.175556,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 705,
+     "start_time": 2.72,
+     "end_time": 4.8,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 1.895556
+    },
+    {
+     "id": 706,
+     "start_time": 4.8,
+     "end_time": 6.96,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 2.16
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1253,
+     "text": "[caption redacted]",
+     "start_time": 3.066666692307692,
+     "end_time": 3.066666692307692,
+     "confidence_score": 0.7653471559302389,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1247,
+     "text": "[caption redacted]",
+     "start_time": 3.066666692307692,
+     "end_time": 9.200000076923077,
+     "confidence_score": 0.7945284876261615,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    },
+    {
+     "id": 1257,
+     "text": "[caption redacted]",
+     "start_time": 6.133333384615384,
+     "end_time": 6.133333384615384,
+     "confidence_score": 0.9997801057175978,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2203
+    },
+    {
+     "id": 1255,
+     "text": "[caption redacted]",
+     "start_time": 6.133333384615384,
+     "end_time": 6.133333384615384,
+     "confidence_score": 0.8344754530438074,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    }
+   ],
+   "visual": {
+    "objects": [],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 4.175556,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5951,
+     5954
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10130,
+     "candidate_start": 2.904444461538462,
+     "candidate_end": 3.066666692307692,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    },
+    {
+     "attempt_id": 10131,
+     "candidate_start": 6.133333384615384,
+     "candidate_end": 7.08,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 3,
+   "start_time": 7.08,
+   "end_time": 10.041667,
+   "duration": 2.961667,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 707,
+     "start_time": 7.2,
+     "end_time": 8.84,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 1.64
+    },
+    {
+     "id": 708,
+     "start_time": 9.08,
+     "end_time": 11.8,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 0.961667
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1247,
+     "text": "[caption redacted]",
+     "start_time": 3.066666692307692,
+     "end_time": 9.200000076923077,
+     "confidence_score": 0.7945284876261615,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    }
+   ],
+   "visual": {
+    "objects": [],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 2.961667,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5951,
+     5955
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 4,
+   "start_time": 10.041667,
+   "end_time": 12.083333,
+   "duration": 2.041667,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 708,
+     "start_time": 9.08,
+     "end_time": 11.8,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 1.758333
+    },
+    {
+     "id": 709,
+     "start_time": 12.0,
+     "end_time": 14.4,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 0.083333
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1259,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 15.33333346153846,
+     "confidence_score": 0.8229128910632549,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    },
+    {
+     "id": 1267,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 12.266666769230769,
+     "confidence_score": 0.999716581908919,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1271,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 12.266666769230769,
+     "confidence_score": 0.8235695530265266,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1275,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 12.266666769230769,
+     "confidence_score": 0.8498232110433834,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1279,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 12.266666769230769,
+     "confidence_score": 0.9989727810679923,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2203
+    }
+   ],
+   "visual": {
+    "objects": [
+     {
+      "label": "person",
+      "category": "person",
+      "count": 1
+     }
+    ],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [
+     1685
+    ],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 2.041667,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5951,
+     5956
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10132,
+     "candidate_start": 10.04166675,
+     "candidate_end": 10.04166675,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 5,
+   "start_time": 12.083333,
+   "end_time": 14.46,
+   "duration": 2.376667,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 709,
+     "start_time": 12.0,
+     "end_time": 14.4,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 2.316667
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1259,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 15.33333346153846,
+     "confidence_score": 0.8229128910632549,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    },
+    {
+     "id": 1267,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 12.266666769230769,
+     "confidence_score": 0.999716581908919,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1271,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 12.266666769230769,
+     "confidence_score": 0.8235695530265266,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1275,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 12.266666769230769,
+     "confidence_score": 0.8498232110433834,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1279,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 12.266666769230769,
+     "confidence_score": 0.9989727810679923,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2203
+    }
+   ],
+   "visual": {
+    "objects": [],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 2.376667,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5951,
+     5957
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10133,
+     "candidate_start": 12.083333384615385,
+     "candidate_end": 12.266666769230769,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 6,
+   "start_time": 14.46,
+   "end_time": 19.961111,
+   "duration": 5.501111,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 710,
+     "start_time": 14.52,
+     "end_time": 15.96,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 1.44
+    },
+    {
+     "id": 711,
+     "start_time": 16.240000000000002,
+     "end_time": 19.32,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 3.08
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1259,
+     "text": "[caption redacted]",
+     "start_time": 10.04166675,
+     "end_time": 15.33333346153846,
+     "confidence_score": 0.8229128910632549,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    },
+    {
+     "id": 1291,
+     "text": "[caption redacted]",
+     "start_time": 14.987500125,
+     "end_time": 15.33333346153846,
+     "confidence_score": 0.8327046152809361,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1295,
+     "text": "[caption redacted]",
+     "start_time": 14.987500125,
+     "end_time": 15.33333346153846,
+     "confidence_score": 0.9999215602874756,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1283,
+     "text": "[caption redacted]",
+     "start_time": 14.987500125,
+     "end_time": 15.33333346153846,
+     "confidence_score": 0.7984934328006608,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1287,
+     "text": "[caption redacted]",
+     "start_time": 14.987500125,
+     "end_time": 15.33333346153846,
+     "confidence_score": 0.9936718427735027,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2203
+    },
+    {
+     "id": 1299,
+     "text": "[caption redacted]",
+     "start_time": 15.33333346153846,
+     "end_time": 15.33333346153846,
+     "confidence_score": 0.8307382933866264,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1311,
+     "text": "[caption redacted]",
+     "start_time": 18.400000153846154,
+     "end_time": 19.9333335,
+     "confidence_score": 0.9373254692816556,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1307,
+     "text": "[caption redacted]",
+     "start_time": 18.400000153846154,
+     "end_time": 19.9333335,
+     "confidence_score": 0.9987811622240618,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1315,
+     "text": "[caption redacted]",
+     "start_time": 18.400000153846154,
+     "end_time": 19.9333335,
+     "confidence_score": 0.9974789345795482,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2203
+    },
+    {
+     "id": 1301,
+     "text": "[caption redacted]",
+     "start_time": 18.400000153846154,
+     "end_time": 21.466666846153846,
+     "confidence_score": 0.8342379060222153,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    },
+    {
+     "id": 1319,
+     "text": "[caption redacted]",
+     "start_time": 19.9333335,
+     "end_time": 19.9333335,
+     "confidence_score": 0.8123600912679221,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    }
+   ],
+   "visual": {
+    "objects": [
+     {
+      "label": "person",
+      "category": "person",
+      "count": 2
+     }
+    ],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [
+     1686,
+     1687
+    ],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 5.501111,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5951,
+     5958
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10134,
+     "candidate_start": 14.46,
+     "candidate_end": 15.33333346153846,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    },
+    {
+     "attempt_id": 10135,
+     "candidate_start": 19.9333335,
+     "candidate_end": 19.96111125,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 7,
+   "start_time": 19.961111,
+   "end_time": 22.84,
+   "duration": 2.878889,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 712,
+     "start_time": 20.88,
+     "end_time": 22.84,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 1.96
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1301,
+     "text": "[caption redacted]",
+     "start_time": 18.400000153846154,
+     "end_time": 21.466666846153846,
+     "confidence_score": 0.8342379060222153,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    },
+    {
+     "id": 1321,
+     "text": "[caption redacted]",
+     "start_time": 21.466666846153846,
+     "end_time": 21.466666846153846,
+     "confidence_score": 0.6165711175101574,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    }
+   ],
+   "visual": {
+    "objects": [],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 2.878889,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5951,
+     5959
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10136,
+     "candidate_start": 21.466666846153846,
+     "candidate_end": 21.466666846153846,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 8,
+   "start_time": 22.84,
+   "end_time": 24.70625,
+   "duration": 1.86625,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 713,
+     "start_time": 22.84,
+     "end_time": 25.12,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 1.86625
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1327,
+     "text": "[caption redacted]",
+     "start_time": 24.533333538461537,
+     "end_time": 24.879166875000003,
+     "confidence_score": 0.999541704964942,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2203
+    },
+    {
+     "id": 1323,
+     "text": "[caption redacted]",
+     "start_time": 24.533333538461537,
+     "end_time": 24.879166875000003,
+     "confidence_score": 0.7559908611022434,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    }
+   ],
+   "visual": {
+    "objects": [],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 1.86625,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5951,
+     5960
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10137,
+     "candidate_start": 22.84,
+     "candidate_end": 22.84,
+     "device_type": "unclear",
+     "status": "rejected"
+    },
+    {
+     "attempt_id": 10138,
+     "candidate_start": 24.533333538461537,
+     "candidate_end": 25.380000000000003,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 9,
+   "start_time": 24.70625,
+   "end_time": 26.8,
+   "duration": 2.09375,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 713,
+     "start_time": 22.84,
+     "end_time": 25.12,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 0.41375
+    },
+    {
+     "id": 714,
+     "start_time": 25.64,
+     "end_time": 26.8,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 1.16
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1327,
+     "text": "[caption redacted]",
+     "start_time": 24.533333538461537,
+     "end_time": 24.879166875000003,
+     "confidence_score": 0.999541704964942,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2203
+    },
+    {
+     "id": 1323,
+     "text": "[caption redacted]",
+     "start_time": 24.533333538461537,
+     "end_time": 24.879166875000003,
+     "confidence_score": 0.7559908611022434,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1331,
+     "text": "[caption redacted]",
+     "start_time": 24.879166875000003,
+     "end_time": 30.66666692307692,
+     "confidence_score": 0.7654982763667347,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    }
+   ],
+   "visual": {
+    "objects": [
+     {
+      "label": "person",
+      "category": "person",
+      "count": 1
+     }
+    ],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [
+     1688
+    ],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 2.09375,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5951,
+     5961,
+     5952
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10138,
+     "candidate_start": 24.533333538461537,
+     "candidate_end": 25.380000000000003,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 10,
+   "start_time": 26.8,
+   "end_time": 32.98,
+   "duration": 6.18,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 715,
+     "start_time": 26.8,
+     "end_time": 29.36,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 2.56
+    },
+    {
+     "id": 716,
+     "start_time": 30.16,
+     "end_time": 32.48,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 2.32
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1331,
+     "text": "[caption redacted]",
+     "start_time": 24.879166875000003,
+     "end_time": 30.66666692307692,
+     "confidence_score": 0.7654982763667347,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    },
+    {
+     "id": 1339,
+     "text": "[caption redacted]",
+     "start_time": 27.60000023076923,
+     "end_time": 29.825000250000002,
+     "confidence_score": 0.8479080718764689,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1343,
+     "text": "[caption redacted]",
+     "start_time": 27.60000023076923,
+     "end_time": 29.825000250000002,
+     "confidence_score": 0.8269917949579162,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    }
+   ],
+   "visual": {
+    "objects": [
+     {
+      "label": "person",
+      "category": "person",
+      "count": 1
+     }
+    ],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [
+     1689
+    ],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 6.18,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5952,
+     5962
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10139,
+     "candidate_start": 26.8,
+     "candidate_end": 26.8,
+     "device_type": "pacing_change",
+     "status": "rejected"
+    },
+    {
+     "attempt_id": 10140,
+     "candidate_start": 29.825000250000002,
+     "candidate_end": 29.825000250000002,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 11,
+   "start_time": 32.98,
+   "end_time": 33.733334,
+   "duration": 0.753334,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 717,
+     "start_time": 33.48,
+     "end_time": 36.04,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 0.253334
+    }
+   ],
+   "on_screen_text": [],
+   "visual": {
+    "objects": [],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 0.753334,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5952,
+     5963
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10141,
+     "candidate_start": 32.98,
+     "candidate_end": 33.733333615384616,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 12,
+   "start_time": 33.733334,
+   "end_time": 36.22,
+   "duration": 2.486666,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 717,
+     "start_time": 33.48,
+     "end_time": 36.04,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 2.306666
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1355,
+     "text": "[caption redacted]",
+     "start_time": 33.733333615384616,
+     "end_time": 33.733333615384616,
+     "confidence_score": 0.7396929211352709,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1347,
+     "text": "[caption redacted]",
+     "start_time": 33.733333615384616,
+     "end_time": 39.716667,
+     "confidence_score": 0.8870261982575616,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    },
+    {
+     "id": 1357,
+     "text": "[caption redacted]",
+     "start_time": 34.770833625,
+     "end_time": 34.770833625,
+     "confidence_score": 0.833964141761204,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    }
+   ],
+   "visual": {
+    "objects": [
+     {
+      "label": "person",
+      "category": "person",
+      "count": 1
+     }
+    ],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [
+     1690
+    ],
+    "motion_evidence_shot_ids": [
+     3907
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [],
+    "silence_seconds": 0
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 2.486666,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5952,
+     5964
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10142,
+     "candidate_start": 34.770833625,
+     "candidate_end": 34.770833625,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 13,
+   "start_time": 36.22,
+   "end_time": 42.631287,
+   "duration": 6.411287,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": "[spoken line redacted]",
+   "transcript_truncated": false,
+   "speech": [
+    {
+     "id": 718,
+     "start_time": 36.4,
+     "end_time": 39.120000000000005,
+     "text": "[spoken line redacted]",
+     "language": "hi",
+     "overlap_seconds": 2.72
+    }
+   ],
+   "on_screen_text": [
+    {
+     "id": 1347,
+     "text": "[caption redacted]",
+     "start_time": 33.733333615384616,
+     "end_time": 39.716667,
+     "confidence_score": 0.8870261982575616,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    },
+    {
+     "id": 1359,
+     "text": "[caption redacted]",
+     "start_time": 36.80000030769231,
+     "end_time": 36.80000030769231,
+     "confidence_score": 0.9979719907232865,
+     "certainty": "MEASURED",
+     "recurring_element_id": null
+    },
+    {
+     "id": 1361,
+     "text": "[caption redacted]",
+     "start_time": 42.55555566666666,
+     "end_time": 42.55555566666666,
+     "confidence_score": 0.6182163491304125,
+     "certainty": "MEASURED",
+     "recurring_element_id": 2202
+    }
+   ],
+   "visual": {
+    "objects": [
+     {
+      "label": "person",
+      "category": "person",
+      "count": 2
+     }
+    ],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [
+     1691,
+     1692
+    ],
+    "motion_evidence_shot_ids": [
+     3907,
+     3908
+    ],
+    "transition_evidence_ids": [
+     2208
+    ]
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [
+     {
+      "id": 2204,
+      "start_time": 39.604082,
+      "end_time": 40.301633,
+      "overlap_seconds": 0.697551
+     },
+     {
+      "id": 2205,
+      "start_time": 41.51093,
+      "end_time": 43.903107,
+      "overlap_seconds": 1.120357
+     }
+    ],
+    "silence_seconds": 1.817908
+   },
+   "pacing": {
+    "shot_count": 2,
+    "cut_count": 1,
+    "average_shot_exposure_seconds": 3.205644,
+    "cuts_per_minute": 9.358495,
+    "pacing_phase_ids": [
+     5952,
+     5965
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [
+    {
+     "attempt_id": 10143,
+     "candidate_start": 36.22,
+     "candidate_end": 36.80000030769231,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    },
+    {
+     "attempt_id": 10144,
+     "candidate_start": 39.366667,
+     "candidate_end": 39.9528575,
+     "device_type": "scene_switch",
+     "status": "rejected"
+    },
+    {
+     "attempt_id": 10145,
+     "candidate_start": 42.55555566666666,
+     "candidate_end": 42.63128708333333,
+     "device_type": "text_reveal",
+     "status": "rejected"
+    }
+   ],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "speech",
+    "on_screen_text",
+    "silence",
+    "cut"
+   ],
+   "certainty": "MEASURED"
+  },
+  {
+   "number": 14,
+   "start_time": 42.631287,
+   "end_time": 43.9,
+   "duration": 1.268713,
+   "source_partition": "story_beat",
+   "is_opening": false,
+   "overlaps_hook_window": false,
+   "transcript_excerpt": null,
+   "transcript_truncated": false,
+   "speech": [],
+   "on_screen_text": [],
+   "visual": {
+    "objects": [],
+    "persistent_visual_element_count": 0,
+    "keyframe_ids": [],
+    "motion_evidence_shot_ids": [
+     3908
+    ],
+    "transition_evidence_ids": []
+   },
+   "audio": {
+    "audio_stream_present": true,
+    "silence_intervals": [
+     {
+      "id": 2205,
+      "start_time": 41.51093,
+      "end_time": 43.903107,
+      "overlap_seconds": 1.268713
+     }
+    ],
+    "silence_seconds": 1.268713
+   },
+   "pacing": {
+    "shot_count": 1,
+    "cut_count": 0,
+    "average_shot_exposure_seconds": 1.268713,
+    "cuts_per_minute": 0.0,
+    "pacing_phase_ids": [
+     5952,
+     5966
+    ]
+   },
+   "retention_devices": [],
+   "rejected_candidates": [],
+   "interpretive": {
+    "narrative_role": null,
+    "messaging_role": null,
+    "emotional_function": null,
+    "cta_role": null,
+    "status": "unsupported_in_v1"
+   },
+   "features": [
+    "silence"
+   ],
+   "certainty": "MEASURED"
+  }
+ ],
+ "evidence_coverage": {
+  "available": {
+   "audio_structure": true,
+   "editing_rhythm": true,
+   "hook_classification": true,
+   "hook_window": true,
+   "retention_accepted_devices": false,
+   "retention_examined": true,
+   "scenes": true,
+   "shots": true,
+   "speech": true,
+   "story_beats": true,
+   "technical": true,
+   "text": true
+  },
+  "counts": {
+   "shots": 2,
+   "speech_segments": 15,
+   "text_elements": 30,
+   "visual_objects": 9,
+   "silence_intervals": 2,
+   "scenes": 2,
+   "story_beats": 14,
+   "pacing_phases": 16,
+   "retention_examined": 17,
+   "retention_accepted": 0
+  },
+  "stage_summary": {
+   "complete": 19
+  },
+  "stages_not_done": []
+ },
+ "gaps": [
+  {
+   "field": "narrative_role",
+   "kind": "not_established",
+   "reason": "Scene.narrative_role is not populated by any upstream stage (that classification pass is deferred)",
+   "section_number": null
+  },
+  {
+   "field": "messaging_role",
+   "kind": "unsupported_in_v1",
+   "reason": "no upstream analysis produces messaging roles",
+   "section_number": null
+  },
+  {
+   "field": "emotional_function",
+   "kind": "unsupported_in_v1",
+   "reason": "no upstream analysis produces emotional or psychological function",
+   "section_number": null
+  },
+  {
+   "field": "cta_role",
+   "kind": "unsupported_in_v1",
+   "reason": "no upstream analysis produces CTA roles (CTA analysis does not exist yet)",
+   "section_number": null
+  }
+ ],
+ "provenance": {
+  "anatomy_version": "c2-v1",
+  "reference_video_id": 5127,
+  "video_analysis_id": 5368,
+  "derived_from": "deconstruction/full",
+  "orchestration_status": null,
+  "llm_calls": 0,
+  "persisted": false,
+  "fingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+  "notes": [
+   "Deterministic derivation from the C1 aggregate; no AI call, no clock, no persistence.",
+   "Section facts are MEASURED (time-partition and overlap arithmetic over persisted evidence); accepted retention devices and the hook classification keep their own INFERRED certainty.",
+   "Interpretive fields are null unless upstream evidence supplies them; see gaps."
+  ]
+ }
+}
