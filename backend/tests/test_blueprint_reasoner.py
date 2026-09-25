@@ -21,12 +21,15 @@ from app.services.blueprint_reasoner import (
 )
 from app.services.blueprint_reasoner import router as bp_router
 from app.services.blueprint_reasoner.contract import MAX_FIELD_CHARS, MAX_SECTIONS
+from app.services.blueprint_reasoner.claim_guard import find_claim
+from app.services.blueprint_reasoner.contract import RATIONALE_MIN_CHARS, schema_requires_rationale
 from app.services.blueprint_reasoner.guards import (
     META_STOPWORDS, blocked_source_terms, reject_final_copy, reject_prohibited_elements,
 )
 from app.services.blueprint_reasoner.intent import intent_gaps, intent_tokens, mandatory_point_ids
 from app.services.blueprint_reasoner.parsing import decision_from_payload, parse_json_object
 from app.services.blueprint_reasoner.provider_input import build_reasoner_input
+from app.services.blueprint_reasoner.validation import quality_findings
 from app.services.blueprint_reasoner.providers import anthropic_provider
 from app.services.blueprint_reasoner.providers.anthropic_provider import (
     BLUEPRINT_EFFORT, BLUEPRINT_PROMPT_VERSION, MAX_RESPONSE_TOKENS, SYSTEM_PROMPT, AnthropicBlueprintReasoner, build_user_prompt,
@@ -111,11 +114,15 @@ def tile_payload(*, cta=True, mps=True, anat_max=6):
     p = {
         "structural_approach": "Open with a bold, general claim about a tile decision, contrast two outcomes of that one decision, reinforce the explanation with synchronized on-screen text, and close with an invitation to the showroom.",
         "mechanism_dispositions": [
-            {"mechanism_id": "M01", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": [1, 2]},
-            {"mechanism_id": "M02", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": [3]},
-            {"mechanism_id": "M03", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": [4]},
+            {"mechanism_id": "M01", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": [1, 2],
+             "application_rationale": "Sections 1-2 state the bold framing before any explanation and then set out the decision, applying the opening principle to the new subject."},
+            {"mechanism_id": "M02", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": [3],
+             "application_rationale": "Section 3 holds the same room and layout constant while varying only the tile choice, so the two outcomes form a controlled contrast."},
+            {"mechanism_id": "M03", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": [4],
+             "application_rationale": "Section 4 restates each key difference in synchronized on-screen text as it is spoken, reinforcing the message through a parallel channel."},
             {"mechanism_id": "M04", "decision": "NOT_USED", "reason_category": "unsuitable_for_platform",
-             "reason": "A single uncut shot with one late cut does not suit a demonstration-led short-form format.", "applied_in_sections": []},
+             "reason": "A single uncut shot with one late cut does not suit a demonstration-led short-form format.", "applied_in_sections": [],
+             "application_rationale": None},
         ],
         "sections": [
             sec(1, "Establish one bold framing of the tile decision before any explanation", "opening", 6, ["M01"], [1],
@@ -290,19 +297,20 @@ def test_not_every_mechanism_has_to_be_used_and_using_all_is_also_valid_when_eac
     def fewer(p):
         for d in p["mechanism_dispositions"]:
             if d["mechanism_id"] == "M03":
-                d.update(decision="NOT_USED", reason_category="redundant_with_another_mechanism", reason="On-screen reinforcement is already covered by the contrast section.", applied_in_sections=[])
+                d.update(decision="NOT_USED", reason_category="redundant_with_another_mechanism", reason="On-screen reinforcement is already covered by the contrast section.", applied_in_sections=[], application_rationale=None)
         p["sections"][3]["mechanisms_applied"] = []
     validate(edit(fewer))
     def all_used(p):
         for d in p["mechanism_dispositions"]:
             if d["mechanism_id"] == "M04":
-                d.update(decision="USED", reason_category=None, reason=None, applied_in_sections=[5])
+                d.update(decision="USED", reason_category=None, reason=None, applied_in_sections=[5],
+                         application_rationale="Section 5 eases the pace into a quieter close, applying the closure principle at the end of the plan.")
         p["sections"][4]["mechanisms_applied"] = ["M04"]
     validate(edit(all_used))
 
 
 @pytest.mark.parametrize("mutation, match", [
-    (lambda p: p["mechanism_dispositions"].append({"mechanism_id": "M99", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": [1]}), "unknown mechanism id"),
+    (lambda p: p["mechanism_dispositions"].append({"mechanism_id": "M99", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": [1], "application_rationale": "Section 1 applies the invented mechanism to the opening of the plan."}), "unknown mechanism id"),
     (lambda p: p["mechanism_dispositions"].pop(), "omits C3 mechanism"),
     (lambda p: p["mechanism_dispositions"].append(dict(p["mechanism_dispositions"][0])), "more than once"),
     (lambda p: p["sections"][0].update(mechanisms_applied=["M77"]), "unknown mechanism"),
@@ -318,7 +326,7 @@ def test_mechanism_ids_and_dispositions_are_validated_against_the_c3_result(muta
 def test_all_mechanisms_not_used_is_rejected_because_nothing_was_transferred():
     def none_used(p):
         for d in p["mechanism_dispositions"]:
-            d.update(decision="NOT_USED", reason_category="unsuitable_for_objective", reason="This mechanism does not suit the stated objective.", applied_in_sections=[])
+            d.update(decision="NOT_USED", reason_category="unsuitable_for_objective", reason="This mechanism does not suit the stated objective.", applied_in_sections=[], application_rationale=None)
         for s in p["sections"]:
             s["mechanisms_applied"] = []
     rejects(edit(none_used), "transfers nothing")
@@ -383,13 +391,13 @@ def test_short_shared_phrases_that_are_not_source_wording_are_allowed():
 
 @pytest.mark.parametrize("claim", [
     "This structure will increase retention.", "This hook will perform better.", "This mechanism will drive engagement.",
-    "The section makes viewers continue watching.", "It improves performance.", "It works because it is tight.", "This drives conversions.",
+    "The section makes viewers continue watching.", "It improves performance.", "This structure works because it is tight.", "This drives conversions.",
     "The opening is highly effective.", "It went viral because of the contrast.",
 ])
 def test_performance_and_causal_claims_are_rejected_in_any_field(claim):
-    rejects(edit(lambda p: p["sections"][1].update(content_instruction=f"Introduce the two options. {claim}")), "prohibited")
-    rejects(edit(lambda p: p.update(structural_approach=claim)), "prohibited")
-    rejects(edit(lambda p: p.update(limitations=[claim])), "prohibited")
+    rejects(edit(lambda p: p["sections"][1].update(content_instruction=f"Introduce the two options. {claim}")), "claim")
+    rejects(edit(lambda p: p.update(structural_approach=claim)), "claim")
+    rejects(edit(lambda p: p.update(limitations=[claim])), "claim")
 
 
 def test_stating_which_mechanism_a_section_applies_is_not_a_performance_claim():
@@ -401,11 +409,11 @@ def test_stating_which_mechanism_a_section_applies_is_not_a_performance_claim():
 def test_a_prohibited_element_may_only_appear_as_an_explicit_exclusion():
     validate(tile_payload())  # section 5 contains "avoid price comparisons"
     rejects(edit(lambda p: p["sections"][1].update(content_instruction="Introduce the two options with price comparisons between them.")), "PROHIBITED element")
-    rejects(edit(lambda p: p["sections"][3].update(speech_direction="Promise guaranteed results for either finish.")), "PROHIBITED element|prohibited")   # un-negated: rejected
+    rejects(edit(lambda p: p["sections"][3].update(speech_direction="Promise guaranteed results for either finish.")), "PROHIBITED element|claim")   # un-negated: rejected
     # naming a prohibited element in order to EXCLUDE it is not itself a performance claim, even when the element is worded like one
     validate(edit(lambda p: p["sections"][4].update(speech_direction="Warm, reassuring close; avoid price comparisons and guaranteed results.")))
     # ...but the exclusion must be real: an instruction elsewhere in the same field is still caught
-    rejects(edit(lambda p: p["sections"][4].update(speech_direction="Avoid price comparisons. Promise guaranteed results.")), "PROHIBITED element|prohibited")
+    rejects(edit(lambda p: p["sections"][4].update(speech_direction="Avoid price comparisons. Promise guaranteed results.")), "PROHIBITED element|claim")
     # explanatory text may simply name the element
     validate(edit(lambda p: p["sections"][4].update(limitations=["Claims about guaranteed results were excluded as the caller prohibited them."])))
     validate(edit(lambda p: p["sections"][3].update(speech_direction="Do not promise guaranteed results for either finish.")))
@@ -675,7 +683,7 @@ async def test_the_adapter_sends_the_documented_request_and_parses_a_valid_respo
     prompt = kwargs["messages"][0]["content"]
     assert prompt.startswith("Blueprint input (compact JSON):\n") and "\n  " not in prompt
     assert all(t not in prompt for _, _, _, t in SOURCE_LINES)
-    assert out.reasoning_contract_version == BLUEPRINT_PROMPT_VERSION == "v2" and len(out.sections) == 5
+    assert out.reasoning_contract_version == BLUEPRINT_PROMPT_VERSION == "v3" and len(out.sections) == 5
 
 
 async def test_truncated_empty_and_abnormal_responses_are_rejected_with_diagnostics(monkeypatch):
@@ -707,7 +715,7 @@ def test_the_system_prompt_states_the_non_negotiables():
                    "PROHIBITED", "desired_cta", "15%", "blocked_source_terms", "do_not_carry_over", "NO PERFORMANCE CLAIMS", "begin with"):
         assert phrase in SYSTEM_PROMPT, phrase
     assert "even to say you are avoiding it" in SYSTEM_PROMPT
-    assert "<<" not in SYSTEM_PROMPT and BLUEPRINT_PROMPT_VERSION == "v2"
+    assert "<<" not in SYSTEM_PROMPT and BLUEPRINT_PROMPT_VERSION == "v3"
 
 
 def _max_blueprint_payload(scale: float) -> dict:
@@ -720,7 +728,7 @@ def _max_blueprint_payload(scale: float) -> dict:
                      "speech_direction": words(30), "pacing_direction": words(20), "transition_direction": words(12), "cta_direction": words(20),
                      "mandatory_points_assigned": ["MP01"], "confidence": "medium", "limitations": [words(15)] * 2}
     return {"structural_approach": words(40),
-            "mechanism_dispositions": [{"mechanism_id": "M01", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": list(range(1, 13))}]
+            "mechanism_dispositions": [{"mechanism_id": "M01", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": list(range(1, 13)), "application_rationale": words(50)}]
             + [{"mechanism_id": f"M{i:02d}", "decision": "NOT_USED", "reason_category": "other", "reason": words(25), "applied_in_sections": []} for i in range(2, 9)],
             "sections": [sec(i) for i in range(1, MAX_SECTIONS + 1)], "unassigned_mandatory_points": [], "limitations": [words(15)] * 4}
 
@@ -776,12 +784,12 @@ async def test_a_valid_provider_response_flows_through_the_real_router_validatio
 
 
 @pytest.mark.parametrize("mutation, match", [
-    (lambda p: p["mechanism_dispositions"].append({"mechanism_id": "M99", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": [1]}), "unknown mechanism id"),
+    (lambda p: p["mechanism_dispositions"].append({"mechanism_id": "M99", "decision": "USED", "reason_category": None, "reason": None, "applied_in_sections": [1], "application_rationale": "Section 1 applies the invented mechanism to the opening of the plan."}), "unknown mechanism id"),
     (lambda p: p["sections"][4].update(mandatory_points_assigned=[]), "neither assigned"),
     (lambda p: p["sections"][1].update(content_instruction="Introduce the options; the woman archetype frames the choice."), "NON-TRANSFERABLE"),
     (lambda p: p["sections"][1].update(content_instruction='Say "this one choice changes everything for you" here.'), "final copy"),
     (lambda p: p["sections"][1].update(content_instruction="Introduce the options with price comparisons."), "PROHIBITED element"),
-    (lambda p: p["sections"][1].update(content_instruction="Introduce the options. This structure increases retention."), "prohibited"),
+    (lambda p: p["sections"][1].update(content_instruction="Introduce the options. This structure increases retention."), "claim"),
     (lambda p: p["sections"][1].update(speech_direction="Say never turn around and look back at the end."), "reproduces"),
 ])
 async def test_safeguards_apply_to_real_provider_output_through_the_router(monkeypatch, mutation, match):
@@ -828,5 +836,237 @@ def test_the_light_stemmer_catches_inflected_lifts_and_still_recognises_the_proh
     from app.services.blueprint_reasoner.guards import _stem
     assert _stem("gendered") == "gender" == _stem("genders") and _stem("turned") == _stem("turning") == _stem("turns") == "turn"
     assert _stem("guaranteed") == "guarante" and _stem("results") == "result" and _stem("class") == "class"
-    rejects(edit(lambda p: p["sections"][3].update(speech_direction="Promise guaranteed results for either finish.")), "PROHIBITED element|prohibited")
+    rejects(edit(lambda p: p["sections"][3].update(speech_direction="Promise guaranteed results for either finish.")), "PROHIBITED element|claim")
     validate(edit(lambda p: p["sections"][4].update(speech_direction="Warm, reassuring close; avoid price comparisons and guaranteed results.")))
+
+
+# ══ OFFLINE CORRECTION (after the first real response): null unknown keys, domain-aware claim guard, prompt v3, application_rationale ══
+
+# ── unknown keys: null is ignored, anything with content is rejected ─────────────────────────────
+
+def test_an_unknown_key_with_a_null_value_is_ignored_at_every_level_and_recorded():
+    p = tile_payload()
+    p["structural_role_note"] = None                                        # top level
+    p["sections"][2]["structural_role_note"] = None                         # the exact shape seen in the first real response
+    p["sections"][0]["source_anatomy_relationship"]["extra_note"] = None
+    p["mechanism_dispositions"][0]["helper"] = None
+    p["unassigned_mandatory_points"] = [{"id": "MP01", "reason": "Placed in the closing summary instead.", "note": None}]
+    p["sections"][0]["mandatory_points_assigned"] = []
+    p["sections"][2]["mandatory_points_assigned"] = []
+    p["sections"][3]["mandatory_points_assigned"] = []
+    d = decide(p)
+    assert sorted(d.ignored_null_fields) == sorted([
+        "Blueprint response.structural_role_note", "sections[3].structural_role_note", "sections[1].source_anatomy_relationship.extra_note",
+        "mechanism_dispositions[1].helper", "unassigned_mandatory_points[1].note"])
+    validate(p)
+    bp = finalize_blueprint(d, default_ctx(), PINS, [])
+    assert bp["provenance"]["ignored_null_fields"] == d.ignored_null_fields
+
+
+@pytest.mark.parametrize("where", ["top", "section", "relationship", "disposition", "unassigned"])
+def test_an_unknown_key_with_a_non_null_value_is_still_rejected(where):
+    p = tile_payload()
+    if where == "top":
+        p["structural_role_note"] = "important explanation"
+    elif where == "section":
+        p["sections"][2]["structural_role_note"] = "important explanation"
+    elif where == "relationship":
+        p["sections"][0]["source_anatomy_relationship"]["note"] = "x"
+    elif where == "disposition":
+        p["mechanism_dispositions"][0]["helper"] = "x"
+    else:
+        p["unassigned_mandatory_points"] = [{"id": "MP01", "reason": "Placed elsewhere in the plan.", "note": "x"}]
+    with pytest.raises(BlueprintReasoningError, match="unexpected"):
+        decide(p)
+
+
+@pytest.mark.parametrize("falsy", ["", 0, False, [], {}])
+def test_only_null_is_ignored_other_empty_values_are_still_unknown_fields(falsy):
+    p = tile_payload()
+    p["sections"][2]["structural_role_note"] = falsy
+    with pytest.raises(BlueprintReasoningError, match="unexpected field"):
+        decide(p)
+
+
+def test_a_null_value_never_rescues_a_missing_required_field():
+    p = tile_payload()
+    del p["sections"][1]["content_instruction"]
+    p["sections"][1]["structural_role_note"] = None
+    with pytest.raises(BlueprintReasoningError, match="missing required field"):
+        decide(p)
+
+
+# ── domain-aware claim guard: description vs content performance vs unsupported causation ────────
+
+@pytest.mark.parametrize("text", [
+    "Show a successful tile and room pairing.", "Compare two renovation outcomes.", "Show the resulting room appearance.",
+    "Explain the result of choosing the wrong material.", "Compare the performance of two materials in a wet room.",
+    "Explain what causes grout to discolour over time.", "That is why suitability depends on the room.", "Show the finished result of each option.",
+    "Explain how one choice can lead to a very different finished look.", "Show why a successful renovation starts with the right material.",
+    "Describe an unsuccessful pairing and what went wrong in the room.", "Highlight how each finish affects the room's appearance.",
+    "Explain how this section leads into the next comparison.", "The results of the two options are compared on screen.",
+    "Keep the outcome comparison neutral and factual.", "A well-matched tile and room deliver a durable result.",
+])
+def test_ordinary_domain_wording_about_success_outcomes_and_results_is_allowed(text):
+    assert find_claim(text) is None, find_claim(text)
+    validate(edit(lambda p: p["sections"][3].update(content_instruction=text)))
+
+
+@pytest.mark.parametrize("claim", [
+    "This hook increases retention.", "This structure performs better.", "This mechanism drives engagement.", "This video will convert viewers.",
+    "Using this approach guarantees results.", "Informed choice leads to better results.", "The opening is highly effective.",
+    "This section improves results.", "The approach works because it is tight.", "This makes viewers continue watching.", "It went viral.",
+    "This will boost sales.", "The structure produces better results.", "Viewers will definitely trust the brand.", "This format keeps viewers watching.",
+    "The sequence results in higher engagement.", "This hook is a strong hook.", "This content will succeed.", "It increases conversions.",
+])
+def test_content_performance_and_unsupported_causal_claims_are_rejected(claim):
+    assert find_claim(claim) is not None
+    rejects(edit(lambda p: p["sections"][3].update(content_instruction=f"Show the two options. {claim}")), "claim")
+
+
+def test_hedging_does_not_launder_a_content_performance_or_causal_claim():
+    for claim in ("This hook may increase retention.", "This structure could perform better.", "Informed choice tends to lead to better results.",
+                  "The approach appears to work because it is tight."):
+        assert find_claim(claim) is not None, claim
+
+
+def test_guarantee_is_a_claim_unless_it_is_explicitly_negated():
+    assert find_claim("Do not promise guaranteed results.") is None and find_claim("Avoid any guarantee of an outcome.") is None
+    assert find_claim("Promise guaranteed results.") is not None and find_claim("Do not hesitate; guarantee the outcome.") is not None
+
+
+def test_the_first_real_response_wording_is_classified_correctly():
+    """The three fields that tripped the reused C3 guard on the first real response."""
+    assert find_claim("State practical reasoning for this pairing's success.") is None                 # domain: the tile pairing
+    assert find_claim("Clean, well-lit shot conveying a successful outcome.") is None                  # domain: the room outcome
+    assert find_claim("Summarize the core takeaway that informed choice leads to better results") is not None   # unsupported causal claim
+
+
+# ── prompt v3 ───────────────────────────────────────────────────────────────────────────────────
+
+def test_prompt_v3_states_the_corrections_without_hard_coding_any_business_domain():
+    for phrase in ("Return ONLY the fields defined by this schema", "do not add null fields outside the schema", "DISTINCT SECTIONS", "distinct structural job",
+                   "could be combined without losing structural meaning", "EXAMPLE of progression, not a template", "DO NOT try to use every mechanism",
+                   "materially improve this NEW", "PRESERVE THE EXACT PRINCIPLE", "DEFINING RELATIONSHIP", "same situation with choice A versus the same situation with choice B",
+                   "application_rationale", "at most 400 characters", "NOT satisfied by contrast between two DIFFERENT subjects"):
+        assert phrase in SYSTEM_PROMPT, phrase
+    lowered = SYSTEM_PROMPT.lower()
+    for domain_word in ("tile", "renovation", "showroom", "bathroom"):
+        assert domain_word not in lowered, f"the prompt must not hard-code a business domain ({domain_word!r})"
+    assert BLUEPRINT_PROMPT_VERSION == "v3"
+
+
+# ── application_rationale ───────────────────────────────────────────────────────────────────────
+
+def test_application_rationale_is_required_for_every_used_mechanism_from_prompt_v3():
+    assert schema_requires_rationale("v3") and schema_requires_rationale("v10") and not schema_requires_rationale("v2") and not schema_requires_rationale("v1")
+    assert not schema_requires_rationale(None) and not schema_requires_rationale("draft")
+    p = tile_payload()
+    del p["mechanism_dispositions"][1]["application_rationale"]
+    with pytest.raises(BlueprintReasoningError, match="USED but has no application_rationale"):
+        decision_from_payload(p, reasoning_contract_version="v3")
+    p["mechanism_dispositions"][1]["application_rationale"] = "   "
+    with pytest.raises(BlueprintReasoningError, match="no application_rationale"):
+        decision_from_payload(p, reasoning_contract_version="v3")
+
+
+def test_a_pre_v3_response_without_rationales_still_parses_for_replay_and_the_gap_is_a_quality_note_not_a_rejection():
+    p = tile_payload()
+    for d in p["mechanism_dispositions"]:
+        d.pop("application_rationale", None)
+    d2 = decision_from_payload(p, reasoning_contract_version="v2")
+    validate_decision(d2, default_ctx())
+    notes = quality_findings(d2, default_ctx())
+    assert any("M01 is USED without an application_rationale" in n for n in notes)
+    bp = finalize_blueprint(d2, default_ctx(), PINS, [])
+    assert any(g["kind"] == "quality_note" and "application_rationale" in g["reason"] for g in bp["gaps"])
+
+
+@pytest.mark.parametrize("value, match", [
+    ("too short", "40-600 characters"), ("x" * 601, "40-600 characters"), (12345, "application_rationale"),
+])
+def test_an_application_rationale_must_be_a_real_explanation(value, match):
+    p = tile_payload()
+    p["mechanism_dispositions"][0]["application_rationale"] = value
+    with pytest.raises(BlueprintReasoningError, match=match):
+        decide(p)
+
+
+def test_a_not_used_mechanism_must_not_carry_an_application_rationale():
+    p = tile_payload()
+    p["mechanism_dispositions"][3]["application_rationale"] = "Section 5 would apply the pacing principle to the close of the plan."
+    with pytest.raises(BlueprintReasoningError, match="only valid for USED"):
+        decide(p)
+
+
+def test_the_rationale_must_say_where_the_principle_is_instantiated():
+    def rewrite(text):
+        def go(p):
+            p["mechanism_dispositions"][1]["application_rationale"] = text
+        return go
+    rejects(edit(rewrite("The contrast principle is applied faithfully to the new subject and preserved in the plan overall.")), "does not name any section")
+    rejects(edit(rewrite("Section 5 holds the room constant while contrasting two tile choices in the plan overall.")), "does not name any section")   # M02 is in section 3
+    validate(edit(rewrite("Section 3 holds the room and layout constant while contrasting two tile choices and their consequences.")))
+    validate(edit(rewrite("Sections 2\u20133 hold the room constant while contrasting two tile choices and their consequences.")))   # a range that includes 3
+    validate(edit(rewrite("Across sections 3, and 4 the same room is held constant while only the tile choice changes in the plan.")))
+
+
+def test_the_rationale_passes_the_same_text_guards_as_every_other_field():
+    def rewrite(text):
+        def go(p):
+            p["mechanism_dispositions"][1]["application_rationale"] = text
+        return go
+    rejects(edit(rewrite("Section 3 contrasts a betrayal story with the tile choice to show two outcomes in the plan.")), "NON-TRANSFERABLE")
+    rejects(edit(rewrite("Section 3 holds the room constant, and this contrast increases retention for the plan overall.")), "claim")
+    rejects(edit(rewrite('Section 3 holds the room constant and says "this one choice changes everything for you" here.')), "final copy")
+
+
+def test_the_rationale_is_carried_into_the_finalised_blueprint_and_the_response_schema():
+    from app.schemas.reconstruction_blueprint import Blueprint
+    bp = finalize_blueprint(decide(tile_payload()), default_ctx(), PINS, [])
+    disp = {d["mechanism_id"]: d for d in bp["mechanism_dispositions"]}
+    assert disp["M02"]["application_rationale"].startswith("Section 3 holds the same room") and disp["M04"]["application_rationale"] is None
+    assert Blueprint.model_validate(bp).mechanism_dispositions[1].application_rationale == disp["M02"]["application_rationale"]
+
+
+# ── non-blocking quality findings (repetition, mechanical use) ───────────────────────────────────
+
+def test_repetitive_sections_and_all_mechanisms_used_are_reported_as_quality_notes_not_rejections():
+    def repeat(p):
+        p["sections"][2]["section_purpose"] = p["sections"][1]["section_purpose"]
+        p["sections"][2]["content_instruction"] = p["sections"][1]["content_instruction"]
+    p = edit(repeat)
+    validate(p)                                                            # still valid: quality is a note, not a rule
+    notes = quality_findings(decide(p), default_ctx())
+    assert any(n.startswith("sections 2 and 3 have very similar instructions") and "100%" in n for n in notes)
+    bp = finalize_blueprint(decide(p), default_ctx(), PINS, [])
+    assert any(g["kind"] == "quality_note" and "sections 2 and 3" in g["reason"] for g in bp["gaps"])
+    assert not any("all 4 mechanisms" in n for n in notes)                 # M04 is NOT_USED in the fixture
+
+    def all_used(p):
+        p["mechanism_dispositions"][3].update(decision="USED", reason_category=None, reason=None, applied_in_sections=[5],
+                                              application_rationale="Section 5 eases the pace into a quieter close, applying the closure principle in the plan.")
+        p["sections"][4]["mechanisms_applied"] = ["M04"]
+    assert any("all 4 mechanisms were marked USED" in n for n in quality_findings(decide(edit(all_used)), default_ctx()))
+
+
+def test_distinct_sections_produce_no_repetition_note():
+    assert not any("very similar" in n for n in quality_findings(decide(tile_payload()), default_ctx()))
+
+
+# ── replaying the SHAPE of the first real response (the real one is replayed by the offline harness) ──
+
+def test_the_first_real_response_shape_now_passes_the_contract_and_fails_only_on_the_unsupported_causal_claim():
+    p = tile_payload()
+    for d in p["mechanism_dispositions"]:
+        d.pop("application_rationale", None)                               # a v2 response had no rationale field
+    p["sections"][3]["structural_role_note"] = None                        # the null extra key
+    p["sections"][2]["speech_direction"] = "State practical reasoning for this pairing's success."
+    p["sections"][3]["visual_direction"] = "Clean, well-lit shot conveying a successful outcome."
+    p["sections"][3]["section_purpose"] = "Summarize the core takeaway that informed choice leads to better results"
+    d = decision_from_payload(p, reasoning_contract_version="v2")           # A. contract: passes
+    assert d.ignored_null_fields == ["sections[4].structural_role_note"]
+    with pytest.raises(BlueprintReasoningError, match=r"section 4\.section_purpose makes a causal-outcome claim \('leads to better'\)"):   # B. safety: only the causal claim
+        validate_decision(d, default_ctx())
+    p["sections"][3]["section_purpose"] = "Summarize the core takeaway that matching the tile to the room matters"
+    validate_decision(decision_from_payload(p, reasoning_contract_version="v2"), default_ctx())

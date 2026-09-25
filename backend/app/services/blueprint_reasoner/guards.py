@@ -2,8 +2,9 @@
 
 Five independent guards, all raising BlueprintReasoningError (never silently editing the text):
 
-  1. PERFORMANCE / CAUSAL claims -- reuses C3's language guard unchanged (a blueprint transfers design logic; it never
-     claims that a structure increases retention, drives engagement, works because..., etc.).
+  1. PERFORMANCE / CAUSAL claims -- claim_guard.py (domain-aware; NOT C3's lexical list): a blueprint transfers design logic and never
+     claims that a structure increases retention, drives engagement, works because..., or leads to better results -- but it may
+     describe the caller's own subject matter ("a successful tile and room pairing", "compare two renovation outcomes").
   2. SOURCE COPY -- a run of consecutive words copied from the reference's transcript / on-screen text / C3's
      non-transferable descriptions (short run limit: a blueprint should be independently usable, so even a light lift is
      rejected). Reuses C3's verbatim matcher.
@@ -19,9 +20,9 @@ Five independent guards, all raising BlueprintReasoningError (never silently edi
 import re
 from dataclasses import dataclass, field
 
+from app.services.blueprint_reasoner.claim_guard import reject_claims
 from app.services.blueprint_reasoner.contract import BlueprintReasoningError, MAX_FIELD_CHARS
-from app.services.mechanism_reasoner.contract import MechanismReasoningError
-from app.services.mechanism_reasoner.language_guard import reject_prohibited_language, tokenize
+from app.services.mechanism_reasoner.language_guard import tokenize
 
 __all__ = [
     "SOURCE_COPY_LIMIT", "META_STOPWORDS", "GuardContext", "build_guard_context", "blocked_source_terms", "check_text",
@@ -66,17 +67,10 @@ def _stem(t: str) -> str:
     return t
 
 
-def _wrap(fn, *args):
-    """Runs a C3 guard and re-raises its MechanismReasoningError as a BlueprintReasoningError."""
-    try:
-        fn(*args)
-    except MechanismReasoningError as exc:
-        raise BlueprintReasoningError(str(exc)) from exc
-
-
 def reject_performance(field_name: str, text: str | None) -> None:
-    """C3's performance / outcome / causal guard, unchanged."""
-    _wrap(reject_prohibited_language, text)
+    """C4's content-performance / unsupported-causation guard (claim_guard): domain words such as 'success' or 'outcome' describing the
+    caller's subject matter are allowed; claims that the CONTENT performs, engages or converts are not."""
+    reject_claims(field_name, text)
 
 
 def _norm(text: str) -> list[str]:

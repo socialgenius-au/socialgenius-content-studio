@@ -3,7 +3,7 @@ has to obtain the JSON text. Raises BlueprintReasoningError (never a placeholder
 import json
 
 from app.services.blueprint_reasoner.contract import (
-    BlueprintDecision, BlueprintReasoningError, MechanismChoice, SectionPlan, UnassignedPoint,
+    BlueprintDecision, BlueprintReasoningError, MechanismChoice, SectionPlan, UnassignedPoint, schema_requires_rationale,
 )
 
 __all__ = ["parse_json_object", "decision_from_payload"]
@@ -15,7 +15,8 @@ _SECTION_REQUIRED = {
     "speech_direction", "pacing_direction", "mandatory_points_assigned", "confidence",
 }
 _SECTION_OPTIONAL = {"transition_direction", "cta_direction", "limitations"}
-_CHOICE_KEYS = {"mechanism_id", "decision", "reason_category", "reason", "applied_in_sections"}
+_CHOICE_KEYS = {"mechanism_id", "decision", "reason_category", "reason", "applied_in_sections", "application_rationale"}
+_REL_KEYS = {"relationship", "anatomy_section_numbers"}
 
 
 def parse_json_object(raw_text: str) -> dict:
@@ -42,27 +43,43 @@ def _obj(x, where: str) -> dict:
     return x
 
 
+def _clean_unknown(raw: dict, allowed: set[str], where: str, ignored: list[str]) -> dict:
+    """UNKNOWN key + null value -> dropped (recorded in `ignored`); UNKNOWN key + any non-null value -> rejected. Schema strictness is
+    otherwise unchanged: a stray null is harmless, an explanatory/helper field with content is not part of the schema."""
+    unknown = set(raw) - allowed
+    non_null = sorted(k for k in unknown if raw[k] is not None)
+    if non_null:
+        raise BlueprintReasoningError(f"{where} has unexpected field(s) {non_null}.")
+    ignored += [f"{where}.{k}" for k in sorted(unknown)]
+    return {k: v for k, v in raw.items() if k in allowed}
+
+
 def decision_from_payload(data: dict, *, reasoning_contract_version: str | None = None) -> BlueprintDecision:
     missing = {"structural_approach", "mechanism_dispositions", "sections"} - set(data)
     if missing:
         raise BlueprintReasoningError(f"Blueprint response is missing required field(s): {sorted(missing)}.")
-    unknown = set(data) - _TOP
-    if unknown:
-        raise BlueprintReasoningError(f"Blueprint response has unexpected top-level field(s) {sorted(unknown)}.")
+    ignored: list[str] = []
+    try:
+        data = _clean_unknown(data, _TOP, "Blueprint response", ignored)
+    except BlueprintReasoningError as exc:
+        raise BlueprintReasoningError(str(exc).replace("has unexpected field(s)", "has unexpected top-level field(s)")) from exc
+    require_rationale = schema_requires_rationale(reasoning_contract_version)
     for name in ("mechanism_dispositions", "sections", "unassigned_mandatory_points"):
         if name in data and not isinstance(data[name], list):
             raise BlueprintReasoningError(f"`{name}` must be a list.")
 
     choices = []
     for i, raw in enumerate(data["mechanism_dispositions"], 1):
-        raw = _obj(raw, f"mechanism_dispositions[{i}]")
-        bad = set(raw) - _CHOICE_KEYS
-        if bad:
-            raise BlueprintReasoningError(f"mechanism_dispositions[{i}] has unexpected field(s) {sorted(bad)}.")
+        raw = _clean_unknown(_obj(raw, f"mechanism_dispositions[{i}]"), _CHOICE_KEYS, f"mechanism_dispositions[{i}]", ignored)
+        if require_rationale and raw.get("decision") == "USED" and not (isinstance(raw.get("application_rationale"), str) and raw["application_rationale"].strip()):
+            raise BlueprintReasoningError(
+                f"mechanism_dispositions[{i}] ({raw.get('mechanism_id')}) is USED but has no application_rationale -- every USED mechanism must "
+                "explain HOW its transferable principle is instantiated in the blueprint.")
         try:
             choices.append(MechanismChoice(
                 mechanism_id=raw.get("mechanism_id"), decision=raw.get("decision"), reason=raw.get("reason"),
-                reason_category=raw.get("reason_category"), applied_in_sections=raw.get("applied_in_sections") or []))
+                reason_category=raw.get("reason_category"), applied_in_sections=raw.get("applied_in_sections") or [],
+                application_rationale=raw.get("application_rationale")))
         except ValueError as exc:
             raise BlueprintReasoningError(f"mechanism_dispositions[{i}] failed contract validation: {exc}") from exc
 
@@ -72,11 +89,10 @@ def decision_from_payload(data: dict, *, reasoning_contract_version: str | None 
         missing = _SECTION_REQUIRED - set(raw)
         if missing:
             raise BlueprintReasoningError(f"sections[{i}] is missing required field(s): {sorted(missing)}.")
-        bad = set(raw) - _SECTION_REQUIRED - _SECTION_OPTIONAL
-        if bad:
-            raise BlueprintReasoningError(f"sections[{i}] has unexpected field(s) {sorted(bad)}.")
-        rel = _obj(raw["source_anatomy_relationship"], f"sections[{i}].source_anatomy_relationship")
-        if set(rel) - {"relationship", "anatomy_section_numbers"} or "relationship" not in rel:
+        raw = _clean_unknown(raw, _SECTION_REQUIRED | _SECTION_OPTIONAL, f"sections[{i}]", ignored)
+        rel = _clean_unknown(_obj(raw["source_anatomy_relationship"], f"sections[{i}].source_anatomy_relationship"), _REL_KEYS,
+                             f"sections[{i}].source_anatomy_relationship", ignored)
+        if "relationship" not in rel:
             raise BlueprintReasoningError(f"sections[{i}].source_anatomy_relationship must be {{relationship, anatomy_section_numbers}}.")
         try:
             sections.append(SectionPlan(
@@ -93,7 +109,7 @@ def decision_from_payload(data: dict, *, reasoning_contract_version: str | None 
 
     unassigned = []
     for i, raw in enumerate(data.get("unassigned_mandatory_points") or [], 1):
-        raw = _obj(raw, f"unassigned_mandatory_points[{i}]")
+        raw = _clean_unknown(_obj(raw, f"unassigned_mandatory_points[{i}]"), {"id", "reason"}, f"unassigned_mandatory_points[{i}]", ignored)
         if set(raw) != {"id", "reason"}:
             raise BlueprintReasoningError(f"unassigned_mandatory_points[{i}] must be {{id, reason}}.")
         try:
@@ -105,6 +121,6 @@ def decision_from_payload(data: dict, *, reasoning_contract_version: str | None 
         return BlueprintDecision(
             structural_approach=data["structural_approach"], mechanism_choices=choices, sections=sections,
             unassigned_mandatory_points=unassigned, limitations=data.get("limitations") or [],
-            reasoning_contract_version=reasoning_contract_version)
+            reasoning_contract_version=reasoning_contract_version, ignored_null_fields=ignored)
     except ValueError as exc:
         raise BlueprintReasoningError(f"Blueprint response failed contract validation: {exc}") from exc

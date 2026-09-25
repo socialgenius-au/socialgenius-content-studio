@@ -37,7 +37,7 @@ BLUEPRINT_EFFORT = "low"
 
 # Explicit, stable reasoning-contract version for SYSTEM_PROMPT; bumped by hand whenever its meaning changes and recorded on
 # every durable attempt.
-BLUEPRINT_PROMPT_VERSION = "v2"
+BLUEPRINT_PROMPT_VERSION = "v3"
 # v2 (before the first real call): forbidden source words may not be mentioned even to say they are being avoided.
 
 _TEMPLATE = """You are a content-construction planner. You are given: (1) a NEW CONTENT INTENT (what the new piece is for), (2) \
@@ -53,11 +53,27 @@ hashtags, no emoji. Describe what a line/shot/caption must DO, never the line it
   GOOD: "Open with a concise unresolved contrast relevant to the audience's decision, before explaining the distinction."
   BAD:  "Are you tired of wasting money on bad accountants?"   (that is final copy)
 
-MECHANISMS. For EVERY mechanism in `mechanisms` (use its exact mechanism_id) decide USED or NOT_USED for THIS intent. Do not \
-copy mechanisms mechanically: use one only if it genuinely suits the objective, platform, tone and supplied information. USED \
-requires applied_in_sections (the NEW section numbers) and each of those sections must list the id in mechanisms_applied. \
-NOT_USED requires reason_category (one of <<NOT_USED_REASONS>>) and a concrete reason. At least one mechanism must be USED. When \
-you use a mechanism, apply ONLY its transferable_principle to the new subject -- translate it, do not restate it.
+MECHANISMS. For EVERY mechanism in `mechanisms` (use its exact mechanism_id) ask: "Does this mechanism materially improve this NEW \
+content for this audience, objective and platform?" If NO, mark it NOT_USED with a reason_category (one of <<NOT_USED_REASONS>>) and a \
+concrete reason. DO NOT try to use every mechanism: fewer, well-applied mechanisms are better than mechanically transferring all of them. \
+At least one must be USED. USED requires applied_in_sections (the NEW section numbers; each of those sections must list the id in \
+mechanisms_applied) and an application_rationale: one or two sentences (at most 400 characters) explaining HOW the mechanism's \
+transferable_principle is instantiated in your blueprint and WHERE, naming the section numbers (for example: "Sections 2-3 hold the \
+situation constant while contrasting two choices and their different consequences."). The rationale explains the plan to a reviewer; it \
+is not content.
+PRESERVE THE EXACT PRINCIPLE. Do not reduce a mechanism to its taxonomy label. Every USED mechanism must keep the DEFINING RELATIONSHIP \
+stated in its transferable_principle, not merely resemble its category. Example: a principle of "the same subject with opposing \
+outcomes" is NOT satisfied by contrast between two DIFFERENT subjects; hold the subject or decision constant and vary only the choice or \
+its consequence (same situation with choice A versus the same situation with choice B). Changing several things at once weakens a \
+controlled contrast. If you cannot preserve the defining relationship for this intent, mark the mechanism NOT_USED. Apply ONLY the \
+principle to the new subject -- translate it, do not restate it.
+
+DISTINCT SECTIONS. Every section must perform a distinct structural job. Do not create several sections that merely repeat "example, \
+then another example, then another example" unless each contributes a genuinely different reasoning step. Before returning, check \
+whether any two sections could be combined without losing structural meaning; if so, combine them. A useful progression often runs: \
+open, establish a controlled comparison, explain why the right choice changes with context, demonstrate a mismatch or its consequence, \
+derive a practical selection principle, resolve, then give the next step. That is an EXAMPLE of progression, not a template: choose the \
+structure the intent and mechanisms actually need.
 
 DO NOT CARRY OVER: every entry in `do_not_carry_over` and every word in `blocked_source_terms` is forbidden in your output \
 (the words are checked). Do not reuse the reference's subject matter, people, story, names, wording, visuals or audio. Do not \
@@ -93,10 +109,11 @@ STYLE. Concise. Every text value is at most <<MAX_FIELD_CHARS>> characters (aim 
 performance rating). limitations state what the intent did not supply that bears on the plan.
 
 OUTPUT: ONLY one JSON object -- begin with "{" and end with "}". No preamble, no markdown, no code fences, no commentary. Do \
-not deliberate at length; answer directly. Exactly these fields, no others:
+not deliberate at length; answer directly. Return ONLY the fields defined by this schema: do not add explanatory or helper fields, and do \
+not add null fields outside the schema. Exactly these fields, no others:
 {"structural_approach":"<one or two sentences>","mechanism_dispositions":[{"mechanism_id":"M01","decision":"USED","reason_category":null,\
-"reason":null,"applied_in_sections":[1]},{"mechanism_id":"M02","decision":"NOT_USED","reason_category":"<category>","reason":"<concrete reason>",\
-"applied_in_sections":[]}],"sections":[{"section_number":1,"section_purpose":"...","structural_role":"opening","target_duration_seconds":6,\
+"reason":null,"applied_in_sections":[1],"application_rationale":"<how the principle is instantiated, naming sections>"},{"mechanism_id":"M02",\
+"decision":"NOT_USED","reason_category":"<category>","reason":"<concrete reason>","applied_in_sections":[],"application_rationale":null}],"sections":[{"section_number":1,"section_purpose":"...","structural_role":"opening","target_duration_seconds":6,\
 "mechanisms_applied":["M01"],"source_anatomy_relationship":{"relationship":"adapts_reference_structure","anatomy_section_numbers":[1]},\
 "content_instruction":"...","required_information":["..."],"visual_direction":"...","text_direction":"...","speech_direction":"...",\
 "pacing_direction":"...","transition_direction":"..." or null,"cta_direction":"..." or null,"mandatory_points_assigned":["MP01"],\

@@ -18,6 +18,7 @@ final creative copy, prohibited elements).
 """
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 
 from app.services.blueprint_reasoner.contract import (
@@ -25,9 +26,31 @@ from app.services.blueprint_reasoner.contract import (
 )
 from app.services.blueprint_reasoner.guards import GuardContext, build_guard_context, check_text
 from app.services.blueprint_reasoner.intent import intent_gaps, intent_summary, intent_tokens, mandatory_point_ids
+from app.services.blueprint_reasoner.guards import _stem
 from app.services.mechanism_reasoner.anatomy_input import source_texts, valid_section_numbers
+from app.services.mechanism_reasoner.language_guard import tokenize
 
-__all__ = ["BlueprintContext", "build_context", "validate_decision", "finalize_blueprint", "blueprint_id_for"]
+__all__ = ["BlueprintContext", "build_context", "validate_decision", "finalize_blueprint", "blueprint_id_for", "quality_findings",
+           "SIMILARITY_THRESHOLD"]
+
+SIMILARITY_THRESHOLD = 0.3   # two sections whose instructions share >= 30% of their content words are flagged as repetitive (a NOTE, not a rejection)
+_QUALITY_STOP = frozenset("""
+that with this from into about which where when what while they them their there these those have has had been being were was will would
+could should than then also only over under after before during between within through across because each every both same very just even
+still show shows showing keep keeps kept make makes made use uses used using state states short brief single simple clear clean
+""".split())
+_RANGE = re.compile(r"(\d+)\s*(?:-|\u2013|\u2014|to)\s*(\d+)")
+
+
+def _referenced_numbers(text: str) -> set[int]:
+    """Section numbers a rationale mentions, expanding ranges ('sections 2-3' -> {2, 3})."""
+    nums: set[int] = set()
+    for a, b in _RANGE.findall(text or ""):
+        a, b = int(a), int(b)
+        if a <= b <= a + 20:
+            nums.update(range(a, b + 1))
+    nums.update(int(x) for x in re.findall(r"\d+", text or ""))
+    return nums
 
 COPY_POLICY = ("Instructions only. This blueprint contains no final hook lines, captions, scripts, headlines, CTA wording or "
                "voiceover copy; those are produced downstream from these instructions.")
@@ -72,6 +95,10 @@ def _validate_mechanisms(decision: BlueprintDecision, ctx: BlueprintContext) -> 
     choices = {c.mechanism_id: c for c in decision.mechanism_choices}
     if known and not any(c.decision == "USED" for c in choices.values()):
         _fail("no C3 mechanism is USED -- a blueprint that transfers nothing from the reference is not a reconstruction.")
+    for c in decision.mechanism_choices:
+        if c.decision == "USED" and c.application_rationale and not (_referenced_numbers(c.application_rationale) & set(c.applied_in_sections)):
+            _fail(f"{c.mechanism_id}.application_rationale does not name any section where the mechanism is applied ({sorted(c.applied_in_sections)}) -- "
+                  "it must say HOW the transferable principle is instantiated, and where.")
     numbers = {s.section_number for s in decision.sections}
     by_section = {s.section_number: set(s.mechanisms_applied) for s in decision.sections}
     for s in decision.sections:
@@ -155,6 +182,7 @@ def _validate_text(decision: BlueprintDecision, ctx: BlueprintContext) -> None:
         check_text(f"limitations[{i}]", text, g, instruction=False)
     for c in decision.mechanism_choices:
         check_text(f"{c.mechanism_id}.reason", c.reason, g, instruction=False)
+        check_text(f"{c.mechanism_id}.application_rationale", c.application_rationale, g, instruction=False)
     for u in decision.unassigned_mandatory_points:
         check_text(f"{u.id}.reason", u.reason, g, instruction=False)
     for s in decision.sections:
@@ -177,6 +205,34 @@ def validate_decision(decision: BlueprintDecision, ctx: BlueprintContext) -> Non
     _validate_text(decision, ctx)
 
 
+def _content_words(section) -> set[str]:
+    text = f"{section.section_purpose} {section.content_instruction}"
+    return {_stem(t) for t in tokenize(text) if len(t) >= 4 and t not in _QUALITY_STOP}
+
+
+def quality_findings(decision: BlueprintDecision, ctx: BlueprintContext) -> list[str]:
+    """NON-BLOCKING quality notes (recorded on the blueprint as `quality_note` gaps, never a rejection): repetitive sections, every mechanism
+    used mechanically, a USED mechanism with no application_rationale (a pre-v3 response). Deterministic and inspectable downstream."""
+    notes: list[str] = []
+    words = {s.section_number: _content_words(s) for s in decision.sections}
+    ids = sorted(words)
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            union = words[a] | words[b]
+            sim = len(words[a] & words[b]) / len(union) if union else 0.0
+            if sim >= SIMILARITY_THRESHOLD:
+                notes.append(f"sections {a} and {b} have very similar instructions ({int(sim * 100)}% shared content words) -- consider combining them "
+                             "unless each contributes a genuinely different reasoning step.")
+    choices = decision.mechanism_choices
+    if len(choices) >= 3 and all(c.decision == "USED" for c in choices):
+        notes.append(f"all {len(choices)} mechanisms were marked USED -- the reasoner did not exercise NOT_USED; check that each is genuinely applied "
+                     "rather than mechanically transferred.")
+    for c in choices:
+        if c.decision == "USED" and not c.application_rationale:
+            notes.append(f"{c.mechanism_id} is USED without an application_rationale, so how its transferable principle is instantiated is not inspectable.")
+    return notes
+
+
 def blueprint_id_for(pins: dict) -> str:
     """Stable identifier: identical anatomy + mechanism result + intent + provider/model/prompt -> identical id."""
     key = {k: pins.get(k) for k in ("anatomy_fingerprint", "mechanism_attempt_id", "intent_hash", "provider", "model", "prompt_version")}
@@ -195,7 +251,7 @@ def finalize_blueprint(decision: BlueprintDecision, ctx: BlueprintContext, pins:
         dispositions.append({
             "mechanism_id": c.mechanism_id, "mechanism_type": m.get("mechanism_type"), "decision": c.decision,
             "reason_category": c.reason_category, "reason": c.reason, "applied_in_sections": sorted(c.applied_in_sections),
-            "transferable_principle": m.get("transferable_principle"),
+            "application_rationale": c.application_rationale, "transferable_principle": m.get("transferable_principle"),
         })
     assigned: dict[str, list[int]] = {}
     for s in decision.sections:
@@ -231,6 +287,8 @@ def finalize_blueprint(decision: BlueprintDecision, ctx: BlueprintContext, pins:
         gaps.append({"field": f"mandatory_points.{u.id}", "kind": "unassigned_mandatory_point", "reason": f"{ctx.mandatory_points[u.id]} -- {u.reason}"})
     for text in decision.limitations:
         gaps.append({"field": "blueprint", "kind": "provider_limitation", "reason": text})
+    for text in quality_findings(decision, ctx):
+        gaps.append({"field": "blueprint:quality", "kind": "quality_note", "reason": text})
     seen, unique_gaps = set(), []
     for g in gaps:
         key = (g["field"], g["kind"], g["reason"])
@@ -257,5 +315,6 @@ def finalize_blueprint(decision: BlueprintDecision, ctx: BlueprintContext, pins:
         },
         "sections": sections, "mandatory_point_accounting": accounting, "gaps": unique_gaps,
         "limitations": list(decision.limitations),
-        "provenance": {**pins, "blueprint_version": BLUEPRINT_VERSION, "certainty": "INFERRED", "source_mechanism_count": len(mech)},
+        "provenance": {**pins, "blueprint_version": BLUEPRINT_VERSION, "certainty": "INFERRED", "source_mechanism_count": len(mech),
+                       "ignored_null_fields": list(decision.ignored_null_fields)},
     }

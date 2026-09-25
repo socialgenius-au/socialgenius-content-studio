@@ -28,7 +28,8 @@ from app.services.semantic_reasoner.contract import VALID_CONFIDENCE_LEVELS
 
 __all__ = [
     "BLUEPRINT_VERSION", "STRUCTURAL_ROLES", "RELATIONSHIPS", "NOT_USED_REASONS", "MAX_SECTIONS", "MAX_FIELD_CHARS",
-    "MAX_LIST_ITEMS", "DURATION_TOLERANCE", "VALID_CONFIDENCE_LEVELS", "BlueprintReasoningError",
+    "MAX_LIST_ITEMS", "DURATION_TOLERANCE", "RATIONALE_MIN_CHARS", "RATIONALE_MAX_CHARS", "schema_requires_rationale",
+    "VALID_CONFIDENCE_LEVELS", "BlueprintReasoningError",
     "MechanismChoice", "SectionPlan", "UnassignedPoint", "BlueprintDecision", "BlueprintResult",
 ]
 
@@ -51,6 +52,17 @@ MAX_SECTIONS = 12
 MAX_FIELD_CHARS = 600            # instructions, not scripts
 MAX_LIST_ITEMS = 8
 DURATION_TOLERANCE = 0.15        # planned total may differ from a supplied target by at most 15%
+RATIONALE_MIN_CHARS = 40         # an application_rationale explains HOW a principle is instantiated -- not a label
+RATIONALE_MAX_CHARS = 600
+
+
+def schema_requires_rationale(prompt_version: str | None) -> bool:
+    """Responses are validated against the schema of the prompt version that produced them. `application_rationale` is required for
+    every USED mechanism from prompt v3 on; a v1/v2 response (which had no such field) is still parseable for replay/diagnosis, and
+    its absence is reported as a quality finding instead."""
+    import re
+    m = re.fullmatch(r"v(\d+)", (prompt_version or "").strip())
+    return bool(m) and int(m.group(1)) >= 3
 
 
 class BlueprintReasoningError(Exception):
@@ -75,6 +87,7 @@ class MechanismChoice:
     reason: str | None = None           # required for NOT_USED
     reason_category: str | None = None  # required for NOT_USED; one of NOT_USED_REASONS
     applied_in_sections: list[int] = field(default_factory=list)   # required (non-empty) for USED
+    application_rationale: str | None = None  # USED (prompt v3+): HOW the mechanism's transferable principle is instantiated; None for NOT_USED
 
     def __post_init__(self) -> None:
         if not isinstance(self.mechanism_id, str) or not self.mechanism_id.strip():
@@ -89,7 +102,14 @@ class MechanismChoice:
                 raise ValueError(f"{self.mechanism_id}: a USED mechanism must be applied in at least one section.")
             if self.reason_category is not None:
                 raise ValueError(f"{self.mechanism_id}: reason_category is only valid for NOT_USED.")
+            if self.application_rationale is not None and (
+                    not isinstance(self.application_rationale, str)
+                    or not (RATIONALE_MIN_CHARS <= len(self.application_rationale.strip()) <= RATIONALE_MAX_CHARS)):
+                raise ValueError(f"{self.mechanism_id}: application_rationale must be {RATIONALE_MIN_CHARS}-{RATIONALE_MAX_CHARS} characters explaining "
+                                 "how the transferable principle is instantiated.")
         else:
+            if self.application_rationale is not None:
+                raise ValueError(f"{self.mechanism_id}: application_rationale is only valid for USED mechanisms.")
             if self.applied_in_sections:
                 raise ValueError(f"{self.mechanism_id}: a NOT_USED mechanism cannot be applied in any section.")
             if self.reason_category not in NOT_USED_REASONS:
@@ -178,6 +198,7 @@ class BlueprintDecision:
     unassigned_mandatory_points: list[UnassignedPoint] = field(default_factory=list)
     limitations: list[str] = field(default_factory=list)
     reasoning_contract_version: str | None = None
+    ignored_null_fields: list[str] = field(default_factory=list)   # unknown keys whose value was null (dropped by the parser)
 
     def __post_init__(self) -> None:
         if not isinstance(self.structural_approach, str) or not self.structural_approach.strip() or len(self.structural_approach) > 2 * MAX_FIELD_CHARS:

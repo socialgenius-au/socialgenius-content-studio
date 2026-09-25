@@ -120,7 +120,7 @@ class BlueprintRequest(BaseModel):
 
 class BlueprintGap(BaseModel):
     field: str
-    kind: str        # not_supplied | reference_gap | reference_limitation | unassigned_mandatory_point | provider_limitation
+    kind: str        # not_supplied | reference_gap | reference_limitation | unassigned_mandatory_point | provider_limitation | quality_note
     reason: str
 
 
@@ -131,6 +131,7 @@ class MechanismDisposition(BaseModel):
     reason_category: str | None = None
     reason: str | None = None
     applied_in_sections: list[int] = []
+    application_rationale: str | None = None      # USED (prompt v3+): HOW the transferable principle is instantiated in this blueprint
     transferable_principle: str                   # carried from C3 verbatim (the ONLY thing transferred)
 
 
