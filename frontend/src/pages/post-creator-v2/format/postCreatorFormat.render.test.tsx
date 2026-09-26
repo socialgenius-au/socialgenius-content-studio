@@ -96,11 +96,12 @@ describe('canvas follows the selection', () => {
     }
   })
 
-  it('the mock logo lives INSIDE the positioned canvas box (positioning defect fix) and content is not pixel-sized', () => {
+  it('the logo (a document element) is drawn INSIDE the positioned canvas box, not hard-coded markup', () => {
     const html = withState(<PostCanvas />)
     const canvas = html.slice(html.indexOf('data-testid="pcv2-canvas"'))
-    expect(canvas).toContain('pcv2-mock-post-logo')
-    expect(canvas).toContain('pcv2-mock-post-content')
+    expect(canvas).toContain('data-role="brand_logo"')
+    expect(canvas).toContain('data-testid="pcv2-post-page"')
+    expect(html).not.toContain('pcv2-mock-post')
   })
 })
 
