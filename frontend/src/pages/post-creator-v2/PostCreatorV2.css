@@ -874,56 +874,127 @@
   position: relative;
 }
 
+/* The canvas box is sized in JS to the selected format's exact ratio (fitted, never stretched). The mock creative inside is sized in
+   container units (cqmin = % of the canvas's shorter side, so the creative always fits whatever the ratio) so it scales with the canvas instead of keeping screen-pixel sizes. It is a placeholder
+   until the real Post Document exists. `position: relative` anchors the absolutely-positioned logo to the post (it used to anchor to the stage). */
 .pcv2-mock-post {
-  height: 92%;
-  width: auto;
-  aspect-ratio: 4 / 5;
+  position: relative;
+  flex: none;
+  container-type: size;
+  overflow: hidden;
   border-radius: 6px;
   background: linear-gradient(155deg, #2c3532, #1a201d 60%);
   color: #fff;
-  padding: 26px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+.pcv2-mock-post-content {
+  position: absolute;
+  inset: 0;
+  padding: 7cqmin;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 10px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  gap: 2.6cqmin;
 }
 
 .pcv2-mock-post-logo {
   position: absolute;
-  top: 20px;
-  left: 20px;
+  top: 5.4cqmin;
+  left: 5.4cqmin;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 1.9cqmin;
   font-weight: 800;
-  font-size: 13px;
-  letter-spacing: 0.4px;
+  font-size: 3.4cqmin;
+  letter-spacing: 0.1cqmin;
 }
 
 .pcv2-mock-post-headline {
-  font-size: 26px;
+  font-size: 7cqmin;
   font-weight: 800;
   line-height: 1.1;
 }
 
 .pcv2-mock-post-sub {
-  font-size: 12px;
+  font-size: 3.2cqmin;
   opacity: 0.85;
 }
 
 .pcv2-mock-post-cta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 2.1cqmin;
   align-self: flex-start;
   background: var(--pcv2-accent);
   color: var(--pcv2-accent-contrast);
+  font-size: 3.2cqmin;
+  font-weight: 700;
+  padding: 2.1cqmin 3.7cqmin;
+  border-radius: 1.6cqmin;
+  margin-top: 1.6cqmin;
+}
+
+/* ---------- Platform / format bar (above the canvas) ---------- */
+
+.pcv2-format-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.pcv2-format-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pcv2-format-field-grow {
+  flex: 1 1 200px;
+}
+
+.pcv2-format-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--pcv2-text-muted);
+}
+
+.pcv2-format-bar .pcv2-select {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.pcv2-format-size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.pcv2-format-readout {
   font-size: 12px;
   font-weight: 700;
-  padding: 8px 14px;
-  border-radius: 6px;
-  margin-top: 6px;
+  color: var(--pcv2-text);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pcv2-custom-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pcv2-custom-size .pcv2-input {
+  width: 70px;
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 .pcv2-right-tabs {
@@ -1089,6 +1160,10 @@
   font-weight: 700;
   cursor: pointer;
   color: var(--pcv2-text);
+}
+
+.pcv2-platform-pill:disabled {
+  cursor: default;
 }
 
 .pcv2-platform-pill.is-selected {

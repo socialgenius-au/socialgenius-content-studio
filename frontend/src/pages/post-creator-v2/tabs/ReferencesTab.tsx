@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Eye, Heart, Wand2, BookmarkPlus, Sparkles } from 'lucide-react'
 import { REFERENCE_LIBRARY, REFERENCE_DETAIL } from '../mockData'
+import { PlatformSelect } from '../components/FormatFields'
 
 const SUBTABS = ['Our Library', 'Competitors', 'Popular Posts', 'Upload New'] as const
 
@@ -56,11 +57,7 @@ export default function ReferencesTab({ onNext, onBack }: { onNext: () => void; 
           <option>Brand Awareness</option>
           <option>Drive Traffic</option>
         </select>
-        <select className="pcv2-select" defaultValue="Instagram">
-          <option>Instagram</option>
-          <option>Facebook</option>
-          <option>LinkedIn</option>
-        </select>
+        <PlatformSelect testId="pcv2-references-platform" ariaLabel="Platform" />
         <select className="pcv2-select" defaultValue="Western Sydney">
           <option>Western Sydney</option>
           <option>All Regions</option>

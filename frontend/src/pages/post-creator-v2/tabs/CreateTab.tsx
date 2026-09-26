@@ -4,6 +4,8 @@ import {
   Shapes, Crop, Wand, Move, Layers, Film, Palette, Undo2, Redo2, ZoomIn,
 } from 'lucide-react'
 import { AI_TOOLS } from '../mockData'
+import FormatBar from '../components/FormatBar'
+import PostCanvas from '../components/PostCanvas'
 
 const MODES = [
   { id: 'prompt', label: 'Prompt Generator', icon: Wand2 },
@@ -131,20 +133,8 @@ export default function CreateTab({ onNext, onBack }: { onNext: () => void; onBa
             </div>
           </div>
 
-          <div className="pcv2-canvas-stage">
-            <div className="pcv2-mock-post">
-              <span className="pcv2-mock-post-logo">
-                <Sparkles size={14} /> ABC TILES
-              </span>
-              <div className="pcv2-mock-post-headline">
-                LARGE FORMAT.
-                <br />
-                PREMIUM FINISH.
-              </div>
-              <div className="pcv2-mock-post-sub">BUILT FOR QUALITY. MADE FOR BUILDERS.</div>
-              <span className="pcv2-mock-post-cta">SEND YOUR TILE SCHEDULE →</span>
-            </div>
-          </div>
+          <FormatBar />
+          <PostCanvas />
         </div>
 
         {/* RIGHT — Properties + AI Select */}

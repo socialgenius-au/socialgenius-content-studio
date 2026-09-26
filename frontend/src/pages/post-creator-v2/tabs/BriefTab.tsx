@@ -1,5 +1,6 @@
 import { CheckCircle2, AlertTriangle, Radar, Target, Palette, Users2 } from 'lucide-react'
 import { MOCK_CLIENT } from '../mockData'
+import { FormatSelect, PlatformSelect } from '../components/FormatFields'
 
 function StatusRow({
   icon: Icon,
@@ -94,12 +95,10 @@ export default function BriefTab({ onNext }: { onNext: () => void }) {
 
           <div className="pcv2-field">
             <label className="pcv2-label">Platform / Format</label>
-            <select className="pcv2-select" defaultValue="Instagram Feed — Square">
-              <option>Instagram Feed — Square</option>
-              <option>Instagram Story — 9:16</option>
-              <option>Facebook Feed — Landscape</option>
-              <option>LinkedIn — Square</option>
-            </select>
+            <div className="pcv2-pill-row" style={{ gridTemplateColumns: '1fr 1.6fr' }}>
+              <PlatformSelect testId="pcv2-brief-platform" ariaLabel="Platform" />
+              <FormatSelect testId="pcv2-brief-format" ariaLabel="Format" />
+            </div>
           </div>
 
           <div className="pcv2-field">
