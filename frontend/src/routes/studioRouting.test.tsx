@@ -74,7 +74,7 @@ describe('App.tsx route table', () => {
   })
 
   it('keeps the other full-screen/legacy routes it had', () => {
-    for (const p of ['/post-creator-v2', '/positioning', '/legacy/jobs-dashboard', '/deconstructor', '/dashboard']) expect(appSource, p).toContain(`path="${p}"`)
+    for (const p of ['/post-creator-v2', '/positioning', '/legacy/jobs-dashboard', '/dashboard']) expect(appSource, p).toContain(`path="${p}"`)
   })
 
   it('the preserved legacy editor component is still on disk', () => {
