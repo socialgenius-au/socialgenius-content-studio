@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Sparkles } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { fitCanvasBox } from '../../../lib/platformFormats'
+import type { PostDocument } from '../../../lib/postDocument'
 import { usePostFormat } from '../format/PostFormatContext'
+import PostRenderer from '../canvas/PostRenderer'
+import { createAbcTilesMockDocument } from '../mock/abcTilesDocument'
 
 /** Space kept free around the canvas inside the stage (px). */
 export const CANVAS_MARGIN = 14
@@ -29,19 +31,25 @@ function useElementSize<T extends HTMLElement>() {
 }
 
 /**
- * The central Post Creator canvas. Its box is the selected format's exact aspect ratio, letterbox-fitted into the available stage —
- * never stretched. The mock creative inside is sized in container-relative units (cqmin) so it scales with the canvas instead of
- * keeping screen-pixel sizes; it is a placeholder until the real Post Document exists.
+ * The central Post Creator canvas: PostDocument -> PostRenderer. The box is the selected format's exact aspect ratio, letterbox-fitted into
+ * the available stage (never stretched), and it is a size container so the document's shorter-side-relative type scales with it.
+ *
+ * P2: nothing edits the document, so unless one is passed in (tests), the ABC Tiles mock document is built for the selected format.
  */
-export default function PostCanvas() {
+export default function PostCanvas({ document: docOverride }: { document?: PostDocument }) {
   const { canvas } = usePostFormat()
   const [stageRef, stage] = useElementSize<HTMLDivElement>()
   const box = fitCanvasBox(canvas.width, canvas.height, Math.max(stage.w - CANVAS_MARGIN * 2, 80), Math.max(stage.h - CANVAS_MARGIN * 2, 80))
 
+  const doc = useMemo(
+    () => docOverride ?? createAbcTilesMockDocument({ platformKey: canvas.platformKey, formatKey: canvas.formatKey, width: canvas.width, height: canvas.height, ratio: canvas.ratioLabel }),
+    [docOverride, canvas.platformKey, canvas.formatKey, canvas.width, canvas.height, canvas.ratioLabel],
+  )
+
   return (
     <div className="pcv2-canvas-stage" ref={stageRef} data-testid="pcv2-canvas-stage">
       <div
-        className="pcv2-mock-post"
+        className="pcv2-post-canvas"
         data-testid="pcv2-canvas"
         data-platform={canvas.platformKey}
         data-format={canvas.formatKey}
@@ -52,18 +60,7 @@ export default function PostCanvas() {
         data-box-height={box.h}
         style={{ width: box.w, height: box.h }}
       >
-        <span className="pcv2-mock-post-logo">
-          <Sparkles size="1.25em" /> ABC TILES
-        </span>
-        <div className="pcv2-mock-post-content">
-          <div className="pcv2-mock-post-headline">
-            LARGE FORMAT.
-            <br />
-            PREMIUM FINISH.
-          </div>
-          <div className="pcv2-mock-post-sub">BUILT FOR QUALITY. MADE FOR BUILDERS.</div>
-          <span className="pcv2-mock-post-cta">SEND YOUR TILE SCHEDULE →</span>
-        </div>
+        <PostRenderer document={doc} />
       </div>
     </div>
   )
