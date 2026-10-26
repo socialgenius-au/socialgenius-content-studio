@@ -15,6 +15,7 @@ import CreativeLabTab from "./components/CreativeLabTab";
 import CreateEditTab from "./components/CreateEditTab";
 import ReviewTab from "./components/ReviewTab";
 import LearnTab from "./components/LearnTab";
+import BlueprintPlanPanel from "./blueprint/BlueprintPlanPanel";
 
 // Step 7.1 (second persistence defect): the active workflow stage and the entire project
 // (video/audio/text/overlays/timeline positions/canvas format/placeholder positions) were pure
@@ -213,6 +214,8 @@ export default function VideoStudioV2() {
             </React.Fragment>
           ))}
         </div>
+
+        <BlueprintPlanPanel />
 
         <section className="vsv2-workspace">
           <Current onNext={goNext} onBack={goBack} />

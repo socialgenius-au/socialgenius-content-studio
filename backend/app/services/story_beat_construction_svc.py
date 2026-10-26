@@ -29,21 +29,41 @@ attempt becomes a construction boundary candidate only when
 `False` -> no boundary. `None` (undecided) -> no boundary, NEVER converted to False. A low-
 confidence True stays durable reasoning evidence but does not automatically become a final boundary.
 
-SEMANTIC-DUPLICATE HANDLING (Stage 10.3B7-P1 Verdict B, isolated in `_dedup_transition_clusters`):
-the real B6 data contains several accepted `True` boundaries at nearby timestamps that cite the
-SAME supporting speech segments and describe the SAME rhetorical transition (the same move
-nominated at two adjacent candidate timestamps). Construction v1 collapses such a cluster to one
-boundary. Two accepted boundaries are clustered ONLY when BOTH:
-  1. they are within `STORY_BEAT_TRANSITION_CLUSTER_WINDOW_SECONDS` of each other; AND
-  2. their `supporting_speech_segment_ids` sets are non-empty AND overlap.
+SEMANTIC-DUPLICATE HANDLING (Stage 10.3B7-P1 Verdict B, revised Stage 10.3 Boundary Methodology
+Review, isolated in `_dedup_transition_clusters`): the real B6 data contains several accepted
+`True` boundaries at nearby timestamps that cite the SAME supporting speech segments and describe
+the SAME rhetorical transition (the same move nominated at two adjacent candidate timestamps).
+Construction v1 collapses such a cluster to one boundary.
+
+CLUSTER-LEVEL (not pairwise-adjacent) COMPATIBILITY: a candidate may join an existing cluster only
+when it is compatible with the CLUSTER AS A WHOLE, not merely with the most recently added member.
+The Methodology Review found this distinction is load-bearing on real data: a naive "compare only
+against the last member" version of this rule lets single-link chaining silently bridge two
+genuinely different rhetorical events through a shared middle candidate (e.g. evidence sets
+`{713,714}`, `{713,714}`, `{714,715}` -- the first two are a genuine duplicate nomination, but the
+third describes a DIFFERENT pivot that only shares the boundary speech-segment id 714; a
+last-member-only comparison would incorrectly chain all three into one surviving boundary via that
+shared id). A candidate joins the current cluster only when BOTH:
+  1. `candidate.start_time - cluster[0].start_time <= STORY_BEAT_TRANSITION_CLUSTER_WINDOW_SECONDS`
+     -- measured from the cluster's FIRST member, not its last, so total cluster span (not just
+     adjacent gaps) is bounded. Since candidates are processed in timestamp order this is
+     equivalent to a hard cap on the cluster's total time span; AND
+  2. the candidate's `supporting_speech_segment_ids` set is EVIDENCE-COMPATIBLE with EVERY existing
+     member of the cluster (not just the last one): both sets non-empty, AND one is a subset of (or
+     equal to) the other. A candidate that fails this test against even one existing member starts
+     a new cluster instead of joining.
+This is deliberately conservative: for Story Beat construction, false-merging two genuine
+rhetorical moves is judged more damaging than leaving an occasional true duplicate unmerged (the
+`10.042`/`12.083` case on VA5368 -- identical evidence, but a 2.04s gap exceeding the window --
+is a known, intentional, documented V1 limitation left un-tuned rather than special-cased).
 `STORY_BEAT_TRANSITION_CLUSTER_WINDOW_SECONDS = 1.5` is a **versioned construction heuristic
 derived from the Stage 10.3B7-P1 real-data audit -- it is NOT a universal definition of a Story
 Beat, and it is deliberately NOT `CANDIDATE_MERGE_WINDOW_SECONDS`** (that 0.5s constant is for
 "same real-world instant" candidate/result matching and is both too small to catch these and
 semantically the wrong tool). There is intentionally NO general minimum-Story-Beat-duration rule:
-two close accepted boundaries with DIFFERENT (non-overlapping) speech evidence stay separate, so
-proximity never silently becomes a minimum-duration rule. No reasoning-text comparison and no AI
-call happen inside construction.
+two close accepted boundaries with incompatible speech evidence stay separate, so proximity never
+silently becomes a minimum-duration rule. No reasoning-text comparison and no AI call happen
+inside construction.
 
 Within a cluster the surviving boundary is chosen deterministically: (1) highest confidence
 ("high" > "medium"); (2) tie -> earliest candidate timestamp; (3) final tie -> lowest
@@ -184,18 +204,34 @@ def _speech_ids(row: AnalysisAnnotation) -> set[int]:
     return set(_evidence_ids(row, "supporting_speech_segment_ids"))
 
 
+def _evidence_compatible(a: set[int], b: set[int]) -> bool:
+    """Two speech-evidence sets are compatible only when both are non-empty AND one is a subset of
+    (or equal to) the other -- deliberately stricter than mere intersection. A shared endpoint id
+    between two otherwise-different sets (e.g. `{713,714}` vs `{714,715}`) is NOT compatible: that
+    shape is exactly what a genuinely sequential pair of rhetorical moves produces (one transition's
+    "after" segment is the next transition's "before" segment), not a duplicate nomination of one
+    event. Symmetric by construction (`a <= b or b <= a`)."""
+    return bool(a) and bool(b) and (a <= b or b <= a)
+
+
 def _dedup_transition_clusters(
     accepted_rows: list[AnalysisAnnotation],
 ) -> tuple[list[AnalysisAnnotation], dict[int, list[int]]]:
     """Story Beat construction v1's conservative deterministic transition-clustering policy --
     isolated here so it can evolve to `_v2` without touching reasoning or persistence.
 
-    `accepted_rows` must already be sorted by candidate timestamp. Two adjacent accepted boundaries
-    join the same cluster ONLY when BOTH hold against the current cluster's LAST member:
-      1. `abs(gap) <= STORY_BEAT_TRANSITION_CLUSTER_WINDOW_SECONDS`; AND
-      2. both `supporting_speech_segment_ids` sets are non-empty AND overlap.
-    Anything failing either test starts a new cluster -- so two close boundaries with different or
-    empty speech evidence stay separate (proximity alone never merges).
+    `accepted_rows` must already be sorted by candidate timestamp. A candidate joins the CURRENT
+    cluster only when BOTH hold at the CLUSTER level (not merely against the last-added member --
+    see the module docstring's "Methodology Review" note on why last-member-only comparison permits
+    transitive chaining through a shared middle candidate):
+      1. `candidate.start_time - cluster[0].start_time <= STORY_BEAT_TRANSITION_CLUSTER_WINDOW_
+         SECONDS` (bounds the cluster's total span, not just adjacent gaps); AND
+      2. the candidate's `supporting_speech_segment_ids` set is `_evidence_compatible` with EVERY
+         existing member of the cluster.
+    Failing either test against even one existing member starts a new cluster -- so two close
+    boundaries with incompatible or empty speech evidence stay separate (proximity alone never
+    merges), and a candidate can never bridge into a cluster by matching only its most recent
+    member.
 
     Returns `(survivors, co_nominated)` where `survivors` is one row per cluster (sorted by
     timestamp) chosen by: highest confidence -> earliest timestamp -> lowest id; and
@@ -205,12 +241,14 @@ def _dedup_transition_clusters(
 
     clusters: list[list[AnalysisAnnotation]] = [[accepted_rows[0]]]
     for row in accepted_rows[1:]:
-        last = clusters[-1][-1]
-        close = abs(row.start_time - last.start_time) <= STORY_BEAT_TRANSITION_CLUSTER_WINDOW_SECONDS
-        this_speech, last_speech = _speech_ids(row), _speech_ids(last)
-        overlaps = bool(this_speech) and bool(last_speech) and bool(this_speech & last_speech)
-        if close and overlaps:
-            clusters[-1].append(row)
+        cluster = clusters[-1]
+        within_span = (row.start_time - cluster[0].start_time) <= STORY_BEAT_TRANSITION_CLUSTER_WINDOW_SECONDS
+        this_speech = _speech_ids(row)
+        compatible_with_cluster = within_span and all(
+            _evidence_compatible(this_speech, _speech_ids(member)) for member in cluster
+        )
+        if compatible_with_cluster:
+            cluster.append(row)
         else:
             clusters.append([row])
 

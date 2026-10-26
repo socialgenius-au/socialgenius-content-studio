@@ -132,6 +132,21 @@ export const referenceVideosApi = {
   analyzeText: (id: number) => api.post(`/reference-videos/${id}/analyze-text`),
 }
 
+// Deconstructor -> Reconstructor (backend C1-C4). Reads are side-effect free. The three POSTs below are the
+// ONLY calls that can invoke a paid AI provider (and only where the operator has configured one); the UI
+// always tells the user before triggering them. `buildBlueprint` must be used ONLY when the user deliberately
+// asks for a NEW blueprint — an already-persisted blueprint is read with `blueprint`, never re-POSTed.
+export const deconstructorApi = {
+  deconstruct:       (id: number)                 => api.post(`/reference-videos/${id}/deconstruct-all`),
+  deconstructStatus: (id: number)                 => api.get(`/reference-videos/${id}/deconstruct-all/status`),
+  anatomy:           (id: number)                 => api.get(`/reference-videos/${id}/anatomy`),
+  mechanisms:        (id: number)                 => api.get(`/reference-videos/${id}/mechanisms`),
+  deriveMechanisms:  (id: number, anatomyFingerprint?: string | null) =>
+    api.post(`/reference-videos/${id}/mechanisms`, null, { params: anatomyFingerprint ? { anatomy_fingerprint: anatomyFingerprint } : {} }),
+  blueprint:         (id: number)                 => api.get(`/reference-videos/${id}/reconstruction-blueprint`),
+  buildBlueprint:    (id: number, body: Record<string, unknown>) => api.post(`/reference-videos/${id}/reconstruction-blueprint`, body),
+}
+
 export const templatesApi = {
   list:   ()                                                  => api.get('/templates/'),
   get:    (id: number)                                        => api.get(`/templates/${id}`),

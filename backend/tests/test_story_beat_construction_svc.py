@@ -301,6 +301,60 @@ def test_dedup_empty_speech_never_clusters():
     assert [s.id for s in survivors] == [1, 2]
 
 
+# ---------------------------------------------------------------------------
+# Stage 10.3 Boundary Methodology Review: cluster-level (not adjacent-pairwise)
+# compatibility regression fixtures.
+# ---------------------------------------------------------------------------
+
+def test_dedup_genuine_duplicate_identical_evidence_within_threshold_merges():
+    survivors, co = _dedup_transition_clusters([
+        _fake(1, 24.706, "medium", [713, 714]), _fake(2, 25.380, "high", [713, 714]),
+    ])
+    assert [s.id for s in survivors] == [2]
+    assert co == {2: [1]}
+
+
+def test_dedup_subset_compatible_evidence_within_threshold_may_merge():
+    survivors, co = _dedup_transition_clusters([
+        _fake(1, 10.0, "medium", [713, 714]), _fake(2, 10.9, "high", [713, 714, 715]),
+    ])
+    assert [s.id for s in survivors] == [2]
+    assert co == {2: [1]}
+
+
+def test_dedup_shared_endpoint_different_transitions_does_not_merge():
+    """{713,714} -> {714,715}: shares only the boundary id 714 -- must NOT merge (this is the
+    real VA5368 24.706/25.380/26.800 case's third candidate, isolated to two rows)."""
+    survivors, co = _dedup_transition_clusters([
+        _fake(1, 24.706, "medium", [713, 714]), _fake(2, 26.800, "medium", [714, 715]),
+    ])
+    assert [s.id for s in survivors] == [1, 2]
+    assert co == {}
+
+
+def test_dedup_transitive_evidence_chain_trap_third_candidate_excluded():
+    """A={1}, B={1,2}, C={2}, all temporally close. A-B are evidence-compatible (subset) and B-C
+    are evidence-compatible (subset), but A and C are NOT compatible with each other -- a
+    last-member-only comparison would let C bridge in via B; cluster-level compatibility must
+    reject it."""
+    survivors, co = _dedup_transition_clusters([
+        _fake(1, 10.0, "medium", [1]), _fake(2, 10.5, "medium", [1, 2]), _fake(3, 11.0, "high", [2]),
+    ])
+    assert [s.id for s in survivors] == [1, 3]
+    assert co == {1: [2]}
+
+
+def test_dedup_temporal_chain_trap_span_exceeds_window_splits_even_with_identical_evidence():
+    """Identical evidence throughout, adjacent gaps each <= 1.5s, but total first-to-last span
+    exceeds the window -- must split. Span is measured from the cluster's FIRST member, not the
+    last, so this is NOT reachable by a naive adjacent-gap check."""
+    survivors, co = _dedup_transition_clusters([
+        _fake(1, 0.0, "medium", [5, 6]), _fake(2, 1.0, "medium", [5, 6]), _fake(3, 2.0, "high", [5, 6]),
+    ])
+    assert [s.id for s in survivors] == [1, 3]
+    assert co == {1: [2]}
+
+
 async def test_end_to_end_cluster_records_co_nominated_on_the_beat():
     async with _TestSessionLocal() as db:
         user = await _existing_test_user(db)

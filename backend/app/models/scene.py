@@ -20,8 +20,9 @@ boundary, as bounded id lists. It is deliberately NOT a place for semantic/narra
 any kind (no role, no Story Beat data, no confidence breakdown, no reasoning/evidence-summary
 prose — those already have their own columns on this row, or belong on a future, separate Story
 Beat evidence row) — see the `details` column's own docstring below for the exact bounded v1 key
-set. Never populated by anything as of this commit; Stage 10 inference itself is explicitly out
-of scope here.
+set. Populated by scene_construction_svc.construct_and_persist_scenes (Stage 10.2B3) — see that
+column's own docstring below for the exact shape and the one case (zero accepted boundaries) it
+is still left NULL for.
 """
 from datetime import datetime
 
@@ -57,8 +58,10 @@ class Scene(Base):
     # reasoning/evidence-summary prose (this row's own `reasoning`/`evidence_summary` columns
     # already own that), UI/rendering hints, tutorial-authoring or reconstruction instructions,
     # or any other unstructured/arbitrary output — never a generic metadata dumping ground.
-    # Nullable, no default: an existing (currently nonexistent, since nothing populates Scene
-    # yet) row is equally valid with details=NULL.
+    # Nullable, no default: populated by scene_construction_svc.construct_and_persist_scenes as
+    # {"boundary_start": <evidence-ref dict>|None, "boundary_end": <evidence-ref dict>|None} for
+    # every accepted-boundary Scene it builds; left NULL only for the zero-accepted-boundary,
+    # whole-video case (neither side has anything to cite) — equally valid either way.
     details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     certainty: Mapped[str] = mapped_column(String(32), nullable=False)
     confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)

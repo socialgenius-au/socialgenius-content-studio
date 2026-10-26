@@ -75,7 +75,7 @@ ever presented.
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,11 +104,39 @@ from app.schemas.reference_video import (
     TransitionPhaseCorrelationPairSummary, TransitionSimilarityEvidenceSummary,
     VideoAnalysisSummary, VisualObjectLayoutSummary, VisualObjectSummary,
 )
+from app.schemas.content_anatomy import ContentAnatomyResponse
+from app.schemas.transferable_mechanism import MechanismAttemptsResponse, MechanismSetResponse
+from app.schemas.reconstruction_blueprint import BlueprintAttemptsResponse, BlueprintRequest, BlueprintResponse
+from app.schemas.deconstruction_full import (
+    DeconstructionFullResponse, DeconstructionRunResponse, DeconstructionStatusResponse,
+)
+from app.schemas.stage10_deconstruction import Stage10DeconstructionResponse, Stage10RunResponse
 from app.services import (
     audio_structure_svc, ffmpeg_svc, local_motion_dynamics_svc, local_motion_evidence_svc, ocr_svc,
     speech_analysis_svc, transition_evidence_svc, transition_similarity_evidence_svc,
     visual_composition_svc, visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
+from app.services.content_anatomy_svc import ContentAnatomyError, ContentAnatomyNotReady, get_content_anatomy
+from app.services.mechanism_reasoner import MechanismInputError, MechanismReasoningError
+from app.services.transferable_mechanism_svc import (
+    MechanismAnatomyChanged, derive_and_persist_mechanisms, get_effective_mechanisms, list_mechanism_attempts,
+)
+from app.services.blueprint_reasoner import BlueprintInputError, BlueprintReasoningError
+from app.services.reconstruction_blueprint_svc import (
+    BlueprintStateConflict, derive_and_persist_blueprint, get_effective_blueprint, list_blueprint_attempts,
+)
+from app.services.deconstruction_aggregate_svc import build_full_deconstruction
+from app.services.deconstruction_orchestrator_svc import (
+    OrchestrationConflict, OrchestrationError, OrchestrationNotFound, claim_orchestration,
+    get_orchestration_status, run_deconstruction, start_background_deconstruction,
+)
+from app.services.scene_construction_svc import SceneConstructionError
+from app.services.semantic_reasoner.contract import SemanticReasoningError
+from app.services.stage10_deconstruction_svc import (
+    Stage10PipelineError, get_stage10_deconstruction, run_stage10_pipeline,
+)
+from app.services.story_beat_construction_svc import StoryBeatConstructionError
+from app.services.story_beat_reasoner.contract import StoryBeatReasoningError
 
 router = APIRouter()
 
@@ -3424,3 +3452,357 @@ async def analyze_reference_video_transition_similarity(
     await db.commit()
     await db.refresh(rv)
     return await _to_response(db, rv, asset)
+
+
+# =====================================================================================
+# STAGE 10 APPLICATION ACCESS CHECKPOINT — the two endpoints identified by the Stage 10
+# Completion Audit as the smallest remaining piece of work: without these, the already-built,
+# already-locked Scene (Stage 10.2) and Story Beat (Stage 10.3, locked at ffa0fe5) pipelines were
+# reachable only from a Python test file. Neither endpoint adds new reasoning, construction, or
+# schema — both call straight through to app.services.stage10_deconstruction_svc, which itself
+# only sequences the existing, already-tested service functions. See that module's own docstring
+# for the exact call order and idempotency guarantees.
+# =====================================================================================
+
+async def _resolve_reference_video_and_latest_analysis(
+    db: AsyncSession, reference_video_id: int, user: User,
+) -> tuple[ReferenceVideo, VideoAnalysis]:
+    """Shared resolution for both Stage 10 endpoints below — identical ownership/lookup shape
+    every other endpoint in this router already uses (ReferenceVideo scoped to the current user,
+    then its latest VideoAnalysis), factored out here since neither Stage 10 endpoint otherwise
+    needs the full `Asset`/`_to_response` machinery every analyze-* endpoint does."""
+    result = await db.execute(
+        select(ReferenceVideo).where(ReferenceVideo.id == reference_video_id, ReferenceVideo.user_id == user.id)
+    )
+    rv = result.scalar_one_or_none()
+    if not rv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reference video not found")
+
+    result = await db.execute(
+        select(VideoAnalysis).where(VideoAnalysis.reference_video_id == rv.id).order_by(VideoAnalysis.created_at.desc())
+    )
+    latest = result.scalars().first()
+    if latest is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No analysis record exists for this reference video")
+    return rv, latest
+
+
+@router.post("/{reference_video_id}/deconstruct", response_model=Stage10RunResponse)
+async def deconstruct_reference_video(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """RUN SURFACE (Stage 10 Application Access Checkpoint). Runs the existing, locked Scene +
+    Story Beat construction pipelines for this reference video's latest VideoAnalysis — see
+    app.services.stage10_deconstruction_svc.run_stage10_pipeline's own docstring for the exact
+    call order it preserves and why repeated calls are safe (each step's own existing idempotent
+    persistence behaviour, not new logic added here).
+
+    Does NOT require any prior Stage 1-9 pass to have explicitly completed first — Stage 10's own
+    candidate assembly already degrades gracefully to "zero nominations of that type" for any
+    missing evidence (see semantic_boundary_assembly_svc's own docstring); running this against a
+    freshly-created analysis with no evidence yet is a valid, well-defined (if unhelpful) call.
+
+    A reasoning-provider configuration error (SemanticReasoningError / equivalent Story Beat error
+    — e.g. no SEMANTIC_REASONER_PROVIDER configured) or a construction invariant violation
+    (SceneConstructionError / StoryBeatConstructionError) surfaces as 502/409 respectively, never
+    silently swallowed or retried."""
+    rv, latest = await _resolve_reference_video_and_latest_analysis(db, reference_video_id, user)
+
+    try:
+        result = await run_stage10_pipeline(db, latest.id)
+    except Stage10PipelineError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    except (SceneConstructionError, StoryBeatConstructionError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except (SemanticReasoningError, StoryBeatReasoningError) as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+    return Stage10RunResponse(
+        video_analysis_id=result.video_analysis_id,
+        scene_candidates_reasoned=result.scene_candidates_reasoned,
+        story_beat_candidates_reasoned=result.story_beat_candidates_reasoned,
+        scenes_count=result.scenes_count,
+        story_beats_count=result.story_beats_count,
+    )
+
+
+@router.get("/{reference_video_id}/deconstruction", response_model=Stage10DeconstructionResponse)
+async def get_reference_video_deconstruction(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """READ SURFACE (Stage 10 Application Access Checkpoint). Returns `Video -> ordered Scenes ->
+    Story Beats (associated by time-range overlap, computed at read time) -> lightweight, ID-based
+    evidence/provenance references` for this reference video's latest VideoAnalysis — see
+    app.services.stage10_deconstruction_svc.get_stage10_deconstruction's own docstring for the
+    exact shape and why no Scene<->StoryBeat foreign key or persisted nesting exists.
+
+    Read-only: never runs construction itself (see the POST endpoint above for that) — a
+    VideoAnalysis with no Scene/Story Beat rows yet simply returns an empty `scenes` list, never a
+    404 (the analysis itself exists; it just hasn't been deconstructed yet)."""
+    rv, latest = await _resolve_reference_video_and_latest_analysis(db, reference_video_id, user)
+
+    try:
+        result = await get_stage10_deconstruction(db, latest.id)
+    except Stage10PipelineError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    return result
+
+
+# =====================================================================================
+# C1 — ONE-CLICK DECONSTRUCTION ORCHESTRATOR + AGGREGATE READ MODEL
+#
+# Adds no analysis logic: `deconstruct-all` sequences the existing Stage 3-11.4 units in dependency
+# order (see app.services.deconstruction_orchestrator_svc), and `deconstruction/full` assembles
+# everything already persisted into one structure (see app.services.deconstruction_aggregate_svc).
+# The individual analyze-* endpoints above are unchanged and remain usable one at a time.
+# =====================================================================================
+
+def _orchestration_http_error(exc: OrchestrationError) -> HTTPException:
+    if isinstance(exc, OrchestrationNotFound):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, OrchestrationConflict):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+
+@router.post("/{reference_video_id}/deconstruct-all", response_model=DeconstructionRunResponse,
+             status_code=status.HTTP_202_ACCEPTED)
+async def deconstruct_all(
+    reference_video_id: int,
+    response: Response,
+    wait: bool = False,
+    force_ai: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Runs the WHOLE existing deconstruction pipeline (Stages 3-11.4) in dependency order.
+
+    Default (`wait=false`): claims the run, starts it in the background and returns 202 immediately
+    (a full run - OCR, Whisper, motion analysis - can outlast a request timeout); poll
+    `GET .../deconstruct-all/status`. `wait=true` runs inline and returns 200 with the final result.
+
+    Safe to call repeatedly: completed passes are skipped, failed passes are retried, and paid AI
+    stages (Stage 10 reasoning, 11.3, 11.4) run only where the operator has already configured a
+    reasoner provider - unconfigured means `skipped`, never a failure. Stages 11.3/11.4 are not
+    re-run once complete unless `force_ai=true`. 409 if a run is already in progress."""
+    try:
+        if wait:
+            report = await run_deconstruction(db, user, reference_video_id, force_ai=force_ai)
+            response.status_code = status.HTTP_200_OK
+            mode, overall = "inline", report["overall_status"]
+        else:
+            await claim_orchestration(db, user, reference_video_id, force_ai=force_ai)
+            start_background_deconstruction(user.id, reference_video_id, force_ai=force_ai)
+            mode, overall = "background", "running"
+        view = await get_orchestration_status(db, user, reference_video_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    return DeconstructionRunResponse(
+        reference_video_id=reference_video_id, video_analysis_id=view["video_analysis_id"], mode=mode,
+        overall_status=overall, orchestration=view["orchestration"], stages=view["stages"],
+    )
+
+
+@router.get("/{reference_video_id}/deconstruct-all/status", response_model=DeconstructionStatusResponse)
+async def get_deconstruct_all_status(
+    reference_video_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Lightweight progress read for `deconstruct-all`: per-stage status only, no evidence payload."""
+    try:
+        return await get_orchestration_status(db, user, reference_video_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+@router.get("/{reference_video_id}/deconstruction/full", response_model=DeconstructionFullResponse)
+async def get_full_deconstruction(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """AGGREGATE READ MODEL: everything the Deconstructor currently knows about this source - technical
+    facts, shots and their visual/text/motion evidence, speech, audio, Scenes and Story Beats, editing
+    rhythm, hook window/classification, retention candidates/examined/accepted devices, strategic
+    insights and per-stage status. Pure read. A section whose analysis has not run is null/empty
+    (see `availability`), never fabricated. `video_analysis_id` pins one exact analysis version."""
+    try:
+        return await build_full_deconstruction(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+# =====================================================================================
+# C2 — CONTENT ANATOMY V1
+#
+# A deterministic structural map derived purely from the C1 aggregate above (see
+# app.services.content_anatomy_svc): ordered sections, what happens when, the evidence behind each,
+# and explicit gaps. No LLM call, nothing persisted; recomputed (and fingerprinted) on every read.
+# =====================================================================================
+
+@router.get("/{reference_video_id}/anatomy", response_model=ContentAnatomyResponse)
+async def get_reference_video_anatomy(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Content Anatomy V1 for this reference video's latest analysis (or the exact `video_analysis_id`).
+    404 for an unknown/foreign video or analysis; 422 if shot/cut detection has not completed yet (run
+    `deconstruct-all` first). Story Beats are NOT required - missing ones fall back to shots, then to
+    pacing phases, and the chosen skeleton is reported in `section_source`."""
+    try:
+        return await get_content_anatomy(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except ContentAnatomyNotReady as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except ContentAnatomyError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+# =====================================================================================
+# C3 — TRANSFERABLE MECHANISM V1
+#
+# Derives the design mechanisms that APPEAR to operate in a video, and separates what is transferable to new
+# content from what belongs only to the source. Consumes ONLY the C2 anatomy above (pinned by fingerprint).
+# See app.services.transferable_mechanism_svc.
+# =====================================================================================
+
+@router.post("/{reference_video_id}/mechanisms", response_model=MechanismSetResponse)
+async def derive_reference_video_mechanisms(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    anatomy_fingerprint: str | None = None,
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Derives Transferable Mechanisms from this video's Content Anatomy with ONE reasoner call (a PAID call when
+    MECHANISM_REASONER_PROVIDER is configured; with none configured it fails with 502 and spends nothing).
+    `anatomy_fingerprint` pins the anatomy you read (409 if the evidence has changed since). If the effective
+    result already came from this exact anatomy/provider/model/prompt it is returned with `reused=true` and no
+    call is made, unless `force=true`. 404 unknown/foreign video; 422 anatomy not ready or zero sections;
+    409 fingerprint mismatch; 502 no/failed/invalid reasoner (nothing persisted). `mechanisms: []` is a valid,
+    successful result."""
+    try:
+        return await derive_and_persist_mechanisms(
+            db, user, reference_video_id, video_analysis_id=video_analysis_id,
+            expected_fingerprint=anatomy_fingerprint, force=force,
+        )
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except (ContentAnatomyError, MechanismInputError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except MechanismAnatomyChanged as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except MechanismReasoningError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.get("/{reference_video_id}/mechanisms", response_model=MechanismSetResponse)
+async def get_reference_video_mechanisms(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The EFFECTIVE Transferable Mechanisms for this analysis. Pure read - never calls a reasoner. `status` is
+    `not_run` (never derived), `current` (derived from the anatomy as it is now), `stale` (the anatomy has
+    changed since; the old result is still returned, never hidden) or `unknown` (the current anatomy cannot be
+    built to compare)."""
+    try:
+        return await get_effective_mechanisms(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+@router.get("/{reference_video_id}/mechanisms/attempts", response_model=MechanismAttemptsResponse)
+async def get_reference_video_mechanism_attempts(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The full append-only history of mechanism derivation attempts (each with the mechanisms it produced and
+    whether it is the effective one). Pure read."""
+    try:
+        return await list_mechanism_attempts(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+# =====================================================================================
+# C4 — RECONSTRUCTION BLUEPRINT V1
+#
+# Turns the C2 anatomy + the persisted C3 transferable mechanisms + a NewContentIntent into a NEW structural construction
+# plan (instructions, never final copy). See app.services.reconstruction_blueprint_svc.
+# =====================================================================================
+
+@router.post("/{reference_video_id}/reconstruction-blueprint", response_model=BlueprintResponse)
+async def derive_reference_video_blueprint(
+    reference_video_id: int,
+    request: BlueprintRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Derives a Reconstruction Blueprint for a NEW piece of content (`request.intent`: required product_service_or_topic,
+    target_audience, objective; optional business_or_brand, desired_cta, tone_style_constraints, duration_platform_constraints,
+    mandatory_points, prohibited_claims_or_elements) from this video's Content Anatomy and its CURRENT C3 mechanisms, with ONE
+    reasoner call (a PAID call when BLUEPRINT_REASONER_PROVIDER is configured; with none configured it fails with 502 and spends
+    nothing). An identical anatomy + C3 result + intent + provider/model/prompt returns the existing result with `reused=true`
+    and no call, unless `force=true`. 404 unknown/foreign video; 422 invalid intent / anatomy not ready / zero sections / no
+    mechanisms; 409 C3 never run or stale against the current anatomy, or a pinned fingerprint / mechanism attempt that no longer
+    matches; 502 no/failed/invalid reasoner (nothing persisted)."""
+    try:
+        return await derive_and_persist_blueprint(
+            db, user, reference_video_id, request.intent, video_analysis_id=request.video_analysis_id,
+            expected_anatomy_fingerprint=request.anatomy_fingerprint, expected_mechanism_attempt_id=request.mechanism_attempt_id,
+            force=request.force,
+        )
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except (ContentAnatomyError, BlueprintInputError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except BlueprintStateConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except BlueprintReasoningError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.get("/{reference_video_id}/reconstruction-blueprint", response_model=BlueprintResponse)
+async def get_reference_video_blueprint(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The EFFECTIVE Reconstruction Blueprint for this analysis. Pure read - never calls a reasoner. `status` is `not_run`,
+    `current` (derived from the anatomy and C3 result as they are now), `stale` (either has changed since; the old blueprint is
+    still returned, never hidden) or `unknown` (the current anatomy cannot be built to compare)."""
+    try:
+        return await get_effective_blueprint(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+@router.get("/{reference_video_id}/reconstruction-blueprint/attempts", response_model=BlueprintAttemptsResponse)
+async def get_reference_video_blueprint_attempts(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The full append-only history of blueprint derivation attempts (each with its blueprint and whether it is the effective
+    one). Pure read."""
+    try:
+        return await list_blueprint_attempts(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
