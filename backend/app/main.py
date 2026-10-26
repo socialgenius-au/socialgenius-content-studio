@@ -18,6 +18,7 @@ from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.limiter import limiter
 from app.schema_patches import apply_additive_schema_patches
+from app.startup_security import CORS_ENV_VAR, build_allowed_origins, check_secret_key, plan_seed_users
 from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos
 
 # Import all models so Base.metadata is fully populated before create_all
@@ -52,6 +53,7 @@ if settings.SENTRY_DSN:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    check_secret_key(settings.SECRET_KEY, os.environ)       # refuses the public default key on Railway
     async with engine.begin() as conn:
         if os.environ.get("RESET_DB") == "true":
             await conn.execute(text("DROP SCHEMA public CASCADE"))
@@ -76,14 +78,20 @@ async def _seed_users() -> None:
         {"username": "priya", "email": "priya@socialgenius.au", "role": "editor"},
         {"username": "iqra",  "email": "iqra@socialgenius.au",  "role": "editor"},
     ]
+    # Which users are created, and with what password, is decided by SEED_USERS_MODE (see
+    # app/startup_security.py): predictable dev passwords only off Railway; on Railway each
+    # password must come from its own SEED_PASSWORD_<USERNAME> variable.
+    plan = plan_seed_users(os.environ)
     async with AsyncSessionLocal() as session:
         for seed in seeds:
+            if seed["username"] not in plan.passwords:
+                continue
             exists = (await session.execute(select(User).where(User.username == seed["username"]))).scalar_one_or_none()
             if not exists:
                 session.add(User(
                     username=seed["username"],
                     email=seed["email"],
-                    hashed_password=hash_password(f"{seed['username']}123"),
+                    hashed_password=hash_password(plan.passwords[seed["username"]]),
                     role=seed["role"],
                 ))
         await session.commit()
@@ -120,15 +128,9 @@ app.add_middleware(UnhandledExceptionMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://content-studio-frontend-production-84fe.up.railway.app",
-        # Ayub staging test frontend (snapshot branch only) — see staging/ayub-video-studio-test-03-sep-2026.
-        "https://frontend-ayubtest-contentstudio-production.up.railway.app",
-        # Ayub staging test frontend, Netlify deploy — see staging/ayub-video-studio-test-03-sep-2026.
-        "https://socialgenius-video-studio-test.netlify.app",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    # The five original origins are fixed in app/startup_security.py; the CORS_ALLOWED_ORIGINS
+    # environment variable (comma-separated) can only ADD to them, never replace or wildcard.
+    allow_origins=build_allowed_origins(os.environ.get(CORS_ENV_VAR)),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

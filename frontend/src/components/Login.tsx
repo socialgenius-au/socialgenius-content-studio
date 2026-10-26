@@ -65,7 +65,8 @@ export default function Login() {
           </button>
         </form>
 
-        <p style={s.hint}>ayub · priya · iqra  /  username + username123</p>
+        {/* Local dev only: the dev-seeded accounts use predictable passwords. Production builds (including every Railway preview) never show or bundle this hint. */}
+        {import.meta.env.DEV && <p style={s.hint}>ayub · priya · iqra  /  username + username123</p>}
       </div>
     </div>
   )
