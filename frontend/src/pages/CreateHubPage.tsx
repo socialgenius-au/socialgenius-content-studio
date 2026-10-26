@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { VIDEO_STUDIO_ROUTE } from '@/config/studioRoutes'
 
 const OUTCOMES: { id: CreativeOutcome; icon: typeof Eye }[] = [
   { id: 'Attention', icon: Eye },
@@ -463,7 +464,7 @@ export default function CreateHubPage() {
               {gate && <StatusBadge status={gate.result} />}
               {exceptionApproved && <Badge variant="warning">Tactical exception</Badge>}
             </div>
-            <Button className="mt-2 w-fit gap-1.5" onClick={() => client && navigate(`/clients/${client.id}/studio`)}>
+            <Button className="mt-2 w-fit gap-1.5" onClick={() => navigate(VIDEO_STUDIO_ROUTE)}>
               Send to Video Studio <ChevronRight className="h-4 w-4" />
             </Button>
           </CardContent>
