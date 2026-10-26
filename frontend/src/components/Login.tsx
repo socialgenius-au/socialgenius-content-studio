@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { VIDEO_STUDIO_ROUTE } from '../config/studioRoutes'
 
 export default function Login() {
   const { login } = useAuth()
@@ -16,7 +17,7 @@ export default function Login() {
     setLoading(true)
     try {
       await login(username, password)
-      navigate('/studio')
+      navigate(VIDEO_STUDIO_ROUTE)
     } catch (err) {
       // Distinguish a genuine credential rejection (401) from the backend simply being
       // unreachable — the previous blanket "Invalid username or password" for every failure

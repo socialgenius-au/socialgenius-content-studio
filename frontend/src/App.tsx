@@ -15,6 +15,8 @@ import Layout from './components/Layout'
 import StudioPage from './components/studio/StudioPage'
 import { AppShell } from './components/shell/AppShell'
 import { LoadingState } from './components/common/LoadingState'
+import { LEGACY_STUDIO_ROUTE } from './config/studioRoutes'
+import { legacyStudioRedirectRoutes } from './routes/studioRedirects'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const ClientsPage = lazy(() => import('./pages/ClientsPage'))
@@ -82,22 +84,14 @@ function AppRoutes() {
         }
       />
 
-      {/* Studio — the video editor keeps its own full-screen chrome, not the AppShell */}
+      {/* The old video editor's URLs (/studio and /clients/:clientId/studio) now redirect to the approved Video Studio V2 (/video-studio-v2).
+          The original editor component is preserved, unchanged, at the explicit legacy path below; nothing links to it. */}
+      {legacyStudioRedirectRoutes}
       <Route
-        path="/studio"
+        path={LEGACY_STUDIO_ROUTE}
         element={
           <RequireAuth>
             <StudioPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/clients/:clientId/studio"
-        element={
-          <RequireAuth>
-            <ClientProvider>
-              <StudioPage />
-            </ClientProvider>
           </RequireAuth>
         }
       />
