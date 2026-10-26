@@ -1,12 +1,10 @@
-import { useState } from 'react'
 import { Sparkles, Wand2, Send, Download, Save } from 'lucide-react'
-import { REVIEW_SCORES, AI_RECOMMENDATIONS, PLATFORMS } from '../mockData'
+import { REVIEW_SCORES, AI_RECOMMENDATIONS } from '../mockData'
+import { usePostFormat } from '../format/PostFormatContext'
+import { sizeReadout } from '../components/FormatFields'
 
 export default function ReviewTab({ onBack }: { onBack: () => void }) {
-  const [platforms, setPlatforms] = useState<string[]>(['Instagram Feed'])
-
-  const togglePlatform = (p: string) =>
-    setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]))
+  const { state, canvas, platforms, toggleExtraPlatform } = usePostFormat()
 
   const overall = Math.round(REVIEW_SCORES.reduce((s, r) => s + r.value, 0) / REVIEW_SCORES.length)
 
@@ -77,16 +75,24 @@ export default function ReviewTab({ onBack }: { onBack: () => void }) {
             <h3 className="pcv2-card-title">Publish To</h3>
             <p className="pcv2-card-sub">Select platforms for this post</p>
             <div className="pcv2-platform-row">
-              {PLATFORMS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  className={`pcv2-platform-pill ${platforms.includes(p) ? 'is-selected' : ''}`}
-                  onClick={() => togglePlatform(p)}
-                >
-                  {p}
-                </button>
-              ))}
+              {platforms.map((p) => {
+                const primary = p.key === state.selection.platformKey
+                const selected = primary || state.extraPlatformKeys.includes(p.key)
+                return (
+                  <button
+                    key={p.key}
+                    type="button"
+                    data-testid={`pcv2-publish-${p.key}`}
+                    className={`pcv2-platform-pill ${selected ? 'is-selected' : ''}`}
+                    aria-pressed={selected}
+                    title={primary ? `Primary platform (${canvas.formatLabel} · ${sizeReadout(canvas)}) — change it in Brief or Create` : undefined}
+                    onClick={() => toggleExtraPlatform(p.key)}
+                    disabled={primary}
+                  >
+                    {p.label}
+                  </button>
+                )
+              })}
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
               <button type="button" className="pcv2-btn pcv2-btn-primary">

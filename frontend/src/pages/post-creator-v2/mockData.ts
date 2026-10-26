@@ -139,4 +139,3 @@ export const AI_RECOMMENDATIONS = [
   { id: 'rec3', text: 'Add an "In Stock" badge earlier in the visual hierarchy — it’s currently below the fold on some crops.' },
 ]
 
-export const PLATFORMS = ['Instagram Feed', 'Instagram Story', 'Facebook', 'LinkedIn', 'Google Business']

@@ -6,6 +6,7 @@ import IntelligenceTab from './tabs/IntelligenceTab'
 import ReferencesTab from './tabs/ReferencesTab'
 import CreateTab from './tabs/CreateTab'
 import ReviewTab from './tabs/ReviewTab'
+import { PostFormatProvider } from './format/PostFormatContext'
 
 export type ThemeMode = 'light' | 'dark'
 export type Stage = 'brief' | 'intelligence' | 'references' | 'create' | 'review'
@@ -46,6 +47,7 @@ export default function PostCreatorV2() {
   }
 
   return (
+    <PostFormatProvider>
     <div className="pcv2" data-theme={theme}>
       <header className="pcv2-header">
         <a className="pcv2-brand" href="/dashboard">
@@ -108,5 +110,6 @@ export default function PostCreatorV2() {
         {stage === 'review' && <ReviewTab onBack={goBack} />}
       </div>
     </div>
+    </PostFormatProvider>
   )
 }
