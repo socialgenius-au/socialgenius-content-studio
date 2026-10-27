@@ -11,7 +11,9 @@ torchvision==0.28.0
 
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
-sqlalchemy>=2.0.36
+# [asyncio] is SQLAlchemy's supported extra for sqlalchemy.ext.asyncio (app/database.py): it makes greenlet an unconditional requirement. Without it greenlet is
+# only pulled in by an environment marker on platform_machine, so some build hosts install SQLAlchemy without it ('No module named greenlet' at import).
+sqlalchemy[asyncio]>=2.0.36
 asyncpg>=0.30.0
 pydantic>=2.10.0
 pydantic-settings>=2.7.0
