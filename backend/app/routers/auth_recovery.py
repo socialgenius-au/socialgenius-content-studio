@@ -4,7 +4,8 @@
   POST /auth/password-reset/validate    is this link still usable? (never consumes it)
   POST /auth/password-reset/confirm     token + new password -> sets the password, signs out every existing session
   POST /auth/email/verification/request signed-in user -> emails a verification link to their address of record
-  POST /auth/email/verification/confirm token -> marks that address as verified
+  POST /auth/email/verification/validate token -> is this link usable? (read-only; never consumes it)
+  POST /auth/email/verification/confirm token -> marks that address as verified (the page calls this ONLY when the person clicks the button)
   POST /auth/email/verification/resend  expired/used verification link -> a new link to the address on file (same reply for any input)
 
 Design rules (see docs/FORGOT_PASSWORD.md)
@@ -201,6 +202,19 @@ async def resend_email_verification(request: Request, body: TokenBody, backgroun
     Same reply for valid, expired, used, unknown and malformed links; nothing is decided before answering."""
     background.add_task(_process_verification_resend, body.token, _client_ip(request))
     return {"message": "If that link was valid, a new confirmation email is on its way."}
+
+
+@router.post("/email/verification/validate")
+@limiter.limit("20/hour")
+async def validate_email_verification_token(request: Request, body: TokenBody, db: AsyncSession = Depends(get_db)):
+    """Read-only: is this verification link currently usable? It NEVER consumes the link and never changes the account.
+
+    The verify-email page calls this when it opens, then waits for the person to press "Confirm email address". Opening the page (which is all a
+    link preview, a URL scanner, or a JavaScript-running sandbox does) therefore cannot verify anything; only the deliberate click, which posts
+    to /confirm, can."""
+    row = await auth_tokens.peek_token(db, body.token, auth_tokens.PURPOSE_VERIFY)
+    user = await db.get(User, row.user_id) if row else None
+    return {"valid": bool(user and user.is_active and user.email and user.email == row.email)}
 
 
 @router.post("/email/verification/confirm")

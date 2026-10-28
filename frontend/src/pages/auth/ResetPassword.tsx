@@ -5,6 +5,7 @@ import PasswordField from '../../components/auth/PasswordField'
 import { s } from '../../components/auth/authStyles'
 import { useAuth } from '../../contexts/AuthContext'
 import { checkNewPassword, clearUrlFragment, confirmPasswordReset, failureMessage, validateResetToken } from '../../lib/authRecovery'
+import { useSingleFlight } from '../../lib/singleFlight'
 import { useUrlToken } from '../../lib/useUrlToken'
 
 type Stage = 'form' | 'expired' | 'done'
@@ -71,6 +72,7 @@ function ResetPasswordFlow({ token }: { token: string | null }) {
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const once = useSingleFlight()
 
   useEffect(() => {
     clearUrlFragment()                                   // the token now lives only in memory
@@ -82,13 +84,18 @@ function ResetPasswordFlow({ token }: { token: string | null }) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (loading || !token) return
+    if (!token) return
     const problem = checkNewPassword(password, confirm)
     if (problem) { setError(problem); return }
-    setError('')
-    setLoading(true)
-    const result = await confirmPasswordReset(token, password)
-    setLoading(false)
+    const out = await once(async () => {                 // pressing Enter twice must not send the single-use link twice
+      setError('')
+      setLoading(true)
+      const r = await confirmPasswordReset(token, password)
+      setLoading(false)
+      return r
+    })
+    if (!out.ran) return
+    const result = out.value
     if (result.ok) {
       logout()                                           // this browser's old session is dead on the server too; drop it locally
       setPassword(''); setConfirm('')

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import AuthShell from '../../components/auth/AuthShell'
 import { s } from '../../components/auth/authStyles'
 import { failureMessage, requestPasswordReset } from '../../lib/authRecovery'
+import { useSingleFlight } from '../../lib/singleFlight'
 
 export interface ForgotPasswordViewProps {
   stage: 'form' | 'sent'
@@ -58,14 +59,19 @@ export default function ForgotPassword() {
   const [stage, setStage] = useState<'form' | 'sent'>('form')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const once = useSingleFlight()
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (loading) return
-    setError('')
-    setLoading(true)
-    const result = await requestPasswordReset(identifier)
-    setLoading(false)
+    const out = await once(async () => {
+      setError('')
+      setLoading(true)
+      const r = await requestPasswordReset(identifier)
+      setLoading(false)
+      return r
+    })
+    if (!out.ran) return
+    const result = out.value
     if (result.ok) setStage('sent')
     else setError(failureMessage(result.reason))
   }

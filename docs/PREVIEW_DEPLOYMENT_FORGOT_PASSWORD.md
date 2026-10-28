@@ -70,7 +70,7 @@ Frontend service: `VITE_API_URL` stays as it is.
 3. On startup the new backend runs its additive schema changes automatically (§4).
 4. Post-deploy checks (all read-only):
    - `GET <backend>/health/ready` returns `{"status":"ok","db":"ok",...}`.
-   - `GET <backend>/openapi.json` lists the five new `/auth/password-reset/*` and `/auth/email/verification/*` paths.
+   - `GET <backend>/openapi.json` lists the six new `/auth/password-reset/*` and `/auth/email/verification/*` paths (`validate` exists for both flows).
    - `<frontend>/login` shows the plain "Forgot password?" link; `<frontend>/forgot-password` loads directly (deep link).
    - Backend logs show no startup errors.
 
@@ -135,6 +135,7 @@ database (columns/table added, user kept, old session still valid), then the **o
 ## 7. Real end-to-end test (after §3 passes and §5 is done)
 
 Use a private browser window.
+0. Verification link: open the confirmation email's link: the page shows **Confirm email address** and nothing is verified yet; press it → **Email confirmed**.
 1. `<frontend>/login` → click **Forgot password?** → enter `ayub` → neutral "Check your email" screen.
 2. In the `socialgenius.au@gmail.com` inbox (check spam) the reset email arrives within about a minute. The link opens `/reset-password`; the address bar shows no token.
 3. Enter a new password of 12+ characters; try **Show / Hide** on both fields; submit → "Password updated".
@@ -158,7 +159,7 @@ Record the outcome (pass/fail per step) in the review notes.
 | `ayub` cannot sign in today (password mismatch) | Existing problem, not caused by this | Solved by §5 + §7 (the reset itself sets the password) |
 | Email delivery: spam folder, Resend limits, test sender delivers only to the account owner | Medium for the first test | Use the Gmail inbox that owns the Resend account; check spam; verify a domain before real users |
 | Resend click tracking rewriting links | Low | Disable click tracking for the domain |
-| A mail scanner that runs JavaScript could open a **verification** link and use it up | Low; harmless to security | "Send a new confirmation email" recovery exists on that screen |
+| A link scanner / preview bot opening a **verification** link | **Mitigated.** Opening the page only runs a read-only check; the address is verified only when the person presses "Confirm email address". Verified with a plain fetch and a JavaScript-running headless browser: neither consumed the link. | "Send a new confirmation email" recovery still exists |
 | Rate limits are per process and in memory (reset on restart); limits key on client IP | Low | Backend runs one worker and already trusts Railway's forwarded address; if it ever mis-identified clients, everyone would share one hourly bucket, so confirm in §7 step 7 that two networks are counted separately |
 | Link host is configuration, not request data | None; but a wrong `FRONTEND_BASE_URL` breaks every link | Copy the exact origin; test in §7 |
 | Secrets | Low | Only in Railway's masked variables; never in chat or screenshots |

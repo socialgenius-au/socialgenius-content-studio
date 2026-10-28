@@ -21,7 +21,9 @@ See `docs/PREVIEW_DEPLOYMENT_FORGOT_PASSWORD.md` for the deployment checklist.
 | `POST /password-reset/validate` `{token}` | none | 20 / hour | `{valid: bool}`; never consumes the link. |
 | `POST /password-reset/confirm` `{token, new_password}` | none | 10 / hour | 400 `invalid_token` or 400 `weak_password` (a weak password does **not** use up the link). Never 401. |
 | `POST /email/verification/request` | signed in | 5 / hour | Emails a verification link to the account's address. |
-| `POST /email/verification/confirm` `{token}` | none | 10 / hour | Marks the address verified. |
+| `POST /email/verification/validate` `{token}` | none | 20 / hour | `{valid: bool}`; read-only, never consumes the link or verifies anything. The page calls this when it opens. |
+| `POST /email/verification/confirm` `{token}` | none | 10 / hour | Marks the address verified. The page calls this **only** when the person presses "Confirm email address". |
+| `POST /email/verification/resend` `{token}` | none | 5 / hour | Expired/used link -> a new link to the address on file; same reply for any input. |
 
 Per account there is also a hard cap of **3 links per hour per purpose**; extra requests are silently ignored (same response).
 

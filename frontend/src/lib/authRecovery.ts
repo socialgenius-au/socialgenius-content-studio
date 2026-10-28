@@ -62,7 +62,7 @@ export function checkNewPassword(password: string, confirm: string): string | nu
 
 // ── API calls → small result values the screens can switch on ─────────────────────────────────────────────────────────────────────
 
-export type RecoveryApi = Pick<typeof authApi, 'requestPasswordReset' | 'validateResetToken' | 'confirmPasswordReset' | 'confirmEmailVerification' | 'resendEmailVerification'>
+export type RecoveryApi = Pick<typeof authApi, 'requestPasswordReset' | 'validateResetToken' | 'confirmPasswordReset' | 'validateEmailToken' | 'confirmEmailVerification' | 'resendEmailVerification'>
 
 type HttpError = { response?: { status?: number; data?: { detail?: unknown } } }
 const statusOf = (err: unknown) => (err as HttpError)?.response?.status
@@ -113,6 +113,17 @@ export async function confirmPasswordReset(token: string, newPassword: string, a
   }
 }
 
+/** Read-only check used when the verify-email page opens. It never consumes the link: opening the page must not verify anything.
+ * Only the person's deliberate click on "Confirm email address" (confirmEmailVerification) can do that. */
+export async function validateEmailToken(token: string, api: RecoveryApi = authApi): Promise<'valid' | 'invalid' | 'unknown'> {
+  try {
+    const { data } = await api.validateEmailToken(token)
+    return data?.valid ? 'valid' : 'invalid'
+  } catch {
+    return 'unknown'                                      // could not check; the button is still shown and the server decides on click
+  }
+}
+
 export type VerifyResult = 'verified' | 'invalid' | 'rate_limited' | 'network'
 
 export async function confirmEmailVerification(token: string, api: RecoveryApi = authApi): Promise<VerifyResult> {
@@ -124,21 +135,6 @@ export async function confirmEmailVerification(token: string, api: RecoveryApi =
     if (status === 429) return 'rate_limited'
     return status === 400 ? 'invalid' : 'network'
   }
-}
-
-// The verification link is single-use, and React StrictMode runs effects twice in development. Sharing one in-flight request per token
-// stops the second run from "using the link again" and wrongly reporting it as already used.
-const inFlight = new Map<string, Promise<VerifyResult>>()
-export function confirmEmailVerificationOnce(token: string, api: RecoveryApi = authApi): Promise<VerifyResult> {
-  let p = inFlight.get(token)
-  if (!p) {
-    p = confirmEmailVerification(token, api)
-    inFlight.set(token, p)
-    // Forget it once settled: both StrictMode effect runs attach to this promise synchronously, but a later, deliberate second visit to the
-    // same (now used) link must reach the server and be told it is used, not be handed the old 'verified'.
-    p.finally(() => inFlight.delete(token))
-  }
-  return p
 }
 
 export async function resendEmailVerification(token: string, api: RecoveryApi = authApi): Promise<SimpleResult> {

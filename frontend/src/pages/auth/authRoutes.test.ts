@@ -59,6 +59,28 @@ describe('token handling', () => {
     expect(code('lib/authRecovery.ts')).toContain("return () => win.removeEventListener('hashchange', listener)")
   })
 
+  it('opening the verify-email page can NEVER verify: the on-open effect only runs the read-only check; confirm is reachable only from the click handler', () => {
+    const src = code('pages/auth/VerifyEmail.tsx')
+    const effect = src.slice(src.indexOf('useEffect(() => {'), src.indexOf('}, [token])') + '}, [token])'.length)
+    expect(effect).toContain('validateEmailToken(token)')
+    expect(effect).not.toContain('confirmEmailVerification')
+    expect(effect).not.toContain('resendEmailVerification')
+    const calls = [...src.matchAll(/confirmEmailVerification\(/g)]
+    expect(calls).toHaveLength(1)                                                        // exactly one call site...
+    const handler = src.slice(src.indexOf('const confirm = async () => {'), src.indexOf('const resend = async () => {'))
+    expect(handler).toContain('confirmEmailVerification(token)')                         // ...and it is inside the click handler
+    expect(src).toContain('onClick={onConfirm}')
+    expect(code('lib/authRecovery.ts')).not.toContain('confirmEmailVerificationOnce')    // the old automatic path is gone
+  })
+
+  it.each(['pages/auth/ForgotPassword.tsx', 'pages/auth/ResetPassword.tsx', 'pages/auth/VerifyEmail.tsx'])('%s sends each request through the single-flight guard (a fast double-click or double Enter cannot send twice)', (page) => {
+    const src = code(page)
+    expect(src).toContain('useSingleFlight()')
+    expect(src).toContain('await once(async () => {')
+    expect(src).toContain('if (!out.ran) return')
+    expect(src).not.toMatch(/if \(loading[^)]*\) return/)                                // the old, asynchronous 'busy' check is gone
+  })
+
   it('a successful reset signs this browser out locally', () => {
     const src = code('pages/auth/ResetPassword.tsx')
     expect(src).toContain('const { logout } = useAuth()')
@@ -67,7 +89,7 @@ describe('token handling', () => {
 
   it('the API client only talks to the documented endpoints, none of which can return 401 to the session interceptor', () => {
     const client = read('api/client.ts')
-    for (const endpoint of ['/auth/password-reset/request', '/auth/password-reset/validate', '/auth/password-reset/confirm', '/auth/email/verification/confirm', '/auth/email/verification/resend'])
+    for (const endpoint of ['/auth/password-reset/request', '/auth/password-reset/validate', '/auth/password-reset/confirm', '/auth/email/verification/validate', '/auth/email/verification/confirm', '/auth/email/verification/resend'])
       expect(client).toContain(`'${endpoint}'`)
   })
 

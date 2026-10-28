@@ -20,7 +20,7 @@ describe('every screen shares the sign-in card', () => {
     'reset form': html(<ResetPasswordView stage="form" />),
     'reset expired': html(<ResetPasswordView stage="expired" />),
     'reset done': html(<ResetPasswordView stage="done" />),
-    'verify working': html(<VerifyEmailView stage="working" />),
+    'verify ready': html(<VerifyEmailView stage="ready" />),
     'verify ok': html(<VerifyEmailView stage="verified" />),
     'verify failed': html(<VerifyEmailView stage="failed" />),
     'verify resent': html(<VerifyEmailView stage="resent" />),
@@ -153,7 +153,26 @@ describe('email verification screens', () => {
     expect(h).toContain('Check your email')
     expect(h).toContain('If that link was valid, a new confirmation email is on its way. It expires in 24 hours.')
   })
-  it('while confirming', () => {
-    expect(html(<VerifyEmailView stage="working" />)).toContain('Confirming your email…')
+  it('ready (the screen the link opens): explains, and offers a clearly visible Confirm email address button', () => {
+    const h = html(<VerifyEmailView stage="ready" />)
+    expect(h).toContain('Confirm your email')
+    expect(h).toContain('Confirm that this address is yours so we can use it to send you password-reset links.')
+    expect(h).toMatch(/<button[^>]*type="button"[^>]*>Confirm email address<\/button>/)
+    expect(h).toContain('background:#1E3D2A')                                            // the approved primary-button green
+    expect(h).toContain('width:100%')
+    expect(h).toMatch(/<a [^>]*href="\/login"[^>]*>Back to sign in<\/a>/)
+    expect(h).not.toContain('Email confirmed')                                           // nothing is confirmed just by showing the screen
+    expect(h).not.toContain('role="alert"')
+  })
+  it('ready: busy and error states keep the button (the link was not used)', () => {
+    const busy = html(<VerifyEmailView stage="ready" loading />)
+    expect(busy).toContain('Confirming…')
+    expect(busy).toMatch(/<button[^>]*disabled/)
+    const err = html(<VerifyEmailView stage="ready" error="Could not reach the server — please try again in a moment" />)
+    expect(err).toMatch(/role="alert"[^>]*>Could not reach the server/)
+    expect(err).toContain('Confirm email address')
+  })
+  it('only the ready screen offers the confirm action; no other state can confirm', () => {
+    for (const stage of ['verified', 'failed', 'resent'] as const) expect(html(<VerifyEmailView stage={stage} />)).not.toContain('Confirm email address')
   })
 })

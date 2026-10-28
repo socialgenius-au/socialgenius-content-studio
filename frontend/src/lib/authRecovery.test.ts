@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  NETWORK_MESSAGE, RATE_LIMIT_MESSAGE, checkNewPassword, confirmEmailVerification, confirmEmailVerificationOnce, confirmPasswordReset,
-  failureMessage, initialUrlTokenState, nextUrlTokenState, readTokenFromHash, requestPasswordReset, resendEmailVerification, validateResetToken, watchUrlHash,
+  NETWORK_MESSAGE, RATE_LIMIT_MESSAGE, checkNewPassword, confirmEmailVerification, confirmPasswordReset,
+  failureMessage, initialUrlTokenState, nextUrlTokenState, readTokenFromHash, requestPasswordReset, resendEmailVerification, validateEmailToken, validateResetToken, watchUrlHash,
   type HashWindow, type RecoveryApi,
 } from './authRecovery'
 
@@ -165,21 +165,24 @@ describe('email verification', () => {
     expect(await run(new Error('offline'))).toBe('network')
   })
 
-  it('the single-use link is only ever submitted once per token, even if the page effect runs twice (StrictMode)', async () => {
-    const fn = vi.fn().mockResolvedValue({})
-    const api = apiWith({ confirmEmailVerification: fn })
-    const token = 'once-' + TOKEN
-    const [a, b] = await Promise.all([confirmEmailVerificationOnce(token, api), confirmEmailVerificationOnce(token, api)])
-    expect([a, b]).toEqual(['verified', 'verified'])
-    expect(fn).toHaveBeenCalledTimes(1)
+  // Opening the page runs ONLY the read-only check. These tests pin that the check is a different call from the confirm, and never makes it.
+  it('validateEmailToken maps valid / invalid / unknown, and only ever calls the read-only endpoint', async () => {
+    const validate = vi.fn().mockResolvedValue({ data: { valid: true } })
+    const confirm = vi.fn()
+    const api = apiWith({ validateEmailToken: validate, confirmEmailVerification: confirm })
+    expect(await validateEmailToken(TOKEN, api)).toBe('valid')
+    expect(validate).toHaveBeenCalledWith(TOKEN)
+    expect(confirm).not.toHaveBeenCalled()                                             // looking never verifies
+    expect(await validateEmailToken(TOKEN, apiWith({ validateEmailToken: () => Promise.resolve({ data: { valid: false } }) }))).toBe('invalid')
+    expect(await validateEmailToken(TOKEN, apiWith({ validateEmailToken: () => Promise.reject(new Error('offline')) }))).toBe('unknown')
+    expect(await validateEmailToken(TOKEN, apiWith({ validateEmailToken: () => Promise.reject(httpError(429)) }))).toBe('unknown')
   })
 
-  it('...but a later, deliberate second visit to the same link reaches the server and is told it is used', async () => {
+  it('confirming is a separate, explicit call: every click reaches the server (nothing is cached or replayed)', async () => {
     const fn = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(httpError(400, { detail: { code: 'invalid_token' } }))
     const api = apiWith({ confirmEmailVerification: fn })
-    const token = 'revisit-' + TOKEN
-    expect(await confirmEmailVerificationOnce(token, api)).toBe('verified')
-    expect(await confirmEmailVerificationOnce(token, api)).toBe('invalid')      // not the cached 'verified'
+    expect(await confirmEmailVerification(TOKEN, api)).toBe('verified')
+    expect(await confirmEmailVerification(TOKEN, api)).toBe('invalid')                 // the server says it is already used; no stale 'verified'
     expect(fn).toHaveBeenCalledTimes(2)
   })
 

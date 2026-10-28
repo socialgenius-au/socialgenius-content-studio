@@ -510,6 +510,70 @@ def test_resend_never_answers_401(client):
     assert resend(client, "a" * 43).status_code != 401 and resend(client, "x").status_code != 401
 
 
+# ── verification links: opening / checking a link must never use it up (link previews, scanners) ───────────────────────────────
+
+def validate_verification(client, token):
+    return client.post("/auth/email/verification/validate", json={"token": token})
+
+
+def test_validate_reports_a_usable_link_without_consuming_or_verifying_anything(client, outbox):
+    u = make_user(verified=False)
+    token = _verification_token(client, outbox, u)
+    for _ in range(5):                                                                  # a scanner may check as often as it likes
+        r = validate_verification(client, token)
+        assert r.status_code == 200 and r.json() == {"valid": True}
+    row = tokens_for(u["id"], "email_verify")[0]
+    assert row["used_at"] is None                                                       # still unused
+    assert user_row(u["id"])["email_verified_at"] is None                              # and nobody was verified by looking
+    assert client.post("/auth/email/verification/confirm", json={"token": token}).status_code == 200      # the deliberate confirm still works, once
+    assert client.post("/auth/email/verification/confirm", json={"token": token}).status_code == 400
+    assert user_row(u["id"])["email_verified_at"] is not None
+
+
+def test_validate_says_false_for_every_kind_of_dead_link_with_the_identical_reply(client, outbox):
+    expired_user, used_user, moved_user, disabled_user = (make_user(verified=False) for _ in range(4))
+    expired = _verification_token(client, outbox, expired_user)
+    sql("UPDATE auth_tokens SET expires_at = now() - interval '1 second' WHERE user_id = $1", expired_user["id"])
+    used = _verification_token(client, outbox, used_user)
+    assert client.post("/auth/email/verification/confirm", json={"token": used}).status_code == 200
+    moved = _verification_token(client, outbox, moved_user)
+    sql("UPDATE users SET email = $1 WHERE id = $2", f"new_{moved_user['email']}", moved_user["id"])
+    disabled = _verification_token(client, outbox, disabled_user)
+    sql("UPDATE users SET is_active = false WHERE id = $1", disabled_user["id"])
+    reset_owner = make_user(verified=True)
+    wrong_purpose = reset_token(client, outbox, reset_owner)                            # a password-reset token is not a verification token
+    answers = []
+    for tok in (expired, used, moved, disabled, wrong_purpose, "a" * 43, "not-a-token", secrets.token_urlsafe(32)):
+        limiter.reset()
+        r = validate_verification(client, tok)
+        answers.append((r.status_code, r.json()))
+    assert set(map(str, answers)) == {str((200, {"valid": False}))}
+
+
+def test_validate_leaves_the_reset_link_and_the_reset_flow_untouched(client, outbox):
+    u = make_user()
+    reset = reset_token(client, outbox, u)
+    assert validate_verification(client, reset).json() == {"valid": False}            # not a verification token
+    assert client.post("/auth/password-reset/validate", json={"token": reset}).json() == {"valid": True}
+    assert tokens_for(u["id"], "password_reset")[0]["used_at"] is None
+
+
+def test_validate_is_rate_limited_and_never_401(client):
+    codes = [validate_verification(client, "a" * 43).status_code for _ in range(21)]
+    assert codes[:20] == [200] * 20 and codes[20] == 429
+
+
+def test_only_post_can_touch_a_verification_link__no_get_consumes_anything(client, outbox):
+    u = make_user(verified=False)
+    token = _verification_token(client, outbox, u)
+    for path in ("/auth/email/verification/validate", "/auth/email/verification/confirm", "/auth/email/verification/resend", "/auth/email/verification/request"):
+        assert client.get(path, params={"token": token}).status_code == 405
+    for path in ("/auth/email/verification/validate", "/auth/email/verification/confirm", "/auth/email/verification/resend"):
+        assert client.get(f"{path}?token={token}").status_code == 405
+    assert tokens_for(u["id"], "email_verify")[0]["used_at"] is None
+    assert user_row(u["id"])["email_verified_at"] is None
+
+
 # ── logging hygiene ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_logs_never_contain_tokens_passwords_links_or_email_addresses(client, outbox, caplog):

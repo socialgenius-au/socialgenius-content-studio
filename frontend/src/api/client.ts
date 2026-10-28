@@ -32,6 +32,7 @@ export const authApi = {
   requestPasswordReset: (identifier: string) => api.post('/auth/password-reset/request', { identifier }),
   validateResetToken: (token: string) => api.post('/auth/password-reset/validate', { token }),
   confirmPasswordReset: (token: string, new_password: string) => api.post('/auth/password-reset/confirm', { token, new_password }),
+  validateEmailToken: (token: string) => api.post('/auth/email/verification/validate', { token }),   // read-only: never consumes the link
   confirmEmailVerification: (token: string) => api.post('/auth/email/verification/confirm', { token }),
   resendEmailVerification: (token: string) => api.post('/auth/email/verification/resend', { token }),
 }
