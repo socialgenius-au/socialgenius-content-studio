@@ -1,7 +1,7 @@
 # Forgot Password: preview deployment checklist
 
 Status: **prepared, not executed.** Nothing below has been pushed, deployed or changed in Railway or any live database.
-Branch `feature/forgot-password` (2 feature commits on top of `preview/unified-v1` @ `40b6458`; a strict descendant, so it fast-forwards).
+Branch `feature/forgot-password` (3 feature commits on top of `preview/unified-v1` @ `40b6458`; a strict descendant, so it fast-forwards).
 Railway project `angelic-insight`, environment `production`: services `socialgenius-unified-preview` (backend), `socialgenius-content-studio`
 (frontend), `Postgres`. **Both app services track `preview/unified-v1` and redeploy automatically on every push to it.**
 
@@ -124,7 +124,7 @@ database (columns/table added, user kept, old session still valid), then the **o
 | Situation | Action |
 |---|---|
 | Something is wrong after deploy | Railway → each service → Deployments → pick the previous successful deployment → **Rollback**. Backend and frontend both, for consistency. Minutes. |
-| You want the branch itself back | Do **not** force-push. Add two revert commits (`git revert b7f8d3a c2937cb`, newest first) and push; services redeploy the old behaviour. |
+| You want the branch itself back | Do **not** force-push. Add revert commits (`git revert ec58958 b7f8d3a c2937cb`, newest first) and push; services redeploy the old behaviour. |
 | Database | Nothing to undo. The extra table and columns are ignored by the old code (they have defaults / are nullable). Dropping them is possible but unnecessary and not recommended. |
 | Variables | Leave them (harmless), or delete the three email variables. |
 | `ayub` email change | Re-run the script with the desired address, or leave it. |
