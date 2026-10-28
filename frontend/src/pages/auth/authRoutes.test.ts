@@ -23,7 +23,7 @@ describe('routes', () => {
 })
 
 describe('token handling', () => {
-  const files = ['lib/authRecovery.ts', 'pages/auth/ForgotPassword.tsx', 'pages/auth/ResetPassword.tsx', 'pages/auth/VerifyEmail.tsx', 'components/auth/PasswordField.tsx', 'components/auth/AuthShell.tsx']
+  const files = ['lib/authRecovery.ts', 'lib/useUrlToken.ts', 'pages/auth/ForgotPassword.tsx', 'pages/auth/ResetPassword.tsx', 'pages/auth/VerifyEmail.tsx', 'components/auth/PasswordField.tsx', 'components/auth/AuthShell.tsx']
   const code = (f: string) => read(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 
   it.each(files)('%s never logs, stores, or puts a token or password in a URL', (f) => {
@@ -40,10 +40,23 @@ describe('token handling', () => {
     expect(lib).toContain("hash.replace(/^#/, '')")
     expect(lib).toContain("window.history.replaceState(null, '', window.location.pathname + window.location.search)")
     for (const page of ['pages/auth/ResetPassword.tsx', 'pages/auth/VerifyEmail.tsx']) {
-      const src = code(page)
-      expect(src).toContain('readTokenFromHash(window.location.hash)')
-      expect(src).toContain('clearUrlFragment()')
+      expect(code(page)).toContain('clearUrlFragment()')
     }
+  })
+
+  it('both link screens follow the current link: they take it from useUrlToken and restart (key) whenever it changes', () => {
+    for (const [page, flow] of [['pages/auth/ResetPassword.tsx', 'ResetPasswordFlow'], ['pages/auth/VerifyEmail.tsx', 'VerifyEmailFlow']]) {
+      const src = code(page)
+      expect(src).toContain('const { token, version } = useUrlToken()')
+      expect(src).toContain(`<${flow} key={version} token={token} />`)
+      expect(src).not.toContain('window.location.hash')                          // no one-time read of the address bar left in the screens
+      expect(src).not.toContain('readTokenFromHash')
+    }
+    const hook = code('lib/useUrlToken.ts')
+    expect(hook).toContain('window.location.hash')                               // initial read, before any effect (StrictMode double render)
+    expect(hook).toContain('useEffect(() => watchUrlHash(window,')               // and the live subscription; its cleanup is the unsubscribe function
+    expect(code('lib/authRecovery.ts')).toContain("win.addEventListener('hashchange', listener)")
+    expect(code('lib/authRecovery.ts')).toContain("return () => win.removeEventListener('hashchange', listener)")
   })
 
   it('a successful reset signs this browser out locally', () => {

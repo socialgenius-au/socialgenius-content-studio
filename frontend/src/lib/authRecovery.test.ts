@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   NETWORK_MESSAGE, RATE_LIMIT_MESSAGE, checkNewPassword, confirmEmailVerification, confirmEmailVerificationOnce, confirmPasswordReset,
-  failureMessage, readTokenFromHash, requestPasswordReset, resendEmailVerification, validateResetToken, type RecoveryApi,
+  failureMessage, initialUrlTokenState, nextUrlTokenState, readTokenFromHash, requestPasswordReset, resendEmailVerification, validateResetToken, watchUrlHash,
+  type HashWindow, type RecoveryApi,
 } from './authRecovery'
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789_-ABCDE'           // 43 chars, URL-safe, same shape as the server's tokens
@@ -19,6 +20,83 @@ describe('readTokenFromHash', () => {
   it.each(['', '#', '#token=', '#token=short', '#other=' + TOKEN, '#token=' + 'a'.repeat(201), '#token=has spaces in it and more padding', '#token=<script>alert(1)</script>aaaa'])(
     'rejects %j', (hash) => expect(readTokenFromHash(hash)).toBeNull())
   it('never reads the token from a query string', () => expect(readTokenFromHash(`?token=${TOKEN}`)).toBeNull())
+})
+
+const TOKEN_B = 'ZYXWVUTSRQPONMLKJIHGFEDCBA9876543210-_zyxwvu'            // a second, different, well-formed token
+
+// A page that is already open can be pointed at a different link (the person pastes a second email link into the same tab). The browser then
+// changes only the #fragment: nothing reloads, a `hashchange` event fires. The token state must follow it. (Regression for: "navigating to a
+// different reset token on an already-open reset-password page does not refresh the token state".)
+describe('following a different link on an already-open page', () => {
+  /** The few pieces of `window` the watcher uses, with the browser's rule: assigning a new fragment fires `hashchange`. */
+  const fakeWindow = (initialHash = ''): HashWindow & { navigate(hash: string): void; listeners: number } => {
+    const listeners = new Set<() => void>()
+    const w = {
+      location: { hash: initialHash },
+      addEventListener: (_t: 'hashchange', l: () => void) => { listeners.add(l) },
+      removeEventListener: (_t: 'hashchange', l: () => void) => { listeners.delete(l) },
+      navigate(hash: string) { w.location.hash = hash; [...listeners].forEach((l) => l()) },
+      get listeners() { return listeners.size },
+    }
+    return w
+  }
+
+  it('a new valid token replaces the old one and bumps the version (so the screen restarts)', () => {
+    const a = initialUrlTokenState(`#token=${TOKEN}`)
+    expect(a).toEqual({ token: TOKEN, version: 0 })
+    const b = nextUrlTokenState(a, `#token=${TOKEN_B}`)
+    expect(b).toEqual({ token: TOKEN_B, version: 1 })
+    expect(nextUrlTokenState(b, `#token=${TOKEN}`)).toEqual({ token: TOKEN, version: 2 })
+  })
+
+  it('the SAME link opened again also restarts the screen (it may have been used in the meantime)', () => {
+    const a = initialUrlTokenState(`#token=${TOKEN}`)
+    expect(nextUrlTokenState(a, `#token=${TOKEN}`)).toEqual({ token: TOKEN, version: 1 })
+  })
+
+  it('an expired/no-link page picks up a valid link that is opened later', () => {
+    const none = initialUrlTokenState('')
+    expect(none).toEqual({ token: null, version: 0 })
+    expect(nextUrlTokenState(none, `#token=${TOKEN}`)).toEqual({ token: TOKEN, version: 1 })
+  })
+
+  it.each(['', '#', '#section', '#token=', '#token=short', `#other=${TOKEN}`, '#token=<script>alert(1)</script>aaaaaaaa'])('ignores a fragment that is not a token: %j', (hash) => {
+    const a = initialUrlTokenState(`#token=${TOKEN}`)
+    expect(nextUrlTokenState(a, hash)).toBe(a)                    // identical object: nothing re-renders, the current link keeps working
+  })
+
+  it('watchUrlHash: a hashchange for a second token reaches the state, exactly like the browser event does', () => {
+    const win = fakeWindow(`#token=${TOKEN}`)
+    let state = initialUrlTokenState(win.location.hash)
+    const stop = watchUrlHash(win, (hash) => { state = nextUrlTokenState(state, hash) })
+    expect(state.token).toBe(TOKEN)
+    win.navigate(`#token=${TOKEN_B}`)
+    expect(state).toEqual({ token: TOKEN_B, version: 1 })           // refreshed, no reload involved
+    win.navigate('#token=nope')                                     // garbage: current state is kept
+    expect(state).toEqual({ token: TOKEN_B, version: 1 })
+    win.navigate(`#token=${TOKEN}`)
+    expect(state).toEqual({ token: TOKEN, version: 2 })
+    stop()
+  })
+
+  it('stops listening when the page goes away (no leaked listener, no update after unmount)', () => {
+    const win = fakeWindow()
+    const seen: string[] = []
+    const stop = watchUrlHash(win, (h) => seen.push(h))
+    expect(win.listeners).toBe(1)
+    stop()
+    expect(win.listeners).toBe(0)
+    win.navigate(`#token=${TOKEN}`)
+    expect(seen).toEqual([])
+  })
+
+  it('removing the fragment from the address bar (replaceState) does not fire hashchange, so clearing never loops', () => {
+    const win = fakeWindow(`#token=${TOKEN}`)
+    let calls = 0
+    watchUrlHash(win, () => { calls++ })
+    win.location.hash = ''                                           // what clearUrlFragment() effectively does: no event is dispatched
+    expect(calls).toBe(0)
+  })
 })
 
 describe('checkNewPassword (mirrors the server rules)', () => {
@@ -94,6 +172,15 @@ describe('email verification', () => {
     const [a, b] = await Promise.all([confirmEmailVerificationOnce(token, api), confirmEmailVerificationOnce(token, api)])
     expect([a, b]).toEqual(['verified', 'verified'])
     expect(fn).toHaveBeenCalledTimes(1)
+  })
+
+  it('...but a later, deliberate second visit to the same link reaches the server and is told it is used', async () => {
+    const fn = vi.fn().mockResolvedValueOnce({}).mockRejectedValueOnce(httpError(400, { detail: { code: 'invalid_token' } }))
+    const api = apiWith({ confirmEmailVerification: fn })
+    const token = 'revisit-' + TOKEN
+    expect(await confirmEmailVerificationOnce(token, api)).toBe('verified')
+    expect(await confirmEmailVerificationOnce(token, api)).toBe('invalid')      // not the cached 'verified'
+    expect(fn).toHaveBeenCalledTimes(2)
   })
 
   it('resend maps ok / rate limit / network', async () => {

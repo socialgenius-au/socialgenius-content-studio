@@ -1,7 +1,7 @@
 # Forgot Password and email verification
 
-Branch: `feature/forgot-password` (based on `preview/unified-v1`). Backend is implemented and tested; the three screens (plus a verify-email page)
-are awaiting design approval and are not built yet.
+Branch: `feature/forgot-password` (based on `preview/unified-v1`). Backend and frontend are implemented and tested locally; nothing is pushed or deployed.
+See `docs/PREVIEW_DEPLOYMENT_FORGOT_PASSWORD.md` for the deployment checklist.
 
 ## How it works
 

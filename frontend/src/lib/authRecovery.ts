@@ -23,6 +23,33 @@ export function clearUrlFragment(): void {
   window.history.replaceState(null, '', window.location.pathname + window.location.search)
 }
 
+// A person can navigate to a DIFFERENT link while the page is already open (pasting a second link into the same tab changes only the #fragment,
+// which the browser treats as same-page navigation: nothing reloads, but a `hashchange` event fires). The state below lets a screen notice that
+// and start over for the new link; `version` changes every time, so the screen can be keyed on it.
+export interface UrlTokenState { token: string | null; version: number }
+
+export const initialUrlTokenState = (hash: string): UrlTokenState => ({ token: readTokenFromHash(hash), version: 0 })
+
+/** A fragment holding a valid token replaces the current one (even if it is the same string: the link may since have been used). Anything
+ * else, such as '#' or '#section', leaves the current state alone. */
+export function nextUrlTokenState(prev: UrlTokenState, hash: string): UrlTokenState {
+  const token = readTokenFromHash(hash)
+  return token ? { token, version: prev.version + 1 } : prev
+}
+
+export interface HashWindow {
+  location: { hash: string }
+  addEventListener(type: 'hashchange', listener: () => void): void
+  removeEventListener(type: 'hashchange', listener: () => void): void
+}
+
+/** Calls `onHash` with the new fragment on every hashchange; returns the function that stops listening. */
+export function watchUrlHash(win: HashWindow, onHash: (hash: string) => void): () => void {
+  const listener = () => onHash(win.location.hash)
+  win.addEventListener('hashchange', listener)
+  return () => win.removeEventListener('hashchange', listener)
+}
+
 // ── client-side checks: a convenience that mirrors the server's rules (the server is the authority) ──────────────────────────────
 
 export function checkNewPassword(password: string, confirm: string): string | null {
@@ -107,6 +134,9 @@ export function confirmEmailVerificationOnce(token: string, api: RecoveryApi = a
   if (!p) {
     p = confirmEmailVerification(token, api)
     inFlight.set(token, p)
+    // Forget it once settled: both StrictMode effect runs attach to this promise synchronously, but a later, deliberate second visit to the
+    // same (now used) link must reach the server and be told it is used, not be handed the old 'verified'.
+    p.finally(() => inFlight.delete(token))
   }
   return p
 }

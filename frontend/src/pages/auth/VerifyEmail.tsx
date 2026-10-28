@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import AuthShell from '../../components/auth/AuthShell'
 import { s } from '../../components/auth/authStyles'
-import { clearUrlFragment, confirmEmailVerificationOnce, failureMessage, readTokenFromHash, resendEmailVerification } from '../../lib/authRecovery'
+import { clearUrlFragment, confirmEmailVerificationOnce, failureMessage, resendEmailVerification } from '../../lib/authRecovery'
+import { useUrlToken } from '../../lib/useUrlToken'
 
 type Stage = 'working' | 'verified' | 'failed' | 'resent'
 
@@ -59,8 +60,12 @@ export function VerifyEmailView({ stage, canResend = true, onResend, error, load
 }
 
 export default function VerifyEmail() {
-  // Read (not clear) during render so React StrictMode's double render sees the fragment both times; the effect clears it.
-  const [token] = useState(() => (typeof window === 'undefined' ? null : readTokenFromHash(window.location.hash)))
+  // `version` changes whenever a different link is opened while this page is already showing, which restarts the whole flow for that link.
+  const { token, version } = useUrlToken()
+  return <VerifyEmailFlow key={version} token={token} />
+}
+
+function VerifyEmailFlow({ token }: { token: string | null }) {
   const [stage, setStage] = useState<Stage>(token ? 'working' : 'failed')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)

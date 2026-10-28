@@ -4,7 +4,8 @@ import AuthShell from '../../components/auth/AuthShell'
 import PasswordField from '../../components/auth/PasswordField'
 import { s } from '../../components/auth/authStyles'
 import { useAuth } from '../../contexts/AuthContext'
-import { checkNewPassword, clearUrlFragment, confirmPasswordReset, failureMessage, readTokenFromHash, validateResetToken } from '../../lib/authRecovery'
+import { checkNewPassword, clearUrlFragment, confirmPasswordReset, failureMessage, validateResetToken } from '../../lib/authRecovery'
+import { useUrlToken } from '../../lib/useUrlToken'
 
 type Stage = 'form' | 'expired' | 'done'
 
@@ -58,9 +59,13 @@ export function ResetPasswordView({ stage, password = '', confirm = '', onPasswo
 }
 
 export default function ResetPassword() {
+  // `version` changes whenever a different link is opened while this page is already showing, which restarts the whole flow for that link.
+  const { token, version } = useUrlToken()
+  return <ResetPasswordFlow key={version} token={token} />
+}
+
+function ResetPasswordFlow({ token }: { token: string | null }) {
   const { logout } = useAuth()
-  // Read (not clear) during render: React StrictMode renders twice before any effect runs, and both passes must see the fragment.
-  const [token] = useState(() => (typeof window === 'undefined' ? null : readTokenFromHash(window.location.hash)))
   const [stage, setStage] = useState<Stage>(token ? 'form' : 'expired')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
