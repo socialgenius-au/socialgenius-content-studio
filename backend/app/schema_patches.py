@@ -62,6 +62,11 @@ _ADDITIVE_PATCHES: list[str] = [
     # column-did class of change as every patch above) needs this same ADD-COLUMN-IF-NOT-EXISTS
     # treatment rather than relying on create_all.
     "ALTER TABLE scenes ADD COLUMN IF NOT EXISTS details JSON",
+    # Forgot Password — `users` has existed since the first deploy, so create_all will never add these two columns to it. Both are additive:
+    # email_verified_at is NULL for every existing user (nobody is verified until they prove mailbox ownership), token_version defaults to 0
+    # (matching tokens issued before this change, which carry no `tv` claim and are read as 0).
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0",
 ]
 
 

@@ -1,4 +1,5 @@
 from app.models.user import User
+from app.models.auth_token import AuthToken
 from app.models.brand import Brand
 from app.models.job import Job
 from app.models.asset import Asset

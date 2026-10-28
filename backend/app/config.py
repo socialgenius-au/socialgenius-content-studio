@@ -157,6 +157,15 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     NOTIFY_FROM_EMAIL: str = "SocialGenius <notifications@socialgenius.au>"
 
+    # ── Forgot Password / email verification (app/routers/auth_recovery.py) ─────────────────────────────────────────
+    # AUTH_FROM_EMAIL falls back to NOTIFY_FROM_EMAIL when empty. It must be on a Resend-verified domain.
+    AUTH_FROM_EMAIL: str = ""
+    # Public origin of the frontend, e.g. https://app.example.com — used ONLY to build the links in emails. It is configuration, never
+    # derived from a request header (that would let an attacker poison the link). While empty, no reset/verification email is sent.
+    FRONTEND_BASE_URL: str = ""
+    PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 30
+    EMAIL_VERIFY_TOKEN_TTL_HOURS: int = 24
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def fix_db_url(cls, v: str) -> str:

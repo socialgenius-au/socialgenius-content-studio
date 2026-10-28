@@ -22,4 +22,7 @@ async def current_user(
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+    # Tokens issued before token_version existed carry no `tv` and read as 0, which still matches until the first password reset.
+    if int(payload.get("tv", 0)) != user.token_version:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session no longer valid")
     return user

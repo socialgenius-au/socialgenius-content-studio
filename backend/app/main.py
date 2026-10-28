@@ -19,7 +19,7 @@ from app.database import engine, Base, AsyncSessionLocal
 from app.limiter import limiter
 from app.schema_patches import apply_additive_schema_patches
 from app.startup_security import CORS_ENV_VAR, build_allowed_origins, check_secret_key, plan_seed_users
-from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos
+from app.routers import auth, auth_recovery, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos
 
 # Import all models so Base.metadata is fully populated before create_all
 from app.models import (  # noqa: F401
@@ -141,6 +141,7 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 app.include_router(auth.router,       prefix="/auth",       tags=["auth"])
+app.include_router(auth_recovery.router, prefix="/auth",     tags=["auth-recovery"])
 app.include_router(upload.router,     prefix="/upload",     tags=["upload"])
 app.include_router(plan.router,       prefix="/plan",       tags=["plan"])
 app.include_router(jobs.router,       prefix="/jobs",       tags=["jobs"])

@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.database import AsyncSessionLocal
 from app.models.job import Job
+from app.models.user import User
 from app.services.auth import decode_token
 from app.services.ws_manager import manager
 
@@ -22,6 +23,13 @@ async def ws_job_updates(websocket: WebSocket, job_id: int) -> None:
     user_id = int(payload["sub"])
 
     async with AsyncSessionLocal() as db:
+        # Same session rule as HTTP (app/deps.py): the account must be active and the token must carry its current token_version,
+        # so a password reset also closes the door on websocket connections opened with an old token.
+        user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+        if not user or not user.is_active or int(payload.get("tv", 0)) != user.token_version:
+            await websocket.close(code=4001)
+            return
+
         result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == user_id))
         job = result.scalar_one_or_none()
         if not job:
