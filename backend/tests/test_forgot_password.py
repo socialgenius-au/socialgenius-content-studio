@@ -434,6 +434,82 @@ def test_a_verification_token_cannot_reset_a_password_and_vice_versa(client, out
     assert client.post("/auth/email/verification/confirm", json={"token": rtoken}).status_code == 400
 
 
+# ── recovery for an expired / used verification link ────────────────────────────────────────────────────────────────────────────
+
+def _verification_token(client, outbox, user) -> str:
+    n = len(outbox)
+    assert client.post("/auth/email/verification/request", headers=bearer(jwt_for(user))).status_code == 202
+    assert len(outbox) == n + 1
+    return token_from(outbox[-1]["text"])
+
+
+def resend(client, token):
+    return client.post("/auth/email/verification/resend", json={"token": token})
+
+
+def test_an_expired_verification_link_can_request_a_new_one_without_signing_in(client, outbox):
+    u = make_user(verified=False)
+    old = _verification_token(client, outbox, u)
+    sql("UPDATE auth_tokens SET expires_at = now() - interval '1 second' WHERE user_id = $1", u["id"])
+    assert client.post("/auth/email/verification/confirm", json={"token": old}).status_code == 400          # the old link is dead
+    r = resend(client, old)                                                                                    # no Authorization header
+    assert r.status_code == 202 and r.json()["message"].startswith("If that link was valid")
+    assert [m["to"] for m in outbox[1:]] == [u["email"]] and "verify-email#token=" in outbox[-1]["text"]      # to the address ON FILE
+    fresh = token_from(outbox[-1]["text"])
+    assert fresh != old and client.post("/auth/email/verification/confirm", json={"token": fresh}).status_code == 200
+    assert user_row(u["id"])["email_verified_at"] is not None
+
+
+def test_resend_replies_identically_and_sends_nothing_for_any_ineligible_link(client, outbox):
+    eligible = make_user(verified=False)
+    good_old = _verification_token(client, outbox, eligible)
+    sql("UPDATE auth_tokens SET expires_at = now() - interval '1 second' WHERE user_id = $1", eligible["id"])
+
+    already = make_user(verified=False)                                    # a link that WAS used: the account is verified now
+    used = _verification_token(client, outbox, already)
+    assert client.post("/auth/email/verification/confirm", json={"token": used}).status_code == 200
+
+    moved = make_user(verified=False)                                      # address changed after the link was sent
+    moved_tok = _verification_token(client, outbox, moved)
+    sql("UPDATE users SET email = $1 WHERE id = $2", f"new_{moved['email']}", moved["id"])
+
+    disabled = make_user(verified=False)
+    disabled_tok = _verification_token(client, outbox, disabled)
+    sql("UPDATE users SET is_active = false WHERE id = $1", disabled["id"])
+
+    stale = make_user(verified=False)                                      # link issued more than 30 days ago
+    stale_tok = _verification_token(client, outbox, stale)
+    sql("UPDATE auth_tokens SET created_at = now() - interval '31 days' WHERE user_id = $1", stale["id"])
+
+    reset_owner = make_user(verified=True)                                 # a PASSWORD-RESET token must not work here
+    reset_tok = reset_token(client, outbox, reset_owner)
+
+    baseline = len(outbox)
+    answers = []
+    for tok in (good_old, used, moved_tok, disabled_tok, stale_tok, reset_tok, "a" * 43, "not-a-token", secrets.token_urlsafe(32)):
+        limiter.reset()
+        r = resend(client, tok)
+        answers.append((r.status_code, r.json()))
+    assert len({str(a) for a in answers}) == 1 and answers[0][0] == 202
+    assert [m["to"] for m in outbox[baseline:]] == [eligible["email"]]     # exactly one email: the eligible account
+
+
+def test_resend_is_capped_per_account_and_rate_limited_per_ip(client, outbox):
+    u = make_user(verified=False)
+    tok = _verification_token(client, outbox, u)                          # 1st link this hour
+    sql("UPDATE auth_tokens SET expires_at = now() - interval '1 second' WHERE user_id = $1", u["id"])
+    n = len(outbox)
+    for _ in range(4):
+        assert resend(client, tok).status_code == 202
+    assert len(outbox) - n == 2                                           # links 2 and 3 only: the account cap is 3 per hour
+    assert resend(client, tok).status_code == 202                         # the 5th call this hour is still allowed
+    assert resend(client, tok).status_code == 429                         # the 6th from this IP is refused
+
+
+def test_resend_never_answers_401(client):
+    assert resend(client, "a" * 43).status_code != 401 and resend(client, "x").status_code != 401
+
+
 # ── logging hygiene ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_logs_never_contain_tokens_passwords_links_or_email_addresses(client, outbox, caplog):

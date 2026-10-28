@@ -5,6 +5,7 @@
   POST /auth/password-reset/confirm     token + new password -> sets the password, signs out every existing session
   POST /auth/email/verification/request signed-in user -> emails a verification link to their address of record
   POST /auth/email/verification/confirm token -> marks that address as verified
+  POST /auth/email/verification/resend  expired/used verification link -> a new link to the address on file (same reply for any input)
 
 Design rules (see docs/FORGOT_PASSWORD.md)
   * No account enumeration: the request endpoint does no database work before it answers, so unknown / disabled / unverified / capped /
@@ -177,6 +178,29 @@ async def request_email_verification(request: Request, response: Response, backg
         return {"message": "Your email address is already verified.", "verified": True}
     background.add_task(_process_verification_request, user.id, _client_ip(request))
     return {"message": "A confirmation link is on its way to the email address on your account.", "verified": False}
+
+
+async def _process_verification_resend(raw_token: str, ip: str | None) -> None:
+    try:
+        async with AsyncSessionLocal() as db:
+            row = await auth_tokens.find_token_any_state(db, raw_token, auth_tokens.PURPOSE_VERIFY)
+            user = await db.get(User, row.user_id) if row else None
+            # Only for an active, still-unverified account whose address is unchanged since that link was sent.
+            if user is None or not user.is_active or not user.email or user.email_verified_at is not None or user.email != row.email:
+                return
+            user_id = user.id
+        await _process_verification_request(user_id, ip)
+    except Exception as exc:
+        logger.error("verification resend failed (%s)", type(exc).__name__)
+
+
+@router.post("/email/verification/resend", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("5/hour")
+async def resend_email_verification(request: Request, body: TokenBody, background: BackgroundTasks):
+    """Recovery for an expired/used verification link: the old link identifies the account, and a NEW link is sent to the address on file.
+    Same reply for valid, expired, used, unknown and malformed links; nothing is decided before answering."""
+    background.add_task(_process_verification_resend, body.token, _client_ip(request))
+    return {"message": "If that link was valid, a new confirmation email is on its way."}
 
 
 @router.post("/email/verification/confirm")

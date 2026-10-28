@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type CSSProperties } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { VIDEO_STUDIO_ROUTE } from '../config/studioRoutes'
 
@@ -65,6 +65,8 @@ export default function Login() {
           </button>
         </form>
 
+        <Link to="/forgot-password" style={s.forgot}>Forgot password?</Link>
+
         {/* Local dev only: the dev-seeded accounts use predictable passwords. Production builds (including every Railway preview) never show or bundle this hint. */}
         {import.meta.env.DEV && <p style={s.hint}>ayub · priya · iqra  /  username + username123</p>}
       </div>
@@ -116,4 +118,5 @@ const s: Record<string, CSSProperties> = {
     transition: 'background 0.2s',
   },
   hint: { marginTop: 24, textAlign: 'center', color: '#aaa', fontSize: 12 },
+  forgot: { display: 'block', marginTop: 18, textAlign: 'center', color: '#1E3D2A', fontSize: 13, fontWeight: 600, textDecoration: 'underline' },
 }

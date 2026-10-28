@@ -78,6 +78,22 @@ async def peek_token(db: AsyncSession, raw: str, purpose: str) -> AuthToken | No
     )).scalar_one_or_none()
 
 
+RESEND_MAX_AGE = timedelta(days=30)
+
+
+async def find_token_any_state(db: AsyncSession, raw: str, purpose: str) -> AuthToken | None:
+    """Look a token up whether or not it is expired or used, but only if it was issued recently. Used ONLY by the "send me a new link"
+    recovery path, where holding an old emailed link merely identifies which account to re-send to (the new link still goes to the address on
+    file). It must never be used to authorise anything."""
+    if not _TOKEN_SHAPE.match(raw or ""):
+        return None
+    return (await db.execute(
+        select(AuthToken).where(
+            AuthToken.token_hash == hash_token(raw), AuthToken.purpose == purpose, AuthToken.created_at > func.now() - RESEND_MAX_AGE,
+        )
+    )).scalar_one_or_none()
+
+
 async def consume_token(db: AsyncSession, raw: str, purpose: str) -> tuple[int, str | None] | None:
     """Atomically mark the token used. Returns (user_id, email_it_was_sent_to), or None if unknown / expired / already used.
     Runs inside the caller's transaction: roll back and the token is usable again."""

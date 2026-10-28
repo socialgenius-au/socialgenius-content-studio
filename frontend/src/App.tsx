@@ -4,6 +4,9 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { ClientProvider } from './contexts/ClientContext'
 import Login from './components/Login'
+import ForgotPassword from './pages/auth/ForgotPassword'
+import ResetPassword from './pages/auth/ResetPassword'
+import VerifyEmail from './pages/auth/VerifyEmail'
 import LegacyDashboard from './components/Dashboard'
 import JobPlanner from './components/JobPlanner'
 import JobDetail from './components/JobDetail'
@@ -69,6 +72,11 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+      {/* Forgot Password / email verification: PUBLIC (no RequireAuth) — people reach these while signed out. The reset and verification
+          links carry their one-time token in the URL fragment (#token=…), never in the path or query. */}
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
 
       {/* Social Genius Positioning landing page — PUBLIC, unauthenticated, own full-screen chrome
           (no AppShell/RequireAuth), same convention as /studio and /video-studio-v2 below. This is

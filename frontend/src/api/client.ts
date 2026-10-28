@@ -28,6 +28,12 @@ export const authApi = {
   login: (username: string, password: string) =>
     api.post('/auth/login', { username, password }),
   me: () => api.get('/auth/me'),
+  // Forgot Password / email verification. These never answer 401 (the interceptor above would treat that as an expired session).
+  requestPasswordReset: (identifier: string) => api.post('/auth/password-reset/request', { identifier }),
+  validateResetToken: (token: string) => api.post('/auth/password-reset/validate', { token }),
+  confirmPasswordReset: (token: string, new_password: string) => api.post('/auth/password-reset/confirm', { token, new_password }),
+  confirmEmailVerification: (token: string) => api.post('/auth/email/verification/confirm', { token }),
+  resendEmailVerification: (token: string) => api.post('/auth/email/verification/resend', { token }),
 }
 
 export const planApi = {
