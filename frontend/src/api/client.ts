@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { uploadUrlPath } from './uploadPaths'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? '',
@@ -110,7 +111,8 @@ export const assetsApi = {
   // "uploads\1\x.mp4" on Windows — Path(...).__str__ uses the OS separator). Normalize to
   // forward slashes first so the "uploads/" strip matches on every platform; otherwise on
   // Windows it never matches and the URL doubles up into "/uploads/uploads\1\x.mp4".
-  previewUrl: (filePath: string)           => `${import.meta.env.VITE_API_URL ?? ''}/uploads/${filePath.replace(/\\/g, '/').replace(/^\/?uploads\//, '')}`,
+  // The absolute layout the Railway preview stores ("/data/uploads/1/x.mp4") is mapped to the same route too; any other path yields '' (see uploadPaths.ts).
+  previewUrl: (filePath: string)           => { const p = uploadUrlPath(filePath); return p === null ? '' : `${import.meta.env.VITE_API_URL ?? ''}/uploads/${p}` },
 }
 
 // Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Takes an asset_id already

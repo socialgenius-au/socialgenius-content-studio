@@ -188,3 +188,10 @@ Three approved fixes, each verified in a real browser run with a real export (de
 Known limits after Stage 3: each cut shortens the export by ~0.03 s (29.84 s for a 30 s plan; text timings drift up to ~0.16 s by the end); the export is one synchronous request and
 its ffmpeg join opens every clip at once — measured peak for 7 clips at 1080x1920 is ~1.6 GB working set / ~2.5 GB committed (720x1280: ~1.2 GB), so a small hosted container can
 run out of memory; shapes, lower thirds, subtitles and rich text are still not sent by the export button.
+
+## Stage 4A: uploaded-video URLs on the Railway volume (local only)
+
+The preview stores `file_path` as `/data/uploads/<user>/<file>` (absolute `UPLOAD_DIR`), but `assetsApi.previewUrl` only understood the relative `uploads/...` layout, so the
+browser asked for `/uploads//data/uploads/...` (404): clips could not be previewed or measured. `previewUrl` now maps the known `/data/uploads/` root to the public `/uploads/` route
+(`frontend/src/api/uploadPaths.ts`), keeps the relative layout byte-identical, encodes each path segment, and returns '' for anything else (other absolute paths, drive letters, dot or empty
+segments, control characters, non-strings). Verified in a real browser against a backend storing absolute paths: before the fix 5 of 14 checks passed, after 14 of 14.
