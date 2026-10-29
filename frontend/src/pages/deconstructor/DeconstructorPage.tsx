@@ -10,6 +10,7 @@ import { emptyIntentForm, validateIntentForm, type IntentErrors, type IntentForm
 import { useDeconstructor } from './useDeconstructor'
 import { anatomyReady, mechanismsView } from './viewModel'
 import { AnatomyStage, BlueprintStage, CreateStage, IntentStage, MechanismsStage, ReferenceStage } from './stages'
+import { FootageAssignment } from './footage'
 
 type Step = 'reference' | 'anatomy' | 'mechanisms' | 'intent' | 'blueprint' | 'create'
 
@@ -73,6 +74,9 @@ export default function DeconstructorPage() {
     return { n: plan.scenes.length, seconds: plan.totalSeconds }
   }, [d.blueprint.data])
 
+  // M1 / Stage 2: the same plan the blueprint step shows, handed to the Footage Assignment panel inside the Create step.
+  const plan = useMemo(() => (checkBlueprintUsable(d.blueprint.data).ok ? buildBlueprintPlan(d.blueprint.data!) : null), [d.blueprint.data])
+
   const needsRef = step !== 'reference' && routeId == null
 
   return (
@@ -119,6 +123,7 @@ export default function DeconstructorPage() {
           )}
           {step === 'blueprint' && <BlueprintStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} onNew={() => setStep('intent')} useMessage={useMessage} />}
           {step === 'create' && <CreateStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} sceneSummary={sceneSummary} useMessage={useMessage} />}
+          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} />}
         </>
       )}
     </div>

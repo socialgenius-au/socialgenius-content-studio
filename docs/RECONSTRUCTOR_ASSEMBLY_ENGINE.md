@@ -150,3 +150,26 @@ The table is stored in `assembly.elementClasses` so any future UI can show it wi
 
 Do not describe M1 as the finished Reconstructor: after Stage 2 there is still hosted-run validation, copy
 replacement guidance, and the deferred polish items.
+
+## Stage 2: Footage Assignment workspace (local only)
+
+Stage 2 connects the engine to the existing Deconstructor page. It adds **one panel inside the existing "Create" step** (below the
+unchanged "Use blueprint in Video Studio" button). The six steps and their layout are unchanged.
+
+`frontend/src/pages/deconstructor/footage/`
+
+| File | Purpose |
+|---|---|
+| `footageModel.ts` | Pure model: what the person typed -> engine input; engine answer -> scene rows. No assembly logic of its own |
+| `footageLibrary.ts` | List videos, upload (existing `/upload/`), read a video's real length (no fallback length) |
+| `assembledDraft.ts` | Save through the existing drafts API (create, or update the same draft); open via the editor's existing hand-off |
+| `FootageAssignmentView.tsx` / `FootageAssignment.tsx` | Presentational panel / container |
+| `*.test.ts(x)` | 69 tests (model, I/O failures, saving/opening, render) |
+
+Behaviour: choose or upload your own videos; assign them per scene with optional start point, length and speed; the engine re-runs on
+every change and the panel shows coverage, uncovered seconds, warnings, blockers and the automatic / partial / unsupported table.
+The reference video's own asset (and any other ingested reference) is disabled in the picker and refused by the engine.
+**Save draft** creates one draft (saving again updates it); **Open in Video Studio** is enabled only for an up-to-date saved draft and asks
+before replacing a project in progress. No AI provider is called.
+
+Still not done: export-side changes (placeholder-text guard, sending shapes/lower thirds/subtitles/rich text), deployment, hosted validation.
