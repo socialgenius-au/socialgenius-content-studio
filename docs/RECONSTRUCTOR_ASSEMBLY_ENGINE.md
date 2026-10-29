@@ -173,3 +173,18 @@ The reference video's own asset (and any other ingested reference) is disabled i
 before replacing a project in progress. No AI provider is called.
 
 Still not done: export-side changes (placeholder-text guard, sending shapes/lower thirds/subtitles/rich text), deployment, hosted validation.
+
+## Stage 3: export safety (local only)
+
+Three approved fixes, each verified in a real browser run with a real export (details in `docs/proposals/m1-stage3/PROPOSAL.md`):
+
+1. **Placeholder guard** — `video-studio-v2/blueprint/exportGuard.ts`, called from `ReviewTab.tsx` before the export request is built. Blocks only overlays that carry
+   the blueprint tag **and** still start with the placeholder prefix; names the scenes; no override.
+2. **Gap guard** — same function. For reconstruction projects only, blocks a gap larger than 0.05 s on the video track (the exporter joins clips end to end and would shift
+   later clips and text). Existing projects are never examined.
+3. **Silent-source fix** — `backend/app/services/ffmpeg_svc.py` `render_project`: a clip whose source has no audio stream is treated like a muted clip (once per distinct file, and
+   only probed when the clip would otherwise keep its audio).
+
+Known limits after Stage 3: each cut shortens the export by ~0.03 s (29.84 s for a 30 s plan; text timings drift up to ~0.16 s by the end); the export is one synchronous request and
+its ffmpeg join opens every clip at once — measured peak for 7 clips at 1080x1920 is ~1.6 GB working set / ~2.5 GB committed (720x1280: ~1.2 GB), so a small hosted container can
+run out of memory; shapes, lower thirds, subtitles and rich text are still not sent by the export button.

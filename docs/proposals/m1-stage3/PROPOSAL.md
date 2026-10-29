@@ -1,5 +1,8 @@
 # Reconstructor M1, Stage 3 preparation — export guard proposal
 
+> **Status: implemented locally in Stage 3** (see `docs/RECONSTRUCTOR_ASSEMBLY_ENGINE.md`, Stage 3). The draft files that lived in this folder are now the real
+> `blueprint/exportGuard.ts` (+ tests) and `backend/tests/test_export_silent_source.py`. This document is kept as the investigation record.
+
 Baseline: `feature/m1-assembly-engine` @ `abe261a`. **Investigation and proposal only.** No protected file, backend source, database, Railway
 setting or deployment was touched. The only additions are the files in this folder (not under `src/`, so not part of any build).
 

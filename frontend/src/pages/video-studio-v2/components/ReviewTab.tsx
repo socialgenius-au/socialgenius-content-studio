@@ -5,6 +5,7 @@ import { useStudio } from "../../../contexts/StudioContext";
 import { fitCanvasBox } from "../data/canvasFormats";
 import { findActiveClip } from "../../../components/studio/videoPreviewUtils";
 import { videoExportApi } from "../../../api/client";
+import { checkReconstructionExport } from "../blueprint/exportGuard";
 
 const PLATFORMS = [
   { key: "instagram", glyph: "◎", label: "Instagram" },
@@ -59,6 +60,14 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
     if (clipsWithoutAsset.length > 0) {
       setExportState("error");
       setExportError("One or more clips have no uploaded source video and can't be rendered yet.");
+      return;
+    }
+    // M1 (Reconstructor): a reconstruction project must not export placeholder wording, and its clips must not leave gaps the exporter would silently collapse.
+    // Projects that did not come from a blueprint are never affected (the check returns ok before looking at them).
+    const blocked = checkReconstructionExport(textOverlays, videoClips);
+    if (!blocked.ok) {
+      setExportState("error");
+      setExportError(blocked.message);
       return;
     }
 

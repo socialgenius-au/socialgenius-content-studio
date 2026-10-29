@@ -1,8 +1,7 @@
-"""PROPOSAL test for the backend part of Stage 3. Target path if approved: backend/tests/test_export_silent_source.py
+"""M1 / Stage 3 -- the exporter copes with source files that have no audio stream, and does not change how audio, mute, trim or speed behave.
 
-A clip whose source file has NO audio stream (screen recordings, most stock B-roll) must not break the export. Today `build_clip_segment(keep_audio=True)` produces a
-segment with no audio, and the multi-clip join (`acrossfade`) then fails: "matches no streams". With the one-line fix in render_project
-(`keep_audio = keep_audio and await _has_audio_stream(path)`) the clip is treated as silent, exactly like a muted one.
+A clip whose source file has NO audio stream (screen recordings, most stock B-roll) must not break the export. Before the fix `build_clip_segment(keep_audio=True)` produced a
+segment with no audio, and the multi-clip join (`acrossfade`) then failed: "matches no streams". render_project now treats such a clip as silent, exactly like a muted one.
 
 Runs real ffmpeg (the bundled imageio-ffmpeg binary) on tiny generated clips in a temporary directory: no database, no network."""
 import asyncio
@@ -77,3 +76,36 @@ def test_muted_still_means_silent(tmp_path):
 def test_a_single_silent_clip_still_exports(tmp_path):
     out = asyncio.run(ffmpeg_svc.render_project(_project([_clip(_make(tmp_path, "s.mp4", False), 0, 4)]), 1))
     assert out.exists()
+
+
+def test_speed_and_trim_still_apply_to_a_silent_clip_and_to_an_audible_one(tmp_path):
+    a, silent = _make(tmp_path, "a.mp4", True), _make(tmp_path, "s.mp4", False)
+    clips = [dict(_clip(a, 0, 2), trim_in=1, speed=2.0), dict(_clip(silent, 2, 5), trim_in=1, speed=0.5)]      # 2 s at 2x reads 4 s of source; 3 s at 0.5x reads 1.5 s
+    out = asyncio.run(ffmpeg_svc.render_project(_project(clips), 1))
+    assert _info(out)["audio"]
+
+
+def test_separated_audio_still_silences_the_clip_without_probing(tmp_path, monkeypatch):
+    a, b = _make(tmp_path, "a.mp4", True), _make(tmp_path, "b.mp4", True)
+    probes = []
+    real = ffmpeg_svc._has_audio_stream
+    async def counting(path):
+        probes.append(path)
+        return await real(path)
+    monkeypatch.setattr(ffmpeg_svc, "_has_audio_stream", counting)
+    clips = [dict(_clip(a, 0, 3), has_separated_audio=True), dict(_clip(b, 3, 6), volume=0)]
+    asyncio.run(ffmpeg_svc.render_project(_project(clips), 1))
+    assert probes == []                                                                  # clips that are silenced anyway are never probed
+
+
+def test_each_distinct_source_is_probed_once(tmp_path, monkeypatch):
+    a, silent = _make(tmp_path, "a.mp4", True), _make(tmp_path, "s.mp4", False)
+    probes = []
+    real = ffmpeg_svc._has_audio_stream
+    async def counting(path):
+        probes.append(path)
+        return await real(path)
+    monkeypatch.setattr(ffmpeg_svc, "_has_audio_stream", counting)
+    clips = [_clip(a, 0, 2), _clip(silent, 2, 4), _clip(a, 4, 6), _clip(silent, 6, 8)]       # four clips, two files
+    asyncio.run(ffmpeg_svc.render_project(_project(clips), 1))
+    assert sorted(probes) == sorted([a, silent])

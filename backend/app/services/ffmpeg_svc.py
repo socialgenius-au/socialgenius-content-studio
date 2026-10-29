@@ -960,6 +960,7 @@ async def render_project(project: dict, user_id: int) -> Path:
     cw, ch = project["canvas_width"], project["canvas_height"]
 
     segment_paths: list[str] = []
+    has_audio_by_path: dict[str, bool] = {}
     for c in clips:
         # STEP 7 (Original Video Audio controls): three independent reasons a clip's own
         # embedded audio should be dropped entirely — separated to A1 (Step 7.6A), the clip's
@@ -967,6 +968,13 @@ async def render_project(project: dict, user_id: int) -> Path:
         # Any one of them is enough; none of them affect A1, other clips, or overlay audio.
         clip_volume = c.get("volume", 1.0)
         keep_audio = not (c["has_separated_audio"] or c.get("muted") or clip_volume <= 0)
+        # M1 (Reconstructor): a source file with NO audio stream (screen recordings, most stock B-roll) is treated exactly like a muted clip -- it gets the same generated
+        # silent track -- so every segment has a uniform [v][a] shape and the crossfade join cannot fail with "matches no streams". Only probed when the clip would
+        # otherwise keep its audio (muted / separated / volume-0 clips never are), and once per distinct file.
+        if keep_audio:
+            if c["path"] not in has_audio_by_path:
+                has_audio_by_path[c["path"]] = await _has_audio_stream(c["path"])
+            keep_audio = has_audio_by_path[c["path"]]
         # STEP 7 (Platform Canvas / Full-Screen Video Acceptance): "fit" here is a deliberate
         # default CHANGE from this function's previous always-FILL behaviour (Step 7.15H) —
         # matching the frontend VideoClip type's own "undefined == fit" convention, which is
