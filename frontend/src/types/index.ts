@@ -202,6 +202,31 @@ export interface ShotSummary {
   // Stage 6's OCR text occurrences for this Shot, chronological order — empty until text
   // analysis completes at least once.
   text_elements: TextElementSummary[]
+  // Stage 8's raw visual-object detections for this Shot (COCO labels only). Optional: older responses and fixtures do not carry it.
+  visual_objects?: VisualObjectSummary[]
+}
+
+// One raw Stage-8 detection (a local COCO object detector): a label, a bounding box and a score for ONE sampled frame. It is evidence that a region
+// was labelled, never an isolated image of the thing, and it carries no rotation, scale or duration. Mirrors the fields of backend VisualObjectSummary
+// that the reconstruction path reads.
+export interface VisualObjectSummary {
+  id: number
+  label: string
+  category: string
+  class_id: number | null
+  x: number
+  y: number
+  width: number
+  height: number
+  start_time: number
+  end_time: number
+  certainty: string
+  confidence_score: number | null
+  evidence_summary: string | null
+  source: string | null
+  produced_by_pass: string | null
+  source_frame_id: number | null
+  source_frame_asset_file_path: string | null
 }
 
 // Mirrors backend app/services/ffmpeg_svc._empty_technical_details() exactly — a controlled,
@@ -483,6 +508,44 @@ export interface MediaOverlay {
   saturation?: number
   // Layers reorder: see TextOverlay.order — same shared numeric space.
   order?: number
+
+  // Traceability (Reconstructor M2.2a -> Video Studio V2). Set ONLY on an image layer a person approved while reconstructing a reference: it records the
+  // reference region the layer stands in for, which image was placed there (the person's own upload, or an opt-in rectangular crop of the reference frame),
+  // and which properties were measured, inferred, defaulted or set by the person. Additive and optional, like TextOverlay.reconstruction: every reader treats
+  // undefined as "not a reconstruction layer", and the editor keeps it untouched when the layer is edited (it merges partial patches onto the whole object).
+  reconstruction?: ImageReconstructionProvenance
+}
+
+export interface ImageReconstructionProvenance {
+  schema: 'reconstruction-v1'
+  kind: 'image'
+  candidateId: string
+  referenceVideoId: number
+  videoAnalysisId: number
+  engineVersion: string
+  /** Where the SLOT came from: a detector's bounding box, or a region the person drew on a reference frame. */
+  origin: 'detected_region' | 'user_region'
+  evidence: { kind: 'visual_object'; id: number }[]
+  /** The reference frame the region sits on, and when it was taken (a single sampled instant, not a duration). */
+  frame: { id: number | null; path: string | null; timestamp: number; width: number | null; height: number | null }
+  /** The region exactly as it stood when approved: normalised 0..1 on that frame, top-left origin. */
+  region: { x: number; y: number; w: number; h: number }
+  image: {
+    source: 'user_upload' | 'reference_frame_crop'
+    assetId: number
+    width: number
+    height: number
+    fileName: string
+    hasAlpha: boolean | null
+    /** Only for a crop of the reference: the person confirmed they may use it, and the rights status the reference carried at the time. */
+    rightsAcknowledged?: boolean
+    referenceRightsStatus?: string | null
+  }
+  sourceConfidence: number | null
+  properties: Record<string, { basis: 'measured' | 'inferred' | 'default' | 'user'; confidence?: 'high' | 'medium' | 'low'; note?: string }>
+  corrected: string[]
+  /** What this layer does NOT claim. Always false: a flattened video holds no separate, clean image to extract. */
+  claims: { isolated: false; backgroundRemoved: false; burnedInContentRemoved: false; originalResolutionRecovered: false }
 }
 
 // Phase 4 (Video Studio V2 — Independent Shapes). A brand-new type — no legacy /studio

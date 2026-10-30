@@ -13,6 +13,8 @@ import { AnatomyStage, BlueprintStage, CreateStage, IntentStage, MechanismsStage
 import { FootageAssignment } from './footage'
 import { TextLayersReview } from './textlayers/TextLayersReview'
 import type { TextLayerPlan } from './textlayers'
+import { ImageLayersReview } from './imagelayers/ImageLayersReview'
+import type { ImageLayerPlan } from './imagelayers'
 
 type Step = 'reference' | 'anatomy' | 'mechanisms' | 'intent' | 'blueprint' | 'create'
 
@@ -42,6 +44,9 @@ export default function DeconstructorPage() {
   // M2.1a (preview): the text-layer review is shown only when the address carries ?m2=text-layers, so the approved page is unchanged for everyone else.
   const textLayersOn = useSearchParams()[0].get('m2') === 'text-layers'
   const [textLayers, setTextLayers] = useState<TextLayerPlan | null>(null)
+  // M2.2a (preview): same rule for the image-layer review -- only with ?m2=image-layers.
+  const imageLayersOn = useSearchParams()[0].get('m2') === 'image-layers'
+  const [imageLayers, setImageLayers] = useState<ImageLayerPlan | null>(null)
   const [useMessage, setUseMessage] = useState<string | null>(null)
 
   const d = useDeconstructor(routeId)
@@ -129,7 +134,8 @@ export default function DeconstructorPage() {
           {step === 'blueprint' && <BlueprintStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} onNew={() => setStep('intent')} useMessage={useMessage} />}
           {step === 'create' && <CreateStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} sceneSummary={sceneSummary} useMessage={useMessage} />}
           {step === 'create' && plan && textLayersOn && <TextLayersReview key={`text:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTextLayers} />}
-          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} />}
+          {step === 'create' && plan && imageLayersOn && <ImageLayersReview key={`image:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setImageLayers} />}
+          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} />}
         </>
       )}
     </div>

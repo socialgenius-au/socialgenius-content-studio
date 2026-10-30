@@ -1,0 +1,252 @@
+{
+ "mediaOverlays": [
+  {
+   "id": "ri:5368:user:1:1",
+   "url": "/uploads/1/logo.png",
+   "assetId": 77,
+   "x": 60.778,
+   "y": 4,
+   "width": 28.444,
+   "height": 8,
+   "opacity": 1,
+   "startTime": 1,
+   "endTime": 6,
+   "reconstruction": {
+    "schema": "reconstruction-v1",
+    "kind": "image",
+    "candidateId": "user:1:1",
+    "referenceVideoId": 5127,
+    "videoAnalysisId": 5368,
+    "engineVersion": "1.0.0",
+    "origin": "user_region",
+    "evidence": [],
+    "frame": {
+     "id": 1,
+     "path": "/data/uploads/1/frame-1.jpg",
+     "timestamp": 0.15,
+     "width": 480,
+     "height": 864
+    },
+    "region": {
+     "x": 0.6,
+     "y": 0.04,
+     "w": 0.3,
+     "h": 0.08
+    },
+    "image": {
+     "source": "user_upload",
+     "assetId": 77,
+     "width": 600,
+     "height": 300,
+     "fileName": "logo.png",
+     "hasAlpha": true
+    },
+    "sourceConfidence": null,
+    "properties": {
+     "region": {
+      "basis": "user"
+     },
+     "startTime": {
+      "basis": "user"
+     },
+     "endTime": {
+      "basis": "user"
+     },
+     "image": {
+      "basis": "user",
+      "note": "Your own image."
+     },
+     "box": {
+      "basis": "inferred",
+      "confidence": "high",
+      "note": "The largest box with the picture’s own proportions that fits inside the region, centred in it. Drawn 0.51× the picture’s size."
+     },
+     "opacity": {
+      "basis": "default",
+      "note": "Fully opaque; the picture’s own transparency, if it has any, is kept."
+     }
+    },
+    "corrected": [
+     "startTime",
+     "endTime"
+    ],
+    "claims": {
+     "isolated": false,
+     "backgroundRemoved": false,
+     "burnedInContentRemoved": false,
+     "originalResolutionRecovered": false
+    }
+   }
+  },
+  {
+   "id": "ri:5368:det:102",
+   "url": "/uploads/1/crop.png",
+   "assetId": 78,
+   "x": 60.231,
+   "y": 10,
+   "width": 29.538,
+   "height": 12,
+   "opacity": 1,
+   "startTime": 1.813,
+   "endTime": 5.282,
+   "reconstruction": {
+    "schema": "reconstruction-v1",
+    "kind": "image",
+    "candidateId": "det:102",
+    "referenceVideoId": 5127,
+    "videoAnalysisId": 5368,
+    "engineVersion": "1.0.0",
+    "origin": "detected_region",
+    "evidence": [
+     {
+      "kind": "visual_object",
+      "id": 102
+     }
+    ],
+    "frame": {
+     "id": 2,
+     "path": "/data/uploads/1/frame-2.jpg",
+     "timestamp": 5,
+     "width": 480,
+     "height": 864
+    },
+    "region": {
+     "x": 0.6,
+     "y": 0.1,
+     "w": 0.29999999999999993,
+     "h": 0.12
+    },
+    "image": {
+     "source": "reference_frame_crop",
+     "assetId": 78,
+     "width": 144,
+     "height": 104,
+     "fileName": "reference-crop-f2-600-100.png",
+     "hasAlpha": false,
+     "rightsAcknowledged": true,
+     "referenceRightsStatus": "unknown_third_party"
+    },
+    "sourceConfidence": 0.88,
+    "properties": {
+     "region": {
+      "basis": "measured",
+      "note": "The detector’s bounding box on this frame. It is a rectangle, not an outline of the object."
+     },
+     "startTime": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "A guess between sampled frames: it could be off by up to about 2.5 s, and one sighting says nothing about how long it stayed. Stretched to fit the blueprint length."
+     },
+     "endTime": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "A guess between sampled frames: it could be off by up to about 2.5 s, and one sighting says nothing about how long it stayed. Stretched to fit the blueprint length."
+     },
+     "image": {
+      "basis": "user",
+      "note": "A rectangular crop of the reference frame that you chose to use. Background included; enlarged from a low-resolution still."
+     },
+     "box": {
+      "basis": "inferred",
+      "confidence": "high",
+      "note": "The largest box with the picture’s own proportions that fits inside the region, centred in it. Drawn 2.21× the picture’s size."
+     },
+     "opacity": {
+      "basis": "default",
+      "note": "Fully opaque; the picture’s own transparency, if it has any, is kept."
+     }
+    },
+    "corrected": [],
+    "claims": {
+     "isolated": false,
+     "backgroundRemoved": false,
+     "burnedInContentRemoved": false,
+     "originalResolutionRecovered": false
+    }
+   }
+  }
+ ],
+ "imageReconstruction": {
+  "schema": "reconstruction-v1",
+  "kind": "image",
+  "engineVersion": "1.0.0",
+  "referenceVideoId": 5127,
+  "videoAnalysisId": 5368,
+  "createdAt": "2026-10-05T10:00:00.000Z",
+  "timeMap": {
+   "mode": "fit",
+   "factor": 0.704,
+   "referenceSeconds": 42.6,
+   "planSeconds": 30
+  },
+  "counts": {
+   "detected": 4,
+   "drawn": 1,
+   "included": 2,
+   "waitingForUpload": 0,
+   "waitingForDecision": 1,
+   "excluded": 2,
+   "duplicates": 0,
+   "outside": 0,
+   "invalid": 0
+  },
+  "items": [
+   {
+    "candidateId": "det:101",
+    "status": "excluded_default",
+    "message": "A person was detected here. That is the reference’s own footage, not a graphic, so it is left out unless you choose it."
+   },
+   {
+    "candidateId": "user:1:1",
+    "status": "included",
+    "message": "Will be added as an editable image layer.",
+    "box": {
+     "x": 60.778,
+     "y": 4,
+     "width": 28.444,
+     "height": 8
+    },
+    "scale": 0.512
+   },
+   {
+    "candidateId": "det:102",
+    "status": "included",
+    "message": "Will be added as an editable image layer.",
+    "box": {
+     "x": 60.231,
+     "y": 10,
+     "width": 29.538,
+     "height": 12
+    },
+    "scale": 2.215
+   },
+   {
+    "candidateId": "det:103",
+    "status": "excluded_default",
+    "message": "The detector was only 31% sure of this region."
+   },
+   {
+    "candidateId": "det:104",
+    "status": "needs_image",
+    "message": "Choose an image of your own, or a crop of the reference, to put here."
+   }
+  ],
+  "claims": {
+   "isolated": false,
+   "backgroundRemoved": false,
+   "burnedInContentRemoved": false,
+   "originalResolutionRecovered": false
+  },
+  "limitations": [
+   "The reference is a flattened video. Nothing was cut out, isolated or removed: whatever stood in this region is still in its pixels.",
+   "A detected region is only a bounding box with a label from a general object detector. It is not an outline of the object and not a logo finder.",
+   "A crop of the reference is a plain rectangle of one low-resolution still, with its background included. It is enlarged to fit, so it will look soft.",
+   "When the image appeared and disappeared is only known to within the gaps between sampled frames; a single sighting says nothing about how long it stayed.",
+   "The editor has no rotation or crop for image layers yet, and exports draw image layers beneath text."
+  ]
+ },
+ "expectedMediaOverlayIds": [
+  "ri:5368:user:1:1",
+  "ri:5368:det:102"
+ ]
+}

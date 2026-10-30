@@ -7,6 +7,7 @@ import type { BlueprintResponse } from '../../../types/deconstructor'
 import type { BlueprintPlan } from '../../video-studio-v2/blueprint/blueprintPlan'
 import type { UnderfilledPolicy } from '../assembly'
 import type { TextLayerPlan } from '../textlayers'
+import type { ImageLayerPlan } from '../imagelayers'
 import { openAssembledDraft, saveAssembledDraft } from './assembledDraft'
 import { defaultLibraryDeps, loadVideoAssets, probeAsset, uploadFootage, type LibraryDeps } from './footageLibrary'
 import {
@@ -25,9 +26,11 @@ export interface FootageAssignmentProps {
   libraryDeps?: LibraryDeps
   /** M2.1a (optional): approved reconstructed text layers to save into the draft. Absent = the unchanged M1 behaviour. */
   textLayers?: TextLayerPlan | null
+  /** M2.2a (optional): approved, uploaded image layers to save into the draft. Absent = the unchanged behaviour. */
+  imageLayers?: ImageLayerPlan | null
 }
 
-export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers }: FootageAssignmentProps) {
+export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers, imageLayers }: FootageAssignmentProps) {
   const navigate = useNavigate()
   const deps = useMemo(() => libraryDeps ?? defaultLibraryDeps(), [libraryDeps])
   const [assets, setAssets] = useState<Asset[]>([])
@@ -97,7 +100,7 @@ export function FootageAssignment({ resp, plan, references, libraryDeps, textLay
   }
 
   const view = useMemo(() => runAssembly({ plan, library, edits, referenceAssetIds: referenceIds, underfilled, createdAt: VALIDATION_STAMP }), [plan, library, edits, referenceIds, underfilled])
-  const signature = useMemo(() => JSON.stringify(textLayers ? [edits, underfilled, textLayers.signature] : [edits, underfilled]), [edits, underfilled, textLayers])
+  const signature = useMemo(() => JSON.stringify(textLayers || imageLayers ? [edits, underfilled, ...(textLayers ? [textLayers.signature] : []), ...(imageLayers ? [`img:${imageLayers.signature}`] : [])] : [edits, underfilled]), [edits, underfilled, textLayers, imageLayers])
 
   const onSave = async () => {
     if (!view.canSave) return
@@ -105,7 +108,7 @@ export function FootageAssignment({ resp, plan, references, libraryDeps, textLay
     try {
       const r = await saveAssembledDraft({
         resp, plan, footage: view.footage, assignments: view.assignments, existingDraftId: saved?.draftId ?? null,
-        options: { underfilled, referenceAssetIds: referenceIds, requestedElements: REQUESTED_ELEMENTS }, textLayers,
+        options: { underfilled, referenceAssetIds: referenceIds, requestedElements: REQUESTED_ELEMENTS }, textLayers, imageLayers,
       })
       if (!alive.current) return
       if (r.ok) setSaved({ draftId: r.draftId, name: r.name, clips: r.clips, plan: r.plan, signature })

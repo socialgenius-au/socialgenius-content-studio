@@ -10,6 +10,7 @@ import { STUDIO_PROJECT_BACKUP_KEY, STUDIO_PROJECT_KEY, STUDIO_ROUTE, STUDIO_STA
 import { assembleDraft, type AssemblyIssue, type AssemblyOptions, type FootageClip, type SceneAssignment } from '../assembly'
 import { errorMessage } from '../useDeconstructor'
 import { mergeTextLayers, type TextLayerPlan } from '../textlayers'
+import { mergeImageLayers, type ImageLayerPlan } from '../imagelayers'
 
 export interface SaveDeps {
   createDraft: (body: { name: string; project_json: unknown }) => Promise<{ data: { id: number } }>
@@ -33,6 +34,8 @@ export interface SaveInput {
   existingDraftId: number | null
   /** M2.1a (optional): reconstructed text layers a person approved. Absent = exactly the M1 draft. */
   textLayers?: TextLayerPlan | null
+  /** M2.2a (optional): reconstructed image layers a person approved, already uploaded. Absent = exactly the draft saved without them. */
+  imageLayers?: ImageLayerPlan | null
 }
 
 export type SaveResult =
@@ -53,7 +56,7 @@ export async function saveAssembledDraft(input: SaveInput, overrides: Partial<Sa
   }
   if (assembled.snapshot.videoClips.length === 0) return { ok: false, reason: 'blocked', message: 'Assign footage to at least one scene first.' }
 
-  const body = { name: assembled.name, project_json: mergeTextLayers(assembled.snapshot, input.textLayers) }          // returns the snapshot itself when there are no layers
+  const body = { name: assembled.name, project_json: mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers) }          // each returns the snapshot itself when there are no layers
   try {
     let draftId: number
     if (input.existingDraftId != null) {
