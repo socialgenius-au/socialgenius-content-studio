@@ -69,12 +69,12 @@ describe('the page and the footage panel carry all four flags', () => {
   const read = (...p: string[]) => readFileSync(join(__dirname, ...p), 'utf8')
   it('every flag is its own address parameter, and every plan reaches the footage panel only when its flag is on', () => {
     const page = read('DeconstructorPage.tsx')
-    for (const f of ['text-layers', 'image-layers', 'transitions', 'transcript']) expect(page).toContain(`get('m2') === '${f}'`)
-    for (const p of ['textLayers={textLayersOn ? textLayers : null}', 'imageLayers={imageLayersOn ? imageLayers : null}', 'transitionPlan={transitionsOn ? transitionPlan : null}', 'speechPlan={transcriptOn ? speechPlan : null}']) expect(page).toContain(p)
+    for (const f of ['text-layers', 'image-layers', 'transitions', 'transcript', 'background']) expect(page).toContain(`get('m2') === '${f}'`)
+    for (const p of ['textLayers={textLayersOn ? textLayers : null}', 'imageLayers={imageLayersOn ? imageLayers : null}', 'transitionPlan={transitionsOn ? transitionPlan : null}', 'speechPlan={transcriptOn ? speechPlan : null}', 'backgroundPlan={backgroundOn ? backgroundPlan : null}', 'compositionPolicy={backgroundOn ? compositionPolicy : null}']) expect(page).toContain(p)
   })
   it('the draft save and the saved-vs-edited signature include all four', () => {
-    expect(read('footage', 'assembledDraft.ts')).toContain('mergeSpeech(mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan), input.speechPlan)')
+    expect(read('footage', 'assembledDraft.ts')).toContain('applyComposition(mergeBackground(mergeSpeech(mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan), input.speechPlan), input.backgroundPlan), input.compositionPolicy)')
     const fa = read('footage', 'FootageAssignment.tsx')
-    for (const s of ['textLayers, imageLayers, transitionPlan, speechPlan,', 'transitionPlan || speechPlan', '`tr:${transitionPlan.signature}`', '`sp:${speechPlan.signature}`', '`img:${imageLayers.signature}`']) expect(fa).toContain(s)
+    for (const s of ['textLayers, imageLayers, transitionPlan, speechPlan,', 'transitionPlan || speechPlan', '`tr:${transitionPlan.signature}`', '`sp:${speechPlan.signature}`', '`img:${imageLayers.signature}`', '`bg:${backgroundPlan.signature}`', 'backgroundPlan, compositionPolicy,']) expect(fa).toContain(s)
   })
 })

@@ -19,6 +19,8 @@ import { TransitionsReview } from './transitions/TransitionsReview'
 import type { TransitionPlan } from './transitions'
 import { TranscriptReview } from './transcript/TranscriptReview'
 import type { SpeechPlan } from './transcript'
+import { BackgroundReview } from './background/BackgroundReview'
+import type { BackgroundPlan, OrderPolicy } from './background'
 
 type Step = 'reference' | 'anatomy' | 'mechanisms' | 'intent' | 'blueprint' | 'create'
 
@@ -36,6 +38,8 @@ const AI_CONFIRM = {
   mechanisms: 'Derive mechanisms with AI?\n\nThis sends the reference video’s analysed structure to an AI provider and may incur usage cost.',
   blueprint: 'Build a NEW reconstruction blueprint with AI?\n\nThis sends your new-content details and the learned mechanisms to an AI provider and may incur usage cost. The existing blueprint (if any) is kept in history.',
 }
+
+const textlessPictures = (p: ImageLayerPlan | null) => (p ? p.overlays : [])
 
 export default function DeconstructorPage() {
   const params = useParams<{ referenceVideoId?: string }>()
@@ -57,6 +61,10 @@ export default function DeconstructorPage() {
   // M2.5a (preview): same rule for the transcript review -- only with ?m2=transcript.
   const transcriptOn = useSearchParams()[0].get('m2') === 'transcript'
   const [speechPlan, setSpeechPlan] = useState<SpeechPlan | null>(null)
+  // M2.3 (preview): same rule for the background plates and the stacking policy -- only with ?m2=background.
+  const backgroundOn = useSearchParams()[0].get('m2') === 'background'
+  const [backgroundPlan, setBackgroundPlan] = useState<BackgroundPlan | null>(null)
+  const [compositionPolicy, setCompositionPolicy] = useState<OrderPolicy>('as_generated')
   const [useMessage, setUseMessage] = useState<string | null>(null)
 
   const d = useDeconstructor(routeId)
@@ -147,7 +155,8 @@ export default function DeconstructorPage() {
           {step === 'create' && plan && imageLayersOn && <ImageLayersReview key={`image:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setImageLayers} />}
           {step === 'create' && plan && transitionsOn && <TransitionsReview key={`tr:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTransitionPlan} />}
           {step === 'create' && plan && transcriptOn && <TranscriptReview key={`sp:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setSpeechPlan} />}
-          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} speechPlan={transcriptOn ? speechPlan : null} />}
+          {step === 'create' && plan && backgroundOn && <BackgroundReview key={`bg:${routeId}:${plan.blueprintId}`} plan={plan} generated={{ shapes: [], mediaOverlays: textlessPictures(imageLayersOn ? imageLayers : null), textOverlays: textLayersOn && textLayers ? textLayers.overlays : [], subtitles: transcriptOn && speechPlan ? speechPlan.subtitles : [] }} onPlan={setBackgroundPlan} onPolicy={setCompositionPolicy} />}
+          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} speechPlan={transcriptOn ? speechPlan : null} backgroundPlan={backgroundOn ? backgroundPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : null} />}
         </>
       )}
     </div>

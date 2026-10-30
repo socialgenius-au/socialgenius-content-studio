@@ -614,6 +614,24 @@ export interface Shape {
   // be dragged behind (or in front of) any of them in the Layers list — directly satisfying
   // "place a shape behind text" as a normal reorder, not a special case.
   order?: number
+  // M2.3b (Reconstructor): present only on a background plate the Reconstructor made from the colour of a letterbox bar it MEASURED on the reference's stills. Additive and optional, like
+  // TextOverlay.reconstruction: every reader treats undefined as "not a reconstruction layer", and the editor keeps it untouched when the shape is edited.
+  reconstruction?: BackgroundReconstructionProvenance
+}
+
+export interface BackgroundReconstructionProvenance {
+  schema: 'reconstruction-v1'
+  kind: 'background'
+  candidateId: string
+  referenceVideoId: number
+  videoAnalysisId: number
+  engineVersion: string
+  sceneNumber: number
+  side: 'top' | 'bottom' | 'left' | 'right'
+  /** What was measured on the stills: how many of the scene's frames were read, how many showed this bar, and how uniform it was. */
+  evidence: { framesMeasured: number; framesSeen: number; uniformity: number; size: number; frameIds: number[] }
+  properties: Record<'color' | 'region' | 'startTime' | 'endTime', { basis: 'measured' | 'inferred' | 'default' | 'user'; confidence?: 'high' | 'medium' | 'low'; note?: string }>
+  claims: { backgroundRecovered: false; contentBehindOverlaysRecovered: false; inpainted: false }
 }
 
 // Phase 5 (Video Studio V2 — Subtitles / Transcript). A subtitle segment's own visual styling —
