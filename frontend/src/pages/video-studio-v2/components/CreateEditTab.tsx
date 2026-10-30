@@ -3184,6 +3184,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // full canvas width by overriding left/width directly (same fix as TextOverlay.bgFullWidth —
   // negative margins can't stretch a box whose width is already fixed to `${sh.width}%`; they
   // only reposition it, leaving it short of the right edge).
+  // M2.2b: a shape's border width and corner radius are canvas pixels (the exporter draws them on the real canvas), so the fitted preview draws them at the canvas's
+  // displayed scale -- the same correction getTextRenderStyle makes for text. Saved values and the export are unchanged.
+  const shapeScale = rawW > 0 ? canvasBox.w / rawW : 1;
   const shapeEntries = shapes
     .filter(sh => timeline.currentTime >= sh.startTime && timeline.currentTime < sh.endTime)
     .map(sh => {
@@ -3196,8 +3199,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       style={{
         left: `${sh.x}%`, top: `${sh.y}%`, width: `${sh.width}%`, height: `${sh.height}%`,
         background: composeHexAlpha(sh.fillColor, sh.opacity),
-        borderRadius: sh.kind === "circle" ? "50%" : sh.borderRadius ?? 0,
-        border: sh.borderWidth ? `${sh.borderWidth}px solid ${sh.borderColor ?? "#000000"}` : undefined,
+        borderRadius: sh.kind === "circle" ? "50%" : (sh.borderRadius ?? 0) * shapeScale,
+        border: sh.borderWidth ? `${sh.borderWidth * shapeScale}px solid ${sh.borderColor ?? "#000000"}` : undefined,
         ...(sh.fullWidth ? { left: "0%", width: "100%" } : {}),
       }}
       onMouseDown={beginShapeDrag(sh.id)}
