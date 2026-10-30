@@ -8,6 +8,7 @@ import type { BlueprintPlan } from '../../video-studio-v2/blueprint/blueprintPla
 import type { UnderfilledPolicy } from '../assembly'
 import type { TextLayerPlan } from '../textlayers'
 import type { ImageLayerPlan } from '../imagelayers'
+import type { TransitionPlan } from '../transitions'
 import { openAssembledDraft, saveAssembledDraft } from './assembledDraft'
 import { defaultLibraryDeps, loadVideoAssets, probeAsset, uploadFootage, type LibraryDeps } from './footageLibrary'
 import {
@@ -28,9 +29,11 @@ export interface FootageAssignmentProps {
   textLayers?: TextLayerPlan | null
   /** M2.2a (optional): approved, uploaded image layers to save into the draft. Absent = the unchanged behaviour. */
   imageLayers?: ImageLayerPlan | null
+  /** M2.4a (optional): approved transitions to apply to the draft's clip joins at save. Absent = the unchanged behaviour. */
+  transitionPlan?: TransitionPlan | null
 }
 
-export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers, imageLayers }: FootageAssignmentProps) {
+export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers, imageLayers, transitionPlan }: FootageAssignmentProps) {
   const navigate = useNavigate()
   const deps = useMemo(() => libraryDeps ?? defaultLibraryDeps(), [libraryDeps])
   const [assets, setAssets] = useState<Asset[]>([])
@@ -100,7 +103,7 @@ export function FootageAssignment({ resp, plan, references, libraryDeps, textLay
   }
 
   const view = useMemo(() => runAssembly({ plan, library, edits, referenceAssetIds: referenceIds, underfilled, createdAt: VALIDATION_STAMP }), [plan, library, edits, referenceIds, underfilled])
-  const signature = useMemo(() => JSON.stringify(textLayers || imageLayers ? [edits, underfilled, ...(textLayers ? [textLayers.signature] : []), ...(imageLayers ? [`img:${imageLayers.signature}`] : [])] : [edits, underfilled]), [edits, underfilled, textLayers, imageLayers])
+  const signature = useMemo(() => JSON.stringify(textLayers || imageLayers || transitionPlan ? [edits, underfilled, ...(textLayers ? [textLayers.signature] : []), ...(imageLayers ? [`img:${imageLayers.signature}`] : []), ...(transitionPlan ? [`tr:${transitionPlan.signature}`] : [])] : [edits, underfilled]), [edits, underfilled, textLayers, imageLayers, transitionPlan])
 
   const onSave = async () => {
     if (!view.canSave) return
@@ -108,7 +111,7 @@ export function FootageAssignment({ resp, plan, references, libraryDeps, textLay
     try {
       const r = await saveAssembledDraft({
         resp, plan, footage: view.footage, assignments: view.assignments, existingDraftId: saved?.draftId ?? null,
-        options: { underfilled, referenceAssetIds: referenceIds, requestedElements: REQUESTED_ELEMENTS }, textLayers, imageLayers,
+        options: { underfilled, referenceAssetIds: referenceIds, requestedElements: REQUESTED_ELEMENTS }, textLayers, imageLayers, transitionPlan,
       })
       if (!alive.current) return
       if (r.ok) setSaved({ draftId: r.draftId, name: r.name, clips: r.clips, plan: r.plan, signature })

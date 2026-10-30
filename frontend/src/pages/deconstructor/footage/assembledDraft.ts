@@ -11,6 +11,7 @@ import { assembleDraft, type AssemblyIssue, type AssemblyOptions, type FootageCl
 import { errorMessage } from '../useDeconstructor'
 import { mergeTextLayers, type TextLayerPlan } from '../textlayers'
 import { mergeImageLayers, type ImageLayerPlan } from '../imagelayers'
+import { mergeTransitions, type TransitionPlan } from '../transitions'
 
 export interface SaveDeps {
   createDraft: (body: { name: string; project_json: unknown }) => Promise<{ data: { id: number } }>
@@ -36,6 +37,8 @@ export interface SaveInput {
   textLayers?: TextLayerPlan | null
   /** M2.2a (optional): reconstructed image layers a person approved, already uploaded. Absent = exactly the draft saved without them. */
   imageLayers?: ImageLayerPlan | null
+  /** M2.4a (optional): approved transitions, applied to the clips whose end sits on a planned scene join. Absent = exactly the draft saved without them. */
+  transitionPlan?: TransitionPlan | null
 }
 
 export type SaveResult =
@@ -56,7 +59,7 @@ export async function saveAssembledDraft(input: SaveInput, overrides: Partial<Sa
   }
   if (assembled.snapshot.videoClips.length === 0) return { ok: false, reason: 'blocked', message: 'Assign footage to at least one scene first.' }
 
-  const body = { name: assembled.name, project_json: mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers) }          // each returns the snapshot itself when there are no layers
+  const body = { name: assembled.name, project_json: mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan) }          // each returns the snapshot itself when there are no layers
   try {
     let draftId: number
     if (input.existingDraftId != null) {
