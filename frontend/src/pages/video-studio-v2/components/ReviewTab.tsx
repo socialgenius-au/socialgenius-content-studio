@@ -6,6 +6,7 @@ import { fitCanvasBox } from "../data/canvasFormats";
 import { findActiveClip } from "../../../components/studio/videoPreviewUtils";
 import { videoExportApi } from "../../../api/client";
 import { checkReconstructionExport } from "../blueprint/exportGuard";
+import { buildExportTextOverlays } from "../export/textOverlayExport";
 
 const PLATFORMS = [
   { key: "instagram", glyph: "◎", label: "Instagram" },
@@ -92,10 +93,9 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
           // existed sends the same values either way.
           fit_mode: c.fitMode ?? "fit", crop_x: c.cropOffsetX ?? 50, crop_y: c.cropOffsetY ?? 50,
         })),
-        text_overlays: textOverlays.map(t => ({
-          text: t.text, start_time: t.startTime, end_time: t.endTime,
-          x: t.x, y: t.y, font_size: t.fontSize, color: t.color, order: t.order ?? 0,
-        })),
+        // M2.1b: every text property the exporter supports (width/wrapping, alignment, bold/underline/spacing, opacity, stroke, shadow, gradient, background chip),
+        // not just the first seven. See export/textOverlayExport.ts for the field-by-field mapping.
+        text_overlays: buildExportTextOverlays(textOverlays),
         media_overlays: mediaOverlays.map(o => ({
           asset_id: o.assetId, start_time: o.startTime, end_time: o.endTime,
           x: o.x, y: o.y, width: o.width, height: o.height, opacity: o.opacity, order: o.order ?? 0,

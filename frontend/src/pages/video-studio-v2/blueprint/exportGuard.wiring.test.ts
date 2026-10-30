@@ -26,7 +26,7 @@ describe('ReviewTab export wiring', () => {
     expect(block).toContain('return;')
   })
   it('the export request body is unchanged: the guard adds no field and filters nothing', () => {
-    expect(handler).toContain('text_overlays: textOverlays.map(t => ({')
+    expect(handler).toContain('text_overlays: buildExportTextOverlays(textOverlays),')            // M2.1b: the same unfiltered list, mapped by the shared mapper (was an inline seven-field map)
     expect(handler).toContain('video_clips: videoClips.map(c => ({')
     expect(handler.match(/checkReconstructionExport/g)).toHaveLength(1)
   })

@@ -103,6 +103,9 @@ class ExportTextOverlay(BaseModel):
     bg_color: str | None = None  # None = "caller didn't send this" -> no background chip rendered
     bg_opacity: float = 0.5
     bg_padding: float = 8
+    # M2.1b: horizontal padding. None keeps the legacy square box (padding on every side). When set, the box follows the editor's CSS box model: padding bg_padding vertically and
+    # bg_padding_x horizontally (the editor uses p and p+4), the border sits inside the box, shadows and strokes do not change the layout, and the text keeps its place.
+    bg_padding_x: float | None = None
     bg_border_radius: float = 0
     bg_border_color: str | None = None
     bg_border_width: float = 0

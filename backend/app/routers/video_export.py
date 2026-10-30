@@ -111,6 +111,7 @@ async def export_project(
             "bg_color": t.bg_color,
             "bg_opacity": t.bg_opacity,
             "bg_padding": t.bg_padding,
+            "bg_padding_x": t.bg_padding_x,
             "bg_border_radius": t.bg_border_radius,
             "bg_border_color": t.bg_border_color,
             "bg_border_width": t.bg_border_width,

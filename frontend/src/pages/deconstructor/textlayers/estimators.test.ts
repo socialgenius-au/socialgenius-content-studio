@@ -120,8 +120,8 @@ describe('geometry: units, size and position the export will actually reproduce'
     const grp = g(1)
     const e = estimateGeometry(grp, 'Welcome to the show', DEFAULT_CANVAS)
     const C = RENDER_CALIBRATION
-    const inkLeft = (e.x / 100) * DEFAULT_CANVAS.width + C.exportPadPx + C.inkLeftEm * e.fontSize
-    const inkTop = (e.y / 100) * DEFAULT_CANVAS.height + C.exportPadPx + C.inkTopEm * e.fontSize
+    const inkLeft = (e.x / 100) * DEFAULT_CANVAS.width + C.padLeftPx + C.inkLeftEm * e.fontSize
+    const inkTop = (e.y / 100) * DEFAULT_CANVAS.height + C.padTopPx + C.inkTopEm * e.fontSize
     expect(Math.abs(inkLeft - grp.box.x * DEFAULT_CANVAS.width)).toBeLessThan(1.5)
     expect(Math.abs(inkTop - grp.box.y * DEFAULT_CANVAS.height)).toBeLessThan(1.5)
   })

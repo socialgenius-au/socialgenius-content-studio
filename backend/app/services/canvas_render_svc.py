@@ -30,7 +30,7 @@ import math
 import uuid
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 from app.config import settings
 
@@ -129,7 +129,7 @@ def render_styled_text_box(
     use_gradient: bool = False, gradient_from: str | None = None, gradient_to: str | None = None,
     bg_color: str | None = None, bg_opacity: float = 1.0, bg_padding: float = 2,
     bg_border_radius: float = 0, bg_border_color: str | None = None, bg_border_width: float = 0,
-    bg_blur: bool = False,
+    bg_blur: bool = False, bg_padding_x: float | None = None,
 ) -> Image.Image:
     """The one shared "styled, word-wrapped text box" renderer behind Text Overlays and
     Subtitles (Lower Thirds compose two calls to this — name + title — plus their own accent
@@ -140,22 +140,47 @@ def render_styled_text_box(
     font = _load_font(font_size, bold)
     probe = Image.new("RGBA", (1, 1))
     probe_draw = ImageDraw.Draw(probe)
-    inner_w = max(1, box_w - round(bg_padding) * 2 - round(stroke_width) * 2)
+    # Layout mode. Legacy (bg_padding_x None): square padding, stroke narrows the wrap width, shadows grow the box and push the text. Editor box (bg_padding_x given, M2.1b): the
+    # editor's CSS box model -- vertical padding bg_padding, horizontal bg_padding_x, the border sits INSIDE the box and pushes the content in, and neither stroke nor shadow changes
+    # where the text wraps or sits (shadow simply paints outside it, as CSS text-shadow does). Subtitles and lower thirds never pass bg_padding_x, so they are untouched.
+    css_box = bg_padding_x is not None
+    pad_x = round(bg_padding_x) if css_box else round(bg_padding)
+    border = round(bg_border_width) if css_box and bg_border_width > 0 else 0
+    inset_x = pad_x + border
+    inset_y = round(bg_padding) + border
+    inner_w = max(1, box_w - inset_x * 2 - (0 if css_box else round(stroke_width) * 2))
     lines = _wrap_lines(probe_draw, text, font, inner_w, letter_spacing)
     ascent, descent = font.getmetrics()
-    line_h = (ascent + descent) * (line_spacing if line_spacing else 1.15)
+    if line_spacing:
+        # M2.1b: the editor's text uses CSS line-height, i.e. line spacing x FONT SIZE with the glyphs centred in each line (half-leading). The renderer used to multiply the
+        # font's ascent+descent (about 1.16 em), so wrapped lines sat ~16 % further apart than in the editor. Callers that pass no line_spacing (subtitles, lower thirds) keep
+        # the old spacing exactly.
+        line_h = font.size * line_spacing
+        half_leading = (line_h - (ascent + descent)) / 2
+    else:
+        line_h = (ascent + descent) * 1.15
+        half_leading = 0.0
     text_block_h = round(line_h * len(lines))
     pad = round(bg_padding)
-    shadow_pad = round(abs(shadow_offset_x) + abs(shadow_offset_y) + shadow_blur * 2)
-    box_h = text_block_h + pad * 2 + shadow_pad
+    if css_box:
+        # shadow paints outside the box: the image grows right/bottom to hold it, the box and the text do not move
+        shadow_pad = 0
+        box_h = text_block_h + inset_y * 2
+        extra_w = round(max(0.0, shadow_offset_x) + shadow_blur * 3) if shadow_color else 0
+        extra_h = round(max(0.0, shadow_offset_y) + shadow_blur * 3) if shadow_color else 0
+        canvas_w, canvas_h = box_w + extra_w, box_h + extra_h
+    else:
+        shadow_pad = round(abs(shadow_offset_x) + abs(shadow_offset_y) + shadow_blur * 2)
+        box_h = text_block_h + pad * 2 + shadow_pad
+        canvas_w, canvas_h = box_w, box_h
 
-    img = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
+    img = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
 
     # Background chip — real rounded corners (Pillow's own rounded_rectangle, unlike ffmpeg
     # drawbox/drawtext's own `box`, which is always a plain rectangle) and a real Gaussian blur
     # for a translucent/frosted look, composited before the text/shadow layers.
     if bg_color:
-        bg_layer = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
+        bg_layer = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
         bg_draw = ImageDraw.Draw(bg_layer)
         rect = (shadow_pad // 2, shadow_pad // 2, box_w - 1 - shadow_pad // 2, box_h - 1 - shadow_pad // 2)
         radius = max(0, min(round(bg_border_radius), (rect[2] - rect[0]) // 2, (rect[3] - rect[1]) // 2))
@@ -169,12 +194,14 @@ def render_styled_text_box(
     # Shadow layer — drawn/blurred separately from the real text so the blur never bleeds onto
     # the glyphs themselves (matching CSS text-shadow's own separate-layer behaviour).
     if shadow_color and (shadow_blur > 0 or shadow_offset_x or shadow_offset_y):
-        shadow_layer = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
-        y = pad + shadow_pad / 2
+        shadow_layer = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+        y = inset_y + shadow_pad / 2 + half_leading
         for line in lines:
             lw = probe_draw.textlength(line, font=font) if letter_spacing <= 0 else None
-            x = _align_x(box_w, pad, inner_w, lw, align, line, font, letter_spacing, probe_draw)
-            _draw_text_line(shadow_layer, (x + shadow_offset_x, y + shadow_offset_y), line, font, _rgba(shadow_color, opacity), letter_spacing, 0, None, False)
+            x = _align_x(box_w, inset_x, inner_w, lw, align, line, font, letter_spacing, probe_draw)
+            # editor box: CSS text-shadow follows the STROKED text, so the shadow shape is grown by half the stroke width
+            grow = max(1, round(stroke_width / 2)) if css_box and stroke_color and stroke_width > 0 else 0
+            _draw_text_line(shadow_layer, (x + shadow_offset_x, y + shadow_offset_y), line, font, _rgba(shadow_color, 1.0), letter_spacing, grow, _rgba(shadow_color, 1.0) if grow else None, False)
             y += line_h
         if shadow_blur > 0:
             shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(radius=shadow_blur))
@@ -185,38 +212,57 @@ def render_styled_text_box(
     # a horizontal linear gradient the same size, then composite the gradient through that mask
     # so only the glyph pixels receive gradient colour (the same technique CSS's own
     # background-clip:text uses under the hood).
-    text_layer = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
-    y = pad + shadow_pad / 2
+    text_layer = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    y = inset_y + shadow_pad / 2 + half_leading
     line_boxes: list[tuple[float, float, str]] = []
     for line in lines:
         lw = probe_draw.textlength(line, font=font) if letter_spacing <= 0 else None
-        x = _align_x(box_w, pad, inner_w, lw, align, line, font, letter_spacing, probe_draw)
+        x = _align_x(box_w, inset_x, inner_w, lw, align, line, font, letter_spacing, probe_draw)
         line_boxes.append((x, y, line))
         y += line_h
 
     if use_gradient and gradient_from and gradient_to:
-        mask = Image.new("L", (box_w, box_h), 0)
-        mask_rgba = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
+        mask = Image.new("L", (canvas_w, canvas_h), 0)
+        mask_rgba = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
         for x, ly, line in line_boxes:
             _draw_text_line(mask_rgba, (x, ly), line, font, (255, 255, 255, 255), letter_spacing, round(stroke_width), (255, 255, 255, 255) if stroke_width else None, underline)
         mask = mask_rgba.split()[3]
-        gradient = Image.new("RGBA", (box_w, box_h))
+        gradient = Image.new("RGBA", (canvas_w, canvas_h))
         c0, c1 = _hex_to_rgb(gradient_from), _hex_to_rgb(gradient_to)
-        alpha_byte = round(max(0.0, min(1.0, opacity)) * 255)
-        for gx in range(box_w):
-            t = gx / max(1, box_w - 1)
+        alpha_byte = 255                                                  # element opacity is applied once, to the finished box (below)
+        for gx in range(canvas_w):
+            t = min(1.0, gx / max(1, box_w - 1))
             col = tuple(round(c0[i] + (c1[i] - c0[i]) * t) for i in range(3)) + (alpha_byte,)
-            for gy in range(box_h):
+            for gy in range(canvas_h):
                 gradient.putpixel((gx, gy), col)
         gradient.putalpha(mask.point(lambda a: round(a * (alpha_byte / 255))))
         img = Image.alpha_composite(img, gradient)
     else:
-        fill = _rgba(color, opacity)
-        stroke_fill = _rgba(stroke_color, 1.0) if stroke_color and stroke_width else None
-        for x, ly, line in line_boxes:
-            _draw_text_line(text_layer, (x, ly), line, font, fill, letter_spacing, round(stroke_width), stroke_fill, underline)
+        fill = _rgba(color, 1.0)
+        if css_box and stroke_color and stroke_width > 0:
+            # Editor box: -webkit-text-stroke is centred on the glyph edge (half outside, half inside) and painted OVER the fill, so a thick stroke eats into the glyph. Reproduce it:
+            # fill the glyphs, then paint the ring between the outline grown by half the width and the outline shrunk by half the width, in the stroke colour.
+            half = max(1, round(stroke_width / 2))
+            solid, grown = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0)), Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+            white = (255, 255, 255, 255)
+            for x, ly, line in line_boxes:
+                _draw_text_line(text_layer, (x, ly), line, font, fill, letter_spacing, 0, None, underline)
+                _draw_text_line(solid, (x, ly), line, font, white, letter_spacing, 0, None, underline)
+                _draw_text_line(grown, (x, ly), line, font, white, letter_spacing, half, white, underline)
+            ring = ImageChops.subtract(grown.getchannel("A"), solid.getchannel("A").filter(ImageFilter.MinFilter(2 * half + 1)))
+            stroke_layer = Image.new("RGBA", (canvas_w, canvas_h), _rgba(stroke_color, 1.0)[:3] + (0,))
+            stroke_layer.putalpha(ring)
+            text_layer = Image.alpha_composite(text_layer, stroke_layer)
+        else:
+            stroke_fill = _rgba(stroke_color, 1.0) if stroke_color and stroke_width else None
+            for x, ly, line in line_boxes:
+                _draw_text_line(text_layer, (x, ly), line, font, fill, letter_spacing, round(stroke_width), stroke_fill, underline)
         img = Image.alpha_composite(img, text_layer)
 
+    # CSS `opacity` fades the whole element together -- background chip, border, stroke, shadow and glyphs -- so the finished box is faded once, here.
+    element_opacity = max(0.0, min(1.0, opacity))
+    if element_opacity < 1.0:
+        img.putalpha(img.getchannel("A").point(lambda a: round(a * element_opacity)))
     return img
 
 
@@ -246,7 +292,7 @@ def render_text_overlay_png(t: dict, canvas_w: int, canvas_h: int, user_id: int)
         use_gradient=t.get("use_gradient", False), gradient_from=t.get("gradient_from"), gradient_to=t.get("gradient_to"),
         bg_color=t.get("bg_color"), bg_opacity=t.get("bg_opacity", 0.5), bg_padding=t.get("bg_padding", 8),
         bg_border_radius=t.get("bg_border_radius", 0), bg_border_color=t.get("bg_border_color"),
-        bg_border_width=t.get("bg_border_width", 0), bg_blur=t.get("bg_blur", False),
+        bg_border_width=t.get("bg_border_width", 0), bg_blur=t.get("bg_blur", False), bg_padding_x=t.get("bg_padding_x"),
     )
     out = _out_png(user_id)
     img.save(out)
