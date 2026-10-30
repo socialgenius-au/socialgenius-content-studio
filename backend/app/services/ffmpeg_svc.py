@@ -360,7 +360,12 @@ async def composite_media_overlays(
         start, end = ov["start"], ov["end"]
 
         scaled, faded, merged = f"ov{i}s", f"ov{i}a", f"merged{i}"
-        filter_parts.append(f"[{i}:v]scale={w}:{h}[{scaled}]")
+        # M2.2b: fit the picture INSIDE its box (aspect kept, transparent padding), exactly as the editor preview does (object-fit: contain). It used to be
+        # stretched to the box, so any overlay whose box had a different aspect ratio than its picture looked different in the export.
+        filter_parts.append(
+            f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,format=rgba,"
+            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=0x00000000[{scaled}]"
+        )
         filter_parts.append(f"[{scaled}]format=rgba,colorchannelmixer=aa={opacity}[{faded}]")
         filter_parts.append(
             f"[{base_label}][{faded}]overlay=x={x}:y={y}:enable='between(t,{start},{end})'[{merged}]"
@@ -924,6 +929,28 @@ async def _build_subtitle_overlays(subtitles: list[dict], subtitle_style: dict, 
     return overlays
 
 
+# M2.2b: the editor paints media overlays, text, lower thirds, shapes and subtitles in ONE stack. `order` is shared; on a tie the editor's own concatenation sequence
+# decides (CreateEditTab: [...overlayEntries, ...textEntries, ...lowerThirdEntries, ...shapeEntries, ...subtitleEntries] sorted ascending, stably).
+_STACK_RANK = {"media": 0, "text": 1, "lower_third": 2, "shape": 3, "subtitle": 4}
+_STACK_KEYS = (("media", "media_overlays"), ("text", "text_overlays"), ("lower_third", "lower_thirds"), ("shape", "shapes"), ("subtitle", "subtitles"))
+
+
+def _stack_runs(project: dict) -> list[tuple[str, list[dict]]]:
+    """The layers above the video as an ordered list of (kind, [items]) runs, bottom first. Pure; a layer with no `order` counts as 0."""
+    entries = []
+    for kind, key in _STACK_KEYS:
+        for index, item in enumerate(project.get(key) or []):
+            entries.append((item.get("order", 0) or 0, _STACK_RANK[kind], index, kind, item))
+    entries.sort(key=lambda e: e[:3])
+    runs: list[tuple[str, list[dict]]] = []
+    for *_, kind, item in entries:
+        if runs and runs[-1][0] == kind:
+            runs[-1][1].append(item)
+        else:
+            runs.append((kind, [item]))
+    return runs
+
+
 async def render_project(project: dict, user_id: int) -> Path:
     """The single entry point the router calls. `project` shape (all paths already resolved to
     real files on disk by the router, via each item's assetId — this function never touches the
@@ -1009,46 +1036,27 @@ async def render_project(project: dict, user_id: int) -> Path:
         intermediates.append(str(current))
         current = next_path
 
-    if project.get("media_overlays"):
-        # STEP 7.15H: composite_media_overlays (not add_media_overlays) — the only difference is
-        # that this one also mixes in each overlay's own audio, muted/volume-aware.
-        next_path = await composite_media_overlays(str(current), project["media_overlays"], user_id)
+    # M2.2b: image/video overlays, shapes, lower thirds, text and subtitles are stacked by ONE shared `order`, exactly as the editor paints them (CreateEditTab's
+    # visualLayers: ascending order, ties broken by that fixed type sequence, then list position). Consecutive layers of the same kind are composited together, so a
+    # project that never reordered anything costs the same passes as before; a layer moved in front of / behind another kind now is in front / behind in the MP4 too.
+    for kind, items in _stack_runs(project):
+        if kind == "media":
+            # STEP 7.15H: composite_media_overlays (not add_media_overlays) -- the only difference is that this one also mixes in each overlay's own audio, muted/volume-aware.
+            next_path = await composite_media_overlays(str(current), items, user_id)
+        else:
+            if kind == "shape":
+                pngs = await _build_shape_overlays(items, cw, ch, user_id)
+            elif kind == "lower_third":
+                pngs = await _build_lower_third_overlays(items, cw, ch, user_id)
+            elif kind == "text":
+                # Phase 7: text is a real Pillow image composited with `overlay` (this project's ffmpeg has no drawtext filter at all -- see canvas_render_svc.py).
+                pngs = await _build_text_overlay_pngs(items, cw, ch, user_id)
+            else:
+                pngs = await _build_subtitle_overlays(items, project.get("subtitle_style", {}), cw, ch, user_id)
+            next_path = await composite_image_overlays(str(current), pngs, user_id)
+            rendered_pngs += [o["path"] for o in pngs]
         intermediates.append(str(current))
         current = next_path
-
-    if project.get("shapes"):
-        shape_overlays = await _build_shape_overlays(project["shapes"], cw, ch, user_id)
-        next_path = await composite_image_overlays(str(current), shape_overlays, user_id)
-        intermediates.append(str(current))
-        current = next_path
-        rendered_pngs += [o["path"] for o in shape_overlays]
-
-    if project.get("lower_thirds"):
-        lt_overlays = await _build_lower_third_overlays(project["lower_thirds"], cw, ch, user_id)
-        next_path = await composite_image_overlays(str(current), lt_overlays, user_id)
-        intermediates.append(str(current))
-        current = next_path
-        rendered_pngs += [o["path"] for o in lt_overlays]
-
-    if project.get("text_overlays"):
-        # Phase 7: replaces the old drawtext-based add_text_overlays() call here — this project's
-        # real ffmpeg binary has no drawtext filter at all (see canvas_render_svc.py's own module
-        # docstring), so text is now rendered as a real Pillow image and composited via the same
-        # `overlay` filter every other new element type this phase uses.
-        text_overlays = await _build_text_overlay_pngs(project["text_overlays"], cw, ch, user_id)
-        next_path = await composite_image_overlays(str(current), text_overlays, user_id)
-        intermediates.append(str(current))
-        current = next_path
-        rendered_pngs += [o["path"] for o in text_overlays]
-
-    if project.get("subtitles"):
-        sub_overlays = await _build_subtitle_overlays(
-            project["subtitles"], project.get("subtitle_style", {}), cw, ch, user_id
-        )
-        next_path = await composite_image_overlays(str(current), sub_overlays, user_id)
-        intermediates.append(str(current))
-        current = next_path
-        rendered_pngs += [o["path"] for o in sub_overlays]
 
     _cleanup(rendered_pngs)
 

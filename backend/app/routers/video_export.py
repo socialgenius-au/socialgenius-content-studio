@@ -86,6 +86,7 @@ async def export_project(
     for t in sorted(body.text_overlays, key=lambda t: t.order):
         text_overlays.append({
             "text": t.text,
+            "order": t.order,
             "start_time": t.start_time,
             "end_time": t.end_time,
             "x": t.x,
@@ -149,6 +150,7 @@ async def export_project(
     for sh in sorted(body.shapes, key=lambda s: s.order):
         shapes.append({
             "kind": sh.kind,
+            "order": sh.order,
             "start_time": sh.start_time,
             "end_time": sh.end_time,
             "x": sh.x,
@@ -170,6 +172,7 @@ async def export_project(
     for lt in sorted(body.lower_thirds, key=lambda l: l.order):
         lower_thirds.append({
             "name": lt.name,
+            "order": lt.order,
             "title": lt.title,
             "start_time": lt.start_time,
             "end_time": lt.end_time,
@@ -186,6 +189,7 @@ async def export_project(
     for sub in sorted(body.subtitles, key=lambda s: s.order):
         subtitles.append({
             "text": sub.text,
+            "order": sub.order,
             "start_time": sub.start_time,
             "end_time": sub.end_time,
             "x": sub.x,
@@ -203,6 +207,7 @@ async def export_project(
         media_overlays.append({
             "path": path,
             "is_image": asset.file_type == "image",
+            "order": o.order,
             "start": o.start_time,
             "end": o.end_time,
             "x": o.x, "y": o.y, "width": o.width, "height": o.height,
