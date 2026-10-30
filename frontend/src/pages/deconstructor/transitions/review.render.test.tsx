@@ -67,7 +67,7 @@ describe('page wiring: hidden unless asked for', () => {
     for (const s of ["get('m2') === 'text-layers'", "get('m2') === 'image-layers'", 'textLayers={textLayersOn ? textLayers : null}', 'imageLayers={imageLayersOn ? imageLayers : null}', "id: 'create'"]) expect(page).toContain(s)
   })
   it('the draft save applies them after the layers, and the module never calls an analysis or AI endpoint', () => {
-    expect(read('footage', 'assembledDraft.ts')).toContain('mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan)')
+    expect(read('footage', 'assembledDraft.ts')).toContain('mergeSpeech(mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan), input.speechPlan)')
     for (const f of ['TransitionsReview.tsx', 'loadEvidence.ts', 'materialize.ts', 'classify.ts']) expect(readFileSync(join(__dirname, f), 'utf8'), f).not.toMatch(/analyze-|transition-evidence'|deconstruct\(|mechanisms\.|anthropic|openai|\/generate\//i)
     expect(readFileSync(join(__dirname, 'TransitionsReview.tsx'), 'utf8')).toContain('referenceVideosApi.get(id)')
   })

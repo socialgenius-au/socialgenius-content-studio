@@ -299,6 +299,8 @@ export interface ReferenceVideo {
   recurring_elements: RecurringElementSummary[]
   // Stage 9's boundary-triggered transition MEASUREMENTS, one per detected cut (video-level, spans two Shots). Optional: older responses and fixtures do not carry it.
   transition_evidence?: TransitionEvidenceSummary[]
+  // Stage 7's speech-recognition evidence: video-level transcript segments (a local speech recogniser's output, with its own quality diagnostics). Optional: older responses and fixtures do not carry it.
+  speech_segments?: SpeechSegmentSummary[]
 }
 
 // One measured window around one Shot boundary: how the picture and brightness changed across a few sampled frames. It carries NO transition name -- the analysis
@@ -318,6 +320,18 @@ export interface TransitionEvidenceSummary {
   frame_difference: { values: number[]; median: number; max: number; argmax_index: number }
   black_frame_flags: boolean[]
   certainty: string
+}
+
+// One transcript segment as a speech recogniser decoded it. A machine transcript, not a script: the words can be wrong, the timing is only as good as the recogniser's, and
+// `analysis_details` holds the recogniser's own diagnostics verbatim (never a calibrated probability). Mirrors the backend SpeechSegmentSummary fields the reconstruction path reads.
+export interface SpeechSegmentSummary {
+  id: number
+  start_time: number
+  end_time: number
+  text: string
+  language: string | null
+  certainty: string
+  analysis_details?: { avg_logprob?: number; no_speech_prob?: number; compression_ratio?: number; temperature?: number } | null
 }
 
 // ── Studio types ──────────────────────────────────────────────────────────────
@@ -637,6 +651,28 @@ export interface SubtitleSegment {
   styleOverride?: Partial<SubtitleStyle>
   // Joins the same shared paint-order space every other real visual layer uses.
   order?: number
+  // Traceability (Reconstructor M2.5a -> Video Studio V2). Set ONLY on a subtitle a person approved from the reference's machine transcript: which transcript segment it
+  // came from, how the recogniser rated it, and which properties are measured, inferred or the person's own. Additive and optional, like the other `reconstruction` fields.
+  reconstruction?: SpeechReconstructionProvenance
+}
+
+export interface SpeechReconstructionProvenance {
+  schema: 'reconstruction-v1'
+  kind: 'speech'
+  candidateId: string
+  referenceVideoId: number
+  videoAnalysisId: number
+  engineVersion: string
+  evidence: { kind: 'speech_segment'; id: number }[]
+  language: string | null
+  /** The recogniser's own numbers for this segment, kept verbatim. */
+  diagnostics: { avgLogprob: number | null; noSpeechProb: number | null; compressionRatio: number | null }
+  /** The words as the recogniser wrote them, kept even after the person rewords the subtitle. */
+  transcribedText: string
+  properties: Record<string, { basis: 'measured' | 'inferred' | 'default' | 'user'; confidence?: 'high' | 'medium' | 'low'; note?: string }>
+  corrected: string[]
+  /** What this subtitle does NOT claim. Always false. */
+  claims: { wordsVerifiedAgainstAudio: false; speakerVoiceRecovered: false; scriptIsOriginal: false }
 }
 
 export interface AudioTrack {

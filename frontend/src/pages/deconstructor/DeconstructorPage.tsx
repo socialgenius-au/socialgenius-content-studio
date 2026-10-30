@@ -17,6 +17,8 @@ import { ImageLayersReview } from './imagelayers/ImageLayersReview'
 import type { ImageLayerPlan } from './imagelayers'
 import { TransitionsReview } from './transitions/TransitionsReview'
 import type { TransitionPlan } from './transitions'
+import { TranscriptReview } from './transcript/TranscriptReview'
+import type { SpeechPlan } from './transcript'
 
 type Step = 'reference' | 'anatomy' | 'mechanisms' | 'intent' | 'blueprint' | 'create'
 
@@ -52,6 +54,9 @@ export default function DeconstructorPage() {
   // M2.4a (preview): same rule for the transition review -- only with ?m2=transitions.
   const transitionsOn = useSearchParams()[0].get('m2') === 'transitions'
   const [transitionPlan, setTransitionPlan] = useState<TransitionPlan | null>(null)
+  // M2.5a (preview): same rule for the transcript review -- only with ?m2=transcript.
+  const transcriptOn = useSearchParams()[0].get('m2') === 'transcript'
+  const [speechPlan, setSpeechPlan] = useState<SpeechPlan | null>(null)
   const [useMessage, setUseMessage] = useState<string | null>(null)
 
   const d = useDeconstructor(routeId)
@@ -141,7 +146,8 @@ export default function DeconstructorPage() {
           {step === 'create' && plan && textLayersOn && <TextLayersReview key={`text:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTextLayers} />}
           {step === 'create' && plan && imageLayersOn && <ImageLayersReview key={`image:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setImageLayers} />}
           {step === 'create' && plan && transitionsOn && <TransitionsReview key={`tr:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTransitionPlan} />}
-          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} />}
+          {step === 'create' && plan && transcriptOn && <TranscriptReview key={`sp:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setSpeechPlan} />}
+          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} speechPlan={transcriptOn ? speechPlan : null} />}
         </>
       )}
     </div>

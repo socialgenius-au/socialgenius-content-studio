@@ -12,6 +12,7 @@ import { errorMessage } from '../useDeconstructor'
 import { mergeTextLayers, type TextLayerPlan } from '../textlayers'
 import { mergeImageLayers, type ImageLayerPlan } from '../imagelayers'
 import { mergeTransitions, type TransitionPlan } from '../transitions'
+import { mergeSpeech, type SpeechPlan } from '../transcript'
 
 export interface SaveDeps {
   createDraft: (body: { name: string; project_json: unknown }) => Promise<{ data: { id: number } }>
@@ -39,6 +40,8 @@ export interface SaveInput {
   imageLayers?: ImageLayerPlan | null
   /** M2.4a (optional): approved transitions, applied to the clips whose end sits on a planned scene join. Absent = exactly the draft saved without them. */
   transitionPlan?: TransitionPlan | null
+  /** M2.5a (optional): approved transcript subtitles, with the per-scene script recorded beside them. Absent = exactly the draft saved without them. */
+  speechPlan?: SpeechPlan | null
 }
 
 export type SaveResult =
@@ -59,7 +62,7 @@ export async function saveAssembledDraft(input: SaveInput, overrides: Partial<Sa
   }
   if (assembled.snapshot.videoClips.length === 0) return { ok: false, reason: 'blocked', message: 'Assign footage to at least one scene first.' }
 
-  const body = { name: assembled.name, project_json: mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan) }          // each returns the snapshot itself when there are no layers
+  const body = { name: assembled.name, project_json: mergeSpeech(mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan), input.speechPlan) }          // each returns the snapshot itself when there is nothing to add
   try {
     let draftId: number
     if (input.existingDraftId != null) {
