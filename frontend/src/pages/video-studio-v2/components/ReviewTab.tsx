@@ -7,7 +7,7 @@ import { findActiveClip } from "../../../components/studio/videoPreviewUtils";
 import { videoExportApi } from "../../../api/client";
 import { checkReconstructionExport } from "../blueprint/exportGuard";
 import { buildExportTextOverlays } from "../export/textOverlayExport";
-import { buildExportLowerThirds, buildExportShapes } from "../export/layerExport";
+import { buildExportInserts, buildExportLowerThirds, buildExportShapes, buildExportSubtitles, buildExportSubtitleStyle, exportNotices, missingInsertSources } from "../export/layerExport";
 
 const PLATFORMS = [
   { key: "instagram", glyph: "◎", label: "Instagram" },
@@ -26,7 +26,7 @@ const RECOMMENDATIONS = [
 ];
 
 export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
-  const { canvasFormat, videoClips, textOverlays, mediaOverlays, shapes, lowerThirds, audioTracks, timeline } = useStudio();
+  const { canvasFormat, videoClips, additionalVideoClips, textOverlays, mediaOverlays, shapes, lowerThirds, subtitles, subtitleStyle, audioTracks, timeline } = useStudio();
   const activeClip = findActiveClip(videoClips, timeline.currentTime);
   const hasRealSrc = !!activeClip?.url;
   // Same fit-not-stretch box used in Create/Edit, sized for Review's preview card instead.
@@ -43,7 +43,7 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
   const togglePlatform = (key: string) =>
     setPlatforms(p => (p.includes(key) ? p.filter(x => x !== key) : [...p, key]));
 
-  const flash = (msg: string) => { setStatus(msg); setTimeout(() => setStatus(null), 2000); };
+  const flash = (msg: string, ms = 2000) => { setStatus(msg); setTimeout(() => setStatus(null), ms); };
 
   // STEP 7.15F: real export/render. "Export Video" previously just called flash("Video
   // exported.") with zero actual rendering — see the backend report for the root cause
@@ -62,6 +62,11 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
     if (clipsWithoutAsset.length > 0) {
       setExportState("error");
       setExportError("One or more clips have no uploaded source video and can't be rendered yet.");
+      return;
+    }
+    if (missingInsertSources(additionalVideoClips) > 0) {
+      setExportState("error");
+      setExportError("One or more B-roll clips have no uploaded source video and can't be rendered yet.");
       return;
     }
     // M1 (Reconstructor): a reconstruction project must not export placeholder wording, and its clips must not leave gaps the exporter would silently collapse.
@@ -100,6 +105,10 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
         // M2.2b: shapes and lower thirds the editor draws were never sent, so they were missing from every MP4. Each carries the shared `order` the export now stacks by.
         shapes: buildExportShapes(shapes),
         lower_thirds: buildExportLowerThirds(lowerThirds),
+        // M2.2b: V2 inserts / B-roll and subtitles were drawn in the editor but never sent either.
+        additional_video_clips: buildExportInserts(additionalVideoClips),
+        subtitles: buildExportSubtitles(subtitles),
+        subtitle_style: buildExportSubtitleStyle(subtitleStyle),
         media_overlays: mediaOverlays.map(o => ({
           asset_id: o.assetId, start_time: o.startTime, end_time: o.endTime,
           x: o.x, y: o.y, width: o.width, height: o.height, opacity: o.opacity, order: o.order ?? 0,
@@ -128,7 +137,8 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
       URL.revokeObjectURL(url);
 
       setExportState("idle");
-      flash("Video exported — check your downloads.");
+      const notices = exportNotices({ inserts: additionalVideoClips });
+      flash(notices.length ? `Video exported — check your downloads. Note: ${notices.join(" ")}` : "Video exported — check your downloads.", notices.length ? 12000 : 2000);
     } catch (err) {
       setExportState("error");
       // responseType:'blob' means even a JSON error body arrives as a Blob — read it back to

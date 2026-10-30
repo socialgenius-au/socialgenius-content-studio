@@ -49,6 +49,43 @@
    "order": 1
   }
  ],
+ "subtitles": [
+  {
+   "text": "Hello there",
+   "start_time": 0.5,
+   "end_time": 2.9,
+   "x": 10,
+   "y": 82,
+   "width": 80,
+   "style_override": {},
+   "order": 6
+  },
+  {
+   "text": "Second line",
+   "start_time": 0.5,
+   "end_time": 2.9,
+   "x": 10,
+   "y": 70,
+   "width": 80,
+   "style_override": {
+    "font_size": 24,
+    "bg_color": "#0033aa",
+    "align": "left"
+   },
+   "order": 7
+  }
+ ],
+ "subtitle_style": {
+  "font_size": 30,
+  "color": "#FFFFFF",
+  "bg_color": "#000000",
+  "bg_opacity": 0.6,
+  "align": "center",
+  "outline_color": "#000000",
+  "outline_width": 0,
+  "shadow_color": "#000000",
+  "shadow_blur": 0
+ },
  "lower_thirds": [
   {
    "name": "Ayub",
@@ -73,6 +110,27 @@
    "height": 12,
    "show_logo": false,
    "order": 5
+  }
+ ],
+ "additional_video_clips": [
+  {
+   "asset_id": 7,
+   "start_time": 0.5,
+   "end_time": 2.9,
+   "trim_in": 0,
+   "color_grade": "none",
+   "brightness": 0,
+   "contrast": 0,
+   "saturation": 0,
+   "fit_mode": "fit",
+   "crop_x": 50,
+   "crop_y": 50,
+   "insert_x": 56,
+   "insert_y": 56,
+   "insert_width": 38,
+   "insert_height": 38,
+   "opacity": 1,
+   "order": 0
   }
  ]
 }

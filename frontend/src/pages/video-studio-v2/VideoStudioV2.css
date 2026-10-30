@@ -174,12 +174,15 @@
 /* Phase 2 (Video Studio V2 — Lower Thirds): a real broadcast-lower-third look (accent bar +
    name/title stack on a translucent dark chip) rather than a generic placeholder box — this is
    the one visual element that always needs to read as text-on-video at a glance, unselected. */
-.canvas-lowerthird-item{position:absolute;box-sizing:border-box;display:flex;align-items:stretch;overflow:hidden;background:rgba(10,14,12,.62);border-radius:4px;backdrop-filter:blur(2px)}
+/* M2.2b: a lower third is sized by its OWN box, exactly as the exporter draws it (canvas_render_svc.render_lower_third_png): accent bar 1.2% of the box width (at least
+   2px), name 32% and title 22% of the box height, 3% side padding. container-type:size makes the box the reference for the cq units below, so the preview text scales with
+   the box at any canvas size or window size instead of being a fixed 13px / 11px. */
+.canvas-lowerthird-item{position:absolute;box-sizing:border-box;display:flex;align-items:stretch;overflow:hidden;background:rgba(10,14,12,.62);border-radius:4px;backdrop-filter:blur(2px);container-type:size}
 .canvas-lowerthird-item.canvas-movable{cursor:move}
-.lowerthird-bar{width:5px;flex-shrink:0;background:var(--v-teal)}
-.lowerthird-text{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:6px 12px;overflow:hidden;min-width:0}
-.lowerthird-text b{color:#fff;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lowerthird-text small{color:rgba(255,255,255,.75);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lowerthird-bar{width:max(2px,1.2cqw);flex-shrink:0;background:var(--v-teal)}
+.lowerthird-text{display:flex;flex-direction:column;justify-content:center;gap:4cqh;padding:0 3cqw 0 6cqw;overflow:hidden;min-width:0}
+.lowerthird-text b{color:#fff;font-size:32cqh;line-height:1;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lowerthird-text small{color:rgba(255,255,255,.75);font-size:22cqh;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Phase 4 (Video Studio V2 — Independent Shapes): fill/border/radius are all inline-style-driven
    (they're real per-shape data, computed in JS) — this is purely the positioning box plus a
    faint outline so an unselected shape (e.g. a subtle low-opacity highlight block meant to sit
