@@ -9,6 +9,7 @@ import { setOpenDraftHint } from '../../video-studio-v2/blueprint/openDraftHint'
 import { STUDIO_PROJECT_BACKUP_KEY, STUDIO_PROJECT_KEY, STUDIO_ROUTE, STUDIO_STAGE_KEY, existingProjectItems } from '../../video-studio-v2/blueprint/createStudioDraft'
 import { assembleDraft, type AssemblyIssue, type AssemblyOptions, type FootageClip, type SceneAssignment } from '../assembly'
 import { errorMessage } from '../useDeconstructor'
+import { mergeTextLayers, type TextLayerPlan } from '../textlayers'
 
 export interface SaveDeps {
   createDraft: (body: { name: string; project_json: unknown }) => Promise<{ data: { id: number } }>
@@ -30,6 +31,8 @@ export interface SaveInput {
   options: AssemblyOptions
   /** The draft this workspace already saved, if any: saving again updates it instead of piling up copies. */
   existingDraftId: number | null
+  /** M2.1a (optional): reconstructed text layers a person approved. Absent = exactly the M1 draft. */
+  textLayers?: TextLayerPlan | null
 }
 
 export type SaveResult =
@@ -50,7 +53,7 @@ export async function saveAssembledDraft(input: SaveInput, overrides: Partial<Sa
   }
   if (assembled.snapshot.videoClips.length === 0) return { ok: false, reason: 'blocked', message: 'Assign footage to at least one scene first.' }
 
-  const body = { name: assembled.name, project_json: assembled.snapshot }
+  const body = { name: assembled.name, project_json: mergeTextLayers(assembled.snapshot, input.textLayers) }          // returns the snapshot itself when there are no layers
   try {
     let draftId: number
     if (input.existingDraftId != null) {

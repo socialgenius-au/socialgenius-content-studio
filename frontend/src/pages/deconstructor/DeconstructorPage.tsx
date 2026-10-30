@@ -2,7 +2,7 @@
 // It reuses the existing reference-video, deconstruction, anatomy, mechanism and blueprint APIs and hands the finished blueprint to the
 // EXISTING Video Studio V2 (route /video-studio-v2) -- there is no parallel editor here.
 import { useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/common/PageHeader'
 import { buildBlueprintPlan, checkBlueprintUsable } from '../video-studio-v2/blueprint/blueprintPlan'
 import { createStudioDraftFromBlueprint } from '../video-studio-v2/blueprint/createStudioDraft'
@@ -11,6 +11,8 @@ import { useDeconstructor } from './useDeconstructor'
 import { anatomyReady, mechanismsView } from './viewModel'
 import { AnatomyStage, BlueprintStage, CreateStage, IntentStage, MechanismsStage, ReferenceStage } from './stages'
 import { FootageAssignment } from './footage'
+import { TextLayersReview } from './textlayers/TextLayersReview'
+import type { TextLayerPlan } from './textlayers'
 
 type Step = 'reference' | 'anatomy' | 'mechanisms' | 'intent' | 'blueprint' | 'create'
 
@@ -37,6 +39,9 @@ export default function DeconstructorPage() {
   const [form, setForm] = useState<IntentForm>(emptyIntentForm)
   const [errors, setErrors] = useState<IntentErrors>({})
   const [using, setUsing] = useState(false)
+  // M2.1a (preview): the text-layer review is shown only when the address carries ?m2=text-layers, so the approved page is unchanged for everyone else.
+  const textLayersOn = useSearchParams()[0].get('m2') === 'text-layers'
+  const [textLayers, setTextLayers] = useState<TextLayerPlan | null>(null)
   const [useMessage, setUseMessage] = useState<string | null>(null)
 
   const d = useDeconstructor(routeId)
@@ -123,7 +128,8 @@ export default function DeconstructorPage() {
           )}
           {step === 'blueprint' && <BlueprintStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} onNew={() => setStep('intent')} useMessage={useMessage} />}
           {step === 'create' && <CreateStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} sceneSummary={sceneSummary} useMessage={useMessage} />}
-          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} />}
+          {step === 'create' && plan && textLayersOn && <TextLayersReview key={`text:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTextLayers} />}
+          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} />}
         </>
       )}
     </div>

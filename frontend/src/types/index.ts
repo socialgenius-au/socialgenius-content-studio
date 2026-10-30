@@ -439,6 +439,24 @@ export interface TextOverlay {
     referenceVideoId: number
     c3AttemptId: number | null
   }
+
+  // Traceability (Reconstructor M2.1 -> Video Studio V2). Set ONLY on a text layer a person approved from text the
+  // reference analysis READ (OCR). It records which analysis evidence the layer came from, how sure the source is, and which
+  // properties were measured, inferred, defaulted or set by the person -- so nothing inferred is ever presented as measured.
+  // Additive and optional, like `blueprint`: every reader treats undefined as "not a reconstruction layer", and the editor
+  // keeps it untouched when the layer is edited (it merges partial patches onto the whole object).
+  reconstruction?: {
+    schema: 'reconstruction-v1'
+    kind: 'text'
+    candidateId: string
+    referenceVideoId: number
+    videoAnalysisId: number
+    engineVersion: string
+    evidence: { kind: 'ocr_group' | 'ocr_observation'; id: number }[]
+    sourceConfidence: number | null
+    properties: Record<string, { basis: 'measured' | 'inferred' | 'default' | 'user'; confidence?: 'high' | 'medium' | 'low'; note?: string }>
+    corrected: string[]
+  }
 }
 
 export interface MediaOverlay {

@@ -6,6 +6,7 @@ import type { Asset, ReferenceVideo } from '../../../types'
 import type { BlueprintResponse } from '../../../types/deconstructor'
 import type { BlueprintPlan } from '../../video-studio-v2/blueprint/blueprintPlan'
 import type { UnderfilledPolicy } from '../assembly'
+import type { TextLayerPlan } from '../textlayers'
 import { openAssembledDraft, saveAssembledDraft } from './assembledDraft'
 import { defaultLibraryDeps, loadVideoAssets, probeAsset, uploadFootage, type LibraryDeps } from './footageLibrary'
 import {
@@ -22,9 +23,11 @@ export interface FootageAssignmentProps {
   plan: BlueprintPlan
   references: ReferenceVideo[] | null
   libraryDeps?: LibraryDeps
+  /** M2.1a (optional): approved reconstructed text layers to save into the draft. Absent = the unchanged M1 behaviour. */
+  textLayers?: TextLayerPlan | null
 }
 
-export function FootageAssignment({ resp, plan, references, libraryDeps }: FootageAssignmentProps) {
+export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers }: FootageAssignmentProps) {
   const navigate = useNavigate()
   const deps = useMemo(() => libraryDeps ?? defaultLibraryDeps(), [libraryDeps])
   const [assets, setAssets] = useState<Asset[]>([])
@@ -94,7 +97,7 @@ export function FootageAssignment({ resp, plan, references, libraryDeps }: Foota
   }
 
   const view = useMemo(() => runAssembly({ plan, library, edits, referenceAssetIds: referenceIds, underfilled, createdAt: VALIDATION_STAMP }), [plan, library, edits, referenceIds, underfilled])
-  const signature = useMemo(() => JSON.stringify([edits, underfilled]), [edits, underfilled])
+  const signature = useMemo(() => JSON.stringify(textLayers ? [edits, underfilled, textLayers.signature] : [edits, underfilled]), [edits, underfilled, textLayers])
 
   const onSave = async () => {
     if (!view.canSave) return
@@ -102,7 +105,7 @@ export function FootageAssignment({ resp, plan, references, libraryDeps }: Foota
     try {
       const r = await saveAssembledDraft({
         resp, plan, footage: view.footage, assignments: view.assignments, existingDraftId: saved?.draftId ?? null,
-        options: { underfilled, referenceAssetIds: referenceIds, requestedElements: REQUESTED_ELEMENTS },
+        options: { underfilled, referenceAssetIds: referenceIds, requestedElements: REQUESTED_ELEMENTS }, textLayers,
       })
       if (!alive.current) return
       if (r.ok) setSaved({ draftId: r.draftId, name: r.name, clips: r.clips, plan: r.plan, signature })
