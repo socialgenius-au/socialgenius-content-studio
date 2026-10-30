@@ -297,6 +297,27 @@ export interface ReferenceVideo {
   // multiple Shots), not nested under any one Shot; empty until text analysis completes at
   // least once, and even then only present when 2+ Occurrence Groups were actually linked.
   recurring_elements: RecurringElementSummary[]
+  // Stage 9's boundary-triggered transition MEASUREMENTS, one per detected cut (video-level, spans two Shots). Optional: older responses and fixtures do not carry it.
+  transition_evidence?: TransitionEvidenceSummary[]
+}
+
+// One measured window around one Shot boundary: how the picture and brightness changed across a few sampled frames. It carries NO transition name -- the analysis
+// deliberately stops at measurements. Mirrors the fields of backend TransitionEvidenceSummary that the reconstruction path reads.
+export interface TransitionEvidenceSummary {
+  id: number
+  boundary_timestamp: number
+  window_start: number
+  window_end: number
+  preceding_shot_id: number | null
+  following_shot_id: number | null
+  sampling_fps: number
+  sample_count: number
+  frame_pair_count: number
+  sample_timestamps: number[]
+  luminance: { values: number[]; first_value: number; last_value: number; min: number; max: number; signed_total_change: number }
+  frame_difference: { values: number[]; median: number; max: number; argmax_index: number }
+  black_frame_flags: boolean[]
+  certainty: string
 }
 
 // ── Studio types ──────────────────────────────────────────────────────────────

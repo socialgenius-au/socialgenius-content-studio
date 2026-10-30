@@ -15,6 +15,8 @@ import { TextLayersReview } from './textlayers/TextLayersReview'
 import type { TextLayerPlan } from './textlayers'
 import { ImageLayersReview } from './imagelayers/ImageLayersReview'
 import type { ImageLayerPlan } from './imagelayers'
+import { TransitionsReview } from './transitions/TransitionsReview'
+import type { TransitionPlan } from './transitions'
 
 type Step = 'reference' | 'anatomy' | 'mechanisms' | 'intent' | 'blueprint' | 'create'
 
@@ -47,6 +49,9 @@ export default function DeconstructorPage() {
   // M2.2a (preview): same rule for the image-layer review -- only with ?m2=image-layers.
   const imageLayersOn = useSearchParams()[0].get('m2') === 'image-layers'
   const [imageLayers, setImageLayers] = useState<ImageLayerPlan | null>(null)
+  // M2.4a (preview): same rule for the transition review -- only with ?m2=transitions.
+  const transitionsOn = useSearchParams()[0].get('m2') === 'transitions'
+  const [transitionPlan, setTransitionPlan] = useState<TransitionPlan | null>(null)
   const [useMessage, setUseMessage] = useState<string | null>(null)
 
   const d = useDeconstructor(routeId)
@@ -135,7 +140,8 @@ export default function DeconstructorPage() {
           {step === 'create' && <CreateStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} sceneSummary={sceneSummary} useMessage={useMessage} />}
           {step === 'create' && plan && textLayersOn && <TextLayersReview key={`text:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTextLayers} />}
           {step === 'create' && plan && imageLayersOn && <ImageLayersReview key={`image:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setImageLayers} />}
-          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} />}
+          {step === 'create' && plan && transitionsOn && <TransitionsReview key={`tr:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTransitionPlan} />}
+          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} />}
         </>
       )}
     </div>
