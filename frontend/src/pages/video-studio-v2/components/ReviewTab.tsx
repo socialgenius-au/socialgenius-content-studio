@@ -7,6 +7,7 @@ import { findActiveClip } from "../../../components/studio/videoPreviewUtils";
 import { videoExportApi } from "../../../api/client";
 import { checkReconstructionExport } from "../blueprint/exportGuard";
 import { buildExportTextOverlays } from "../export/textOverlayExport";
+import { buildExportLowerThirds, buildExportShapes } from "../export/layerExport";
 
 const PLATFORMS = [
   { key: "instagram", glyph: "◎", label: "Instagram" },
@@ -25,7 +26,7 @@ const RECOMMENDATIONS = [
 ];
 
 export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
-  const { canvasFormat, videoClips, textOverlays, mediaOverlays, audioTracks, timeline } = useStudio();
+  const { canvasFormat, videoClips, textOverlays, mediaOverlays, shapes, lowerThirds, audioTracks, timeline } = useStudio();
   const activeClip = findActiveClip(videoClips, timeline.currentTime);
   const hasRealSrc = !!activeClip?.url;
   // Same fit-not-stretch box used in Create/Edit, sized for Review's preview card instead.
@@ -96,6 +97,9 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
         // M2.1b: every text property the exporter supports (width/wrapping, alignment, bold/underline/spacing, opacity, stroke, shadow, gradient, background chip),
         // not just the first seven. See export/textOverlayExport.ts for the field-by-field mapping.
         text_overlays: buildExportTextOverlays(textOverlays),
+        // M2.2b: shapes and lower thirds the editor draws were never sent, so they were missing from every MP4. Each carries the shared `order` the export now stacks by.
+        shapes: buildExportShapes(shapes),
+        lower_thirds: buildExportLowerThirds(lowerThirds),
         media_overlays: mediaOverlays.map(o => ({
           asset_id: o.assetId, start_time: o.startTime, end_time: o.endTime,
           x: o.x, y: o.y, width: o.width, height: o.height, opacity: o.opacity, order: o.order ?? 0,

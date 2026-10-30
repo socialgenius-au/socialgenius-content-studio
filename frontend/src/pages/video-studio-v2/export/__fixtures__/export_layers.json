@@ -1,0 +1,78 @@
+{
+ "shapes": [
+  {
+   "kind": "rectangle",
+   "start_time": 0.5,
+   "end_time": 2.9,
+   "x": 10,
+   "y": 20,
+   "width": 30,
+   "height": 15,
+   "fill_color": "#ff8800",
+   "opacity": 0.8,
+   "border_color": "#ffffff",
+   "border_width": 4,
+   "border_radius": 20,
+   "full_width": false,
+   "order": 2
+  },
+  {
+   "kind": "circle",
+   "start_time": 0.5,
+   "end_time": 2.9,
+   "x": 60,
+   "y": 50,
+   "width": 20,
+   "height": 12,
+   "fill_color": "#00aaff",
+   "opacity": 1,
+   "border_color": null,
+   "border_width": 0,
+   "border_radius": 0,
+   "full_width": false,
+   "order": 3
+  },
+  {
+   "kind": "banner",
+   "start_time": 0.5,
+   "end_time": 2.9,
+   "x": 10,
+   "y": 90,
+   "width": 30,
+   "height": 6,
+   "fill_color": "#222222",
+   "opacity": 0.6,
+   "border_color": null,
+   "border_width": 0,
+   "border_radius": 0,
+   "full_width": true,
+   "order": 1
+  }
+ ],
+ "lower_thirds": [
+  {
+   "name": "Ayub",
+   "title": "Founder",
+   "start_time": 0.5,
+   "end_time": 2.9,
+   "x": 5,
+   "y": 78,
+   "width": 55,
+   "height": 14,
+   "show_logo": false,
+   "order": 4
+  },
+  {
+   "name": "Maya Rao",
+   "title": "Head of Growth",
+   "start_time": 0.5,
+   "end_time": 2.9,
+   "x": 8,
+   "y": 60,
+   "width": 60,
+   "height": 12,
+   "show_logo": false,
+   "order": 5
+  }
+ ]
+}
