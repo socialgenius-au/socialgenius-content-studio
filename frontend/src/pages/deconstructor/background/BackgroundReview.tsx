@@ -11,7 +11,7 @@ import { buildPlateCandidates } from './candidates'
 import { planComposition, type CompositionInput, type OrderPolicy } from './composition'
 import { setPlateCorrection, type PlateCorrections } from './corrections'
 import type { BackgroundEvidence } from './evidence'
-import { browserPixelReader, loadBackgroundEvidence, type PixelReader } from './loadEvidence'
+import { browserPixelReader, evidenceKey, loadBackgroundEvidence, type PixelReader } from './loadEvidence'
 import { planBackground, type BackgroundPlan } from './materialize'
 import { BackgroundReviewView, type ReviewState } from './BackgroundReviewView'
 
@@ -34,6 +34,7 @@ export function BackgroundReview({ plan, generated, onPlan, onPolicy, deps: over
   const [corrections, setCorrections] = useState<PlateCorrections>({})
   const [policy, setPolicy] = useState<OrderPolicy>('as_generated')
 
+  const key = evidenceKey(plan)
   useEffect(() => {
     let cancelled = false
     setState({ kind: 'loading' }); setEvidence(null); setCorrections({})
@@ -45,7 +46,7 @@ export function BackgroundReview({ plan, generated, onPlan, onPolicy, deps: over
       setEvidence(loaded.evidence); setState({ kind: 'ready' })
     })()
     return () => { cancelled = true }
-  }, [deps, plan])
+  }, [deps, key])                                                         // the ids, not the plan object: assigning footage re-renders the page and must not reload the stills or reset the review
 
   const candidates = useMemo(() => (evidence ? buildPlateCandidates(evidence, DEFAULT_CANVAS) : []), [evidence])
   const layerPlan = useMemo(

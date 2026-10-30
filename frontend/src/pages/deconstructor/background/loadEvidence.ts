@@ -10,6 +10,10 @@ import type { TimeMap } from '../textlayers/corrections'
 import { buildBackgroundEvidence, measureFrames, type BackgroundEvidence } from './evidence'
 import { measureFrame } from './measure'
 
+/** What identifies the evidence a panel shows: the reference and the analysis (blueprint) it was built from. The panel reloads when, and only when, this changes. A page re-render, a footage
+ *  assignment or a freshly built plan object with the same ids must NOT reload it (that would discard the person's unsaved choices). */
+export const evidenceKey = (plan: Pick<BlueprintPlan, 'referenceVideoId' | 'videoAnalysisId'>) => `${plan.referenceVideoId}:${plan.videoAnalysisId}`
+
 export type PixelReader = (framePath: string) => Promise<PixelImage | null>
 
 /** Loads a still in CORS mode (a distinct query string, so a copy cached by a plain <img> without CORS headers cannot be handed back) and returns its pixels, or null when refused. */

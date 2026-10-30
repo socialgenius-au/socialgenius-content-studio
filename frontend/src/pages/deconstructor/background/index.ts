@@ -6,3 +6,4 @@ export { planBackground, mergeBackground, PLATE_ORDER, plateLayerId, type Backgr
 export { planComposition, applyComposition, generatedLayers, bucketOf, BANDS, POLICY_LABEL, POLICY_RULES, BUCKET_LABEL, type OrderPolicy, type CompositionPlan, type Bucket } from './composition'
 export { backgroundManifest, compositionManifest, type ManifestEntry } from './manifest'
 export { LIMITATIONS, VARIANCE_LABEL, NO_CLAIMS, SIDES, type Side } from './contract'
+export { evidenceKey, loadBackgroundEvidence, browserPixelReader, type PixelReader } from './loadEvidence'

@@ -79,6 +79,10 @@ describe('page wiring: hidden unless asked for', () => {
     for (const f of ['BackgroundReview.tsx', 'loadEvidence.ts', 'measure.ts', 'materialize.ts', 'composition.ts']) expect(readFileSync(join(__dirname, f), 'utf8'), f).not.toMatch(/analyze-|deconstruct\(|mechanisms\.|anthropic|openai|\/generate\//i)
     expect(readFileSync(join(__dirname, 'BackgroundReview.tsx'), 'utf8')).toContain('referenceVideosApi.get(id)')
   })
+  it('the panel reloads only when the reference or analysis changes, never because the page re-rendered (assigning footage must not reset it)', () => {
+    const src = readFileSync(join(__dirname, 'BackgroundReview.tsx'), 'utf8')
+    expect(src).toContain('[deps, key]'); expect(src).toContain('const key = evidenceKey(plan)'); expect(src).not.toMatch(/\[deps, plan\]/)
+  })
   it('no protected editor file is part of this change', () => {
     const studio = join(__dirname, '..', '..', 'video-studio-v2')
     for (const f of ['components/CreateEditTab.tsx', 'components/ReviewTab.tsx', 'StudioContext.tsx', 'videoPreviewUtils.ts']) {
