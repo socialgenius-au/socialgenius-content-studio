@@ -13,6 +13,7 @@ import { mergeTextLayers, type TextLayerPlan } from '../textlayers'
 import { mergeImageLayers, type ImageLayerPlan } from '../imagelayers'
 import { mergeTransitions, type TransitionPlan } from '../transitions'
 import { mergeSpeech, type SpeechPlan } from '../transcript'
+import { applyComposition, mergeBackground, type BackgroundPlan, type OrderPolicy } from '../background'
 
 export interface SaveDeps {
   createDraft: (body: { name: string; project_json: unknown }) => Promise<{ data: { id: number } }>
@@ -42,6 +43,10 @@ export interface SaveInput {
   transitionPlan?: TransitionPlan | null
   /** M2.5a (optional): approved transcript subtitles, with the per-scene script recorded beside them. Absent = exactly the draft saved without them. */
   speechPlan?: SpeechPlan | null
+  /** M2.3b (optional): approved background plates (flat shapes in measured bars). Absent = exactly the draft saved without them. */
+  backgroundPlan?: BackgroundPlan | null
+  /** M2.3c (optional): the stacking policy applied, last, to the layers the Reconstructor generated. Absent or 'as_generated' = nothing is reordered. */
+  compositionPolicy?: OrderPolicy | null
 }
 
 export type SaveResult =
@@ -62,7 +67,7 @@ export async function saveAssembledDraft(input: SaveInput, overrides: Partial<Sa
   }
   if (assembled.snapshot.videoClips.length === 0) return { ok: false, reason: 'blocked', message: 'Assign footage to at least one scene first.' }
 
-  const body = { name: assembled.name, project_json: mergeSpeech(mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan), input.speechPlan) }          // each returns the snapshot itself when there is nothing to add
+  const body = { name: assembled.name, project_json: applyComposition(mergeBackground(mergeSpeech(mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan), input.speechPlan), input.backgroundPlan), input.compositionPolicy) }          // each returns the snapshot itself when there is nothing to add
   try {
     let draftId: number
     if (input.existingDraftId != null) {

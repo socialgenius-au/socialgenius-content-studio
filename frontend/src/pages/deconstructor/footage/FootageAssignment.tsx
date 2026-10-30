@@ -10,6 +10,7 @@ import type { TextLayerPlan } from '../textlayers'
 import type { ImageLayerPlan } from '../imagelayers'
 import type { TransitionPlan } from '../transitions'
 import type { SpeechPlan } from '../transcript'
+import type { BackgroundPlan, OrderPolicy } from '../background'
 import { openAssembledDraft, saveAssembledDraft } from './assembledDraft'
 import { defaultLibraryDeps, loadVideoAssets, probeAsset, uploadFootage, type LibraryDeps } from './footageLibrary'
 import {
@@ -34,9 +35,13 @@ export interface FootageAssignmentProps {
   transitionPlan?: TransitionPlan | null
   /** M2.5a (optional): approved transcript subtitles (and the per-scene script) to save into the draft. Absent = the unchanged behaviour. */
   speechPlan?: SpeechPlan | null
+  /** M2.3b (optional): approved background plates to save into the draft. Absent = the unchanged behaviour. */
+  backgroundPlan?: BackgroundPlan | null
+  /** M2.3c (optional): stacking policy applied to the generated layers at save. Absent = the unchanged behaviour. */
+  compositionPolicy?: OrderPolicy | null
 }
 
-export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers, imageLayers, transitionPlan, speechPlan }: FootageAssignmentProps) {
+export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy }: FootageAssignmentProps) {
   const navigate = useNavigate()
   const deps = useMemo(() => libraryDeps ?? defaultLibraryDeps(), [libraryDeps])
   const [assets, setAssets] = useState<Asset[]>([])
@@ -106,7 +111,7 @@ export function FootageAssignment({ resp, plan, references, libraryDeps, textLay
   }
 
   const view = useMemo(() => runAssembly({ plan, library, edits, referenceAssetIds: referenceIds, underfilled, createdAt: VALIDATION_STAMP }), [plan, library, edits, referenceIds, underfilled])
-  const signature = useMemo(() => JSON.stringify(textLayers || imageLayers || transitionPlan || speechPlan ? [edits, underfilled, ...(textLayers ? [textLayers.signature] : []), ...(imageLayers ? [`img:${imageLayers.signature}`] : []), ...(transitionPlan ? [`tr:${transitionPlan.signature}`] : []), ...(speechPlan ? [`sp:${speechPlan.signature}`] : [])] : [edits, underfilled]), [edits, underfilled, textLayers, imageLayers, transitionPlan, speechPlan])
+  const signature = useMemo(() => JSON.stringify(textLayers || imageLayers || transitionPlan || speechPlan || backgroundPlan || compositionPolicy ? [edits, underfilled, ...(textLayers ? [textLayers.signature] : []), ...(imageLayers ? [`img:${imageLayers.signature}`] : []), ...(transitionPlan ? [`tr:${transitionPlan.signature}`] : []), ...(speechPlan ? [`sp:${speechPlan.signature}`] : []), ...(backgroundPlan ? [`bg:${backgroundPlan.signature}`] : []), ...(compositionPolicy && compositionPolicy !== 'as_generated' ? [`co:${compositionPolicy}`] : [])] : [edits, underfilled]), [edits, underfilled, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy])
 
   const onSave = async () => {
     if (!view.canSave) return
@@ -114,7 +119,7 @@ export function FootageAssignment({ resp, plan, references, libraryDeps, textLay
     try {
       const r = await saveAssembledDraft({
         resp, plan, footage: view.footage, assignments: view.assignments, existingDraftId: saved?.draftId ?? null,
-        options: { underfilled, referenceAssetIds: referenceIds, requestedElements: REQUESTED_ELEMENTS }, textLayers, imageLayers, transitionPlan, speechPlan,
+        options: { underfilled, referenceAssetIds: referenceIds, requestedElements: REQUESTED_ELEMENTS }, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy,
       })
       if (!alive.current) return
       if (r.ok) setSaved({ draftId: r.draftId, name: r.name, clips: r.clips, plan: r.plan, signature })
