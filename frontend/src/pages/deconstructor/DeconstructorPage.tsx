@@ -49,20 +49,24 @@ export default function DeconstructorPage() {
   const [form, setForm] = useState<IntentForm>(emptyIntentForm)
   const [errors, setErrors] = useState<IntentErrors>({})
   const [using, setUsing] = useState(false)
-  // M2.1a (preview): the text-layer review is shown only when the address carries ?m2=text-layers, so the approved page is unchanged for everyone else.
-  const textLayersOn = useSearchParams()[0].get('m2') === 'text-layers'
+  // Preview panels are switched on by the address: ?m2=<name> for one, or a comma-separated list (?m2=text-layers,image-layers,background) to use several in one draft.
+  // Without ?m2 the approved page is unchanged for everyone else.
+  const m2Param = useSearchParams()[0].get('m2') ?? ''
+  const m2Has = (name: string) => m2Param.split(',').map(f => f.trim()).includes(name)
+  // M2.1a (preview): the text-layer review is shown only with ?m2=text-layers.
+  const textLayersOn = m2Has('text-layers')
   const [textLayers, setTextLayers] = useState<TextLayerPlan | null>(null)
   // M2.2a (preview): same rule for the image-layer review -- only with ?m2=image-layers.
-  const imageLayersOn = useSearchParams()[0].get('m2') === 'image-layers'
+  const imageLayersOn = m2Has('image-layers')
   const [imageLayers, setImageLayers] = useState<ImageLayerPlan | null>(null)
   // M2.4a (preview): same rule for the transition review -- only with ?m2=transitions.
-  const transitionsOn = useSearchParams()[0].get('m2') === 'transitions'
+  const transitionsOn = m2Has('transitions')
   const [transitionPlan, setTransitionPlan] = useState<TransitionPlan | null>(null)
   // M2.5a (preview): same rule for the transcript review -- only with ?m2=transcript.
-  const transcriptOn = useSearchParams()[0].get('m2') === 'transcript'
+  const transcriptOn = m2Has('transcript')
   const [speechPlan, setSpeechPlan] = useState<SpeechPlan | null>(null)
   // M2.3 (preview): same rule for the background plates and the stacking policy -- only with ?m2=background.
-  const backgroundOn = useSearchParams()[0].get('m2') === 'background'
+  const backgroundOn = m2Has('background')
   const [backgroundPlan, setBackgroundPlan] = useState<BackgroundPlan | null>(null)
   const [compositionPolicy, setCompositionPolicy] = useState<OrderPolicy>('as_generated')
   const [useMessage, setUseMessage] = useState<string | null>(null)

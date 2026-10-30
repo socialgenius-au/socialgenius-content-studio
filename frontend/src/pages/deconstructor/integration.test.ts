@@ -69,7 +69,7 @@ describe('the page and the footage panel carry all four flags', () => {
   const read = (...p: string[]) => readFileSync(join(__dirname, ...p), 'utf8')
   it('every flag is its own address parameter, and every plan reaches the footage panel only when its flag is on', () => {
     const page = read('DeconstructorPage.tsx')
-    for (const f of ['text-layers', 'image-layers', 'transitions', 'transcript', 'background']) expect(page).toContain(`get('m2') === '${f}'`)
+    for (const f of ['text-layers', 'image-layers', 'transitions', 'transcript', 'background']) expect(page).toContain(`m2Has('${f}')`)
     for (const p of ['textLayers={textLayersOn ? textLayers : null}', 'imageLayers={imageLayersOn ? imageLayers : null}', 'transitionPlan={transitionsOn ? transitionPlan : null}', 'speechPlan={transcriptOn ? speechPlan : null}', 'backgroundPlan={backgroundOn ? backgroundPlan : null}', 'compositionPolicy={backgroundOn ? compositionPolicy : null}']) expect(page).toContain(p)
   })
   it('the draft save and the saved-vs-edited signature include all four', () => {

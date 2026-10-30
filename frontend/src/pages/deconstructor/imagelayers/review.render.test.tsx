@@ -119,14 +119,14 @@ describe('page wiring: hidden unless asked for', () => {
   const read = (...p: string[]) => readFileSync(join(dir, ...p), 'utf8')
   const page = read('DeconstructorPage.tsx')
   it('renders the review only for ?m2=image-layers, and only in the Create step with a usable plan', () => {
-    expect(page).toContain("get('m2') === 'image-layers'")
+    expect(page).toContain("m2Has('image-layers')")
     expect(page).toMatch(/step === 'create' && plan && imageLayersOn && <ImageLayersReview/)
   })
   it('passes image layers to the footage panel only when the flag is on', () => {
     expect(page).toContain('imageLayers={imageLayersOn ? imageLayers : null}')
   })
   it('leaves the M2.1a text flag, the six steps and the existing panels in place', () => {
-    expect(page).toContain("get('m2') === 'text-layers'"); expect(page).toContain('textLayers={textLayersOn ? textLayers : null}')
+    expect(page).toContain("m2Has('text-layers')"); expect(page).toContain('textLayers={textLayersOn ? textLayers : null}')
     for (const s of ["id: 'reference'", "id: 'anatomy'", "id: 'mechanisms'", "id: 'intent'", "id: 'blueprint'", "id: 'create'"]) expect(page).toContain(s)
     expect(page).toContain('<FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data}')
   })

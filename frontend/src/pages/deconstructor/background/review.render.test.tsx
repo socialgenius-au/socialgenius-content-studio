@@ -68,11 +68,11 @@ describe('page wiring: hidden unless asked for', () => {
   const read = (...p: string[]) => readFileSync(join(dir, ...p), 'utf8')
   const page = read('DeconstructorPage.tsx')
   it('renders the review only for ?m2=background, in the Create step with a usable plan; passes the plan and policy on only when the flag is on', () => {
-    expect(page).toContain("get('m2') === 'background'"); expect(page).toMatch(/step === 'create' && plan && backgroundOn && <BackgroundReview/)
+    expect(page).toContain("m2Has('background')"); expect(page).toMatch(/step === 'create' && plan && backgroundOn && <BackgroundReview/)
     expect(page).toContain('backgroundPlan={backgroundOn ? backgroundPlan : null}'); expect(page).toContain('compositionPolicy={backgroundOn ? compositionPolicy : null}')
   })
   it('leaves the other flags and panels in place; the draft save applies plates then stacking last', () => {
-    for (const s of ["get('m2') === 'text-layers'", "get('m2') === 'transitions'", "get('m2') === 'transcript'", "id: 'create'"]) expect(page).toContain(s)
+    for (const s of ["m2Has('text-layers')", "m2Has('transitions')", "m2Has('transcript')", "id: 'create'"]) expect(page).toContain(s)
     expect(read('footage', 'assembledDraft.ts')).toMatch(/applyComposition\(mergeBackground\(mergeSpeech\(/)
   })
   it('the module never calls an analysis or AI endpoint and reads only through the existing reference-video GET', () => {

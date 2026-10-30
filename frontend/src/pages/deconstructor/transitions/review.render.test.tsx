@@ -61,10 +61,10 @@ describe('page wiring: hidden unless asked for', () => {
   const read = (...p: string[]) => readFileSync(join(dir, ...p), 'utf8')
   const page = read('DeconstructorPage.tsx')
   it('renders the review only for ?m2=transitions, in the Create step with a usable plan; passes the plan on only when the flag is on', () => {
-    expect(page).toContain("get('m2') === 'transitions'"); expect(page).toMatch(/step === 'create' && plan && transitionsOn && <TransitionsReview/); expect(page).toContain('transitionPlan={transitionsOn ? transitionPlan : null}')
+    expect(page).toContain("m2Has('transitions')"); expect(page).toMatch(/step === 'create' && plan && transitionsOn && <TransitionsReview/); expect(page).toContain('transitionPlan={transitionsOn ? transitionPlan : null}')
   })
   it('leaves the other flags, the six steps and the existing panels in place', () => {
-    for (const s of ["get('m2') === 'text-layers'", "get('m2') === 'image-layers'", 'textLayers={textLayersOn ? textLayers : null}', 'imageLayers={imageLayersOn ? imageLayers : null}', "id: 'create'"]) expect(page).toContain(s)
+    for (const s of ["m2Has('text-layers')", "m2Has('image-layers')", 'textLayers={textLayersOn ? textLayers : null}', 'imageLayers={imageLayersOn ? imageLayers : null}', "id: 'create'"]) expect(page).toContain(s)
   })
   it('the draft save applies them after the layers, and the module never calls an analysis or AI endpoint', () => {
     expect(read('footage', 'assembledDraft.ts')).toContain('mergeSpeech(mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan), input.speechPlan)')

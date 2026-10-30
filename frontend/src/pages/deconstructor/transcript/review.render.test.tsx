@@ -70,10 +70,10 @@ describe('page wiring: hidden unless asked for', () => {
   const read = (...p: string[]) => readFileSync(join(dir, ...p), 'utf8')
   const page = read('DeconstructorPage.tsx')
   it('renders the review only for ?m2=transcript, in the Create step with a usable plan; passes the plan on only when the flag is on', () => {
-    expect(page).toContain("get('m2') === 'transcript'"); expect(page).toMatch(/step === 'create' && plan && transcriptOn && <TranscriptReview/); expect(page).toContain('speechPlan={transcriptOn ? speechPlan : null}')
+    expect(page).toContain("m2Has('transcript')"); expect(page).toMatch(/step === 'create' && plan && transcriptOn && <TranscriptReview/); expect(page).toContain('speechPlan={transcriptOn ? speechPlan : null}')
   })
   it('leaves the other flags and the existing panels in place; the draft save adds subtitles after the layers', () => {
-    for (const s of ["get('m2') === 'text-layers'", "get('m2') === 'image-layers'", 'textLayers={textLayersOn ? textLayers : null}', "id: 'create'"]) expect(page).toContain(s)
+    for (const s of ["m2Has('text-layers')", "m2Has('image-layers')", 'textLayers={textLayersOn ? textLayers : null}', "id: 'create'"]) expect(page).toContain(s)
     expect(read('footage', 'assembledDraft.ts')).toContain('mergeSpeech(mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan), input.speechPlan)')
   })
   it('the default subtitle box is the editor’s own, and the module never starts speech recognition or calls an AI endpoint', () => {

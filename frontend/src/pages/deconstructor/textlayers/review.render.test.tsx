@@ -88,7 +88,7 @@ describe('review panel', () => {
 describe('page wiring: hidden unless asked for', () => {
   const src = readFileSync(join(__dirname, '..', 'DeconstructorPage.tsx'), 'utf8')
   it('renders the review only for ?m2=text-layers, and only in the Create step with a usable plan', () => {
-    expect(src).toContain("get('m2') === 'text-layers'")
+    expect(src).toContain("m2Has('text-layers')")
     expect(src).toMatch(/step === 'create' && plan && textLayersOn && <TextLayersReview/)
   })
   it('passes layers to the footage panel only when the flag is on, so the default page saves exactly what it saved before', () => {
