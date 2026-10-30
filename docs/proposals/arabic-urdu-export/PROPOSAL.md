@@ -2,7 +2,27 @@
 
 Status: **assessment only. Nothing here is installed, downloaded or deployed.** No dependency, font or Railway setting has been changed. The existing editor warnings for unsupported scripts are unchanged and stay until a fix is verified.
 
-## 1. The problem, as measured
+## 0. Production runtime results (read-only, 2026-10-30): these correct sections 1–3 below
+
+Read-only commands run in the deployed backend container (`socialgenius-unified-preview`, via `railway ssh`; nothing installed, written or changed):
+
+| Check | Result in production |
+|---|---|
+| Pillow | **13.0.0** |
+| `features.check('raqm')`, `('fribidi')`, `('harfbuzz')` | **True, True, True** (libraqm 0.11.0, FriBiDi 1.0.16, HarfBuzz 14.5.0) |
+| Default layout engine for `ImageFont.truetype` | **RAQM**. `canvas_render_svc.py` never names an engine, so every subtitle and text overlay in production is already laid out by Raqm |
+| Same Urdu test line, BASIC vs RAQM bounding box | 344 px wide vs **265 px**: the layout genuinely differs, so joining/shaping and right-to-left order are applied by the production renderer |
+| Bundled `DejaVuSans.ttf`: U+06C1 (ہ), U+06D2 (ے) | **No glyph** (identical to the “missing” box); U+0627 (ا) has one |
+| System fonts | `/usr/share/fonts` and `/usr/local/share/fonts` exist; 8 `.ttf` files; their coverage was not inspected |
+
+What this means:
+
+* **The “wrong direction / no joining” part of the problem below was measured on this machine, where Raqm is absent. It does not describe production.** Production should already draw Urdu right-to-left and joined. That is inferred from the layout difference above; it has not been confirmed by rendering a subtitle in production (that writes a file and needs approval).
+* **The empty boxes are real in production:** the bundled font has no glyph for two letters that make up about 11 % of the real transcript's letters.
+* **No `libfribidi0` apt line, no Dockerfile change, no Pillow change and no new Python dependency are needed.** The earlier possibility of adding `libfribidi0` is withdrawn.
+* **What is needed is a font that has the letters and a rule that picks it for Arabic-script lines.** The rest of Option A (OFL licence, size, risk) stands. Naskh coverage of the Latin letters used in mixed lines still has to be checked on the exact file.
+
+## 1. The problem, as measured on this machine (no Raqm here: see section 0 for production)
 
 The real VA5368 transcript is Urdu in Arabic script. The editor shows it correctly (the browser lays it out). The MP4 does not, because the exporter draws text with Pillow's *basic* layout and one font:
 
