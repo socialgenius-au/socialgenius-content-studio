@@ -1967,23 +1967,27 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // gradient fill intentionally skips the background chip rather than silently fighting it —
   // documented here and in the Properties panel, not a silent gap.
   const getTextRenderStyle = (t: TextOverlay): React.CSSProperties => {
+    // M2.1b: every pixel quantity on a TextOverlay (font size, letter spacing, stroke, shadow, padding, radius, border) is in CANVAS pixels -- the unit the exporter draws
+    // them in and the unit saved in the project. This preview shows the canvas fitted into the panel at `k` of its real size, so those pixels are drawn at `k` here (the
+    // toolbar's zoom readout); text is then the same fraction of the canvas in the preview as in the exported MP4, whatever size the window is. Stored values are never changed.
+    const k = rawW > 0 ? canvasBox.w / rawW : 1;
     const gradientActive = !!(t.useGradient && t.gradientFrom && t.gradientTo);
     const base: React.CSSProperties = {
       left: `${t.x}%`, top: `${t.y}%`, width: `${t.width}%`,
-      fontFamily: t.fontFamily, fontSize: t.fontSize,
+      fontFamily: t.fontFamily, fontSize: t.fontSize * k,
       fontWeight: t.bold ? 700 : 400, fontStyle: t.italic ? "italic" : "normal",
       textDecoration: t.underline ? "underline" : "none",
       textAlign: t.align ?? "left",
-      letterSpacing: t.letterSpacing ? `${t.letterSpacing}px` : undefined,
+      letterSpacing: t.letterSpacing ? `${t.letterSpacing * k}px` : undefined,
       lineHeight: t.lineSpacing ?? undefined,
       opacity: t.opacity ?? 1,
-      WebkitTextStroke: t.strokeWidth ? `${t.strokeWidth}px ${t.strokeColor ?? "#000000"}` : undefined,
+      WebkitTextStroke: t.strokeWidth ? `${t.strokeWidth * k}px ${t.strokeColor ?? "#000000"}` : undefined,
       textShadow: (t.shadowBlur || t.shadowOffsetX || t.shadowOffsetY)
-        ? `${t.shadowOffsetX ?? 0}px ${t.shadowOffsetY ?? 0}px ${Math.max(0, t.shadowBlur ?? 0)}px ${t.shadowColor ?? "#000000"}`
+        ? `${(t.shadowOffsetX ?? 0) * k}px ${(t.shadowOffsetY ?? 0) * k}px ${Math.max(0, t.shadowBlur ?? 0) * k}px ${t.shadowColor ?? "#000000"}`
         : undefined,
-      padding: `${t.bgPadding ?? 2}px ${(t.bgPadding ?? 2) + 4}px`,
-      borderRadius: t.bgBorderRadius ?? 3,
-      border: t.bgBorderWidth ? `${t.bgBorderWidth}px solid ${t.bgBorderColor ?? "#000000"}` : undefined,
+      padding: `${(t.bgPadding ?? 2) * k}px ${((t.bgPadding ?? 2) + 4) * k}px`,
+      borderRadius: (t.bgBorderRadius ?? 3) * k,
+      border: t.bgBorderWidth ? `${t.bgBorderWidth * k}px solid ${t.bgBorderColor ?? "#000000"}` : undefined,
       backdropFilter: t.bgBlur ? "blur(6px)" : undefined,
       WebkitBackdropFilter: t.bgBlur ? "blur(6px)" : undefined,
       // "Banner" shape (Requirement: pill / rectangle / banner): the background should span the

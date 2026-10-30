@@ -63,7 +63,10 @@ At 100% zoom (the real editor with only its preview box forced to the canvas's p
 
 Layer order (higher `order` painted on top even when listed first): correct in preview and export. A styled draft saved through the drafts API reopens unchanged and exports the same way.
 
-## Size scale: not changed (needs a decision)
+## Size scale: preview-only correction APPLIED (approved)
+
+Status: the recommended preview-only change below is implemented in `CreateEditTab.getTextRenderStyle` (11 lines added, 7 removed). Saved values, export values and export code are unchanged; the editor now draws canvas-pixel quantities at the canvas's displayed scale. The measurements and options below are kept as the record of why.
+
 
 The editor draws text at **raw CSS pixels inside a fitted preview box**; the exporter draws **pixels on the real canvas**. So the preview's text is larger, relative to the canvas, than the export's by `1 / displayed scale`, on **every** canvas, not only non-1080-wide ones. Measured at a 1440×1000 window:
 
@@ -76,9 +79,9 @@ The editor draws text at **raw CSS pixels inside a fitted preview box**; the exp
 
 The ratio also changes when the window is resized. No export-side change can fix this, because the export cannot know the preview's on-screen size. It must be fixed in the preview, which is protected (`CreateEditTab.tsx`). All pixel quantities already pass through **one** parameter in the export mapper (`pxScale`, currently 1), so no further export change is needed.
 
-### Proposed change (NOT applied): `CreateEditTab.getTextRenderStyle`
+### The change (applied): `CreateEditTab.getTextRenderStyle`
 
-Recommended (preview-only; export unchanged; px values then mean canvas pixels exactly as the exporter already treats them):
+Implemented (preview-only; export unchanged; px values then mean canvas pixels exactly as the exporter already treats them):
 
 ```diff
    const getTextRenderStyle = (t: TextOverlay): React.CSSProperties => {
