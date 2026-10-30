@@ -26,6 +26,12 @@ def test_hard_cuts_neither_overlap_nor_shorten():
     assert [c.start_f for c in plan.clips] == [0, 90, 180] and all(c.pre == 0 and c.post == 0 for c in plan.clips)
 
 
+def test_a_gap_between_clips_is_collapsed_as_before_and_never_stretches_the_next_clip():
+    plan = tp.plan_timeline([clip(0, 4, trim=1), clip(6, 10, trim=1)], XF, {"a.mp4": 12.0})
+    assert [c.n for c in plan.clips] == [120, 120]                                         # each clip keeps its own 4 s; the 2 s gap is not added to the second
+    assert plan.clips[1].source_duration == pytest.approx(4.0) and timeline_len(plan) == 240 == plan.total_f - plan.origin_f
+
+
 def test_boundaries_are_rounded_cumulatively_so_nothing_drifts():
     ends = [0.7, 1.45, 2.2, 2.95, 3.7, 4.45, 5.2, 5.95, 6.7, 7.45]
     clips, s = [], 0.0

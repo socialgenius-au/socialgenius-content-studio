@@ -99,9 +99,13 @@ def plan_timeline(clips: list[dict], xfade_names: dict[str, str | None], file_du
     xfade_names: transition name -> ffmpeg xfade name for blending transitions ('cut' and 'fade_black' are handled here and need no entry).
     file_durations: source file path -> seconds (None/missing = unknown, treated as having no spare frames after the trim-out)."""
     file_durations = file_durations or {}
+    # Each clip's length is its OWN span (end - start), accumulated and rounded cumulatively, so a gap between two clips is never absorbed into the next clip's footage. A gap is still collapsed,
+    # exactly as the exporter has always done (the editor shows black there); that is recorded as a known limitation, not changed here.
     bnd = [to_frames(clips[0]["start_time"])]
+    cum = float(clips[0]["start_time"])
     for c in clips:
-        bnd.append(max(bnd[-1] + 1, to_frames(c["end_time"])))
+        cum += float(c["end_time"]) - float(c["start_time"])
+        bnd.append(max(bnd[-1] + 1, to_frames(cum)))
     plans = [ClipPlan(i, bnd[i], bnd[i + 1] - bnd[i], float(c["speed"]), float(c["trim_in"])) for i, c in enumerate(clips)]
 
     def spare_before(i: int) -> int:
