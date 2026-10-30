@@ -3216,6 +3216,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // Phase 5 (Video Studio V2 — Subtitles / Transcript) — Requirement (SUBTITLES AS REAL CANVAS
   // ELEMENTS): real, positioned, resolveSubtitleStyle-styled boxes, same gated-to-startTime/
   // endTime pattern as every other real visual layer — never fixed to one position.
+  // M2.2b: a subtitle's font size, outline, shadow blur, padding and corner radius are canvas pixels (the exporter draws them on the real canvas), so the fitted preview draws them at the
+  // canvas's displayed scale -- the same correction getTextRenderStyle and the shapes make. Saved values, timing, position/width (percent) and the export are unchanged.
+  const subtitleScale = rawW > 0 ? canvasBox.w / rawW : 1;
   const subtitleEntries = subtitles
     .filter(s => timeline.currentTime >= s.startTime && timeline.currentTime < s.endTime)
     .map(s => {
@@ -3228,10 +3231,11 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       className={`canvas-subtitle-item canvas-selectable canvas-movable ${selectedElement?.type === "subtitle" && selectedElement.id === s.id ? "canvas-el-selected" : ""}`}
       style={{
         left: `${s.x}%`, top: `${s.y}%`, width: `${s.width}%`,
-        color: style.color, fontFamily: style.fontFamily, fontSize: style.fontSize, textAlign: style.align,
+        color: style.color, fontFamily: style.fontFamily, fontSize: style.fontSize * subtitleScale, textAlign: style.align,
+        padding: `${4 * subtitleScale}px ${10 * subtitleScale}px`, borderRadius: 4 * subtitleScale,
         background: composeTextBgColor(style.bgColor, style.bgOpacity),
-        WebkitTextStroke: style.outlineWidth ? `${style.outlineWidth}px ${style.outlineColor ?? "#000000"}` : undefined,
-        textShadow: style.shadowBlur ? `0px 0px ${style.shadowBlur}px ${style.shadowColor ?? "#000000"}` : undefined,
+        WebkitTextStroke: style.outlineWidth ? `${style.outlineWidth * subtitleScale}px ${style.outlineColor ?? "#000000"}` : undefined,
+        textShadow: style.shadowBlur ? `0px 0px ${style.shadowBlur * subtitleScale}px ${style.shadowColor ?? "#000000"}` : undefined,
       }}
       onMouseDown={beginSubtitleDrag(s.id)}
       onClick={e => e.stopPropagation()}

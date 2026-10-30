@@ -34,9 +34,9 @@ describe('what the correction must not touch', () => {
     expect(src).toContain('rawUpdateTextOverlay(s.id, { x: nextX, width: Math.max(MIN_ELEMENT_SIZE_PCT, nextWidth) });')
     expect(src).toContain('rawUpdateTextOverlay(s.id, { x: nextX, y: nextY });')
   })
-  it('the Properties font-size control still edits the stored value, and subtitles/lower thirds are not scaled by this change', () => {
+  it('the Properties font-size control still edits the stored value, and subtitles carry their own correction (lower thirds are sized from their own box)', () => {
     expect(src).toContain('onChange={e => updateTextOverlay(selectedText.id, { fontSize: Number(e.target.value) })}')
-    expect(src).toContain('color: style.color, fontFamily: style.fontFamily, fontSize: style.fontSize, textAlign: style.align,')
+    expect(src).toContain('fontSize: style.fontSize * subtitleScale, textAlign: style.align,')                  // M2.2b: subtitles now have their own correction (subtitlePreviewScale.wiring.test.ts)
   })
   it('the export request is built from stored values with no scale', () => {
     const review = readFileSync(join(__dirname, '..', 'components', 'ReviewTab.tsx'), 'utf8')
