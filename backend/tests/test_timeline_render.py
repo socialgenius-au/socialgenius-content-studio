@@ -559,5 +559,6 @@ async def test_render_project_two_clips_transition_overlap(clips):
     }
     out = await ffmpeg_svc.render_project(project, USER_ID)
     assert _decode_error_count(str(out)) == 0
-    # 3s + 3s minus one 0.5s dissolve overlap
-    assert await ffmpeg_svc._get_duration(str(out)) == pytest.approx(5.5, abs=0.15)
+    # The timeline contract (timeline_plan.py): a transition never shortens the timeline. 3s + 3s stays 6s (this used to assert 5.5 s, "minus one 0.5s dissolve overlap",
+    # which pulled every later clip, layer and A1 audio out of step with the editor).
+    assert await ffmpeg_svc._get_duration(str(out)) == pytest.approx(6.0, abs=0.15)

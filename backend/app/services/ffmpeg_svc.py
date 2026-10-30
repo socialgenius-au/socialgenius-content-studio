@@ -22,7 +22,7 @@ import numpy as np
 from PIL import Image
 
 from app.config import settings
-from app.services import canvas_render_svc
+from app.services import canvas_render_svc, timeline_plan
 
 FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
 
@@ -303,7 +303,7 @@ async def add_media_overlays(
         filter_parts.append(f"[{i}:v]scale={w}:{h}[{scaled}]")
         filter_parts.append(f"[{scaled}]format=rgba,colorchannelmixer=aa={opacity}[{faded}]")
         filter_parts.append(
-            f"[{base_label}][{faded}]overlay=x={x}:y={y}:enable='between(t,{start},{end})'[{merged}]"
+            f"[{base_label}][{faded}]overlay=x={x}:y={y}:enable='gte(t,{start})*lt(t,{end})'[{merged}]"
         )
         base_label = merged
 
@@ -368,7 +368,7 @@ async def composite_media_overlays(
         )
         filter_parts.append(f"[{scaled}]format=rgba,colorchannelmixer=aa={opacity}[{faded}]")
         filter_parts.append(
-            f"[{base_label}][{faded}]overlay=x={x}:y={y}:enable='between(t,{start},{end})'[{merged}]"
+            f"[{base_label}][{faded}]overlay=x={x}:y={y}:enable='gte(t,{start})*lt(t,{end})'[{merged}]"
         )
         base_label = merged
 
@@ -611,26 +611,66 @@ async def build_clip_segment(
     return out
 
 
-# Reuses TRANSITION_MAP's xfade names but adds an explicit entry for "cut" (a near-zero-duration
-# crossfade — visually indistinguishable from a hard cut) so a plain cut and a real transition
-# share the exact same filter-graph code path below instead of needing two.
-_XFADE_NAMES: dict[str, str] = {**TRANSITION_MAP, "cut": "fade", "fade_black": "fadeblack"}
+# The blending transitions' ffmpeg `xfade` names. "cut" and "fade_black" are not blends: the timeline plan (timeline_plan.py) realises a cut as a plain join and a fade through black as fades inside the two clips' own
+# spans, so neither borrows frames from the other clip and neither moves any footage.
+_XFADE_NAMES: dict[str, str] = {**{k: v for k, v in TRANSITION_MAP.items() if v}, "fade_black": "fadeblack"}
 
 
-async def concat_segments_with_transitions(
-    segment_paths: list[str],
-    transitions: list[str],
-    transition_durations: list[float],
-    segment_durations: list[float],
-    user_id: int,
-) -> Path:
-    """Joins 1+ already-normalized segments (see build_clip_segment) end to end.
-    transitions/transition_durations: length len(segment_paths)-1, one entry per junction
-    (segment i to i+1) — this is Video Studio V2's own per-clip `transition`/`transitionDuration`
-    fields, not the older /process/export API's single-transition-for-everything shape.
-    segment_durations[i]: segment i's own OUTPUT-timeline length (== its endTime-startTime,
-    since build_clip_segment already made the segment run at exactly that speed-adjusted rate).
-    """
+def _f(frames: int) -> str:
+    return f"{frames / timeline_plan.FPS:.6f}"
+
+
+def build_join_graph(plan: timeline_plan.TimelinePlan) -> tuple[str, str, str]:
+    """The filter graph that joins the (already extended) segments on the editor's timeline. Pure: returns (filter_complex, video_label, audio_label).
+
+    Every input is first forced to its planned frame count (video) and sample length (audio), so a rounding difference in one segment's encode cannot shift everything after it. Cuts and fades through
+    black join with `concat` (no overlap); a blend joins with `xfade` + `acrossfade` over the planned window, whose start offset is the join time minus the incoming clip's pre-roll."""
+    F = timeline_plan.FPS
+    parts: list[str] = []
+    for i, c in enumerate(plan.clips):
+        v = [f"fps={F}"]
+        v.append(f"tpad=start_mode=clone:start_duration={_f(c.pre_hold)}:stop_mode=clone:stop_duration={_f(c.post_hold + 6)}")
+        v.append(f"trim=end_frame={c.total}")
+        v.append("setpts=PTS-STARTPTS")
+        if c.fade_in:
+            v.append(f"fade=t=in:start_frame={c.pre}:nb_frames={c.fade_in}")
+        if c.fade_out:
+            v.append(f"fade=t=out:start_frame={c.pre + c.n - c.fade_out}:nb_frames={c.fade_out}")
+        v.append(f"fps={F}")                      # trim/setpts drop the declared frame rate and xfade refuses an input without one
+        parts.append(f"[{i}:v]{','.join(v)}[v{i}]")
+        a = ["aresample=44100", "aformat=sample_fmts=fltp:channel_layouts=stereo"]
+        if c.pre_hold:
+            ms = round(c.pre_hold / F * 1000)
+            a.append(f"adelay={ms}|{ms}")
+        a += [f"apad=whole_dur={_f(c.total)}", f"atrim=end={_f(c.total)}", "asetpts=PTS-STARTPTS"]
+        if c.fade_in:
+            a.append(f"afade=t=in:st={_f(c.pre)}:d={_f(c.fade_in)}")
+        if c.fade_out:
+            a.append(f"afade=t=out:st={_f(c.pre + c.n - c.fade_out)}:d={_f(c.fade_out)}")
+        parts.append(f"[{i}:a]{','.join(a)}[a{i}]")
+
+    v_label, a_label = "v0", "a0"
+    for j in plan.joins:
+        i = j.index + 1
+        nv, na = f"jv{i}", f"ja{i}"
+        if j.kind == "blend":
+            offset = (j.join_f - j.pre - plan.origin_f) / F
+            parts.append(f"[{v_label}][v{i}]xfade=transition={j.xfade}:duration={_f(j.window)}:offset={offset:.6f}[{nv}]")
+            parts.append(f"[{a_label}][a{i}]acrossfade=d={_f(j.window)}[{na}]")
+        else:
+            last = j is plan.joins[-1]
+            parts.append(f"[{v_label}][{a_label}][v{i}][a{i}]concat=n=2:v=1:a=1[{nv}{'' if last else 'x'}][{na}]")
+            if not last:
+                # concat leaves a 1/1000000 timebase that a following xfade rejects; `fps` fixes it mid-chain (eof_action=pass keeps the last frame), but on the FINAL stream it would drop the last frame
+                parts.append(f"[{nv}x]fps={F}:eof_action=pass[{nv}]")
+        v_label, a_label = nv, na
+    return ";".join(parts), v_label, a_label
+
+
+async def concat_segments_with_transitions(segment_paths: list[str], plan: timeline_plan.TimelinePlan, user_id: int) -> Path:
+    """Joins 1+ already-normalized segments (see build_clip_segment) end to end ON THE EDITOR'S TIMELINE: the output is exactly as long as the clips' summed spans and every clip's footage sits at its own
+    start time, whatever transitions join them (see timeline_plan.py for the contract and how each transition is realised). segment_paths[i] is plan.clips[i]'s EXTENDED segment (main footage plus
+    any pre-/post-roll for a blend)."""
     if len(segment_paths) == 1:
         out = _out(user_id, "mp4")
         await _run([FFMPEG_BIN, "-y", "-i", segment_paths[0], "-c", "copy", str(out)])
@@ -639,30 +679,13 @@ async def concat_segments_with_transitions(
     inputs: list[str] = []
     for p in segment_paths:
         inputs += ["-i", p]
-
-    filter_parts = []
-    running = segment_durations[0]
-    v_label, a_label = "0:v", "0:a"
-    for i in range(1, len(segment_paths)):
-        xfade_name = _XFADE_NAMES.get(transitions[i - 1], "fade")
-        # "cut" ignores whatever transitionDuration happens to be stored (the editor's own UI
-        # never shows/edits a duration for "cut" — see CreateEditTab's Transition Duration
-        # field, only rendered for "fade_black") and always uses a fixed, near-instant value.
-        td = 0.05 if transitions[i - 1] == "cut" else max(0.05, transition_durations[i - 1])
-        offset = max(0.0, running - td)
-        next_v, next_a = f"v{i}", f"a{i}"
-        filter_parts.append(f"[{v_label}][{i}:v]xfade=transition={xfade_name}:duration={td}:offset={offset}[{next_v}]")
-        filter_parts.append(f"[{a_label}][{i}:a]acrossfade=d={td}[{next_a}]")
-        v_label, a_label = next_v, next_a
-        running = running + segment_durations[i] - td
-
-    filter_complex = ";".join(filter_parts)
+    filter_complex, v_label, a_label = build_join_graph(plan)
     out = _out(user_id, "mp4")
     await _run([
         FFMPEG_BIN, "-y", *inputs,
         "-filter_complex", filter_complex,
         "-map", f"[{v_label}]", "-map", f"[{a_label}]",
-        "-c:v", "libx264", "-c:a", "aac",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
         str(out),
     ])
     return out
@@ -794,7 +817,7 @@ async def composite_video_inserts(input_path: str, inserts: list[dict], user_id:
         merged = f"insm{i}"
         filter_parts.append(
             f"[{base_label}][{scaled}]overlay=x={x}:y={y}:"
-            f"enable='between(t,{ins['start_time']},{ins['end_time']})'[{merged}]"
+            f"enable='gte(t,{ins['start_time']})*lt(t,{ins['end_time']})'[{merged}]"
         )
         base_label = merged
 
@@ -839,7 +862,7 @@ async def composite_image_overlays(input_path: str, overlays: list[dict], user_i
         merged = f"img{i}"
         filter_parts.append(
             f"[{base_label}][{i}:v]overlay=x={ov['x']}:y={ov['y']}:"
-            f"enable='between(t,{ov['start']},{ov['end']})'[{merged}]"
+            f"enable='gte(t,{ov['start']})*lt(t,{ov['end']})'[{merged}]"
         )
         base_label = merged
 
@@ -986,9 +1009,20 @@ async def render_project(project: dict, user_id: int) -> Path:
 
     cw, ch = project["canvas_width"], project["canvas_height"]
 
+    # Timeline plan (timeline_plan.py): where every clip sits in whole frames and how each join is realised without moving any footage. Source durations are only probed when a blend needs spare frames.
+    file_durations: dict[str, float | None] = {}
+    if any(c["transition"] not in ("cut", "fade_black", "fade_to_black") for c in clips[:-1]):
+        for c in clips:
+            if c["path"] not in file_durations:
+                try:
+                    file_durations[c["path"]] = await _get_duration(c["path"])
+                except Exception:
+                    file_durations[c["path"]] = None
+    plan = timeline_plan.plan_timeline(clips, _XFADE_NAMES, file_durations, policy=project.get("transition_edge_policy", "shorten"))
+
     segment_paths: list[str] = []
     has_audio_by_path: dict[str, bool] = {}
-    for c in clips:
+    for c, cp in zip(clips, plan.clips):
         # STEP 7 (Original Video Audio controls): three independent reasons a clip's own
         # embedded audio should be dropped entirely — separated to A1 (Step 7.6A), the clip's
         # own Original Audio toggle switched off, or its own volume at 0% (equivalent to off).
@@ -1012,7 +1046,7 @@ async def render_project(project: dict, user_id: int) -> Path:
         # between the two. A project saved before this feature existed has no fit_mode/crop_x/
         # crop_y keys at all and now exports exactly what its own preview already shows.
         seg = await build_clip_segment(
-            c["path"], c["trim_in"], (c["end_time"] - c["start_time"]) * c["speed"], c["speed"],
+            c["path"], cp.source_trim_in, cp.source_duration, c["speed"],
             c["color_grade"], c["brightness"], c["contrast"], c["saturation"],
             cw, ch, keep_audio=keep_audio, volume=clip_volume, user_id=user_id,
             fit_mode=c.get("fit_mode", "fit"), crop_x=c.get("crop_x", 50.0), crop_y=c.get("crop_y", 50.0),
@@ -1022,10 +1056,7 @@ async def render_project(project: dict, user_id: int) -> Path:
     if len(segment_paths) == 1:
         base = Path(segment_paths[0])
     else:
-        transitions = [c["transition"] for c in clips[:-1]]
-        transition_durations = [c["transition_duration"] for c in clips[:-1]]
-        segment_durations = [c["end_time"] - c["start_time"] for c in clips]
-        base = await concat_segments_with_transitions(segment_paths, transitions, transition_durations, segment_durations, user_id)
+        base = await concat_segments_with_transitions(segment_paths, plan, user_id)
 
     current = base
     intermediates = [p for p in segment_paths if p != str(base)]
