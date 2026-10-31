@@ -152,7 +152,7 @@ def _errors(idx, who, dist, letter, start, end, trim, speed, margin=0.1):
 def test_decoded_frames_are_the_intended_source_frames_at_every_speed(long_sources, tmp_path, speed):
     out = _render(_project([_clip(long_sources["A"], 0, 3, 1.0, speed=speed)]), tmp_path, f"sp{speed}")
     idx, who, dist, _m = _read(_frames(out))
-    assert len(idx) == 90                                                              # exactly the 3 s timeline, at every speed (0.75x used to give 91, 0.5x 89)
+    assert len(idx) == 90                                                              # exactly the 3 s timeline, at every speed (before: 0.5x gave 89 frames, 1.5x and 2x gave 91)
     err = _errors(idx, who, dist, "A", 0, 3, 1.0, speed, margin=0.0)
     assert int(np.median(err)) == 0                                                    # no lag (2x used to be one output frame late)
     assert max(abs(e) for e in err) <= (0 if speed in (1.0, 2.0) else 1)               # integer ratios are exact; the others differ from the ideal only by rounding to a whole source frame
