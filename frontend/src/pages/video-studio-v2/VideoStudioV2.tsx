@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import "./VideoStudioV2.css";
 import { StudioProvider, useStudio, type CanvasFormatState, type CanvasItemPosition } from "../../contexts/StudioContext";
-import type { VideoClip, TextOverlay, MediaOverlay, AudioTrack, Asset } from "../../types";
+import { PROJECT_STORAGE_KEY, parsePersistedProject, type PersistedProject } from "./projectPersistence";
 import { workflow, WorkflowStage, ThemeMode } from "./data/videoStudioMock";
 import BriefTab from "./components/BriefTab";
 import IntelligenceTab from "./components/IntelligenceTab";
@@ -24,18 +24,6 @@ import BlueprintPlanPanel from "./blueprint/BlueprintPlanPanel";
 // plain useState with no storage at all. Same localStorage convention this file's own theme
 // persistence already uses (`sg-video-studio-theme`), just two more keys.
 const STAGE_STORAGE_KEY = "sg-video-studio-v2-stage";
-const PROJECT_STORAGE_KEY = "sg-video-studio-v2-project";
-
-interface PersistedProject {
-  videoClips: VideoClip[];
-  textOverlays: TextOverlay[];
-  mediaOverlays: MediaOverlay[];
-  audioTracks: AudioTrack[];
-  mediaAssets: Asset[];
-  canvasFormat: CanvasFormatState;
-  timeline: ReturnType<typeof useStudio>["timeline"];
-  canvasItemPositions: Record<string, CanvasItemPosition>;
-}
 
 // Mounted as a child of <StudioProvider> purely for its useStudio() access — renders nothing.
 // Restores once on mount (via the SAME existing add*/set* actions every other feature already
@@ -52,16 +40,17 @@ function ProjectPersistence() {
     canvasFormat, setCanvasFormat,
     timeline, setTimeline,
     canvasItemPositions, setCanvasItemPosition,
+    shapes, addShape, lowerThirds, addLowerThird, subtitles, addSubtitle,
+    additionalVideoClips, addAdditionalVideoClip, subtitleStyle, setSubtitleStyle,
   } = useStudio();
 
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current) return;
     restoredRef.current = true;
-    const raw = localStorage.getItem(PROJECT_STORAGE_KEY);
-    if (!raw) return;
+    const saved = parsePersistedProject(localStorage.getItem(PROJECT_STORAGE_KEY));
+    if (!saved) return;
     try {
-      const saved = JSON.parse(raw) as Partial<PersistedProject>;
       (saved.videoClips ?? []).forEach(c => addVideoClip(c));
       (saved.textOverlays ?? []).forEach(t => addTextOverlay(t));
       (saved.mediaOverlays ?? []).forEach(o => addMediaOverlay(o));
@@ -70,6 +59,12 @@ function ProjectPersistence() {
       if (saved.canvasFormat) setCanvasFormat(saved.canvasFormat);
       if (saved.timeline) setTimeline(saved.timeline);
       Object.entries(saved.canvasItemPositions ?? {}).forEach(([id, pos]) => setCanvasItemPosition(id, pos));
+      // Added later (absent in copies written by older versions, which restore exactly as before): shapes, lower thirds, subtitles, B-roll inserts and the subtitle style.
+      (saved.shapes ?? []).forEach(sh => addShape(sh));
+      (saved.lowerThirds ?? []).forEach(l => addLowerThird(l));
+      (saved.subtitles ?? []).forEach(sg => addSubtitle(sg));
+      (saved.additionalVideoClips ?? []).forEach(c => addAdditionalVideoClip(c));
+      if (saved.subtitleStyle) setSubtitleStyle(saved.subtitleStyle);
     } catch {
       // Corrupted or old-shape data (e.g. from an earlier version of this fix) — start the
       // project fresh rather than crash the whole editor on a bad localStorage value.
@@ -81,9 +76,10 @@ function ProjectPersistence() {
     const snapshot: PersistedProject = {
       videoClips, textOverlays, mediaOverlays, audioTracks, mediaAssets,
       canvasFormat, timeline, canvasItemPositions,
+      shapes, lowerThirds, subtitles, additionalVideoClips, subtitleStyle,
     };
     localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(snapshot));
-  }, [videoClips, textOverlays, mediaOverlays, audioTracks, mediaAssets, canvasFormat, timeline, canvasItemPositions]);
+  }, [videoClips, textOverlays, mediaOverlays, audioTracks, mediaAssets, canvasFormat, timeline, canvasItemPositions, shapes, lowerThirds, subtitles, additionalVideoClips, subtitleStyle]);
 
   return null;
 }
