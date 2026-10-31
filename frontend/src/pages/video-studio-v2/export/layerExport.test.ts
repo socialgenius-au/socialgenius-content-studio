@@ -111,7 +111,7 @@ describe('lower-third preview rule', () => {
     expect(css).not.toMatch(/\.lowerthird-text (b|small)\{[^}]*font-size:\d+px/)
   })
   it('those proportions are the exporter’s own (pinned to canvas_render_svc.render_lower_third_png so neither side can drift alone)', () => {
-    expect(backend).toContain('bar_w = max(2, round(box_w * 0.012))'); expect(backend).toContain('_load_font(round(box_h * 0.32), bold=True)'); expect(backend).toContain('_load_font(round(box_h * 0.22), bold=False)')
+    expect(backend).toContain('bar_w = max(2, round(box_w * 0.012))'); expect(backend).toContain('_load_font(round(box_h * 0.32), bold=True, arabic=has_arabic_script(name))'); expect(backend).toContain('_load_font(round(box_h * 0.22), bold=False, arabic=has_arabic_script(title))')       // same proportions; the extra argument only picks the Arabic-script font
     expect(backend).toContain('pad_x = round(box_w * 0.03)'); expect(backend).toContain('round(box_h * 0.04)')
   })
 })
