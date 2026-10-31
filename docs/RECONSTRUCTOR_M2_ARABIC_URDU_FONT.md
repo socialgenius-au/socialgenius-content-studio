@@ -16,10 +16,33 @@ A line containing Arabic-script characters (Arabic, Urdu, Persian: the ranges U+
 * Naskh covers every Urdu letter, both digit sets, Arabic punctuation and the Latin letters, digits and punctuation a mixed line needs, in Regular and Bold (so a mixed English/Urdu line needs one font).
 * Tests (`tests/test_arabic_urdu_text.py`): 10 pass here; 2 are skipped here because they need Raqm and are written to run wherever Raqm exists: (1) right-to-left reading order, by correlating each word's column profile against the line (the first word of an Urdu sentence must sit to the right of the second); (2) a mixed English + Urdu line stays on one line. Existing text/export suites unchanged (63 passed with them).
 
-## Not verified, and how to verify it
+## Verified on the preview environment (read-only, 2026-10-31)
 
-This development machine has no Raqm, so **joining and right-to-left order have not been seen in a real render here**. They are Raqm's job and Raqm is present in production, but until the two skipped tests (or a real render) run on a Raqm build, treat shaping and direction as unverified. The smallest read-only check on the production image, which needs approval before it is run, is to fetch the font bytes in memory from the official URL, render the Urdu test lines in memory with the production Pillow, and print the measurements: nothing written, nothing installed. The alternative is to run the two skipped tests inside the production image after this branch is deployed to a preview.
+Approved for the isolated Railway preview service `socialgenius-unified-preview`, not production. `docs/proposals/arabic-urdu-export/preview_render_check.py` was run inside that service's container through `railway ssh`: it fetched the font bytes into memory from the official URL (SHA-256 `67b5a525a661…` matched), used the preview's own Pillow 13.0.0 with Raqm, FriBiDi and HarfBuzz present, patched the font into the preview's own `render_styled_text_box` in memory, and measured the result. Nothing was written, installed or deployed. **10 of 10 checks passed**, and the rendered contact sheet (`preview_render_check.png`) was looked at:
+
+| Check | Result |
+|---|---|
+| Coverage | every Urdu letter (incl. U+06C1, U+06D2), both digit sets, Arabic punctuation and the Latin a mixed line needs has a real glyph |
+| Shaping | the layout differs from unjoined basic layout (142 px vs 164 px for one test phrase) and a joined word is narrower than its letters drawn alone: letters are joined |
+| RTL order | the first word of an Urdu sentence is at the right, the second at the left |
+| Punctuation | the Arabic question mark ؟ and the Urdu full stop ۔ close the sentence at the left |
+| Numbers | Arabic-Indic (٢٠٢٦) and Western (2026) numbers keep their own left-to-right order, as a block between the two neighbouring words |
+| Mixed, English first | the paragraph reads left-to-right; the Urdu run sits between the English words; the English keeps its order |
+| Mixed, Urdu first | the paragraph reads right-to-left; the Urdu is at the right and the English phrase keeps its own left-to-right order at its left |
+
+The same check run on a machine without Raqm fails every shaping and direction item (text comes out unjoined and left-to-right), so the passes above are meaningful.
+
+## What this does and does not establish
+
+Established: Urdu, as the real VA5368 transcript is written, draws with every letter present, joined, in the right direction, with correct punctuation, numbers and mixed English/Urdu lines, on the preview's real text stack, using the same renderer function the export uses.
+
+**Not established, so multilingual support is not claimed to be complete:**
+* This was measured on **synthetic** Urdu and mixed lines, in memory, through the renderer function with the font patched in. The exact combination "new routing code + deployed preview + a real MP4 export of a real Urdu subtitle" has not been run; it can only be run after this branch is deployed to a preview. The routing itself (which lines get the new font) is covered by unit tests.
+* **Urdu is traditionally set in Nastaliq; this is Naskh.** It is correct and readable (the sheet shows it) but it is not the calligraphic style Urdu readers expect in print. A Nastaliq font (for example Noto Nastaliq Urdu, also OFL, much larger and with taller line metrics) is a separate design decision.
+* Other Arabic-script languages (Pashto, Sindhi, Kurdish and others) use additional letters; coverage of those was not checked. Marks and diacritics (harakat), stacked marks and language-specific `locl` forms were not checked.
+* **Hebrew, Indic scripts, Thai and CJK are unchanged:** DejaVu has no glyphs for them and the editor's existing warning for them is preserved.
+* Letter spacing is ignored on Arabic lines by design.
 
 ## Unchanged
 
-The editor's warnings for unsupported scripts (Hebrew, Indic, Thai, CJK) are preserved; the Arabic-script warning's wording should be revisited only after shaping is verified on a Raqm build.
+The editor's warnings for unsupported scripts (Hebrew, Indic, Thai, CJK) are preserved. The Arabic-script warning's wording should be revisited once a real Urdu export has been checked on a deployed preview.
