@@ -4,6 +4,9 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { ClientProvider } from './contexts/ClientContext'
 import Login from './components/Login'
+import ForgotPassword from './pages/auth/ForgotPassword'
+import ResetPassword from './pages/auth/ResetPassword'
+import VerifyEmail from './pages/auth/VerifyEmail'
 import LegacyDashboard from './components/Dashboard'
 import JobPlanner from './components/JobPlanner'
 import JobDetail from './components/JobDetail'
@@ -15,6 +18,8 @@ import Layout from './components/Layout'
 import StudioPage from './components/studio/StudioPage'
 import { AppShell } from './components/shell/AppShell'
 import { LoadingState } from './components/common/LoadingState'
+import { LEGACY_STUDIO_ROUTE } from './config/studioRoutes'
+import { legacyStudioRedirectRoutes } from './routes/studioRedirects'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const ClientsPage = lazy(() => import('./pages/ClientsPage'))
@@ -39,6 +44,10 @@ const ServiceConfiguratorPage = lazy(() => import('./pages/ServiceConfiguratorPa
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage'))
 const KnowledgePage = lazy(() => import('./pages/KnowledgePage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const PostCreatorV2 = lazy(() => import('./pages/post-creator-v2/PostCreatorV2'))
+const VideoStudioV2 = lazy(() => import('./pages/video-studio-v2/VideoStudioV2'))
+const PositioningLandingPage = lazy(() => import('./pages/PositioningLandingPage'))
+const DeconstructorPage = lazy(() => import('./pages/deconstructor/DeconstructorPage'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
@@ -63,23 +72,61 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+      {/* Forgot Password / email verification: PUBLIC (no RequireAuth) — people reach these while signed out. The reset and verification
+          links carry their one-time token in the URL fragment (#token=…), never in the path or query. */}
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
 
-      {/* Studio — the video editor keeps its own full-screen chrome, not the AppShell */}
+      {/* Social Genius Positioning landing page — PUBLIC, unauthenticated, own full-screen chrome
+          (no AppShell/RequireAuth), same convention as /studio and /video-studio-v2 below. This is
+          the marketing page explaining why positioning comes before content spend — a completely
+          separate experience from the authenticated, client-scoped strategist workspace at
+          /clients/:clientId/positioning (PositioningPage, registered further down inside the
+          AppShell route group). Do not merge these two routes/pages. */}
       <Route
-        path="/studio"
+        path="/positioning"
+        element={
+          <Suspense fallback={<PageFallback />}>
+            <PositioningLandingPage />
+          </Suspense>
+        }
+      />
+
+      {/* The old video editor's URLs (/studio and /clients/:clientId/studio) now redirect to the approved Video Studio V2 (/video-studio-v2).
+          The original editor component is preserved, unchanged, at the explicit legacy path below; nothing links to it. */}
+      {legacyStudioRedirectRoutes}
+      <Route
+        path={LEGACY_STUDIO_ROUTE}
         element={
           <RequireAuth>
             <StudioPage />
           </RequireAuth>
         }
       />
+
+      {/* Post Creator V2 — tabbed workflow built from the approved visual reference, parallel to the existing Post Creator. Own full-screen chrome, not the AppShell. */}
       <Route
-        path="/clients/:clientId/studio"
+        path="/post-creator-v2"
         element={
           <RequireAuth>
-            <ClientProvider>
-              <StudioPage />
-            </ClientProvider>
+            <Suspense fallback={<PageFallback />}>
+              <PostCreatorV2 />
+            </Suspense>
+          </RequireAuth>
+        }
+      />
+
+      {/* Video Studio V2 — six-stage workflow (Brief/Intelligence/Creative Lab/Create-Edit/Review/Learn)
+          built from the approved visual reference, parallel to the existing Video Studio. Own
+          full-screen chrome, not the AppShell. */}
+      <Route
+        path="/video-studio-v2"
+        element={
+          <RequireAuth>
+            <Suspense fallback={<PageFallback />}>
+              <VideoStudioV2 />
+            </Suspense>
           </RequireAuth>
         }
       />
@@ -124,6 +171,8 @@ function AppRoutes() {
         <Route path="/clients/:clientId/tasks" element={<Suspense fallback={<PageFallback />}><TasksPage /></Suspense>} />
         <Route path="/clients/:clientId/analytics" element={<Suspense fallback={<PageFallback />}><AnalyticsPage /></Suspense>} />
         <Route path="/clients/:clientId/service-config" element={<Suspense fallback={<PageFallback />}><ServiceConfiguratorPage /></Suspense>} />
+        <Route path="/deconstructor" element={<Suspense fallback={<PageFallback />}><DeconstructorPage /></Suspense>} />
+        <Route path="/deconstructor/:referenceVideoId" element={<Suspense fallback={<PageFallback />}><DeconstructorPage /></Suspense>} />
         <Route path="/connections" element={<Suspense fallback={<PageFallback />}><ConnectionsPage /></Suspense>} />
         <Route path="/knowledge" element={<Suspense fallback={<PageFallback />}><KnowledgePage /></Suspense>} />
         <Route path="/settings" element={<Suspense fallback={<PageFallback />}><SettingsPage /></Suspense>} />

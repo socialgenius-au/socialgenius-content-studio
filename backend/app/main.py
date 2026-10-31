@@ -17,10 +17,25 @@ logger = logging.getLogger("app")
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.limiter import limiter
-from app.routers import auth, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates
+from app.schema_patches import apply_additive_schema_patches
+from app.startup_security import CORS_ENV_VAR, build_allowed_origins, check_secret_key, plan_seed_users
+from app.routers import auth, auth_recovery, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos
 
 # Import all models so Base.metadata is fully populated before create_all
-from app.models import User, Brand, Job, Asset, Transcript, Template  # noqa: F401
+from app.models import (  # noqa: F401
+    User, Brand, Job, Asset, Transcript, Template, VideoStudioDraft,
+    # Video Deconstructor — Stage 1 (Core Analysis Data Model): eight new, siloed tables.
+    # create_all only ever CREATES missing tables — it never alters or drops an existing one —
+    # so this import list growing is what makes these 8 tables get created on next startup,
+    # with zero effect on any table already in the database.
+    ReferenceVideo, VideoAnalysis, Scene, Shot, TextElement, VisualObject,
+    AnalysisAnnotation, StrategicInsight,
+    # Video Deconstructor — Stage 7 (Audio / Speech / Transcript), Phase A: one new, siloed
+    # evidence table — same "create_all just creates it, zero effect on anything existing"
+    # reasoning as every prior additive Stage above. See speech_segment.py's own docstring for
+    # why this is separate from the existing (untouched) Transcript model.
+    SpeechSegment,
+)
 
 # ── Sentry ────────────────────────────────────────────────────────────────────
 if settings.SENTRY_DSN:
@@ -38,11 +53,15 @@ if settings.SENTRY_DSN:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    check_secret_key(settings.SECRET_KEY, os.environ)       # refuses the public default key on Railway
     async with engine.begin() as conn:
         if os.environ.get("RESET_DB") == "true":
             await conn.execute(text("DROP SCHEMA public CASCADE"))
             await conn.execute(text("CREATE SCHEMA public"))
         await conn.run_sync(Base.metadata.create_all)
+        # Additive column/index patches create_all() itself cannot apply to an already-existing
+        # table — see app/schema_patches.py's own docstring for exactly what this covers and why.
+        await apply_additive_schema_patches(conn)
     await _seed_users()
     yield
     if settings.REDIS_URL:
@@ -59,14 +78,20 @@ async def _seed_users() -> None:
         {"username": "priya", "email": "priya@socialgenius.au", "role": "editor"},
         {"username": "iqra",  "email": "iqra@socialgenius.au",  "role": "editor"},
     ]
+    # Which users are created, and with what password, is decided by SEED_USERS_MODE (see
+    # app/startup_security.py): predictable dev passwords only off Railway; on Railway each
+    # password must come from its own SEED_PASSWORD_<USERNAME> variable.
+    plan = plan_seed_users(os.environ)
     async with AsyncSessionLocal() as session:
         for seed in seeds:
+            if seed["username"] not in plan.passwords:
+                continue
             exists = (await session.execute(select(User).where(User.username == seed["username"]))).scalar_one_or_none()
             if not exists:
                 session.add(User(
                     username=seed["username"],
                     email=seed["email"],
-                    hashed_password=hash_password(f"{seed['username']}123"),
+                    hashed_password=hash_password(plan.passwords[seed["username"]]),
                     role=seed["role"],
                 ))
         await session.commit()
@@ -103,11 +128,9 @@ app.add_middleware(UnhandledExceptionMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://content-studio-frontend-production-84fe.up.railway.app",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    # The five original origins are fixed in app/startup_security.py; the CORS_ALLOWED_ORIGINS
+    # environment variable (comma-separated) can only ADD to them, never replace or wildcard.
+    allow_origins=build_allowed_origins(os.environ.get(CORS_ENV_VAR)),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -118,6 +141,7 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 app.include_router(auth.router,       prefix="/auth",       tags=["auth"])
+app.include_router(auth_recovery.router, prefix="/auth",     tags=["auth-recovery"])
 app.include_router(upload.router,     prefix="/upload",     tags=["upload"])
 app.include_router(plan.router,       prefix="/plan",       tags=["plan"])
 app.include_router(jobs.router,       prefix="/jobs",       tags=["jobs"])
@@ -131,6 +155,11 @@ app.include_router(brands.router,     prefix="/brands",     tags=["brands"])
 app.include_router(generate.router,   prefix="/generate",   tags=["generate"])
 app.include_router(assets.router,     prefix="/assets",     tags=["assets"])
 app.include_router(templates.router,  prefix="/templates",  tags=["templates"])
+app.include_router(video_studio_drafts.router, prefix="/video-studio-drafts", tags=["video-studio-drafts"])
+app.include_router(video_export.router, prefix="/video-export", tags=["video-export"])
+# Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. See reference_videos.py's own
+# module docstring for exact scope.
+app.include_router(reference_videos.router, prefix="/reference-videos", tags=["reference-videos"])
 app.include_router(ws.router,         prefix="/ws",         tags=["websocket"])
 
 

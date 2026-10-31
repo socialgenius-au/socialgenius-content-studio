@@ -6,7 +6,8 @@ import type {
   Brand, Asset, Template, Job,
   Platform, ContentType,
   VideoClip, TextOverlay, MediaOverlay, AudioTrack, ImageSlide,
-  ChatMessage, SEOPackage, LowerThird, IntroOutro, ApprovalGate,
+  ChatMessage, SEOPackage, LowerThird, IntroOutro, ApprovalGate, Shape,
+  SubtitleSegment, SubtitleStyle,
 } from '../types'
 import { generateApi, uploadApi } from '../api/client'
 
@@ -18,6 +19,40 @@ interface TimelineState {
   markOut: number | null
 }
 
+// Video Studio V2's Create/Edit multi-platform canvas system (see
+// pages/video-studio-v2/data/canvasFormats.ts for the full platform → placement menu that
+// produces these values). Kept here, not in the V2 page tree, purely so it's carried by the
+// same StudioContext instance Review reads from — legacy /studio never reads or writes this.
+export interface CanvasFormatState {
+  platformKey: string
+  placementKey: string
+  label: string
+  ratio: string
+  width: number
+  height: number
+}
+
+const DEFAULT_CANVAS_FORMAT: CanvasFormatState = {
+  platformKey: 'instagram', placementKey: 'reel_story', label: 'Instagram - Reel / Story',
+  ratio: '9:16', width: 1080, height: 1920,
+}
+
+// Phase 5 (Video Studio V2 — Subtitles / Transcript): the project-wide default every subtitle
+// segment inherits unless it sets its own styleOverride field(s) — a conventional readable-
+// captions look (white text, dark translucent chip, centered, thin dark outline).
+const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
+  fontFamily: 'Inter', fontSize: 36, color: '#FFFFFF',
+  bgColor: '#000000', bgOpacity: 0.6, align: 'center',
+  outlineColor: '#000000', outlineWidth: 0, shadowColor: '#000000', shadowBlur: 0,
+}
+
+// Video Studio V2 Create/Edit — drag position for a canvas element that has no dedicated
+// data-model position field yet (see SelectedElement's 'canvasItem' variant). Stored as a
+// fraction (0–1) of the canvas's own width/height, NOT display pixels — that makes it a true
+// canvas/project coordinate (survives any zoom level) and, being a fraction rather than an
+// absolute pixel count, it also stays proportionally in place when the canvas format changes.
+export interface CanvasItemPosition { xPct: number; yPct: number }
+
 export type RailTool =
   | 'history' | 'templates'
   | 'video' | 'image' | 'text' | 'audio' | 'media' | 'effects' | 'lower' | 'intro' | 'platform'
@@ -27,6 +62,25 @@ export type SelectedElement =
   | { type: 'clip'; lane: 'video' | 'additional'; id: string }
   | { type: 'text'; id: string }
   | { type: 'audio'; id: string }
+  // MediaOverlay (uploaded overlay asset) — mirrors 'text'/'audio' exactly: real backing
+  // data-model entry, identified by id alone. Added when Overlay selection was wired up
+  // (previously the only gap: MediaOverlay had a full data model but no SelectedElement
+  // variant at all, so nothing could ever select one).
+  | { type: 'overlay'; id: string }
+  // Phase 2 (Video Studio V2 — Lower Thirds): same real-backing-data-model pattern as
+  // 'overlay' above, over LowerThird instead of MediaOverlay. Additive only; legacy /studio's
+  // own LowerThirdBuilder.tsx has no canvas selection concept and never produces this variant.
+  | { type: 'lowerThird'; id: string }
+  // Phase 4 (Video Studio V2 — Independent Shapes): same pattern again, over the brand-new
+  // Shape type (no legacy /studio equivalent exists at all).
+  | { type: 'shape'; id: string }
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript): same pattern again, over the brand-new
+  // SubtitleSegment type.
+  | { type: 'subtitle'; id: string }
+  // A canvas element with no backing data-model entry yet (Video Studio V2's placeholder
+  // mock content — headline, badge, CTA, etc.) — carries just enough for Properties'
+  // "Type / Name" identification. Additive only; legacy /studio never produces this variant.
+  | { type: 'canvasItem'; id: string; kind: string; name: string }
   | null
 
 interface StudioState {
@@ -48,6 +102,14 @@ interface StudioState {
   mediaOverlays: MediaOverlay[]
   audioTracks: AudioTrack[]
   lowerThirds: LowerThird[]
+  // Phase 4 (Video Studio V2 — Independent Shapes)
+  shapes: Shape[]
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript). subtitleStyle is the "global style ...
+  // inherited" the spec asks for — the project-wide default every segment falls back to unless
+  // it sets its own styleOverride field(s).
+  subtitles: SubtitleSegment[]
+  subtitleStyle: SubtitleStyle
+  setSubtitleStyle: (s: SubtitleStyle) => void
   intro: IntroOutro | null
   outro: IntroOutro | null
 
@@ -67,6 +129,29 @@ interface StudioState {
   seoPackage: SEOPackage | null
 
   templates: Template[]
+
+  // Media library — assets uploaded via the "Upload Files" button, shown in the left panel
+  mediaAssets: Asset[]
+  addMediaAsset: (a: Asset) => void
+  // Video Studio V2's "remove from Media Library" — only ever removes this session's local
+  // reference (the array entry that makes it show up in the left panel); never calls the
+  // backend's own DELETE /assets/{id} (that would touch the underlying file/DB row shared
+  // across every other draft that might reference the same asset id — out of scope and unsafe
+  // for a per-project "remove from library" action).
+  removeMediaAsset: (id: number) => void
+
+  // Video Studio V2 multi-platform canvas — current active format, plus every format the
+  // project has been given a version for. The master timeline (videoClips etc.) is identical
+  // across all of them; only the canvas frame differs, and only ever fitted, never stretched.
+  canvasFormat: CanvasFormatState
+  setCanvasFormat: (f: CanvasFormatState) => void
+  canvasVersions: CanvasFormatState[]
+  addCanvasVersion: (f: CanvasFormatState) => void
+
+  // Drag position for canvas elements with no dedicated position field of their own yet
+  // (see CanvasItemPosition above). Keyed by the element's canvasItem id.
+  canvasItemPositions: Record<string, CanvasItemPosition>
+  setCanvasItemPosition: (id: string, pos: CanvasItemPosition) => void
 
   // Icon-rail: which tool panel is expanded (null = collapsed, canvas gets full width)
   activeRailTool: RailTool | null
@@ -120,6 +205,16 @@ interface StudioState {
   updateMediaOverlay: (id: string, upd: Partial<MediaOverlay>) => void
   removeMediaOverlay: (id: string) => void
 
+  // Phase 4 (Video Studio V2 — Independent Shapes)
+  addShape: (s: Shape) => void
+  updateShape: (id: string, upd: Partial<Shape>) => void
+  removeShape: (id: string) => void
+
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript)
+  addSubtitle: (s: SubtitleSegment) => void
+  updateSubtitle: (id: string, upd: Partial<SubtitleSegment>) => void
+  removeSubtitle: (id: string) => void
+
   // Audio
   addAudioTrack: (t: AudioTrack) => void
   updateAudioTrack: (id: string, upd: Partial<AudioTrack>) => void
@@ -152,6 +247,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [brands, setBrands] = useState<Brand[]>([])
   const [recentJobs, setRecentJobs] = useState<Job[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
+  const [mediaAssets, setMediaAssets] = useState<Asset[]>([])
+  const [canvasFormat, setCanvasFormat] = useState<CanvasFormatState>(DEFAULT_CANVAS_FORMAT)
+  const [canvasVersions, setCanvasVersions] = useState<CanvasFormatState[]>([DEFAULT_CANVAS_FORMAT])
+  const [canvasItemPositions, setCanvasItemPositions] = useState<Record<string, CanvasItemPosition>>({})
 
   const [contentType, setContentType] = useState<ContentType>('video')
   const [platform, setPlatform] = useState<Platform>('instagram_reel')
@@ -163,6 +262,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [mediaOverlays, setMediaOverlays] = useState<MediaOverlay[]>([])
   const [audioTracks, setAudioTracks] = useState<AudioTrack[]>([])
   const [lowerThirds, setLowerThirds] = useState<LowerThird[]>([])
+  const [shapes, setShapes] = useState<Shape[]>([])
+  const [subtitles, setSubtitles] = useState<SubtitleSegment[]>([])
+  const [subtitleStyle, setSubtitleStyle] = useState<SubtitleStyle>(DEFAULT_SUBTITLE_STYLE)
   const [intro, setIntro] = useState<IntroOutro | null>(null)
   const [outro, setOutro] = useState<IntroOutro | null>(null)
 
@@ -189,6 +291,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [selectedElement, setSelectedElement] = useState<SelectedElement>(null)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [pendingApproval, setPendingApproval] = useState<ApprovalGate | null>(null)
+
+  const addMediaAsset = useCallback((a: Asset) => setMediaAssets(p => [...p, a]), [])
+  const removeMediaAsset = useCallback((id: number) => setMediaAssets(p => p.filter(a => a.id !== id)), [])
+
+  // Non-destructive: adding a version never touches the master timeline, and re-adding a
+  // format that already has a version just moves focus rather than duplicating it.
+  const addCanvasVersion = useCallback((f: CanvasFormatState) => setCanvasVersions(p =>
+    p.some(v => v.platformKey === f.platformKey && v.placementKey === f.placementKey) ? p : [...p, f]
+  ), [])
+
+  const setCanvasItemPosition = useCallback((id: string, pos: CanvasItemPosition) =>
+    setCanvasItemPositions(p => ({ ...p, [id]: pos })), [])
 
   const msgIdRef = useRef(1)
   const nextId = () => String(msgIdRef.current++)
@@ -231,6 +345,20 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setMediaOverlays(p => p.map(o => o.id === id ? { ...o, ...upd } : o)), [])
   const removeMediaOverlay = useCallback((id: string) =>
     setMediaOverlays(p => p.filter(o => o.id !== id)), [])
+
+  // Phase 4 (Video Studio V2 — Independent Shapes)
+  const addShape = useCallback((s: Shape) => setShapes(p => [...p, s]), [])
+  const updateShape = useCallback((id: string, upd: Partial<Shape>) =>
+    setShapes(p => p.map(s => s.id === id ? { ...s, ...upd } : s)), [])
+  const removeShape = useCallback((id: string) =>
+    setShapes(p => p.filter(s => s.id !== id)), [])
+
+  // Phase 5 (Video Studio V2 — Subtitles / Transcript)
+  const addSubtitle = useCallback((s: SubtitleSegment) => setSubtitles(p => [...p, s]), [])
+  const updateSubtitle = useCallback((id: string, upd: Partial<SubtitleSegment>) =>
+    setSubtitles(p => p.map(s => s.id === id ? { ...s, ...upd } : s)), [])
+  const removeSubtitle = useCallback((id: string) =>
+    setSubtitles(p => p.filter(s => s.id !== id)), [])
 
   // Audio actions
   const addAudioTrack = useCallback((t: AudioTrack) => setAudioTracks(p => [...p, t]), [])
@@ -355,12 +483,15 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const value: StudioState = {
     activeBrand, activeJob, brands, recentJobs,
     contentType, platform,
-    videoClips, additionalVideoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, lowerThirds, intro, outro,
+    videoClips, additionalVideoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, subtitles, subtitleStyle, intro, outro,
     previewUrl, previewHtml, previewText,
     timeline,
     chatMessages, chatLoading,
     seoPackage,
     templates,
+    mediaAssets, addMediaAsset, removeMediaAsset,
+    canvasFormat, setCanvasFormat, canvasVersions, addCanvasVersion,
+    canvasItemPositions, setCanvasItemPosition,
     activeRailTool, selectedElement,
     uploadProgress,
     pendingApproval,
@@ -375,6 +506,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     addImageSlide, updateImageSlide, removeImageSlide,
     addTextOverlay, updateTextOverlay, removeTextOverlay,
     addMediaOverlay, updateMediaOverlay, removeMediaOverlay,
+    addShape, updateShape, removeShape,
+    addSubtitle, updateSubtitle, removeSubtitle, setSubtitleStyle,
     addAudioTrack, updateAudioTrack, removeAudioTrack,
     addLowerThird, updateLowerThird, removeLowerThird,
     setIntro, setOutro,

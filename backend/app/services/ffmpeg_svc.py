@@ -1,20 +1,46 @@
-"""Async FFmpeg operations via subprocess — never blocks the event loop."""
+"""Async FFmpeg operations via subprocess — never blocks the event loop.
+
+STEP 7.15F: this file's functions were always correctly written, but every one of them shelled
+out to the bare string "ffmpeg" — and this machine has no ffmpeg (or ffprobe) on PATH at all
+(confirmed via `shutil.which`), so every single function here has always raised immediately at
+runtime. That's *why* Video Studio V2's Export button was implemented as a bare "flash a toast"
+placeholder in ReviewTab.tsx: there was never a working renderer underneath it to call.
+`imageio_ffmpeg` bundles a real, static, cross-platform ffmpeg binary as its own pip package
+data (no system install, no PATH changes) — FFMPEG_BIN below resolves straight to that binary,
+so `_run` and every function in this file are now genuinely executable. It does not bundle
+ffprobe, so `_probe_duration`/`_probe_dimensions` below get the same information by parsing
+ffmpeg's own stderr (`ffmpeg -i <file>` always prints stream info to stderr, ffprobe or not) —
+a long-standing, reliable technique, not a workaround unique to this fix.
+"""
 import asyncio
+import re
 import uuid
 from pathlib import Path
 
+import imageio_ffmpeg
+import numpy as np
+from PIL import Image
+
 from app.config import settings
+from app.services import canvas_render_svc, timeline_plan
+
+FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
 
 
-async def _run(cmd: list[str]) -> None:
+async def _run(cmd: list[str]) -> str:
+    """Runs an ffmpeg (or ffmpeg-adjacent) command; returns decoded stderr (ffmpeg's own log/
+    stream-info output always goes to stderr, success or failure) for callers that need to
+    parse it (see _probe_duration/_probe_dimensions)."""
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     _, stderr = await proc.communicate()
+    text = stderr.decode(errors="replace")
     if proc.returncode != 0:
-        raise RuntimeError(f"FFmpeg failed (code {proc.returncode}): {stderr.decode()[-500:]}")
+        raise RuntimeError(f"FFmpeg failed (code {proc.returncode}): {text[-800:]}")
+    return text
 
 
 def _out(user_id: int, suffix: str) -> Path:
@@ -25,7 +51,7 @@ def _out(user_id: int, suffix: str) -> Path:
 
 async def extract_audio(input_path: str, user_id: int) -> Path:
     out = _out(user_id, "mp3")
-    await _run(["ffmpeg", "-y", "-i", input_path, "-vn", "-acodec", "libmp3lame", "-ab", "192k", str(out)])
+    await _run([FFMPEG_BIN, "-y", "-i", input_path, "-vn", "-acodec", "libmp3lame", "-ab", "192k", str(out)])
     return out
 
 
@@ -34,7 +60,7 @@ async def add_subtitles(input_path: str, srt_path: str, user_id: int) -> Path:
     # subtitles filter requires escaped path on some platforms
     safe = srt_path.replace("\\", "/").replace(":", "\\:")
     await _run([
-        "ffmpeg", "-y", "-i", input_path,
+        FFMPEG_BIN, "-y", "-i", input_path,
         "-vf", f"subtitles={safe}",
         "-c:a", "copy",
         str(out),
@@ -46,14 +72,14 @@ async def resize(input_path: str, width: int, height: int, user_id: int) -> Path
     out = _out(user_id, "mp4")
     # Force divisible-by-2 dimensions required by libx264
     vf = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
-    await _run(["ffmpeg", "-y", "-i", input_path, "-vf", vf, "-c:a", "copy", str(out)])
+    await _run([FFMPEG_BIN, "-y", "-i", input_path, "-vf", vf, "-c:a", "copy", str(out)])
     return out
 
 
 async def trim(input_path: str, start: float, end: float, user_id: int) -> Path:
     out = _out(user_id, "mp4")
     await _run([
-        "ffmpeg", "-y",
+        FFMPEG_BIN, "-y",
         "-ss", str(start),
         "-to", str(end),
         "-i", input_path,
@@ -65,7 +91,7 @@ async def trim(input_path: str, start: float, end: float, user_id: int) -> Path:
 
 async def convert(input_path: str, output_format: str, user_id: int) -> Path:
     out = _out(user_id, output_format.lstrip("."))
-    await _run(["ffmpeg", "-y", "-i", input_path, str(out)])
+    await _run([FFMPEG_BIN, "-y", "-i", input_path, str(out)])
     return out
 
 
@@ -73,7 +99,7 @@ async def extract_thumbnail(input_path: str, user_id: int, timestamp: float = 3.
     """Extract a single JPEG frame from a video at `timestamp` seconds."""
     out = _out(user_id, "jpg")
     await _run([
-        "ffmpeg", "-y",
+        FFMPEG_BIN, "-y",
         "-ss", str(timestamp),
         "-i", input_path,
         "-frames:v", "1",
@@ -92,14 +118,25 @@ TRANSITION_MAP = {
 }
 
 
-async def _get_duration(path: str) -> float:
+async def _probe(path: str) -> str:
+    """ffmpeg with no output prints full stream info (duration, resolution, codecs) to stderr
+    and exits non-zero (no output file was requested) — that's expected here, not a failure, so
+    this bypasses `_run`'s error-on-nonzero-exit check and just returns the raw text."""
     proc = await asyncio.create_subprocess_exec(
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", path,
+        FFMPEG_BIN, "-i", path,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
-    out, _ = await proc.communicate()
-    return float(out.decode().strip())
+    _, stderr = await proc.communicate()
+    return stderr.decode(errors="replace")
+
+
+async def _get_duration(path: str) -> float:
+    text = await _probe(path)
+    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", text)
+    if not m:
+        raise RuntimeError(f"Could not determine duration of {path!r} from ffmpeg output: {text[-300:]}")
+    h, mi, s = m.groups()
+    return int(h) * 3600 + int(mi) * 60 + float(s)
 
 
 async def merge_with_transitions(
@@ -121,7 +158,7 @@ async def merge_with_transitions(
         # directory, not the process cwd — write absolute paths to avoid that.
         list_file.write_text("\n".join(f"file '{Path(p).resolve()}'" for p in clip_paths))
         await _run([
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            FFMPEG_BIN, "-y", "-f", "concat", "-safe", "0",
             "-i", str(list_file), "-c", "copy", str(out),
         ])
         return out
@@ -153,7 +190,7 @@ async def merge_with_transitions(
     filter_complex = ";".join(filter_parts)
 
     await _run([
-        "ffmpeg", "-y", *inputs,
+        FFMPEG_BIN, "-y", *inputs,
         "-filter_complex", filter_complex,
         "-map", f"[{v_label}]", "-map", f"[{a_label}]",
         "-c:v", "libx264", "-c:a", "aac",
@@ -203,7 +240,7 @@ async def add_text_overlays(
     vf = ",".join(drawtext_filters)
 
     await _run([
-        "ffmpeg", "-y", "-i", input_path,
+        FFMPEG_BIN, "-y", "-i", input_path,
         "-vf", vf,
         "-c:a", "copy",
         str(out),
@@ -212,15 +249,16 @@ async def add_text_overlays(
 
 
 async def _get_video_dimensions(path: str) -> tuple[int, int]:
-    proc = await asyncio.create_subprocess_exec(
-        "ffprobe", "-v", "error", "-select_streams", "v:0",
-        "-show_entries", "stream=width,height",
-        "-of", "csv=s=x:p=0", path,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
-    out, _ = await proc.communicate()
-    width, height = out.decode().strip().split("x")
-    return int(width), int(height)
+    text = await _probe(path)
+    m = re.search(r"Video:.*?(\d{2,5})x(\d{2,5})", text)
+    if not m:
+        raise RuntimeError(f"Could not determine dimensions of {path!r} from ffmpeg output: {text[-300:]}")
+    return int(m.group(1)), int(m.group(2))
+
+
+async def _has_audio_stream(path: str) -> bool:
+    text = await _probe(path)
+    return "Audio:" in text
 
 
 async def add_media_overlays(
@@ -265,18 +303,120 @@ async def add_media_overlays(
         filter_parts.append(f"[{i}:v]scale={w}:{h}[{scaled}]")
         filter_parts.append(f"[{scaled}]format=rgba,colorchannelmixer=aa={opacity}[{faded}]")
         filter_parts.append(
-            f"[{base_label}][{faded}]overlay=x={x}:y={y}:enable='between(t,{start},{end})'[{merged}]"
+            f"[{base_label}][{faded}]overlay=x={x}:y={y}:enable='gte(t,{start})*lt(t,{end})'[{merged}]"
         )
         base_label = merged
 
     filter_complex = ";".join(filter_parts)
 
     await _run([
-        "ffmpeg", "-y", *inputs,
+        FFMPEG_BIN, "-y", *inputs,
         "-filter_complex", filter_complex,
         "-map", f"[{base_label}]", "-map", "0:a?",
         "-c:v", "libx264", "-c:a", "aac",
         "-shortest",
+        str(out),
+    ])
+    return out
+
+
+async def composite_media_overlays(
+    input_path: str,
+    overlays: list[dict],
+    user_id: int,
+    duration: float | None = None,
+) -> Path:
+    """STEP 7.15H: same visual compositing as add_media_overlays above, but ALSO mixes in each
+    video-backed overlay's own audio (Instruction 5) — add_media_overlays only ever mapped the
+    base's own audio (`0:a?`) and silently discarded every overlay's audio input entirely, so no
+    overlay could ever have been audible in an export, muted or not. This is a separate function
+    (not a change to add_media_overlays itself) because that function is also used by the older
+    /process/export endpoint, which this step must not touch.
+
+    Each overlay dict adds `muted`/`volume` to add_media_overlays' own shape. A muted overlay,
+    or one with volume<=0, or an image (no audio stream to mix), contributes nothing — exactly
+    Instruction 5's "muted -> exclude/silence it" and "respect Overlay Volume".
+    """
+    if not overlays:
+        raise RuntimeError("composite_media_overlays requires at least one overlay")
+
+    base_w, base_h = await _get_video_dimensions(input_path)
+    out = _out(user_id, "mp4")
+
+    inputs: list[str] = ["-i", input_path]
+    for ov in overlays:
+        if ov.get("is_image"):
+            inputs += ["-loop", "1", "-t", str(max(ov["end"], 0.1)), "-i", ov["path"]]
+        else:
+            inputs += ["-i", ov["path"]]
+
+    filter_parts = []
+    base_label = "0:v"
+    for i, ov in enumerate(overlays, start=1):
+        w = max(2, round(base_w * ov.get("width", 30) / 100 / 2) * 2)
+        h = max(2, round(base_h * ov.get("height", 30) / 100 / 2) * 2)
+        x = round(base_w * ov.get("x", 0) / 100)
+        y = round(base_h * ov.get("y", 0) / 100)
+        opacity = max(0.0, min(1.0, ov.get("opacity", 1.0)))
+        start, end = ov["start"], ov["end"]
+
+        scaled, faded, merged = f"ov{i}s", f"ov{i}a", f"merged{i}"
+        # M2.2b: fit the picture INSIDE its box (aspect kept, transparent padding), exactly as the editor preview does (object-fit: contain). It used to be
+        # stretched to the box, so any overlay whose box had a different aspect ratio than its picture looked different in the export.
+        filter_parts.append(
+            f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,format=rgba,"
+            f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=0x00000000[{scaled}]"
+        )
+        filter_parts.append(f"[{scaled}]format=rgba,colorchannelmixer=aa={opacity}[{faded}]")
+        filter_parts.append(
+            f"[{base_label}][{faded}]overlay=x={x}:y={y}:enable='gte(t,{start})*lt(t,{end})'[{merged}]"
+        )
+        base_label = merged
+
+    # Real overlay-audio mixing: each qualifying overlay's OWN audio, trimmed to its own
+    # [start,end) window duration and delayed to that exact same position on the output
+    # timeline the visual overlay already uses (no independent trimIn — MediaOverlay has none;
+    # it always plays its source from the beginning, same convention the live preview's own
+    # overlay-audio sync effect already uses), scaled by its own saved volume.
+    audio_labels = ["0:a"]
+    for i, ov in enumerate(overlays, start=1):
+        if ov.get("is_image") or ov.get("muted"):
+            continue
+        volume = ov.get("volume", 1.0)
+        if volume <= 0:
+            continue
+        dur = max(0.05, ov["end"] - ov["start"])
+        delay_ms = max(0, round(ov["start"] * 1000))
+        label = f"oa{i}"
+        filter_parts.append(
+            f"[{i}:a]atrim=start=0:duration={dur},asetpts=PTS-STARTPTS,"
+            f"volume={volume},adelay={delay_ms}|{delay_ms}[{label}]"
+        )
+        audio_labels.append(label)
+
+    maps = ["-map", f"[{base_label}]"]
+    if len(audio_labels) > 1:
+        # normalize=0 for the same reason as mix_audio_tracks — every source's own level is
+        # already deliberately set by its own `volume=` filter above; ffmpeg must not silently
+        # re-scale the combined result a second time (Step 7.15H's own audio-mixing defect).
+        filter_parts.append(
+            "".join(f"[{l}]" for l in audio_labels)
+            + f"amix=inputs={len(audio_labels)}:duration=first:dropout_transition=0:normalize=0[aout]"
+        )
+        maps += ["-map", "[aout]"]
+    else:
+        maps += ["-map", "0:a?"]
+    # Audio the pass does not touch is copied, not re-encoded: every AAC re-encode shaved about one AAC frame (23 ms) off the end and, through -shortest, the last video frame with it.
+    audio_codec = "aac" if len(audio_labels) > 1 else "copy"
+
+    filter_complex = ";".join(filter_parts)
+
+    await _run([
+        FFMPEG_BIN, "-y", *inputs,
+        "-filter_complex", filter_complex,
+        *maps,
+        "-c:v", "libx264", "-c:a", audio_codec,
+        *(["-t", f"{duration:.6f}"] if duration else ["-shortest"]),
         str(out),
     ])
     return out
@@ -300,7 +440,7 @@ async def add_audio_track(
 
     if mode == "replace":
         await _run([
-            "ffmpeg", "-y",
+            FFMPEG_BIN, "-y",
             "-i", input_path,
             "-i", audio_path,
             "-map", "0:v", "-map", "1:a",
@@ -315,7 +455,7 @@ async def add_audio_track(
             f"[a0][a1]amix=inputs=2:duration=first:dropout_transition=0[aout]"
         )
         await _run([
-            "ffmpeg", "-y",
+            FFMPEG_BIN, "-y",
             "-i", input_path,
             "-i", audio_path,
             "-filter_complex", filter_complex,
@@ -328,3 +468,1417 @@ async def add_audio_track(
         raise RuntimeError(f"unknown audio mode: {mode}")
 
     return out
+
+
+# ============================================================================
+# STEP 7.15F: real Video Studio V2 timeline export.
+#
+# Everything above this line pre-existed and operates on one asset (or a flat list of assets)
+# at a time. A Video Studio V2 project is a full timeline — per-clip trim/speed/color, text and
+# media overlays positioned in canvas percent, and one or more separately-editable A1 audio
+# tracks with their own volume — so this section is new orchestration built specifically for
+# that shape, reusing add_text_overlays/add_media_overlays above as-is (their existing percent-
+# based-position contracts already match the editor's own model exactly) and following the same
+# _run/_out/subprocess conventions as everything above it.
+# ============================================================================
+
+_COLOR_PRESETS: dict[str, str] = {
+    # Approximate, real (not fabricated) per-preset looks — visibly distinct output, not
+    # pixel-matched to the editor's live CSS-filter preview (out of scope for this step).
+    "warm": "eq=gamma_r=1.12:gamma_b=0.9",
+    "cool": "eq=gamma_r=0.9:gamma_b=1.12",
+    "cinematic": "eq=contrast=1.15:saturation=0.9",
+    "bw": "hue=s=0",
+    "high_contrast": "eq=contrast=1.5",
+    "desaturated": "eq=saturation=0.4",
+    "sepia": "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131:0",
+}
+
+
+def _atempo_chain(speed: float) -> str:
+    """ffmpeg's atempo filter only accepts 0.5–2.0 per stage. Video Studio V2's speed enum is
+    fixed (0.25/0.5/0.75/1/1.25/1.5/2), so at most two chained stages are ever needed to reach
+    the exact requested factor — this isn't a general-purpose arbitrary-speed solution, just
+    enough to exactly cover that fixed set."""
+    if speed < 0.5:
+        return "atempo=0.5,atempo={:.6f}".format(speed / 0.5)
+    if speed > 2.0:
+        return "atempo=2.0,atempo={:.6f}".format(speed / 2.0)
+    return f"atempo={speed}"
+
+
+async def build_clip_segment(
+    input_path: str,
+    trim_in: float,
+    source_duration: float,
+    speed: float,
+    color_grade: str,
+    brightness: float,
+    contrast: float,
+    saturation: float,
+    canvas_w: int,
+    canvas_h: int,
+    keep_audio: bool,
+    volume: float,
+    user_id: int,
+    fit_mode: str = "fit",
+    crop_x: float = 50.0,
+    crop_y: float = 50.0,
+) -> Path:
+    """One clip's [trimIn, trimIn+sourceDuration) source range → a single normalized segment:
+    speed-adjusted, colour/brightness/contrast/saturation applied, scaled onto the project's
+    canvas size per this clip's own fit_mode, re-encoded to one common codec/framerate/audio
+    format so segments can be crossfaded together afterward regardless of their original,
+    possibly-differing source formats.
+
+    STEP 7 (Platform Canvas / Full-Screen Video Acceptance): fit_mode is now a genuine per-clip
+    choice mirroring the live Create/Edit preview's own `.real-video-el` CSS exactly, closing
+    the gap Step 7.15H's own note here used to flag ("a mismatched-aspect clip's export will
+    visually differ from its own Create/Edit preview ... until/unless the preview is updated to
+    match") — the preview now uses this same fit_mode/crop_x/crop_y per clip (object-fit /
+    object-position), so what's previewed is what exports.
+      - "fit" (`force_original_aspect_ratio=decrease` + centred `pad`): shows the whole source
+        frame, centred, letterboxed/pillarboxed where the ratios differ — never stretches,
+        never crops. This is every clip's default (matches the CSS default too), so a clip
+        authored before this feature renders exactly as it always did.
+      - "fill" (`force_original_aspect_ratio=increase` + `crop`): scales up until the source
+        fully covers the canvas on both axes, cropping only the overflow — never stretches,
+        never shows bars. crop_x/crop_y (0-100, CSS object-position's own convention — 50/50 is
+        centred, matching the previous hardcoded-centre behaviour exactly when left at default)
+        choose WHICH part of the overflow is kept, so a subject near one edge of the source
+        isn't forced to be cropped off: `x = (in_w-out_w) * crop_x/100`, `y` likewise — the
+        direct ffmpeg-`crop`-filter equivalent of CSS's own object-position formula.
+
+    keep_audio=False (this clip's audio has been separated to its own A1 track — Step 7.6A's
+    "V1 is muted once separated" rule — OR the clip's own Original Audio toggle is off, OR its
+    own volume is 0 — the router folds all three into this one flag before calling here) still
+    produces a real (silent) audio stream rather than none at all, so every segment has a
+    uniform [v][a] shape for the concat/crossfade step below.
+
+    STEP 7 (Original Video Audio controls): `volume` only applies when keep_audio is True — the
+    clip's own saved volume (Properties → Audio → Volume), independent of A1's own volume,
+    other clips, and overlay audio. Applied via the same `volume=` filter approach already used
+    for A1/overlay audio, not ffmpeg's own automatic mixing normalization (not relevant here —
+    there's only one audio input in this specific command either way).
+    """
+    out = _out(user_id, "mp4")
+
+    vf_parts: list[str] = []
+    preset = _COLOR_PRESETS.get(color_grade)
+    if preset:
+        vf_parts.append(preset)
+    if brightness or contrast or saturation:
+        b = max(-1.0, min(1.0, brightness / 100))
+        c = max(0.1, 1 + contrast / 100)
+        s = max(0.0, 1 + saturation / 100)
+        vf_parts.append(f"eq=brightness={b:.4f}:contrast={c:.4f}:saturation={s:.4f}")
+    if speed != 1:
+        vf_parts.append(f"setpts=PTS/{speed},fps=30")        # re-sample to the output rate HERE: left to the output's -r, the first frames of a sped-up clip lagged by one output frame
+    if fit_mode == "fit":
+        vf_parts.append(
+            f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease,"
+            f"pad={canvas_w}:{canvas_h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
+        )
+    else:
+        crop_x_frac = max(0.0, min(1.0, crop_x / 100))
+        crop_y_frac = max(0.0, min(1.0, crop_y / 100))
+        vf_parts.append(
+            f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase,"
+            f"crop={canvas_w}:{canvas_h}:(in_w-out_w)*{crop_x_frac:.4f}:(in_h-out_h)*{crop_y_frac:.4f},setsar=1"
+        )
+    vf = ",".join(vf_parts)
+
+    # A speed change resamples to 30 fps; its last frame can land one past the intended length (0.75x gave 91 frames for 3.0 s). The segment is exactly source_duration / speed long, so cap it.
+    length_cap = ["-t", f"{source_duration / speed:.6f}"] if speed != 1 else []
+    common_out = ["-r", "30", "-pix_fmt", "yuv420p", "-c:v", "libx264",
+                  "-ar", "44100", "-ac", "2", "-c:a", "aac"]
+
+    if keep_audio:
+        cmd = [FFMPEG_BIN, "-y", "-ss", str(trim_in), "-t", str(source_duration), "-i", input_path, "-vf", vf]
+        af_parts = []
+        if speed != 1:
+            af_parts.append(_atempo_chain(speed))
+        if volume != 1:
+            af_parts.append(f"volume={volume}")
+        if af_parts:
+            cmd += ["-af", ",".join(af_parts)]
+        cmd += common_out + length_cap + [str(out)]
+    else:
+        out_duration = source_duration / speed
+        cmd = [
+            FFMPEG_BIN, "-y",
+            "-ss", str(trim_in), "-t", str(source_duration), "-i", input_path,
+            "-f", "lavfi", "-t", str(out_duration), "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-vf", vf, "-map", "0:v", "-map", "1:a",
+        ] + common_out + ["-shortest"] + length_cap + [str(out)]
+
+    await _run(cmd)
+    return out
+
+
+# The blending transitions' ffmpeg `xfade` names. "cut" and "fade_black" are not blends: the timeline plan (timeline_plan.py) realises a cut as a plain join and a fade through black as fades inside the two clips' own
+# spans, so neither borrows frames from the other clip and neither moves any footage.
+_XFADE_NAMES: dict[str, str] = {**{k: v for k, v in TRANSITION_MAP.items() if v}, "fade_black": "fadeblack"}
+
+
+def _f(frames: int) -> str:
+    return f"{frames / timeline_plan.FPS:.6f}"
+
+
+def build_join_graph(plan: timeline_plan.TimelinePlan) -> tuple[str, str, str]:
+    """The filter graph that joins the (already extended) segments on the editor's timeline. Pure: returns (filter_complex, video_label, audio_label).
+
+    Every input is first forced to its planned frame count (video) and sample length (audio), so a rounding difference in one segment's encode cannot shift everything after it. Cuts and fades through
+    black join with `concat` (no overlap); a blend joins with `xfade` + `acrossfade` over the planned window, whose start offset is the join time minus the incoming clip's pre-roll."""
+    F = timeline_plan.FPS
+    parts: list[str] = []
+    for i, c in enumerate(plan.clips):
+        v = [f"fps={F}"]
+        v.append(f"tpad=start_mode=clone:start_duration={_f(c.pre_hold)}:stop_mode=clone:stop_duration={_f(c.post_hold + 6)}")
+        v.append(f"trim=end_frame={c.total}")
+        v.append("setpts=PTS-STARTPTS")
+        if c.fade_in:
+            v.append(f"fade=t=in:start_frame={c.pre}:nb_frames={c.fade_in}")
+        if c.fade_out:
+            v.append(f"fade=t=out:start_frame={c.pre + c.n - c.fade_out}:nb_frames={c.fade_out}")
+        v.append(f"fps={F}")                      # trim/setpts drop the declared frame rate and xfade refuses an input without one
+        parts.append(f"[{i}:v]{','.join(v)}[v{i}]")
+        a = ["aresample=44100", "aformat=sample_fmts=fltp:channel_layouts=stereo"]
+        if c.pre_hold:
+            ms = round(c.pre_hold / F * 1000)
+            a.append(f"adelay={ms}|{ms}")
+        a += [f"apad=whole_dur={_f(c.total)}", f"atrim=end={_f(c.total)}", "asetpts=PTS-STARTPTS"]
+        if c.fade_in:
+            a.append(f"afade=t=in:st={_f(c.pre)}:d={_f(c.fade_in)}")
+        if c.fade_out:
+            a.append(f"afade=t=out:st={_f(c.pre + c.n - c.fade_out)}:d={_f(c.fade_out)}")
+        parts.append(f"[{i}:a]{','.join(a)}[a{i}]")
+
+    v_label, a_label = "v0", "a0"
+    for j in plan.joins:
+        i = j.index + 1
+        nv, na = f"jv{i}", f"ja{i}"
+        if j.kind == "blend":
+            offset = (j.join_f - j.pre - plan.origin_f) / F
+            parts.append(f"[{v_label}][v{i}]xfade=transition={j.xfade}:duration={_f(j.window)}:offset={offset:.6f}[{nv}]")
+            parts.append(f"[{a_label}][a{i}]acrossfade=d={_f(j.window)}[{na}]")
+        else:
+            last = j is plan.joins[-1]
+            parts.append(f"[{v_label}][{a_label}][v{i}][a{i}]concat=n=2:v=1:a=1[{nv}{'' if last else 'x'}][{na}]")
+            if not last:
+                # concat leaves a 1/1000000 timebase that a following xfade rejects; `fps` fixes it mid-chain (eof_action=pass keeps the last frame), but on the FINAL stream it would drop the last frame
+                parts.append(f"[{nv}x]fps={F}:eof_action=pass[{nv}]")
+        v_label, a_label = nv, na
+    return ";".join(parts), v_label, a_label
+
+
+async def concat_segments_with_transitions(segment_paths: list[str], plan: timeline_plan.TimelinePlan, user_id: int) -> Path:
+    """Joins 1+ already-normalized segments (see build_clip_segment) end to end ON THE EDITOR'S TIMELINE: the output is exactly as long as the clips' summed spans and every clip's footage sits at its own
+    start time, whatever transitions join them (see timeline_plan.py for the contract and how each transition is realised). segment_paths[i] is plan.clips[i]'s EXTENDED segment (main footage plus
+    any pre-/post-roll for a blend)."""
+    if len(segment_paths) == 1:
+        out = _out(user_id, "mp4")
+        await _run([FFMPEG_BIN, "-y", "-i", segment_paths[0], "-c", "copy", str(out)])
+        return out
+
+    inputs: list[str] = []
+    for p in segment_paths:
+        inputs += ["-i", p]
+    filter_complex, v_label, a_label = build_join_graph(plan)
+    out = _out(user_id, "mp4")
+    await _run([
+        FFMPEG_BIN, "-y", *inputs,
+        "-filter_complex", filter_complex,
+        "-map", f"[{v_label}]", "-map", f"[{a_label}]",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+        str(out),
+    ])
+    return out
+
+
+async def mix_audio_tracks(base_video_path: str, tracks: list[dict], user_id: int) -> Path:
+    """Overlays one or more separated A1 audio tracks onto the base timeline's own audio bed,
+    each positioned at its own [start_time, end_time) window (adelay) and scaled by its own
+    saved volume (Instruction 6/7 — this is the clip's *saved* volume property, nothing to do
+    with the preview-only mute button). A track at volume 0 is Requirement 5's "0% = complete
+    silence" — simply excluded rather than mixed in at zero, which is equivalent but cheaper.
+
+    Each dict: {path, trim_in, start_time, end_time, volume}.
+    """
+    active = [t for t in tracks if t.get("volume", 1) > 0]
+    if not active:
+        return Path(base_video_path)
+
+    inputs = ["-i", base_video_path]
+    for t in active:
+        inputs += ["-i", t["path"]]
+
+    filter_parts = []
+    mix_labels = ["0:a"]
+    for idx, t in enumerate(active, start=1):
+        dur = max(0.05, t["end_time"] - t["start_time"])
+        delay_ms = max(0, round(t["start_time"] * 1000))
+        label = f"ta{idx}"
+        filter_parts.append(
+            f"[{idx}:a]atrim=start={t['trim_in']}:duration={dur},asetpts=PTS-STARTPTS,"
+            f"volume={t['volume']},adelay={delay_ms}|{delay_ms}[{label}]"
+        )
+        mix_labels.append(label)
+
+    # STEP 7.15H defect fix: ffmpeg's amix defaults to normalize=1, which auto-attenuates the
+    # *combined* output by roughly 1/inputs to guard against clipping — even here, where one of
+    # those "inputs" is the base timeline's own silent track (every clip with separated audio
+    # produces one, per Step 7.6A/build_clip_segment) contributing nothing to sum against. That
+    # silently cut the real A1 track's level by ~2x on top of its own saved volume, with no
+    # trace of it anywhere in the editor's own volume model — confirmed by direct A/B render
+    # (same real draft, same everything else): normalize=1 measured RMS ≈1245, normalize=0
+    # ≈2489, exactly the 2x this filter's own default describes. Since this track's own level
+    # is already explicitly set by the `volume=` filter above (Instruction 6/7 — the clip's
+    # saved property), ffmpeg must not silently re-scale it a second time.
+    filter_parts.append("".join(f"[{l}]" for l in mix_labels) + f"amix=inputs={len(mix_labels)}:duration=first:dropout_transition=0:normalize=0[aout]")
+    filter_complex = ";".join(filter_parts)
+
+    out = _out(user_id, "mp4")
+    await _run([
+        FFMPEG_BIN, "-y", *inputs,
+        "-filter_complex", filter_complex,
+        "-map", "0:v", "-map", "[aout]",
+        "-c:v", "copy", "-c:a", "aac",
+        str(out),
+    ])
+    return out
+
+
+async def composite_video_inserts(input_path: str, inserts: list[dict], user_id: int, duration: float | None = None) -> Path:
+    """Phase 7 (deferred item A/D — V2 Insert/B-roll export parity): a real, independent second
+    video LAYER composited on top of the base timeline — Phase 1's own "true V2 insert", not the
+    older add_media_overlays/composite_media_overlays shape (which treats a video overlay
+    identically to a looping image and never respects a start-in-source trim point, since
+    MediaOverlay itself has no trim_in field at all). Reuses `-itsoffset`+`-ss` (the standard
+    ffmpeg pattern for aligning a secondary input's own decoded content to a specific point on a
+    DIFFERENT base timeline) so each insert's video visibly starts playing from its own trim_in
+    exactly when the base timeline reaches its start_time — not from t=0 of the whole export,
+    which is what add_media_overlays' own video-overlay path does today (a real, pre-existing,
+    out-of-scope-to-fix gap in that older function).
+
+    Each insert dict: {path, start_time, end_time, trim_in, color_grade, brightness, contrast,
+    saturation, fit_mode, crop_x, crop_y, insert_x, insert_y, insert_width, insert_height,
+    opacity} — mirrors ExportAdditionalVideoClip exactly. No audio is ever mapped from an
+    insert's own stream (`-map` never references its `:a`), matching the live Create/Edit
+    preview's own V2 <video> element, which Phase 1 built permanently muted — B-roll audio the
+    user chose to "Keep" already flows through as an ordinary audio_tracks entry instead.
+    """
+    if not inserts:
+        raise RuntimeError("composite_video_inserts requires at least one insert")
+
+    base_w, base_h = await _get_video_dimensions(input_path)
+    out = _out(user_id, "mp4")
+
+    inputs: list[str] = ["-i", input_path]
+    for ins in inserts:
+        dur = max(0.05, ins["end_time"] - ins["start_time"])
+        inputs += [
+            "-itsoffset", str(ins["start_time"]),
+            "-ss", str(ins.get("trim_in", 0)),
+            "-t", str(dur),
+            "-i", ins["path"],
+        ]
+
+    filter_parts = []
+    base_label = "0:v"
+    for i, ins in enumerate(inserts, start=1):
+        w = max(2, round(base_w * ins.get("insert_width", 38) / 100 / 2) * 2)
+        h = max(2, round(base_h * ins.get("insert_height", 38) / 100 / 2) * 2)
+        x = round(base_w * ins.get("insert_x", 56) / 100)
+        y = round(base_h * ins.get("insert_y", 56) / 100)
+
+        if ins.get("fit_mode", "fit") == "fit":
+            scale_vf = (
+                f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+                f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
+            )
+        else:
+            cx = max(0.0, min(1.0, ins.get("crop_x", 50.0) / 100))
+            cy = max(0.0, min(1.0, ins.get("crop_y", 50.0) / 100))
+            scale_vf = (
+                f"scale={w}:{h}:force_original_aspect_ratio=increase,"
+                f"crop={w}:{h}:(in_w-out_w)*{cx:.4f}:(in_h-out_h)*{cy:.4f},setsar=1"
+            )
+        vf_parts = [scale_vf]
+        preset = _COLOR_PRESETS.get(ins.get("color_grade", "none"))
+        if preset:
+            vf_parts.append(preset)
+        b, c, s = ins.get("brightness", 0), ins.get("contrast", 0), ins.get("saturation", 0)
+        if b or c or s:
+            bb = max(-1.0, min(1.0, b / 100))
+            cc = max(0.1, 1 + c / 100)
+            ss = max(0.0, 1 + s / 100)
+            vf_parts.append(f"eq=brightness={bb:.4f}:contrast={cc:.4f}:saturation={ss:.4f}")
+        opacity = max(0.0, min(1.0, ins.get("opacity", 1.0)))
+        vf_parts.append(f"format=rgba,colorchannelmixer=aa={opacity}")
+
+        scaled = f"ins{i}s"
+        filter_parts.append(f"[{i}:v]{','.join(vf_parts)}[{scaled}]")
+        merged = f"insm{i}"
+        filter_parts.append(
+            f"[{base_label}][{scaled}]overlay=x={x}:y={y}:"
+            f"enable='gte(t,{ins['start_time']})*lt(t,{ins['end_time']})'[{merged}]"
+        )
+        base_label = merged
+
+    filter_complex = ";".join(filter_parts)
+    await _run([
+        FFMPEG_BIN, "-y", *inputs,
+        "-filter_complex", filter_complex,
+        "-map", f"[{base_label}]", "-map", "0:a?",
+        "-c:v", "libx264", "-c:a", "copy",                      # this pass never touches the audio: copy it (see composite_media_overlays)
+        *(["-t", f"{duration:.6f}"] if duration else ["-shortest"]),
+        str(out),
+    ])
+    return out
+
+
+async def composite_image_overlays(input_path: str, overlays: list[dict], user_id: int, duration: float | None = None) -> Path:
+    """The one shared time-gated positioned-PNG compositor behind every Phase 7 Pillow-rendered
+    canvas element (see canvas_render_svc.py's own module docstring for why PNG+overlay replaced
+    drawtext/drawbox entirely this phase) — Text Overlays, Lower Thirds, Shapes, and Subtitles
+    all reduce to this same shape by the time they reach here.
+
+    Each overlay dict: {path, start, end, x, y}. `path` is an already fully-rendered RGBA PNG at
+    its own true final pixel size (every canvas_render_svc.render_*_png function returns that
+    exact size) — no further scaling or opacity is applied in this filter graph; the PNG already
+    IS the exact final pixels, alpha included. `x`/`y` is that image's top-left corner in pixels
+    on the base canvas.
+    """
+    if not overlays:
+        raise RuntimeError("composite_image_overlays requires at least one overlay")
+
+    out = _out(user_id, "mp4")
+    inputs: list[str] = ["-i", input_path]
+    for ov in overlays:
+        # Images have no intrinsic duration — loop them so they persist through their own
+        # enable window, bounded to `end` so the encoder doesn't stall waiting on an infinite
+        # source (same technique add_media_overlays already uses for its own image overlays).
+        inputs += ["-loop", "1", "-t", str(max(ov["end"], 0.1)), "-i", ov["path"]]
+
+    filter_parts = []
+    base_label = "0:v"
+    for i, ov in enumerate(overlays, start=1):
+        merged = f"img{i}"
+        filter_parts.append(
+            f"[{base_label}][{i}:v]overlay=x={ov['x']}:y={ov['y']}:"
+            f"enable='gte(t,{ov['start']})*lt(t,{ov['end']})'[{merged}]"
+        )
+        base_label = merged
+
+    filter_complex = ";".join(filter_parts)
+    await _run([
+        FFMPEG_BIN, "-y", *inputs,
+        "-filter_complex", filter_complex,
+        "-map", f"[{base_label}]", "-map", "0:a?",
+        "-c:v", "libx264", "-c:a", "copy",                      # this pass never touches the audio: copy it (see composite_media_overlays)
+        *(["-t", f"{duration:.6f}"] if duration else ["-shortest"]),
+        str(out),
+    ])
+    return out
+
+
+def _cleanup(paths: list[str]) -> None:
+    """Best-effort delete of intermediate render artifacts (segments, rendered PNGs) — never let
+    a cleanup failure mask an otherwise-successful export, matching render_project's own existing
+    end-of-function cleanup loop."""
+    for p in paths:
+        try:
+            Path(p).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+async def _build_shape_overlays(shapes: list[dict], cw: int, ch: int, user_id: int) -> list[dict]:
+    """Phase 7 (deferred item L). full_width shapes (banners) render at 100% canvas width
+    starting at x=0, same "spans the full frame edge to edge" convention CreateEditTab.tsx's own
+    full-width Shape rendering uses in the live preview."""
+    overlays = []
+    for sh in shapes:
+        item = dict(sh)
+        if item.get("full_width"):
+            item["width"] = 100
+        path, _w, _h = await asyncio.to_thread(canvas_render_svc.render_shape_png, item, cw, ch, user_id)
+        x = 0 if item.get("full_width") else round(cw * item.get("x", 0) / 100)
+        y = round(ch * item.get("y", 0) / 100)
+        overlays.append({"path": str(path), "start": sh["start_time"], "end": sh["end_time"], "x": x, "y": y})
+    return overlays
+
+
+async def _build_lower_third_overlays(lower_thirds: list[dict], cw: int, ch: int, user_id: int) -> list[dict]:
+    """Phase 7 (deferred item F)."""
+    overlays = []
+    for lt in lower_thirds:
+        path, _w, _h = await asyncio.to_thread(canvas_render_svc.render_lower_third_png, lt, cw, ch, user_id)
+        x = round(cw * lt.get("x", 5) / 100)
+        y = round(ch * lt.get("y", 78) / 100)
+        overlays.append({"path": str(path), "start": lt["start_time"], "end": lt["end_time"], "x": x, "y": y})
+    return overlays
+
+
+async def _build_text_overlay_pngs(text_overlays: list[dict], cw: int, ch: int, user_id: int) -> list[dict]:
+    """Phase 7 (deferred item J — Advanced Text Properties export parity). bg_full_width is
+    approximated by rendering the whole styled box (text wrap AND background chip together) at
+    100% canvas width rather than only stretching the background behind an unchanged text
+    width — a documented simplification (render_styled_text_box has no separate text-wrap-width-
+    vs-background-width concept); visually equivalent for centered/short text, the common case,
+    and never worse than the pre-Phase-7 baseline (this text style path did not render at all
+    before this phase, since drawtext is unavailable in this deployment's ffmpeg build)."""
+    overlays = []
+    for t in text_overlays:
+        item = dict(t)
+        full = bool(item.get("bg_full_width"))
+        if full:
+            item["width_pct"] = 100
+        path, _w, _h = await asyncio.to_thread(canvas_render_svc.render_text_overlay_png, item, cw, ch, user_id)
+        x = 0 if full else round(cw * item.get("x", 0) / 100)
+        y = round(ch * item.get("y", 0) / 100)
+        overlays.append({"path": str(path), "start": t["start_time"], "end": t["end_time"], "x": x, "y": y})
+    return overlays
+
+
+async def _build_subtitle_overlays(subtitles: list[dict], subtitle_style: dict, cw: int, ch: int, user_id: int) -> list[dict]:
+    """Phase 7 (deferred item N). Resolves each segment's real style the same
+    global-style-merged-with-per-segment-override way the live preview's own
+    resolveSubtitleStyle does (canvas_render_svc.resolve_subtitle_style is a direct Python port)
+    before rendering, so export and preview show the same styled captions."""
+    overlays = []
+    for sub in subtitles:
+        resolved = canvas_render_svc.resolve_subtitle_style(subtitle_style, sub.get("style_override"))
+        path, _w, _h = await asyncio.to_thread(canvas_render_svc.render_subtitle_png, sub, resolved, cw, ch, user_id)
+        x = round(cw * sub.get("x", 10) / 100)
+        y = round(ch * sub.get("y", 82) / 100)
+        overlays.append({"path": str(path), "start": sub["start_time"], "end": sub["end_time"], "x": x, "y": y})
+    return overlays
+
+
+# M2.2b: the editor paints media overlays, text, lower thirds, shapes and subtitles in ONE stack. `order` is shared; on a tie the editor's own concatenation sequence
+# decides (CreateEditTab: [...overlayEntries, ...textEntries, ...lowerThirdEntries, ...shapeEntries, ...subtitleEntries] sorted ascending, stably).
+_STACK_RANK = {"media": 0, "text": 1, "lower_third": 2, "shape": 3, "subtitle": 4}
+_STACK_KEYS = (("media", "media_overlays"), ("text", "text_overlays"), ("lower_third", "lower_thirds"), ("shape", "shapes"), ("subtitle", "subtitles"))
+
+
+def _stack_runs(project: dict) -> list[tuple[str, list[dict]]]:
+    """The layers above the video as an ordered list of (kind, [items]) runs, bottom first. Pure; a layer with no `order` counts as 0."""
+    entries = []
+    for kind, key in _STACK_KEYS:
+        for index, item in enumerate(project.get(key) or []):
+            entries.append((item.get("order", 0) or 0, _STACK_RANK[kind], index, kind, item))
+    entries.sort(key=lambda e: e[:3])
+    runs: list[tuple[str, list[dict]]] = []
+    for *_, kind, item in entries:
+        if runs and runs[-1][0] == kind:
+            runs[-1][1].append(item)
+        else:
+            runs.append((kind, [item]))
+    return runs
+
+
+async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, user_id: int) -> tuple[Path, list[str], int]:
+    """One CONTIGUOUS run of V1 clips (each starts where the previous ends) -> its base video, the intermediate files to clean up afterwards, and its exact length in frames. This is the
+    whole of what render_project always did for the V1 timeline; a project without a gap is exactly one run."""
+
+    # Timeline plan (timeline_plan.py): where every clip sits in whole frames and how each join is realised without moving any footage. Source durations are only probed when a blend needs spare frames.
+    file_durations: dict[str, float | None] = {}
+    if any(c["transition"] not in ("cut", "fade_black", "fade_to_black") for c in clips[:-1]):
+        for c in clips:
+            if c["path"] not in file_durations:
+                try:
+                    file_durations[c["path"]] = await _get_duration(c["path"])
+                except Exception:
+                    file_durations[c["path"]] = None
+    plan = timeline_plan.plan_timeline(clips, _XFADE_NAMES, file_durations, policy=policy)
+
+    segment_paths: list[str] = []
+    has_audio_by_path: dict[str, bool] = {}
+    for c, cp in zip(clips, plan.clips):
+        # STEP 7 (Original Video Audio controls): three independent reasons a clip's own
+        # embedded audio should be dropped entirely — separated to A1 (Step 7.6A), the clip's
+        # own Original Audio toggle switched off, or its own volume at 0% (equivalent to off).
+        # Any one of them is enough; none of them affect A1, other clips, or overlay audio.
+        clip_volume = c.get("volume", 1.0)
+        keep_audio = not (c["has_separated_audio"] or c.get("muted") or clip_volume <= 0)
+        # M1 (Reconstructor): a source file with NO audio stream (screen recordings, most stock B-roll) is treated exactly like a muted clip -- it gets the same generated
+        # silent track -- so every segment has a uniform [v][a] shape and the crossfade join cannot fail with "matches no streams". Only probed when the clip would
+        # otherwise keep its audio (muted / separated / volume-0 clips never are), and once per distinct file.
+        if keep_audio:
+            if c["path"] not in has_audio_by_path:
+                has_audio_by_path[c["path"]] = await _has_audio_stream(c["path"])
+            keep_audio = has_audio_by_path[c["path"]]
+        # STEP 7 (Platform Canvas / Full-Screen Video Acceptance): "fit" here is a deliberate
+        # default CHANGE from this function's previous always-FILL behaviour (Step 7.15H) —
+        # matching the frontend VideoClip type's own "undefined == fit" convention, which is
+        # itself unchanged from the CSS default the live preview has always used
+        # (.real-video-el{object-fit:contain}). This is the fix for exactly the divergence Step
+        # 7.15H's own docstring flagged as future work: preview defaulted to fit, export
+        # defaulted to fill, so a clip nobody had touched this control for would visually differ
+        # between the two. A project saved before this feature existed has no fit_mode/crop_x/
+        # crop_y keys at all and now exports exactly what its own preview already shows.
+        seg = await build_clip_segment(
+            c["path"], cp.source_trim_in, cp.source_duration, c["speed"],
+            c["color_grade"], c["brightness"], c["contrast"], c["saturation"],
+            cw, ch, keep_audio=keep_audio, volume=clip_volume, user_id=user_id,
+            fit_mode=c.get("fit_mode", "fit"), crop_x=c.get("crop_x", 50.0), crop_y=c.get("crop_y", 50.0),
+        )
+        segment_paths.append(str(seg))
+
+    if len(segment_paths) == 1:
+        base = Path(segment_paths[0])
+    else:
+        base = await concat_segments_with_transitions(segment_paths, plan, user_id)
+
+    return base, [p for p in segment_paths if p != str(base)], plan.total_f - plan.origin_f
+
+
+def build_gap_graph(parts: list[tuple[str | None, int]]) -> tuple[list[str], str]:
+    """Pure: the input arguments and filter graph that join runs (path) and gaps (None) end to end, every part forced to its exact frame / sample count so nothing after a gap can shift."""
+    F = timeline_plan.FPS
+    args: list[str] = []
+    chains: list[str] = []
+    idx = 0
+    for path, frames in parts:
+        secs = f"{frames / F:.6f}"
+        if path is None:
+            args += ["-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", f"color=c=black:s={{W}}x{{H}}:r={F}", "-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", "anullsrc=r=44100:cl=stereo"]
+            vi, ai = idx, idx + 1
+            idx += 2
+        else:
+            args += ["-i", path]
+            vi = ai = idx
+            idx += 1
+        n = len(chains) // 2
+        chains.append(f"[{vi}:v]fps={F},trim=end_frame={frames},setpts=PTS-STARTPTS[gv{n}]")
+        chains.append(f"[{ai}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur={secs},atrim=end={secs},asetpts=PTS-STARTPTS[ga{n}]")
+    n_parts = len(parts)
+    joined = "".join(f"[gv{i}][ga{i}]" for i in range(n_parts)) + f"concat=n={n_parts}:v=1:a=1[gvout][gaout]"
+    return args, ";".join(chains) + ";" + joined
+
+
+async def concat_runs_with_gaps(parts: list[tuple[str | None, int]], cw: int, ch: int, user_id: int) -> Path:
+    """Joins contiguous runs with black video and silence for each gap between them (leading gap included), so the exported timeline is as long as the editor's and every layer, subtitle
+    and A1 audio stays at its own absolute time."""
+    args, graph = build_gap_graph(parts)
+    args = [a.replace("{W}", str(cw)).replace("{H}", str(ch)) for a in args]
+    graph = graph
+    out = _out(user_id, "mp4")
+    await _run([FFMPEG_BIN, "-y", *args, "-filter_complex", graph, "-map", "[gvout]", "-map", "[gaout]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(out)])
+    return out
+
+
+async def render_project(project: dict, user_id: int) -> Path:
+    """The single entry point the router calls. `project` shape (all paths already resolved to
+    real files on disk by the router, via each item's assetId — this function never touches the
+    database):
+
+    {
+      "canvas_width": int, "canvas_height": int,
+      "video_clips": [{path, trim_in, start_time, end_time, speed, color_grade,
+                        brightness, contrast, saturation, transition, transition_duration,
+                        has_separated_audio}],   # ordered by start_time
+      "additional_video_clips": [{...ExportAdditionalVideoClip fields, path}],  # Phase 7
+      "text_overlays": [{...ExportTextOverlay fields, text}],                   # Phase 7 shape
+      "shapes": [{...ExportShape fields}],                                      # Phase 7
+      "lower_thirds": [{...ExportLowerThird fields}],                           # Phase 7
+      "media_overlays": [{path, is_image, start, end, x, y, width, height, opacity}],
+      "subtitles": [{...ExportSubtitle fields}],                                # Phase 7
+      "subtitle_style": {...ExportSubtitleStyle fields},                        # Phase 7
+      "audio_tracks": [{path, trim_in, start_time, end_time, volume}],
+    }
+
+    Phase 7 (Video Studio V2 — Export/FFmpeg Compositing Parity) compositing order, base to top:
+    V1 concat -> V2 inserts/B-roll -> media overlays (image/video) -> shapes -> lower thirds ->
+    text overlays -> subtitles -> A1 audio mix. Every new step is skipped entirely (identical
+    pre-Phase-7 behaviour) when its list is empty/absent, so a pre-Phase-7 request/draft renders
+    exactly as it always did. text_overlays' own shape changed this phase (start/end -> start_
+    time/end_time, plus the full Phase 3 style fields) — see video_export.py's router, the only
+    caller that builds this dict; the OLD drawtext-based add_text_overlays() above is untouched
+    and still used as-is by the separate, older /process/export endpoint.
+    """
+    clips = project["video_clips"]
+    if not clips:
+        raise RuntimeError("Add at least one video clip to the timeline before exporting.")
+
+    cw, ch = project["canvas_width"], project["canvas_height"]
+    policy = project.get("transition_edge_policy", "shorten")
+
+    # V1 clips -> contiguous runs. A gap between runs (or before the first clip) is black video and silence, exactly as the editor shows it; a project without a gap is one run and takes
+    # the unchanged path.
+    runs = timeline_plan.split_runs(clips)
+    lead = timeline_plan.to_frames(clips[0]["start_time"])
+    if len(runs) == 1 and lead < 1:
+        base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id)
+    else:
+        parts: list[tuple[str | None, int]] = []
+        run_intermediates: list[str] = []
+        pos = 0
+        for run in runs:
+            gap = timeline_plan.to_frames(run[0]["start_time"]) - pos
+            if gap >= 1:
+                parts.append((None, gap)); pos += gap
+            rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id)
+            parts.append((str(rb), frames)); pos += frames
+            run_intermediates += im + [str(rb)]
+        base = await concat_runs_with_gaps(parts, cw, ch, user_id)
+        base_frames = pos
+
+    current = base
+    intermediates = list(run_intermediates)
+    timeline_seconds = base_frames / timeline_plan.FPS       # the exact intended length: the overlay passes end here (not at -shortest, which, with copied audio, can cut the last video frames)
+    rendered_pngs: list[str] = []
+
+    if project.get("additional_video_clips"):
+        next_path = await composite_video_inserts(str(current), project["additional_video_clips"], user_id, duration=timeline_seconds)
+        intermediates.append(str(current))
+        current = next_path
+
+    # M2.2b: image/video overlays, shapes, lower thirds, text and subtitles are stacked by ONE shared `order`, exactly as the editor paints them (CreateEditTab's
+    # visualLayers: ascending order, ties broken by that fixed type sequence, then list position). Consecutive layers of the same kind are composited together, so a
+    # project that never reordered anything costs the same passes as before; a layer moved in front of / behind another kind now is in front / behind in the MP4 too.
+    for kind, items in _stack_runs(project):
+        if kind == "media":
+            # STEP 7.15H: composite_media_overlays (not add_media_overlays) -- the only difference is that this one also mixes in each overlay's own audio, muted/volume-aware.
+            next_path = await composite_media_overlays(str(current), items, user_id, duration=timeline_seconds)
+        else:
+            if kind == "shape":
+                pngs = await _build_shape_overlays(items, cw, ch, user_id)
+            elif kind == "lower_third":
+                pngs = await _build_lower_third_overlays(items, cw, ch, user_id)
+            elif kind == "text":
+                # Phase 7: text is a real Pillow image composited with `overlay` (this project's ffmpeg has no drawtext filter at all -- see canvas_render_svc.py).
+                pngs = await _build_text_overlay_pngs(items, cw, ch, user_id)
+            else:
+                pngs = await _build_subtitle_overlays(items, project.get("subtitle_style", {}), cw, ch, user_id)
+            next_path = await composite_image_overlays(str(current), pngs, user_id, duration=timeline_seconds)
+            rendered_pngs += [o["path"] for o in pngs]
+        intermediates.append(str(current))
+        current = next_path
+
+    _cleanup(rendered_pngs)
+
+    if project.get("audio_tracks"):
+        next_path = await mix_audio_tracks(str(current), project["audio_tracks"], user_id)
+        if next_path != current:
+            intermediates.append(str(current))
+            current = next_path
+
+    # Best-effort cleanup of intermediate render steps — never let a cleanup failure mask an
+    # otherwise-successful export.
+    for p in intermediates:
+        try:
+            Path(p).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    return current
+
+
+# ============================================================================
+# Video Deconstructor — Stage 3 (Reference Video Technical Analysis) ONLY.
+#
+# Deterministic container/stream fact extraction — no AI, no scene/shot segmentation, no
+# analysis of any content beyond what ffmpeg's own demuxer reports about the file's technical
+# shape. Reuses `_probe` (above) exactly as every other technical-fact function in this file
+# already does; adds nothing to the ffmpeg command surface itself, only new *parsing* of the
+# same kind of stderr text `_get_duration`/`_get_video_dimensions`/`_has_audio_stream` already
+# rely on. See the Stage 3 design-review report for the full rationale; this docstring covers
+# only the mechanics.
+# ============================================================================
+
+TECHNICAL_DETAILS_SCHEMA_VERSION = 1
+
+
+class TechnicalProbeError(RuntimeError):
+    """Raised when the input cannot be read as a video at all (corrupt/malformed/truncated) —
+    distinct from a normal RuntimeError so the router can map it to VideoAnalysis status
+    "failed" without mistaking it for a programming error."""
+
+
+def _empty_technical_details() -> dict:
+    """The full, stable key shape technical_details always has — every key always present, so
+    calling code never needs defensive `.get()` chains to know what *could* exist. A value stays
+    None precisely when this probe mechanism could not reliably determine it — see each field's
+    own comment in probe_technical_metadata below for why. This function alone defines the
+    schema; nothing else in this codebase should construct a technical_details dict by hand.
+    """
+    return {
+        "schema_version": TECHNICAL_DETAILS_SCHEMA_VERSION,
+        "probe": {
+            "mechanism": "ffmpeg_stderr_probe",  # names the deterministic method — never "ai"
+            "ffmpeg_build": None,
+        },
+        "container": {
+            "format_name": None,
+            # Not derivable from `ffmpeg -i` output without a hardcoded format_name -> long_name
+            # lookup table, which would itself be a fixed string ffmpeg never actually reported
+            # for this file — left None rather than guess.
+            "format_long_name": None,
+            "duration_seconds": None,
+            # Sourced from the already-known Asset.file_size, not re-measured by ffmpeg (ffmpeg
+            # -i never reports on-disk file size) — see probe_technical_metadata's docstring.
+            "size_bytes": None,
+            "bitrate_kbps": None,
+        },
+        "video": {
+            "codec_name": None,
+            "codec_long_name": None,  # same reasoning as format_long_name above
+            "profile": None,
+            "width": None,
+            "height": None,
+            # ffmpeg -i's plain text never distinguishes macroblock-aligned "coded" dimensions
+            # from display dimensions (that split needs ffprobe's own coded_width/coded_height
+            # fields) — always None here, never assumed equal to width/height.
+            "coded_width": None,
+            "coded_height": None,
+            "pixel_format": None,
+            # Populated ONLY when ffmpeg's own "[SAR a:b DAR c:d]" bracket is present in the
+            # stream line — i.e. only when the container itself carries this as real metadata.
+            # When the bracket is absent, DAR is implicitly 1:1-pixel width:height, but that is
+            # an ARITHMETIC fact about width/height, not something ffmpeg observed and reported
+            # — computing and storing it here would misrepresent a derived value as an observed
+            # one (see the Stage 3 design review, certainty/evidence section). Deriving a
+            # display aspect-ratio LABEL from width/height for UI purposes happens only in the
+            # API response / frontend, never here.
+            "sample_aspect_ratio": None,
+            "display_aspect_ratio": None,
+            "frame_rate": None,
+            # ffmpeg's plain-text output gives "fps" and "tbr" (a timing-derived guess), but not
+            # ffprobe's own distinct r_frame_rate vs avg_frame_rate split — for genuinely
+            # variable-frame-rate content these differ and we cannot tell them apart from this
+            # text alone. Always None: never copies frame_rate into this field to "fill" it.
+            "average_frame_rate": None,
+            "time_base": None,
+            # Never computed as duration x frame_rate — that is an ESTIMATE, wrong for VFR
+            # content, and `ffmpeg -i` never prints a real decoded frame count (that needs a
+            # full decode pass, e.g. ffprobe -count_frames, which this probe deliberately never
+            # runs — Stage 3 must stay a header-read, not a decode). Only ever None.
+            "frame_count": None,
+            "bitrate_kbps": None,
+            # Populated ONLY from an explicit `rotate` metadata tag or a `displaymatrix`
+            # side-data line if either is present in ffmpeg's own output. Absence of either is
+            # recorded as None ("no rotation metadata found") — never assumed to mean 0 degrees
+            # (a file can be physically rotated without any metadata tag saying so).
+            "rotation_degrees": None,
+            # Not independently reported per-stream by `ffmpeg -i` for muxed streams sharing one
+            # container timeline — left None rather than copying container.duration_seconds,
+            # which would misrepresent it as an independent per-stream measurement.
+            "duration_seconds": None,
+        },
+        "audio": {
+            "present": False,
+            "codec_name": None,
+            "codec_long_name": None,
+            "sample_rate_hz": None,
+            "channels": None,
+            "channel_layout": None,
+            "bitrate_kbps": None,
+            "duration_seconds": None,  # same reasoning as video.duration_seconds above
+        },
+        "streams": {
+            "count": 0,
+            "video_count": 0,
+            "audio_count": 0,
+        },
+    }
+
+
+_CHANNEL_LAYOUT_COUNTS: dict[str, int] = {
+    "mono": 1, "stereo": 2, "2.1": 3, "3.0": 3, "quad": 4, "4.0": 4,
+    "5.0": 5, "5.1": 6, "6.1": 7, "7.1": 8,
+}
+
+
+def _parse_video_stream(line: str) -> dict:
+    """`line` is everything after "Video: " on a Stream line, e.g.
+    "h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 480x864, 1418 kb/s,
+    30 fps, 30 tbr, 90k tbn (default)". Every extraction below is independent and best-effort —
+    one field failing to match never blocks another."""
+    out: dict = {}
+
+    m = re.match(r"([a-zA-Z0-9_]+)", line)
+    if m:
+        out["codec_name"] = m.group(1)
+
+    # The profile paren (e.g. "(High)") is distinguished from the fourcc paren (e.g.
+    # "(avc1 / 0x31637661)") by the fourcc always containing a "/" — excluded from this class.
+    m = re.match(r"[a-zA-Z0-9_]+\s*\(([^()/]+)\)", line)
+    if m:
+        out["profile"] = m.group(1).strip()
+
+    m = re.search(r",\s*([a-z][a-z0-9_]*)\s*(?:\([^)]*\))?,\s*(\d{2,5})x(\d{2,5})", line)
+    if m:
+        out["pixel_format"] = m.group(1)
+        out["width"] = int(m.group(2))
+        out["height"] = int(m.group(3))
+
+    m = re.search(r"\[SAR (\d+:\d+) DAR (\d+:\d+)\]", line)
+    if m:
+        out["sample_aspect_ratio"] = m.group(1)
+        out["display_aspect_ratio"] = m.group(2)
+
+    m = re.search(r",\s*(\d+) kb/s,\s*[\d.]+ fps", line)
+    if m:
+        out["bitrate_kbps"] = int(m.group(1))
+
+    m = re.search(r"([\d.]+) fps", line)
+    if m:
+        out["frame_rate"] = float(m.group(1))
+
+    m = re.search(r"(\d+)(k)?\s*tbn", line)
+    if m:
+        denom = int(m.group(1)) * (1000 if m.group(2) else 1)
+        out["time_base"] = f"1/{denom}"
+
+    return out
+
+
+def _parse_audio_stream(line: str) -> dict:
+    """`line` is everything after "Audio: " on a Stream line, e.g.
+    "aac (LC) (mp4a / 0x6134706D), 44100 Hz, stereo, fltp, 127 kb/s (default)"."""
+    out: dict = {"present": True}
+
+    m = re.match(r"([a-zA-Z0-9_]+)", line)
+    if m:
+        out["codec_name"] = m.group(1)
+
+    m = re.search(r"(\d+) Hz", line)
+    if m:
+        out["sample_rate_hz"] = int(m.group(1))
+
+    m = re.search(r"Hz,\s*([a-zA-Z0-9._]+)\s*,", line)
+    if m:
+        layout = m.group(1)
+        out["channel_layout"] = layout
+        if layout in _CHANNEL_LAYOUT_COUNTS:
+            out["channels"] = _CHANNEL_LAYOUT_COUNTS[layout]
+    if "channels" not in out:
+        m = re.search(r"(\d+) channels?\b", line)
+        if m:
+            out["channels"] = int(m.group(1))
+
+    bitrates = re.findall(r"(\d+) kb/s", line)
+    if bitrates:
+        out["bitrate_kbps"] = int(bitrates[-1])
+
+    return out
+
+
+def _looks_like_probe_failure(text: str) -> bool:
+    """A normal, successful probe always contains an "Input #0" line (even though the process
+    still exits non-zero, because no output file was requested — see `_probe`'s own docstring).
+    Its absence, or an explicit "Invalid data found" / "Error opening input" message, is
+    ffmpeg's own signal that the file could not be read as a video at all — verified directly
+    against a genuinely corrupt file during this stage's own design/implementation work."""
+    if "Input #0" not in text:
+        return True
+    if "Invalid data found when processing input" in text:
+        return True
+    if "Error opening input" in text:
+        return True
+    return False
+
+
+async def probe_technical_metadata(path: str, file_size_bytes: int | None = None, timeout: float = 30.0) -> dict:
+    """The Stage 3 entry point. Runs the existing `_probe` (bare `ffmpeg -i`, no decode — a
+    header read, not a transcode, so this is fast regardless of file length) with a hard
+    timeout, then parses its stderr text into the stable shape `_empty_technical_details`
+    defines. Every field is either a value ffmpeg's own container/stream metadata directly
+    reported, or None ("not reliably determined by this probe mechanism") — never a guess, never
+    interpreted, never AI-derived. `file_size_bytes` (from the caller's own Asset.file_size) is
+    the one field placed here that ffmpeg itself never reports.
+
+    Raises TechnicalProbeError if the file cannot be read as a video at all (corrupt, truncated,
+    wrong format) or if the probe subprocess doesn't finish within `timeout` seconds (a
+    defensive guard `_probe`/`_run` don't otherwise have — added here rather than there so this
+    Stage-3-only guard cannot change behaviour for any of this module's existing, already-
+    approved callers).
+    """
+    try:
+        text_out = await asyncio.wait_for(_probe(path), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        raise TechnicalProbeError(f"ffmpeg probe did not complete within {timeout}s") from exc
+
+    if _looks_like_probe_failure(text_out):
+        raise TechnicalProbeError(f"Could not read {path!r} as a video: {text_out[-400:]}")
+
+    details = _empty_technical_details()
+
+    m = re.search(r"ffmpeg version (\S+)", text_out)
+    if m:
+        details["probe"]["ffmpeg_build"] = m.group(1)
+
+    m = re.search(r"Input #0,\s*(.+?),\s*from ['\"]", text_out)
+    if m:
+        details["container"]["format_name"] = m.group(1).strip()
+
+    m = re.search(r"Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?),\s*start:\s*[\d.]+,\s*bitrate:\s*(\d+) kb/s", text_out)
+    if m:
+        h, mi, s, br = m.groups()
+        details["container"]["duration_seconds"] = int(h) * 3600 + int(mi) * 60 + float(s)
+        details["container"]["bitrate_kbps"] = int(br)
+    else:
+        m = re.search(r"Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)", text_out)
+        if m:
+            h, mi, s = m.groups()
+            details["container"]["duration_seconds"] = int(h) * 3600 + int(mi) * 60 + float(s)
+
+    if file_size_bytes is not None:
+        details["container"]["size_bytes"] = file_size_bytes
+
+    video_lines = re.findall(r"Stream #\d+:\d+[^\n]*: Video: ([^\n]+)", text_out)
+    if video_lines:
+        details["video"].update(_parse_video_stream(video_lines[0]))
+
+    audio_lines = re.findall(r"Stream #\d+:\d+[^\n]*: Audio: ([^\n]+)", text_out)
+    if audio_lines:
+        details["audio"].update(_parse_audio_stream(audio_lines[0]))
+
+    m = re.search(r"\brotate\s*:\s*(-?\d+)", text_out)
+    if m:
+        details["video"]["rotation_degrees"] = float(m.group(1))
+    else:
+        m = re.search(r"rotation of (-?[\d.]+) degrees", text_out)
+        if m:
+            details["video"]["rotation_degrees"] = float(m.group(1))
+
+    details["streams"]["video_count"] = len(video_lines)
+    details["streams"]["audio_count"] = len(audio_lines)
+    details["streams"]["count"] = len(re.findall(r"Stream #\d+:\d+", text_out))
+
+    return details
+
+
+def summarize_technical_facts(details: dict) -> dict:
+    """Extracts the subset of `technical_details` that maps onto ReferenceVideo's own six
+    pre-existing scalar columns (duration/width/height/fps/codec/has_audio) — the single source
+    of truth is `details` itself, so these columns and technical_details can never disagree.
+    """
+    return {
+        "duration": details["container"]["duration_seconds"],
+        "width": details["video"]["width"],
+        "height": details["video"]["height"],
+        "fps": details["video"]["frame_rate"],
+        "codec": details["video"]["codec_name"],
+        "has_audio": details["audio"]["present"],
+    }
+
+
+# ============================================================================
+# Video Deconstructor — Stage 4 (Deterministic Shot/Cut Boundary Detection) ONLY.
+#
+# Detects hard visual cuts via ffmpeg's own built-in `scene` frame-difference score — no AI, no
+# new dependency, the same bundled `imageio_ffmpeg` binary Stage 3 already uses, now actually
+# decoding the stream (Stage 3's probe never did) rather than just reading headers. This ONLY
+# detects that a visual break occurred and roughly how strong it looked to a pixel-difference
+# metric — it never claims to know it is a semantically meaningful "scene" (see shot.py's own
+# module docstring for the MEASURED-vs-INFERRED distinction this is built on).
+#
+# SHOT_DETECTION_THRESHOLD was chosen from real, empirical evidence gathered during this stage's
+# own design review, not guessed:
+#   - Sameena's real 34s reference video: one unambiguous cut at t=30.100s, score=0.3843 — every
+#     other one of its 1020 frames scored under 0.01.
+#   - A textured synthetic fixture with cuts deliberately placed at exactly 2.0s/4.0s: detected
+#     at exactly those timestamps, scores 0.844/0.751, against a noise floor under 0.03.
+#   - A flat-solid-color synthetic fixture (red->green->blue) scored the red->green cut at
+#     exactly 0.0 — a genuine, documented weakness of simple pixel-difference scene detection on
+#     texture-less content; harmless for real camera footage (confirmed above) but the reason
+#     this project's own Stage-4 tests use textured fixtures, never flat colors.
+# 0.3 sits comfortably below every real detected cut in that evidence and roughly 10x above every
+# observed noise-floor score — configurable per call, never hardcoded silently.
+# ============================================================================
+
+SHOT_DETECTION_PASS_NAME = "scene_cut_detection_v1"
+SHOT_DETECTION_THRESHOLD = 0.3
+
+
+async def detect_shot_boundary_candidates(path: str, threshold: float = SHOT_DETECTION_THRESHOLD, timeout: float = 120.0) -> list[dict]:
+    """Runs `ffmpeg -i <path> -vf select='gte(scene,threshold)',metadata=print -f null -` — a
+    full decode (unlike Stage 3's header-only probe), so this can take real time on long/large
+    files; `timeout` (seconds) bounds it and raises TechnicalProbeError rather than hanging
+    forever on a malformed or pathological input.
+
+    Returns an ascending-by-timestamp list of {"timestamp": float, "score": float} — one entry
+    per frame whose scene-difference score met `threshold`, each a genuine candidate shot
+    boundary. Never includes frame 0 (ffmpeg always reports its own score as 0.0 — there is no
+    prior frame to differ against). Deterministic: the same file and threshold always produce
+    the exact same result, verified directly against real output during this stage's own design
+    review — never AI, never randomized.
+    """
+    cmd = [FFMPEG_BIN, "-i", path, "-vf", f"select='gte(scene,{threshold})',metadata=print", "-f", "null", "-"]
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    try:
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        raise TechnicalProbeError(f"Shot-boundary detection did not complete within {timeout}s") from exc
+
+    text_out = stderr.decode(errors="replace")
+    if _looks_like_probe_failure(text_out):
+        raise TechnicalProbeError(f"Could not read {path!r} as a video for shot-boundary detection: {text_out[-400:]}")
+
+    boundaries: list[dict] = []
+    lines = text_out.splitlines()
+    for i, line in enumerate(lines):
+        m = re.search(r"pts_time:\s*([\d.]+)", line)
+        if not m or i + 1 >= len(lines):
+            continue
+        score_m = re.search(r"lavfi\.scene_score=([\d.]+)", lines[i + 1])
+        if score_m:
+            boundaries.append({"timestamp": float(m.group(1)), "score": float(score_m.group(1))})
+    boundaries.sort(key=lambda b: b["timestamp"])
+    return boundaries
+
+
+def build_shot_segments(boundaries: list[dict], total_duration: float) -> list[dict]:
+    """Turns a list of candidate cut timestamps into a gap-free, overlap-free, chronologically
+    ordered list of shot segments spanning exactly [0, total_duration] — items 9/10 of the
+    Stage 4 spec (correct first/last segment handling; zero unexplained gaps or overlaps; a
+    video with zero detected cuts correctly yields exactly one segment spanning the whole
+    duration, with no special-casing needed).
+
+    No minimum-duration merging is applied, deliberately: a genuinely rapid cut produces a
+    genuinely short segment, reported exactly as detected — silently merging short segments away
+    would be an interpretive judgment this deterministic pass does not make.
+
+    Returns: [{"order": int, "start_time": float, "end_time": float, "boundary_score": float | None}],
+    where boundary_score is the detector's score for the cut that STARTS this segment (None for
+    the first segment, which starts at the reference video's own beginning with no preceding cut
+    to score).
+    """
+    cut_times = sorted({b["timestamp"] for b in boundaries if 0.0 < b["timestamp"] < total_duration})
+    score_by_time = {b["timestamp"]: b["score"] for b in boundaries}
+    edges = [0.0, *cut_times, total_duration]
+
+    segments: list[dict] = []
+    for i in range(len(edges) - 1):
+        start, end = edges[i], edges[i + 1]
+        if end <= start:
+            continue  # a duplicate/degenerate timestamp collapsed to zero length — skip it
+        segments.append({
+            "order": len(segments),
+            "start_time": start,
+            "end_time": end,
+            "boundary_score": score_by_time.get(start) if i > 0 else None,
+        })
+    return segments
+
+
+# ─── Stage 5 — Visual Evidence / Representative Frames ──────────────────────────────────────
+#
+# Deterministic, local-only (ffmpeg + Pillow + numpy, all already installed — no new dependency)
+# extraction of a SMALL representative-frame set per Shot, per the approved Stage-5 design
+# review. Every value computed here is MEASURED — a direct, pixel-level fact about the extracted
+# image itself — never an interpretation of what the frame shows (no OCR, no object/person/
+# text/logo detection: that is explicitly out of scope, see the design review's own section 20).
+
+FRAME_EXTRACTION_PASS_NAME = "representative_frame_extraction_v1"
+
+# Frame-count strategy — see the approved design review's section E for the full trade-off
+# discussion (this fixed, time-based rule now; perceptual-change-within-shot sampling deferred
+# until a real long-form video actually needs it).
+FRAME_SHORT_SHOT_SECONDS = 1.0          # below this: a single midpoint frame only
+FRAME_LONG_SHOT_SECONDS = 6.0           # above this: extra evenly-spaced frames are added
+FRAME_EXTRA_INTERVAL_SECONDS = 5.0      # one more frame per additional interval beyond the above
+FRAME_MAX_PER_SHOT = 8                  # hard cap regardless of duration
+FRAME_EPSILON_FRACTION = 0.05           # start/end offset, as a fraction of shot duration
+FRAME_EPSILON_MAX_SECONDS = 0.15        # ...capped in absolute terms for very long shots
+
+# Near-duplicate suppression (dHash Hamming distance out of 64 bits) — a low-cost, well-known
+# perceptual-hash cutoff; frames closer than this are visually indistinguishable and never
+# stored, so a static/near-static shot doesn't produce redundant evidence files.
+FRAME_DUPLICATE_HAMMING_THRESHOLD = 4
+
+# Empirically justified (verified directly against this project's own real reference video, a
+# 34.146875s file): ffmpeg's own `-ss <t> -frames:v 1` single-frame mjpeg extraction can fail to
+# produce ANY output within roughly the last ~0.2s of a file's own probed duration (33.95s
+# succeeded, 33.99s failed against that exact file) — almost certainly too little decodable video
+# left after the seek point to complete even one frame. Clamping every candidate at least this far
+# before the file's own end avoids that failure mode entirely, at the cost of at most this many
+# seconds of temporal precision on a shot whose own end coincides with the file's last instant.
+END_OF_FILE_SAFETY_SECONDS = 0.25
+
+# A frame whose mean luminance (0-255 grayscale) is at or below this is flagged is_black_frame —
+# a signal that an extraction landed on a genuinely blank/transitional instant (a hard cut, a
+# fade), not a real evidence frame; still stored (dropping it silently would be its own kind of
+# interpretive judgment), just honestly flagged for whatever later stage consumes it.
+FRAME_BLACK_LUMINANCE_THRESHOLD = 10.0
+
+
+def plan_representative_frame_timestamps(start_time: float, end_time: float) -> list[dict]:
+    """Deterministic, duration-based representative-frame plan for ONE Shot.
+
+    Returns an ascending-by-timestamp list of
+    {"timestamp": float, "extraction_method": str} — always non-empty for any Shot with
+    end_time > start_time (a malformed/zero-length Shot yields an empty list; callers treat that
+    as nothing-to-extract, not an error, since it can only happen for already-invalid input).
+
+    Rule:
+      - duration < 1.0s  -> 1 frame: the midpoint ("shot_midpoint")
+      - 1.0s - 6.0s      -> 3 frames: start+epsilon, midpoint, end-epsilon
+      - > 6.0s           -> the same 3, plus one more frame per additional 5s beyond 6.0s, capped
+                            at FRAME_MAX_PER_SHOT total — each extra frame subdivides the CURRENT
+                            largest gap between already-planned points (start with [start, mid,
+                            end], repeatedly bisect the widest remaining interval); this is
+                            deliberately not "evenly spaced across the whole span" naively — that
+                            formula can land an extra point exactly ON an already-planned point
+                            (e.g. duration=12.0s's one extra frame at duration/2 exactly equals
+                            the midpoint already-planned above), producing a collided/duplicate
+                            timestamp. Bisecting the largest gap is collision-free by construction
+                            (a gap's midpoint is always strictly between two distinct existing
+                            points) and still yields even, deterministic coverage.
+
+    epsilon keeps the start/end samples just inside the shot's own boundary (never exactly on
+    the detected cut frame, where a hard cut can occasionally still show a sliver of the
+    previous/next shot) — min(0.15s, 5% of duration), always well inside the midpoint for any
+    duration this branch can be reached with (>= 1.0s).
+    """
+    duration = end_time - start_time
+    if duration <= 0:
+        return []
+
+    if duration < FRAME_SHORT_SHOT_SECONDS:
+        return [{"timestamp": start_time + duration / 2, "extraction_method": "shot_midpoint"}]
+
+    epsilon = min(FRAME_EPSILON_MAX_SECONDS, duration * FRAME_EPSILON_FRACTION)
+    points: list[tuple[str, float]] = [
+        ("shot_start", start_time + epsilon),
+        ("shot_midpoint", start_time + duration / 2),
+        ("shot_end", end_time - epsilon),
+    ]
+
+    if duration > FRAME_LONG_SHOT_SECONDS:
+        extra_count = min(
+            FRAME_MAX_PER_SHOT - len(points),
+            int((duration - FRAME_LONG_SHOT_SECONDS) // FRAME_EXTRA_INTERVAL_SECONDS),
+        )
+        timestamps = sorted(t for _, t in points)
+        for i in range(extra_count):
+            gaps = [(timestamps[j + 1] - timestamps[j], j) for j in range(len(timestamps) - 1)]
+            _, widest_j = max(gaps)
+            new_t = (timestamps[widest_j] + timestamps[widest_j + 1]) / 2
+            timestamps.insert(widest_j + 1, new_t)
+            points.append((f"shot_interval_{i + 1}", new_t))
+
+    points.sort(key=lambda p: p[1])
+    return [{"timestamp": t, "extraction_method": m} for m, t in points]
+
+
+def compute_frame_measurements(image_path: str) -> dict:
+    """Deterministic, local, pixel-only measurements for one extracted frame image — Pillow +
+    numpy only (both already installed; no OpenCV, no new dependency). Every value here is a
+    direct fact about the image's own pixels — nothing interprets or names what the frame shows.
+
+    Returns {"width", "height", "luminance_mean", "is_black_frame", "sharpness_score"}.
+
+    sharpness_score is a discrete-Laplacian (edge-energy) variance — a standard, well-known
+    blur/sharpness proxy: a sharp image has strong local intensity changes (high-variance
+    Laplacian response); a blurred one is smooth (low-variance). Computed directly with numpy
+    slicing (edge-padded, no wraparound artifacts) — no scipy/OpenCV dependency needed.
+    """
+    img = Image.open(image_path)
+    width, height = img.size
+    gray = np.asarray(img.convert("L"), dtype=np.float64)
+
+    luminance_mean = float(gray.mean())
+
+    padded = np.pad(gray, 1, mode="edge")
+    laplacian = (
+        -4 * padded[1:-1, 1:-1]
+        + padded[:-2, 1:-1] + padded[2:, 1:-1]
+        + padded[1:-1, :-2] + padded[1:-1, 2:]
+    )
+    sharpness_score = float(laplacian.var())
+
+    return {
+        "width": width,
+        "height": height,
+        "luminance_mean": round(luminance_mean, 2),
+        "is_black_frame": luminance_mean <= FRAME_BLACK_LUMINANCE_THRESHOLD,
+        "sharpness_score": round(sharpness_score, 2),
+    }
+
+
+_DHASH_SIZE = 8  # -> a 9x8 grayscale thumbnail -> a 64-bit hash
+
+
+def compute_dhash(image_path: str) -> int:
+    """Difference hash (dHash) — Pillow + numpy only, no new dependency (no `imagehash` package
+    installed or needed). Resizes to a tiny 9x8 grayscale thumbnail and encodes whether each
+    pixel is brighter than its right neighbour as one bit; visually near-identical frames produce
+    identical or near-identical hashes, robust to the small compression/timing noise between two
+    ffmpeg extractions of almost the same instant. Used ONLY to decide whether to skip storing a
+    near-duplicate candidate frame — never used to interpret content."""
+    img = Image.open(image_path).convert("L").resize((_DHASH_SIZE + 1, _DHASH_SIZE), Image.LANCZOS)
+    pixels = np.asarray(img, dtype=np.int16)
+    diff = pixels[:, 1:] > pixels[:, :-1]
+    bits = 0
+    for bit in diff.flatten():
+        bits = (bits << 1) | int(bit)
+    return bits
+
+
+def hamming_distance(a: int, b: int) -> int:
+    return bin(a ^ b).count("1")
+
+
+async def extract_representative_frames_for_shot(
+    video_path: str, shot_start: float, shot_end: float, user_id: int, total_duration: float | None = None,
+) -> list[dict]:
+    """Extracts one Shot's full representative-frame candidate set (see
+    plan_representative_frame_timestamps), skipping any candidate whose dHash is a near-duplicate
+    of the immediately-preceding ACCEPTED frame in this same shot — comparison is always against
+    the last frame actually KEPT, not the last candidate tried, so a run of several near-identical
+    candidates collapses to just the first one, not every-other-one.
+
+    `total_duration` (the ReferenceVideo's own probed container duration, from Stage 3) clamps
+    every candidate timestamp to stay at least END_OF_FILE_SAFETY_SECONDS before it — see that
+    constant's own docstring for why. Pass None only when no known total duration exists (never
+    true at this app's own real call site).
+
+    A skipped duplicate's temporary file is deleted immediately — it is never persisted, never
+    becomes an Asset row, and never appears in the returned list.
+
+    Returns only the accepted frames, in chronological order, each as
+    {"timestamp", "extraction_method", "order", "file_path", "measurements"} — `order` is
+    renumbered densely (0..N-1) over the accepted set only, so a skipped duplicate never leaves a
+    gap in the sequence a caller will persist.
+
+    If any candidate's extraction/measurement raises partway through this shot's own plan, every
+    file this call has written so far (accepted or already-skipped-as-duplicate) is unlinked
+    before the exception propagates — nothing from a call that never returns is left on disk with
+    no return value (and therefore no DB row) to ever reference it.
+    """
+    plan = plan_representative_frame_timestamps(shot_start, shot_end)
+    if total_duration is not None:
+        safe_limit = max(0.0, total_duration - END_OF_FILE_SAFETY_SECONDS)
+        for point in plan:
+            point["timestamp"] = min(point["timestamp"], safe_limit)
+
+    accepted: list[dict] = []
+    all_written: list[Path] = []
+    last_hash: int | None = None
+    try:
+        for point in plan:
+            out_path = await extract_thumbnail(video_path, user_id, timestamp=point["timestamp"])
+            all_written.append(out_path)
+            digest = compute_dhash(str(out_path))
+            if last_hash is not None and hamming_distance(digest, last_hash) <= FRAME_DUPLICATE_HAMMING_THRESHOLD:
+                out_path.unlink(missing_ok=True)
+                continue
+            measurements = compute_frame_measurements(str(out_path))
+            accepted.append({
+                "timestamp": point["timestamp"],
+                "extraction_method": point["extraction_method"],
+                "order": len(accepted),
+                "file_path": str(out_path),
+                "measurements": measurements,
+            })
+            last_hash = digest
+        return accepted
+    except Exception:
+        for p in all_written:
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+
+# ─── Stage 6 — OCR / On-Screen Text / Captions ──────────────────────────────────────────────
+#
+# Supplementary-frame sampling for text detection. The originally-approved design proposed
+# reusing Stage 4's own ffmpeg scene-difference detector (detect_shot_boundary_candidates) at a
+# lower threshold to find sub-shot local changes — empirically tested against this project's own
+# real reference video during implementation and found NOT to work: even at threshold=0.01 (as
+# low as meaningful), only the genuine 30.1s shot cut registered, zero additional candidates
+# within either real Shot. ffmpeg's `scene` metric is a GLOBAL, whole-frame dissimilarity score,
+# deliberately tuned to stay low during continuous motion and spike only at real discontinuities
+# — a caption occupying a small fraction of a frame is exactly the kind of localized change it's
+# designed to ignore. Replaced (with explicit approval) by a bounded fixed-interval sample
+# combined with Stage 5's own proven dHash change-filter (compute_dhash/hamming_distance above) —
+# local, deterministic, zero new dependency, reuses already-tested code instead of introducing a
+# second ffmpeg-threshold "magic number."
+
+TEXT_SUPPLEMENTARY_SAMPLE_INTERVAL_SECONDS = 1.5  # a sampling-RATE choice, not a detector
+# threshold — doesn't need the same kind of distribution analysis as SHOT_DETECTION_THRESHOLD;
+# bounded by the cap below regardless. Text on screen for less than this interval can still be
+# missed — an inherent trade-off of any finite sampling rate, not something to silently paper
+# over.
+TEXT_SUPPLEMENTARY_MAX_SAMPLES_PER_SHOT = 12  # bounds worst-case OCR cost on a long shot, same
+# capping philosophy as FRAME_MAX_PER_SHOT above.
+
+
+def plan_supplementary_text_sample_timestamps(shot_start: float, shot_end: float) -> list[float]:
+    """Fixed-interval candidate timestamps within one Shot for Stage 6's supplementary sampling —
+    see this module's own comment above for why a fixed interval (not a change detector) is used
+    here. Evenly spaced across the shot's own span, capped at
+    TEXT_SUPPLEMENTARY_MAX_SAMPLES_PER_SHOT regardless of duration. Deliberately does not try to
+    avoid Stage 5's own representative-frame timestamps — the caller merges both sets
+    chronologically and lets the shared dHash change-filter (see ocr_svc.select_frames_to_ocr)
+    decide what's actually worth OCR-ing, so a coincidental near-duplicate here is naturally
+    skipped there rather than needing special-cased exclusion logic.
+    """
+    duration = shot_end - shot_start
+    if duration <= 0:
+        return []
+    n = min(
+        TEXT_SUPPLEMENTARY_MAX_SAMPLES_PER_SHOT,
+        max(1, int(duration // TEXT_SUPPLEMENTARY_SAMPLE_INTERVAL_SECONDS)),
+    )
+    step = duration / (n + 1)
+    return [shot_start + step * i for i in range(1, n + 1)]
+
+
+# Text-region-crop foreground/background color sampling — same Pillow+numpy toolkit as
+# compute_frame_measurements above, zero new dependency. Deliberately a crude, honestly-labeled
+# heuristic (percentile luminance split), never a real text/background segmentation model — it
+# gives two representative colors from a region, nothing more, and never claims to know which one
+# is "the" text color vs "the" background if the heuristic's assumption (text and background
+# differ in luminance) doesn't hold for a given crop.
+TEXT_STYLE_MARGIN_FRACTION = 0.1  # small margin added around a bbox before cropping, so a tight
+# OCR box doesn't clip anti-aliased glyph edges out of the sample
+
+
+def compute_text_region_style(image_path: str, bbox_px: tuple[float, float, float, float]) -> dict:
+    """Deterministic, pixel-only style facts for one detected text region.
+
+    bbox_px: (x0, y0, x1, y1) in the SOURCE IMAGE's own pixel coordinates (not normalized) —
+    matches what ocr_svc.detect_text_in_frame returns before the caller normalizes it for storage.
+
+    Returns {"dominant_text_color_rgb": [r,g,b], "dominant_background_color_rgb": [r,g,b]} — the
+    darkest-25th-percentile and lightest-25th-percentile pixels' own mean RGB within the (margin-
+    padded) crop, a standard cheap heuristic for text-on-background regions. Which one is
+    genuinely the glyph color vs the background depends on the region actually being high-
+    contrast text (true for legible on-screen text; not guaranteed for a false-positive OCR
+    detection) — this function does not and cannot verify that, it only reports the two colors.
+    """
+    img = Image.open(image_path).convert("RGB")
+    width, height = img.size
+    x0, y0, x1, y1 = bbox_px
+    bw, bh = x1 - x0, y1 - y0
+    mx, my = bw * TEXT_STYLE_MARGIN_FRACTION, bh * TEXT_STYLE_MARGIN_FRACTION
+    crop_box = (
+        max(0, int(x0 - mx)), max(0, int(y0 - my)),
+        min(width, int(x1 + mx)), min(height, int(y1 + my)),
+    )
+    crop = img.crop(crop_box)
+    if crop.width == 0 or crop.height == 0:
+        return {"dominant_text_color_rgb": None, "dominant_background_color_rgb": None}
+
+    arr = np.asarray(crop, dtype=np.float64).reshape(-1, 3)
+    luminance = arr @ np.array([0.299, 0.587, 0.114])
+    order = np.argsort(luminance)
+    quartile = max(1, len(order) // 4)
+    darkest = arr[order[:quartile]].mean(axis=0)
+    lightest = arr[order[-quartile:]].mean(axis=0)
+    return {
+        "dominant_text_color_rgb": [round(v) for v in darkest.tolist()],
+        "dominant_background_color_rgb": [round(v) for v in lightest.tolist()],
+    }

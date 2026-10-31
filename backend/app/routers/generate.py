@@ -12,6 +12,7 @@ from app.models.brand import Brand
 from app.models.job import Job
 from app.models.user import User
 from app.services import generate_svc
+from app.services.ai import AIProviderError
 
 router = APIRouter()
 
@@ -76,6 +77,74 @@ async def chat(
         context=body.context,
     )
     return ChatResponse(**reply)
+
+
+# STEP: Video Studio V2 AI Tools — AI Prompt Generator. Same brand_id -> Brand lookup pattern as
+# /chat and /plan above (reused verbatim, not reinvented) — brand_context stays None whenever no
+# real Brand row exists for this user (there currently is none at all in this environment), which
+# generate_svc.generate_prompt already treats as "no brand context to include", never fabricated.
+class PromptGeneratorRequest(BaseModel):
+    instruction: str
+    brand_id: int | None = None
+    context: dict = {}
+
+
+class PromptGeneratorResponse(BaseModel):
+    prompt: str
+    # Task 7 (usage/cost metadata): populated from whichever provider actually served this
+    # request — never hard-coded to "anthropic", so the frontend can report accurate usage once
+    # a provider other than Anthropic is switched on. The frontend doesn't display any of these
+    # yet (no billing UI, per Task 7) but the data is captured now rather than discarded.
+    provider: str
+    model: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    estimated_cost_usd: float | None = None
+
+
+@router.post("/prompt", response_model=PromptGeneratorResponse)
+@limiter.limit("20/minute")
+async def generate_prompt(
+    request: Request,
+    body: PromptGeneratorRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    brand_context = None
+    if body.brand_id:
+        br = await db.execute(select(Brand).where(Brand.id == body.brand_id, Brand.user_id == user.id))
+        brand = br.scalar_one_or_none()
+        if brand:
+            brand_context = {
+                "name": brand.name,
+                "colors": brand.colors,
+                "fonts": brand.fonts,
+                "tone_of_voice": brand.tone_of_voice,
+            }
+
+    # Provider-neutral refactor: generate_svc.generate_prompt now routes through
+    # app.services.ai (task "prompt_generation") instead of calling Anthropic directly — this
+    # endpoint no longer knows or cares which provider actually served the request. Whether the
+    # failure is "no provider configured" or "the configured provider's call failed", the
+    # provider adapter raises the same AIProviderError with an already-clear, truthful message
+    # (Task 4/5) — never a faked result.
+    try:
+        result = await generate_svc.generate_prompt(
+            instruction=body.instruction,
+            brand_context=brand_context,
+            project_context=body.context,
+        )
+    except AIProviderError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+    return PromptGeneratorResponse(
+        prompt=result.text,
+        provider=result.provider,
+        model=result.model,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        estimated_cost_usd=result.estimated_cost_usd,
+    )
 
 
 @router.post("/", response_model=GenerateResponse)

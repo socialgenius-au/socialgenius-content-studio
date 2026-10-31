@@ -1,6 +1,9 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import {
+  Film, Image as ImageIcon, Music2, Upload, Filter, Share2, LayoutGrid, List,
+} from 'lucide-react'
 import { useStudio } from '../../contexts/StudioContext'
-import { templatesApi, jobsApi } from '../../api/client'
+import { templatesApi, jobsApi, assetsApi } from '../../api/client'
 import type { Template, Job, Asset } from '../../types'
 import VideoControls from './VideoControls'
 import ImageControls from './ImageControls'
@@ -8,16 +11,16 @@ import TextOverlayEditor from './TextOverlayEditor'
 import AudioTrackControls from './AudioTrackControls'
 import MediaOverlayEditor from './MediaOverlayEditor'
 import EffectsPanel from './EffectsPanel'
+import { MEDIA_ASSET_DRAG_TYPE, type MediaAssetDragPayload } from './dragTypes'
 import LowerThirdBuilder from './LowerThirdBuilder'
 import IntroOutroBuilder from './IntroOutroBuilder'
-import PlatformSwitcher from './PlatformSwitcher'
 import SEOPanel from './SEOPanel'
 import PublishPanel from './PublishPanel'
 
 const TITLES: Record<string, string> = {
-  history: 'History', templates: 'Templates',
-  video: 'Video', image: 'Image', text: 'Text Overlays', audio: 'Audio Tracks',
-  media: 'Media Overlay', effects: 'Effects', lower: 'Lower Thirds', intro: 'Intro / Outro', platform: 'Platform',
+  history: 'History', templates: 'Brand Kit',
+  video: 'Media', image: 'Image', text: 'Text Overlays', audio: 'Audio Tracks',
+  media: 'Overlays', effects: 'Transitions', lower: 'Elements', intro: 'Intro / Outro', platform: 'Platform',
   seo: 'SEO', publish: 'Publish',
 }
 
@@ -28,32 +31,225 @@ const STATUS_COLOR: Record<string, string> = {
 export default function ToolPanel() {
   const { activeRailTool, setActiveRailTool } = useStudio()
 
-  if (!activeRailTool) return null
+  return (
+    <aside className="sgv-left-panel sgv-collapsible" data-collapsed={!activeRailTool} style={s.panel}>
+      {activeRailTool && (
+        <>
+          <div style={s.header}>
+            <span style={s.title}>{TITLES[activeRailTool]}</span>
+          </div>
+          <div style={s.content}>
+            {activeRailTool === 'history' && <HistoryContent />}
+            {activeRailTool === 'templates' && <BrandKitPanel />}
+            {activeRailTool === 'video' && <MediaLibrary />}
+            {activeRailTool === 'image' && <ImageControls />}
+            {activeRailTool === 'text' && <TextOverlayEditor />}
+            {activeRailTool === 'audio' && <AudioTrackControls />}
+            {activeRailTool === 'media' && <MediaOverlayEditor />}
+            {activeRailTool === 'effects' && <EffectsPanel />}
+            {activeRailTool === 'lower' && <ElementsPanel />}
+            {activeRailTool === 'seo' && <SEOPanel />}
+            {activeRailTool === 'publish' && <PublishPanel />}
+          </div>
+        </>
+      )}
+    </aside>
+  )
+}
+
+const MEDIA_TABS = ['All', 'Video', 'Image', 'Audio'] as const
+
+// Dev-only demo library (spec section 17) — purely presentational placeholder tiles so the
+// panel reads correctly for visual approval. Never shown in production builds; the real
+// clip list (VideoControls, unchanged) always renders underneath. Gradients stand in for real
+// thumbnails since no actual frame/photo assets exist yet.
+type MediaTileItem = {
+  name: string; kind: 'Video' | 'Image' | 'Audio'; duration?: string; gradient?: string
+  // Present only for real uploaded assets — used to make the tile draggable onto the timeline.
+  asset?: Asset
+}
+
+const DEMO_MEDIA: MediaTileItem[] = [
+  { name: 'Beach Drone.mp4', kind: 'Video', duration: '0:12', gradient: 'linear-gradient(135deg, #1e4a5f, #d4a56a)' },
+  { name: 'Surfing.mp4', kind: 'Video', duration: '0:09', gradient: 'linear-gradient(135deg, #cf6b3f, #f4c34a)' },
+  { name: 'Palm Trees.mp4', kind: 'Video', duration: '0:07', gradient: 'linear-gradient(135deg, #0f5c7a, #2a9d6f)' },
+  { name: 'Happy Girl.mp4', kind: 'Video', duration: '0:05', gradient: 'linear-gradient(135deg, #b5495b, #e8935c)' },
+  { name: 'Road Trip.mp4', kind: 'Video', duration: '0:14', gradient: 'linear-gradient(135deg, #2f5233, #86a05e)' },
+  { name: 'Ocean View.mp4', kind: 'Video', duration: '0:10', gradient: 'linear-gradient(135deg, #145a7a, #5fb5c9)' },
+]
+
+// Maps the backend Asset's file_type to the same 'Video'/'Image'/'Audio' kind the demo
+// tiles use, so uploaded assets render through the same grid. Anything else (thumbnails,
+// documents) isn't shown in this library.
+function assetKind(fileType: string): 'Video' | 'Image' | 'Audio' | null {
+  if (fileType === 'video') return 'Video'
+  if (fileType === 'image') return 'Image'
+  if (fileType === 'audio') return 'Audio'
+  return null
+}
+
+function MediaLibrary() {
+  const { uploadAsset, mediaAssets, addMediaAsset } = useStudio()
+  const [tab, setTab] = useState<typeof MEDIA_TABS[number]>('All')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const uploaded: MediaTileItem[] = mediaAssets
+    .map((a): MediaTileItem | null => {
+      const kind = assetKind(a.file_type)
+      return kind ? { name: a.original_filename, kind, asset: a } : null
+    })
+    .filter((m): m is MediaTileItem => m !== null)
+
+  const items = [
+    ...(import.meta.env.DEV ? DEMO_MEDIA : []),
+    ...uploaded,
+  ].filter(m => tab === 'All' || m.kind === tab)
+
+  const handleFilesSelected = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return
+    for (const file of Array.from(fileList)) {
+      try {
+        const asset = await uploadAsset(file)
+        addMediaAsset(asset)
+      } catch {
+        // uploadAsset already reports the failure via a chat system message
+      }
+    }
+  }
 
   return (
-    <aside style={s.panel}>
-      <div style={s.header}>
-        <span style={s.title}>{TITLES[activeRailTool]}</span>
-        <button style={s.closeBtn} onClick={() => setActiveRailTool(null)} title="Collapse panel" aria-label="Collapse panel">
-          ‹
-        </button>
+    <div>
+      <div style={s.mediaHeaderRow}>
+        <div style={s.mediaTabs}>
+          {MEDIA_TABS.map(t => (
+            <button
+              key={t}
+              className="sgv-tab"
+              data-active={tab === t}
+              onClick={() => setTab(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <div style={s.mediaHeaderIcons}>
+          <button className="sgv-btn sgv-btn--icon" style={s.smallIconBtn} title="Filter — coming soon">
+            <Filter size={15} />
+          </button>
+          <button className="sgv-btn sgv-btn--icon" style={s.smallIconBtn} title="Share — coming soon">
+            <Share2 size={15} />
+          </button>
+        </div>
       </div>
-      <div style={s.content}>
-        {activeRailTool === 'history' && <HistoryContent />}
-        {activeRailTool === 'templates' && <TemplatesContent />}
-        {activeRailTool === 'video' && <VideoControls />}
-        {activeRailTool === 'image' && <ImageControls />}
-        {activeRailTool === 'text' && <TextOverlayEditor />}
-        {activeRailTool === 'audio' && <AudioTrackControls />}
-        {activeRailTool === 'media' && <MediaOverlayEditor />}
-        {activeRailTool === 'effects' && <EffectsPanel />}
-        {activeRailTool === 'lower' && <LowerThirdBuilder />}
-        {activeRailTool === 'intro' && <IntroOutroBuilder />}
-        {activeRailTool === 'platform' && <PlatformSwitcher />}
-        {activeRailTool === 'seo' && <SEOPanel />}
-        {activeRailTool === 'publish' && <PublishPanel />}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*,image/*,audio/*"
+        multiple
+        style={s.hiddenFileInput}
+        onChange={e => { void handleFilesSelected(e.target.files); e.target.value = '' }}
+      />
+      <button className="sgv-btn" style={s.uploadBtn} onClick={() => fileInputRef.current?.click()}>
+        <Upload size={14} /> Upload Files
+      </button>
+
+      {items.length === 0 ? (
+        <p style={s.empty}>No media yet. Upload files to build your library.</p>
+      ) : (
+        <div style={s.mediaGrid}>
+          {items.map((m, i) => {
+            // Only real uploaded videos are draggable onto the timeline for now — demo
+            // tiles are presentational placeholders with no asset/url behind them.
+            const draggableVideo = m.kind === 'Video' && m.asset
+            return (
+            <div
+              key={`${m.name}-${i}`}
+              style={{ ...s.mediaCard, ...(draggableVideo ? s.mediaCardDraggable : null) }}
+              title={draggableVideo ? `${m.name} — drag onto V1 to add to timeline` : m.name}
+              draggable={!!draggableVideo}
+              onDragStart={draggableVideo ? (e) => {
+                const asset = m.asset!
+                const payload: MediaAssetDragPayload = {
+                  assetId: asset.id,
+                  url: assetsApi.previewUrl(asset.file_path),
+                  name: asset.original_filename,
+                  mimeType: asset.mime_type,
+                  // This legacy /studio drag source only ever sets draggableVideo for
+                  // m.kind === 'Video' (see above) — 'video' is the only kind that can ever
+                  // reach here. Added purely to satisfy MediaAssetDragPayload's shared shape
+                  // (now also used by Video Studio V2's own audio/image drag sources); no
+                  // behavioural change to this legacy panel.
+                  kind: 'video',
+                }
+                e.dataTransfer.setData(MEDIA_ASSET_DRAG_TYPE, JSON.stringify(payload))
+                e.dataTransfer.effectAllowed = 'copy'
+              } : undefined}
+            >
+              <div style={{ ...s.mediaThumb, background: m.gradient ?? 'var(--sg-bg-4)' }}>
+                {m.kind === 'Video' && <Film size={18} color="rgba(255,255,255,0.85)" />}
+                {m.kind === 'Image' && <ImageIcon size={18} color="rgba(255,255,255,0.85)" />}
+                {m.kind === 'Audio' && <Music2 size={18} color="rgba(255,255,255,0.85)" />}
+                {m.duration && <span style={s.durationBadge}>{m.duration}</span>}
+              </div>
+              <span style={s.mediaName}>{m.name}</span>
+            </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div style={s.mediaFooter}>
+        <span style={s.mediaCount}>{items.length} items</span>
+        <div style={s.mediaHeaderIcons}>
+          <button className="sgv-btn sgv-btn--icon" style={{ ...s.smallIconBtn, ...s.viewToggleActive }} title="Grid view">
+            <LayoutGrid size={14} />
+          </button>
+          <button className="sgv-btn sgv-btn--icon" style={s.smallIconBtn} disabled title="List view — coming soon">
+            <List size={14} />
+          </button>
+        </div>
       </div>
-    </aside>
+
+      <div style={s.mediaDivider} />
+      <div style={s.subheading}>Current Timeline Clips</div>
+      <VideoControls />
+    </div>
+  )
+}
+
+// "Elements" (spec section 2/13) folds the pre-existing Lower Thirds and Intro/Outro tools —
+// both untouched — into one left-library entry with a sub-tab switch.
+function ElementsPanel() {
+  const [tab, setTab] = useState<'lower' | 'intro'>('lower')
+  return (
+    <div>
+      <div style={s.mediaTabs}>
+        <button className="sgv-tab" data-active={tab === 'lower'} onClick={() => setTab('lower')}>Lower Thirds</button>
+        <button className="sgv-tab" data-active={tab === 'intro'} onClick={() => setTab('intro')}>Intro &amp; Outro</button>
+      </div>
+      <div style={{ marginTop: 14 }}>
+        {tab === 'lower' ? <LowerThirdBuilder /> : <IntroOutroBuilder />}
+      </div>
+    </div>
+  )
+}
+
+// "Brand Kit" folds the pre-existing Templates browser (untouched) together with a compact
+// active-brand summary.
+function BrandKitPanel() {
+  const { activeBrand } = useStudio()
+  return (
+    <div>
+      {activeBrand && (
+        <div style={s.brandSummary}>
+          <span style={s.brandSummaryName}>{activeBrand.name}</span>
+          {activeBrand.tone_of_voice && <span style={s.brandSummaryDesc}>{activeBrand.tone_of_voice}</span>}
+        </div>
+      )}
+      <div style={s.subheading}>Templates</div>
+      <TemplatesContent />
+    </div>
   )
 }
 
@@ -185,19 +381,55 @@ function HistoryContent() {
 
 const s: Record<string, CSSProperties> = {
   panel: {
-    width: 300, minWidth: 300, background: 'var(--panel-bg)', borderRight: '1px solid var(--border)',
+    background: 'var(--panel-bg)', borderRight: '1px solid var(--border)',
     display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0,
   },
   header: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: 'var(--space-3) var(--space-4)', borderBottom: '1px solid var(--border)', flexShrink: 0,
+    padding: '14px 18px', borderBottom: '1px solid var(--border)', flexShrink: 0, height: 44,
   },
-  title: { fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' },
-  closeBtn: {
-    background: 'none', border: 'none', fontSize: 16, cursor: 'pointer',
-    color: 'var(--text-tertiary)', padding: 'var(--space-1) var(--space-2)', borderRadius: 4,
+  title: { fontSize: 14, lineHeight: '20px', fontWeight: 600, color: 'var(--text-primary)' },
+  content: { flex: 1, overflowY: 'auto', padding: 18 },
+
+  mediaHeaderRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  mediaTabs: { display: 'flex', gap: 16, marginBottom: 4, borderBottom: '1px solid var(--border)', flex: 1 },
+  mediaHeaderIcons: { display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 },
+  smallIconBtn: { width: 28, height: 28 },
+  hiddenFileInput: { display: 'none' },
+  viewToggleActive: { background: 'var(--sg-bg-4)', color: 'var(--sg-text-primary)' },
+  uploadBtn: {
+    width: '100%', height: 42, marginTop: 12, background: 'var(--sg-green-dark)',
+    border: '1px solid #247A46', borderRadius: 8, color: 'var(--text-primary)',
   },
-  content: { flex: 1, overflowY: 'auto', padding: 'var(--space-4)' },
+  mediaFooter: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--border)',
+  },
+  mediaCount: { fontSize: 11, color: 'var(--sg-text-muted)' },
+
+  brandSummary: {
+    display: 'flex', flexDirection: 'column', gap: 4, padding: 14,
+    background: 'var(--panel-surface)', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 18,
+  },
+  brandSummaryName: { fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' },
+  brandSummaryDesc: { fontSize: 11, color: 'var(--text-tertiary)' },
+  mediaGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 },
+  mediaCard: { display: 'flex', flexDirection: 'column', gap: 4, cursor: 'pointer' },
+  // Extra affordance + text-selection guard for tiles that are actually draggable onto the
+  // timeline (uploaded videos only) — demo tiles are untouched.
+  mediaCardDraggable: { cursor: 'grab', userSelect: 'none', WebkitUserSelect: 'none' },
+  mediaThumb: {
+    position: 'relative', aspectRatio: '16 / 9', borderRadius: 7, overflow: 'hidden',
+    border: '1px solid transparent', background: 'var(--sg-bg-4)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  durationBadge: {
+    position: 'absolute', left: 5, bottom: 5, background: 'rgba(0,0,0,0.72)', color: '#fff',
+    fontSize: 10, padding: '2px 5px', borderRadius: 4,
+  },
+  mediaName: { fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  mediaDivider: { height: 1, background: 'var(--border)', margin: '20px 0 14px' },
+  subheading: { fontSize: 12, lineHeight: '16px', fontWeight: 700, color: 'var(--sg-text-muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 12 },
 
   catSelect: {
     width: '100%', padding: 'var(--space-2) var(--space-3)', border: '1px solid var(--border)',

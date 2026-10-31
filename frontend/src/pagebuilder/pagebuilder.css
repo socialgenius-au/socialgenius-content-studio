@@ -1,0 +1,314 @@
+/* Page Builder — EDIT MODE chrome only. Nothing in this file affects VIEW MODE rendering; every
+   selector here is scoped under .pb-shell / .pb-editable / .pb-chrome, none of which exist in the
+   DOM when mode === 'view' (see PageCanvas.tsx). */
+
+.pb-shell {
+  --pb-accent: #1E3D2A;
+  --pb-accent-2: #C89A2E;
+  --pb-bg: #f4f2ec;
+  --pb-panel-bg: #ffffff;
+  --pb-hairline: rgba(23, 25, 18, 0.12);
+  --pb-muted: #6b6f63;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--pb-bg);
+  min-height: 100vh;
+}
+
+/* ---------------------------------------------------------------- toolbar ---- */
+.pb-toolbar {
+  height: 52px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px;
+  background: var(--pb-accent);
+  color: #fff;
+  position: sticky; top: 0; z-index: 500;
+}
+.pb-toolbar-left { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.pb-toolbar-page-name { opacity: 0.75; }
+.pb-toolbar-center { display: flex; gap: 6px; }
+.pb-toolbar-right { display: flex; gap: 8px; }
+
+.pb-toggle {
+  border: 1px solid rgba(255,255,255,0.35);
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pb-toggle.active { background: rgba(255,255,255,0.18); }
+.pb-toggle.pb-danger { border-color: #E74C3C; color: #ffd9d3; }
+
+/* ---------------------------------------------------------------- body ---- */
+.pb-body { display: grid; grid-template-columns: 220px 1fr 280px; min-height: calc(100vh - 52px); }
+
+.pb-canvas-wrap { overflow: auto; padding: 24px; display: flex; justify-content: center; background: #e7e4da; }
+/* flex-shrink: 0 (bug fix, responsive-architecture audit): .pb-page is a direct child of this
+   flex container, so without this its declared preview width was only a SUGGESTION the flex
+   algorithm could — and on a narrow editor window, silently did — shrink to fit the available
+   panel space. The whole point of the Tablet/Mobile preview is to show an HONEST simulated width
+   for the container queries below to measure against; a shrunk preview both looks wrong and
+   (harmlessly, but confusingly) reports a narrower effective breakpoint than the one requested.
+   overflow: auto above already lets the wrap scroll horizontally if the real panel is narrower
+   than the simulated canvas — exactly the right tradeoff for a design-tool preview. */
+.pb-canvas-wrap.pb-bp-desktop .pb-page { width: 100%; max-width: 1280px; flex-shrink: 0; }
+.pb-canvas-wrap.pb-bp-tablet .pb-page { width: 768px; flex-shrink: 0; box-shadow: 0 0 0 1px var(--pb-hairline), 0 20px 50px -20px rgba(0,0,0,0.35); }
+.pb-canvas-wrap.pb-bp-mobile .pb-page { width: 375px; flex-shrink: 0; box-shadow: 0 0 0 1px var(--pb-hairline), 0 20px 50px -20px rgba(0,0,0,0.35); }
+.pb-page { background: var(--pl-cream, #F5F0E8); position: relative; }
+
+/* --------------------------------------------------------------- layers ---- */
+.pb-layers { background: var(--pb-panel-bg); border-right: 1px solid var(--pb-hairline); overflow-y: auto; }
+.pb-layer-section { border-bottom: 1px solid var(--pb-hairline); padding-bottom: 6px; }
+.pb-layer-section-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pb-muted); padding: 12px 12px 4px; }
+.pb-layer-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; font-size: 12.5px; cursor: pointer; color: #2a2c24; }
+.pb-layer-row:hover { background: rgba(0,0,0,0.04); }
+.pb-layer-row.active { background: rgba(30,61,42,0.1); font-weight: 700; }
+.pb-layer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pb-layer-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+.pb-layer-actions button { border: none; background: none; cursor: pointer; font-size: 12px; opacity: 0.7; }
+.pb-layer-actions button:hover { opacity: 1; }
+
+/* -------------------------------------------------------------- panel ---- */
+.pb-panel { background: var(--pb-panel-bg); border-left: 1px solid var(--pb-hairline); overflow-y: auto; padding: 4px 14px 24px; }
+.pb-panel-empty { padding: 24px 4px; font-size: 13px; color: var(--pb-muted); }
+.pb-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 0 4px; font-weight: 700; font-size: 13.5px; color: #171912; }
+.pb-panel-sub { font-size: 11.5px; color: var(--pb-muted); margin-bottom: 14px; text-transform: capitalize; }
+.pb-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--pb-hairline); }
+.pb-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pb-muted); margin-bottom: 8px; }
+
+.pb-field-row { display: flex; gap: 10px; margin-bottom: 10px; }
+.pb-field-row label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 600; color: var(--pb-muted); flex: 1; }
+.pb-field-row input, .pb-field-row select {
+  border: 1px solid var(--pb-hairline); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; font-family: inherit; color: #171912;
+}
+.pb-field-row input[type="color"] { padding: 2px; height: 30px; }
+.pb-label-inline { font-size: 11px; font-weight: 700; color: var(--pb-muted); align-self: center; margin-right: 4px; }
+.pb-toggle-row .pb-toggle { flex: 1; background: #f2f0ea; color: #2a2c24; border-color: var(--pb-hairline); }
+.pb-toggle-row .pb-toggle.active { background: rgba(30,61,42,0.12); border-color: var(--pb-accent); color: var(--pb-accent); }
+.pb-panel-actions { margin-top: 18px; }
+.pb-icon-btn { border: 1px solid var(--pb-hairline); background: #fff; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 12px; }
+
+/* --------------------------------------------------------- editable chrome ---- */
+.pb-editable { position: relative; cursor: move; }
+.pb-editable.pb-locked { cursor: not-allowed; }
+.pb-editable.pb-dragging { opacity: 0.85; }
+.pb-editable:hover:not(.pb-selected)::after {
+  content: ""; position: absolute; inset: -2px; border: 1.5px dashed rgba(30,61,42,0.4); border-radius: 4px; pointer-events: none;
+}
+
+.pb-chrome { position: absolute; inset: -2px; pointer-events: none; }
+.pb-selected > .pb-chrome::before {
+  content: ""; position: absolute; inset: 0; border: 2px solid var(--pb-accent-2, #C89A2E); border-radius: 4px;
+}
+.pb-name-tag {
+  position: absolute; top: -22px; left: 0; background: var(--pb-accent-2, #C89A2E); color: #1E3D2A;
+  font-size: 10.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; white-space: nowrap; pointer-events: none;
+}
+.pb-handle {
+  position: absolute; width: 10px; height: 10px; background: #fff; border: 2px solid var(--pb-accent-2, #C89A2E);
+  border-radius: 2px; pointer-events: auto;
+}
+.pb-handle-n  { top: -6px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+.pb-handle-s  { bottom: -6px; left: 50%; margin-left: -5px; cursor: ns-resize; }
+.pb-handle-e  { right: -6px; top: 50%; margin-top: -5px; cursor: ew-resize; }
+.pb-handle-w  { left: -6px; top: 50%; margin-top: -5px; cursor: ew-resize; }
+.pb-handle-ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.pb-handle-nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.pb-handle-se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.pb-handle-sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.pb-unlock-btn {
+  position: absolute; bottom: -30px; left: 0; pointer-events: auto; font-size: 11px; font-weight: 700;
+  padding: 3px 8px; border-radius: 6px; border: 1px solid var(--pb-accent-2, #C89A2E); background: #fff; color: var(--pb-accent); cursor: pointer;
+}
+.pb-delete-btn {
+  position: absolute; bottom: -30px; right: 0; pointer-events: auto; font-size: 11px; font-weight: 700;
+  padding: 3px 8px; border-radius: 6px; border: 1px solid #E74C3C; background: #fff; color: #c0392b; cursor: pointer;
+}
+.pb-delete-btn:hover { background: #fdecea; }
+
+.pb-image-replace-btn {
+  position: absolute; bottom: 8px; right: 8px; font-size: 11px; font-weight: 700; padding: 5px 10px;
+  border-radius: 6px; border: none; background: rgba(30,61,42,0.85); color: #fff; cursor: pointer; z-index: 5;
+}
+
+/* --------------------------------------------------- section background layer chrome ---- */
+.pb-bg-layer img { width: 100%; height: 100%; display: block; }
+.pb-role-top-nav, .pb-role-footer, header.pb-role-content, section.pb-role-content { isolation: isolate; }
+
+.pb-section-bg-btn {
+  position: absolute; top: 6px; left: 6px; z-index: 50;
+  font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 6px;
+  border: 1px dashed rgba(30,61,42,0.35); background: rgba(255,255,255,0.85); color: #1E3D2A;
+  cursor: pointer; opacity: 0; transition: opacity 0.12s ease;
+}
+:is(header, nav, section, footer):hover > .pb-section-bg-btn,
+.pb-section-selected > .pb-section-bg-btn { opacity: 1; }
+.pb-section-selected { outline: 2px solid var(--pb-accent-2, #C89A2E); outline-offset: -2px; }
+
+.pb-badge {
+  display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px;
+  background: rgba(30,61,42,0.08); color: var(--pb-accent, #1E3D2A); font-size: 12px; font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+  .pb-body { grid-template-columns: 180px 1fr 240px; }
+}
+
+/* --------------------------------------------------------- Visual Editor V1 additions ---- */
+.pb-save-indicator { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.12); opacity: 0.7; }
+.pb-save-indicator.saved { opacity: 0.55; }
+
+.pb-preview-wrap { position: relative; }
+.pb-preview-exit {
+  position: fixed; top: 12px; left: 12px; z-index: 600;
+  font-size: 12.5px; font-weight: 700; padding: 8px 14px; border-radius: 8px;
+  border: 1px solid rgba(23,25,18,0.15); background: #fff; color: var(--pb-accent, #1E3D2A);
+  cursor: pointer; box-shadow: 0 6px 18px -6px rgba(0,0,0,0.35);
+}
+
+.pb-media-selector { position: relative; display: inline-block; }
+.pb-media-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 50; min-width: 190px;
+  background: #fff; border: 1px solid var(--pb-hairline); border-radius: 8px;
+  box-shadow: 0 12px 28px -10px rgba(0,0,0,0.3); padding: 4px; display: flex; flex-direction: column;
+}
+.pb-media-menu-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border: none; background: none; text-align: left; padding: 7px 9px; border-radius: 5px;
+  font-size: 12.5px; color: #171912; cursor: pointer;
+}
+.pb-media-menu-item:hover:not(:disabled) { background: rgba(30,61,42,0.08); }
+.pb-media-menu-item:disabled { color: var(--pb-muted); cursor: not-allowed; }
+.pb-media-menu-soon { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
+
+/* ===================================================================================
+   VISUAL EDITOR V1 — dedicated `.pve-*` chrome (UX correction).
+   Deliberately its OWN class prefix, not a reuse of `.pb-shell`/`.pb-body`/`.pb-canvas-wrap` —
+   those stay exactly as the retained Page Builder left them. This is a genuinely different
+   workspace shell (fixed 260px/1fr/300px columns, a neutral grey workspace with a bounded white
+   artboard, working zoom) around the SAME underlying editable content — see VisualEditorShell.tsx.
+   =================================================================================== */
+.pve-shell {
+  --pve-accent: #1E3D2A;
+  --pve-accent-2: #C89A2E;
+  --pve-toolbar: #14241a;
+  --pve-workspace-bg: #d7d4c9;
+  --pve-panel-bg: #ffffff;
+  --pve-hairline: rgba(23, 25, 18, 0.12);
+  --pve-muted: #6b6f63;
+  font-family: 'Inter', system-ui, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------- toolbar ---- */
+.pve-toolbar {
+  height: 60px; flex: 0 0 60px;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 18px;
+  background: var(--pve-toolbar);
+  color: #fff;
+  z-index: 500;
+}
+.pve-toolbar-left { display: flex; align-items: center; gap: 12px; font-size: 12.5px; letter-spacing: 0.03em; }
+.pve-toolbar-left strong { font-size: 13px; letter-spacing: 0.06em; }
+.pve-toolbar-page-name { opacity: 0.7; }
+.pve-toolbar-center { display: flex; align-items: center; gap: 18px; }
+.pve-toolbar-right { display: flex; align-items: center; }
+
+.pve-bp-group, .pve-zoom-group {
+  display: flex; align-items: center; gap: 2px;
+  background: rgba(255,255,255,0.08); border-radius: 8px; padding: 3px;
+}
+.pve-bp-btn, .pve-zoom-btn {
+  border: none; background: transparent; color: rgba(255,255,255,0.78);
+  border-radius: 6px; padding: 6px 11px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.pve-bp-btn.active { background: #fff; color: var(--pve-accent); }
+.pve-zoom-btn:hover { background: rgba(255,255,255,0.12); }
+.pve-zoom-pct { color: #fff; font-size: 12px; font-weight: 600; padding: 0 6px; min-width: 40px; text-align: center; }
+
+.pve-preview-btn {
+  border: 1px solid var(--pve-accent-2); background: var(--pve-accent-2); color: #1E3D2A;
+  border-radius: 8px; padding: 8px 16px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- body/columns ---- */
+.pve-body { flex: 1; display: grid; grid-template-columns: 260px 1fr 300px; min-height: 0; }
+
+/* ---------------------------------------------------------------- left panel ---- */
+.pve-left { display: flex; flex-direction: column; background: var(--pve-panel-bg); border-right: 1px solid var(--pve-hairline); min-height: 0; }
+.pve-left-tabs { display: flex; flex: 0 0 auto; border-bottom: 1px solid var(--pve-hairline); }
+.pve-left-tab {
+  flex: 1; border: none; background: none; padding: 12px 0; font-size: 11.5px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--pve-muted); cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.pve-left-tab.active { color: var(--pve-accent); border-bottom-color: var(--pve-accent-2); }
+.pve-left-body { flex: 1; overflow-y: auto; min-height: 0; }
+.pve-left-body .pb-layers { border-right: none; height: 100%; }
+
+.pve-elements-list { display: flex; flex-direction: column; padding: 10px; gap: 4px; }
+.pve-element-item {
+  display: flex; align-items: center; gap: 12px; border: 1px solid var(--pve-hairline); background: #fff;
+  border-radius: 8px; padding: 10px 12px; font-size: 13px; font-weight: 600; color: #171912; cursor: pointer;
+  text-align: left;
+}
+.pve-element-item:hover { background: rgba(30,61,42,0.06); border-color: var(--pve-accent); }
+.pve-element-glyph {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  border-radius: 6px; background: rgba(30,61,42,0.08); color: var(--pve-accent); font-size: 14px; font-weight: 700; flex: 0 0 auto;
+}
+
+/* ---------------------------------------------------------------- centre workspace ---- */
+.pve-workspace {
+  overflow: auto; min-height: 0; background: var(--pve-workspace-bg);
+  background-image: radial-gradient(rgba(0,0,0,0.05) 1px, transparent 1px);
+  background-size: 16px 16px;
+  padding: 32px;
+}
+.pve-artboard-frame { margin: 0 auto; }
+.pve-artboard {
+  background: var(--pl-cream, #F5F0E8);
+  box-shadow: 0 0 0 1px var(--pve-hairline), 0 24px 60px -24px rgba(0,0,0,0.45);
+  transform-origin: top left;
+}
+
+/* ---------------------------------------------------------------- right panel ---- */
+.pve-panel { background: var(--pve-panel-bg); border-left: 1px solid var(--pve-hairline); overflow-y: auto; padding: 16px 16px 28px; min-height: 0; }
+.pve-panel-title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--pve-muted); }
+.pve-panel-selected { font-size: 14px; font-weight: 700; color: #171912; margin-top: 4px; }
+.pve-panel-empty { padding: 16px 0; font-size: 13px; color: var(--pve-muted); }
+.pve-deselect {
+  border: none; background: none; color: var(--pve-muted); font-size: 11px; font-weight: 600;
+  cursor: pointer; padding: 2px 0; margin-bottom: 4px;
+}
+.pve-bp-note { font-size: 11px; color: var(--pve-muted); background: rgba(200,154,46,0.12); padding: 6px 8px; border-radius: 6px; margin: 8px 0 0; }
+
+.pve-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--pve-hairline); }
+.pve-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--pve-muted); margin-bottom: 8px; }
+.pve-field-row { display: flex; gap: 10px; margin-bottom: 10px; }
+.pve-field-row label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 600; color: var(--pve-muted); flex: 1; }
+.pve-field-row input, .pve-field-row select, .pve-field-row textarea {
+  border: 1px solid var(--pve-hairline); border-radius: 6px; padding: 6px 8px; font-size: 12.5px; font-family: inherit; color: #171912;
+}
+.pve-field-row textarea { resize: vertical; width: 100%; }
+.pve-field-row input[type="color"] { padding: 2px; height: 30px; }
+.pve-lock-btn {
+  flex: 1; border: 1px solid var(--pve-hairline); background: #f2f0ea; color: #2a2c24;
+  border-radius: 6px; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.pve-lock-btn.active { background: rgba(30,61,42,0.12); border-color: var(--pve-accent); color: var(--pve-accent); }
+.pve-danger-btn {
+  flex: 1; border: 1px solid #E74C3C; background: #fff; color: #c0392b;
+  border-radius: 6px; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.pve-danger-btn:hover { background: #fdecea; }
+
+@media (max-width: 1200px) {
+  .pve-body { grid-template-columns: 220px 1fr 260px; }
+}

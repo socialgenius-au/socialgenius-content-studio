@@ -1,0 +1,252 @@
+/* Video Editor V1 — pixel-level dark theme.
+   Scoped entirely under .sg-video-editor so no other Content Studio page is affected.
+   Re-declares the SAME custom-property names the existing studio leaf components already
+   consume (--panel-bg, --border, --text-primary, etc.) so VideoControls/TextOverlayEditor/
+   AudioTrackControls/EffectsPanel/etc. pick up the new palette with zero changes to their
+   own files — only the chrome around them (header/rails/panel shells/timeline/status bar)
+   is rebuilt directly against the --sg-* tokens below. */
+
+.sg-video-editor {
+  /* Shell */
+  --sg-bg-0: #07120F;
+  --sg-bg-1: #0B1714;
+  --sg-bg-2: #101C19;
+  --sg-bg-3: #14221E;
+  --sg-bg-4: #1A2A25;
+
+  /* Borders */
+  --sg-border: #263933;
+  --sg-border-soft: #1D2E29;
+  --sg-border-strong: #355149;
+
+  /* Brand green */
+  --sg-green: #36D66B;
+  --sg-green-hover: #48E57A;
+  --sg-green-dark: #15552E;
+  --sg-green-soft: #153D27;
+
+  /* Gold */
+  --sg-gold: #D8A61C;
+  --sg-gold-hover: #E5B82D;
+  --sg-gold-soft: #3C3214;
+
+  /* Text */
+  --sg-text-primary: #F4F7F5;
+  --sg-text-secondary: #B9C5C0;
+  --sg-text-muted: #7F918A;
+  --sg-text-disabled: #52635D;
+
+  /* Track colours */
+  --sg-video-fill: #163E73;
+  --sg-video-border: #2B7DE9;
+  --sg-video-border-selected: #65A8FF;
+  --sg-audio-fill: #0E4A2C;
+  --sg-audio-border: #32C56B;
+  --sg-audio-wave: #69E89B;
+  --sg-text-fill: #3E1B66;
+  --sg-text-border: #8C50E8;
+  --sg-text-text: #E5D7FF;
+  --sg-overlay-fill: #503B07;
+  --sg-overlay-border: #D4A315;
+  --sg-overlay-text: #FFE08A;
+
+  /* Status */
+  --sg-playhead: #FF4A4A;
+  --sg-warning: #FFB454;
+  --sg-error: #FF5D64;
+  --sg-info: #55A6FF;
+
+  /* Preview */
+  --sg-canvas-surround: #070A09;
+  --sg-preview-border: #2C3A36;
+
+  /* Spacing (8px rhythm, matches existing --space-* additively) */
+  --sg-space-5: 20px;
+
+  /* ---- Remap the EXISTING shared token names so untouched leaf components go dark too ---- */
+  --canvas-bg: var(--sg-canvas-surround);
+  --canvas-surface: var(--sg-bg-3);
+  --panel-bg: var(--sg-bg-2);
+  --panel-surface: var(--sg-bg-3);
+  --input-bg: var(--sg-bg-1);
+  --border: var(--sg-border);
+  --text-primary: var(--sg-text-primary);
+  --text-secondary: var(--sg-text-secondary);
+  --text-tertiary: var(--sg-text-muted);
+  --brand-header: var(--sg-green-dark);
+  --brand-header-text: var(--sg-text-primary);
+  --brand-accent: var(--sg-green);
+  --brand-accent-text: var(--sg-bg-0);
+  --danger: var(--sg-error);
+  --success: var(--sg-audio-border);
+
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--sg-bg-0);
+  color: var(--sg-text-primary);
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+
+.sg-video-editor, .sg-video-editor *, .sg-video-editor *::before, .sg-video-editor *::after {
+  box-sizing: border-box;
+}
+
+.sg-video-editor ::-webkit-scrollbar { width: 6px; height: 6px; }
+.sg-video-editor ::-webkit-scrollbar-track { background: transparent; }
+.sg-video-editor ::-webkit-scrollbar-thumb { background: var(--sg-border-strong); border-radius: 3px; }
+.sg-video-editor ::-webkit-scrollbar-thumb:hover { background: var(--sg-text-muted); }
+
+.sg-video-editor :focus-visible {
+  outline: 2px solid var(--sg-green);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------------------
+   Buttons
+--------------------------------------------------------------------------------------- */
+.sgv-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-family: inherit; font-size: 13px; line-height: 18px; font-weight: 600;
+  border-radius: 8px; cursor: pointer; border: 1px solid transparent;
+  background: transparent; color: var(--sg-text-primary);
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+  white-space: nowrap;
+}
+.sgv-btn:disabled { cursor: not-allowed; opacity: 0.35; }
+
+.sgv-btn--icon { width: 36px; height: 36px; padding: 0; border-radius: 8px; flex-shrink: 0; }
+.sgv-btn--icon:hover:not(:disabled) { background: var(--sg-bg-4); }
+.sgv-btn--icon:active:not(:disabled) { background: var(--sg-bg-3); }
+
+.sgv-btn--outline { height: 42px; padding: 0 16px; border-color: var(--sg-border-strong); background: transparent; }
+.sgv-btn--outline:hover:not(:disabled) { background: var(--sg-bg-3); }
+
+.sgv-btn--solid-green { height: 42px; padding: 0 16px; background: var(--sg-green); color: var(--sg-bg-0); font-weight: 700; }
+.sgv-btn--solid-green:hover:not(:disabled) { background: var(--sg-green-hover); }
+
+.sgv-btn--toolbar {
+  height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--sg-border);
+  background: var(--sg-bg-2); color: var(--sg-text-secondary); font-size: 12px; font-weight: 600;
+}
+.sgv-btn--toolbar:hover:not(:disabled) { background: var(--sg-bg-4); color: var(--sg-text-primary); }
+
+.sgv-btn--ghost-sm {
+  height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--sg-border);
+  background: transparent; color: var(--sg-text-secondary); font-size: 12px; font-weight: 600;
+}
+.sgv-btn--ghost-sm:hover:not(:disabled) { background: var(--sg-bg-3); color: var(--sg-text-primary); }
+.sgv-btn--ghost-sm[data-active="true"] {
+  background: var(--sg-green-soft); border-color: var(--sg-green-dark); color: var(--sg-green);
+}
+
+/* ---------------------------------------------------------------------------------------
+   Rail items (left + right icon rails)
+--------------------------------------------------------------------------------------- */
+.sgv-rail-item {
+  width: 70px; height: 64px; margin: 4px auto; border-radius: 8px; position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--sg-text-secondary);
+  transition: background 120ms ease, color 120ms ease;
+}
+.sgv-rail-item span.sgv-rail-label { font-size: 11px; line-height: 14px; font-weight: 500; }
+.sgv-rail-item:hover { background: var(--sg-bg-2); }
+.sgv-rail-item[data-active="true"] {
+  background: var(--sg-green-soft); color: var(--sg-green);
+}
+.sgv-rail-item[data-active="true"]::before {
+  content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--sg-green);
+}
+
+/* ---------------------------------------------------------------------------------------
+   Tabs
+--------------------------------------------------------------------------------------- */
+.sgv-tab {
+  height: 34px; padding: 0 4px; background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--sg-text-secondary); font-size: 13px; line-height: 18px; font-weight: 500; cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.sgv-tab:hover { color: var(--sg-text-primary); }
+.sgv-tab[data-active="true"] { color: var(--sg-green); border-bottom-color: var(--sg-green); font-weight: 600; }
+
+.sgv-tab--panel { height: 44px; font-size: 14px; }
+.sgv-tab--panel[data-active="true"] { color: var(--sg-text-primary); border-bottom-color: var(--sg-green); }
+
+/* ---------------------------------------------------------------------------------------
+   Inputs
+--------------------------------------------------------------------------------------- */
+.sgv-input, .sgv-select {
+  height: 34px; padding: 0 10px; background: var(--sg-bg-1); border: 1px solid var(--sg-border);
+  border-radius: 6px; color: var(--sg-text-primary); font-size: 13px; font-family: inherit;
+  transition: border-color 120ms ease;
+}
+.sgv-select { height: 36px; cursor: pointer; }
+.sgv-input:focus, .sgv-select:focus { border-color: var(--sg-border-strong); outline: none; }
+.sgv-input::placeholder { color: var(--sg-text-muted); }
+
+.sgv-range {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 2px;
+  background: var(--sg-border-strong); cursor: pointer;
+}
+.sgv-range::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: transparent; }
+.sgv-range::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--sg-text-primary); border: 2px solid var(--sg-green); margin-top: -4px;
+  cursor: pointer;
+}
+.sgv-range::-moz-range-track { height: 4px; border-radius: 2px; background: var(--sg-border-strong); }
+.sgv-range::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%; background: var(--sg-text-primary);
+  border: 2px solid var(--sg-green); cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------------------
+   Misc
+--------------------------------------------------------------------------------------- */
+.sgv-card {
+  background: var(--sg-bg-3); border: 1px solid var(--sg-border); border-radius: 10px;
+}
+.sgv-shadow { box-shadow: 0 6px 24px rgba(0,0,0,0.24); }
+
+.sgv-collapsible {
+  overflow: hidden; transition: width 180ms ease, opacity 180ms ease;
+}
+
+@keyframes sgv-spin { to { transform: rotate(360deg); } }
+.sgv-spin { animation: sgv-spin 0.9s linear infinite; }
+
+/* ---------------------------------------------------------------------------------------
+   Responsive layout — header height, side-panel widths, status bar, timeline minimums
+   (spec section 19). Collapse state (data-collapsed) always wins via higher specificity,
+   independent of breakpoint.
+--------------------------------------------------------------------------------------- */
+.sgv-header { height: 72px; }
+.sgv-left-panel { width: 360px; }
+.sgv-right-panel { width: 380px; }
+.sgv-status-bar { height: 62px; }
+.sgv-timeline-area { min-height: 280px; }
+
+@media (max-width: 1600px) {
+  .sgv-left-panel { width: 320px; }
+  .sgv-right-panel { width: 340px; }
+}
+
+@media (max-width: 1440px) {
+  .sgv-header { height: 64px; }
+  .sgv-left-panel { width: 290px; }
+  .sgv-right-panel { width: 310px; }
+  .sgv-status-bar { height: 44px; }
+}
+
+.sgv-left-panel[data-collapsed="true"],
+.sgv-right-panel[data-collapsed="true"] {
+  width: 0; opacity: 0; border-width: 0; pointer-events: none;
+}
+
+/* Below 1280px: no horizontal scroll, panels collapse (handled in JS default + this floor) */
+@media (max-width: 1279px) {
+  .sg-video-editor { min-width: 0; }
+}

@@ -21,7 +21,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authApi
         .me()
         .then((r) => setUser(r.data as User))
-        .catch(() => localStorage.removeItem('token'))
+        .catch((err) => {
+          // Only clear a token that the server actually rejected (401 — genuinely invalid or
+          // expired). A network/connectivity error (backend unreachable, timed out, 5xx) is not
+          // proof the token is bad — wiping it here would force a real, still-valid session to
+          // log in again just because the backend happened to be down for a moment on refresh.
+          // A genuine 401 elsewhere in the app is still handled the same way by the axios
+          // response interceptor in api/client.ts (removes the token and redirects to /login).
+          if (err?.response?.status === 401) localStorage.removeItem('token')
+        })
         .finally(() => setLoading(false))
     } else {
       setLoading(false)

@@ -33,3 +33,6 @@ Thumbs.db
 
 # Railway
 .railway/
+
+# UI handoff packages (design/implementation drops land in frontend/ root; integrate then discard)
+/frontend/*.zip

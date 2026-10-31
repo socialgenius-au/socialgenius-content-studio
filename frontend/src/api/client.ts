@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { uploadUrlPath } from './uploadPaths'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? '',
@@ -28,6 +29,13 @@ export const authApi = {
   login: (username: string, password: string) =>
     api.post('/auth/login', { username, password }),
   me: () => api.get('/auth/me'),
+  // Forgot Password / email verification. These never answer 401 (the interceptor above would treat that as an expired session).
+  requestPasswordReset: (identifier: string) => api.post('/auth/password-reset/request', { identifier }),
+  validateResetToken: (token: string) => api.post('/auth/password-reset/validate', { token }),
+  confirmPasswordReset: (token: string, new_password: string) => api.post('/auth/password-reset/confirm', { token, new_password }),
+  validateEmailToken: (token: string) => api.post('/auth/email/verification/validate', { token }),   // read-only: never consumes the link
+  confirmEmailVerification: (token: string) => api.post('/auth/email/verification/confirm', { token }),
+  resendEmailVerification: (token: string) => api.post('/auth/email/verification/resend', { token }),
 }
 
 export const planApi = {
@@ -88,6 +96,8 @@ export const brandsApi = {
 export const generateApi = {
   generate: (body: Record<string, unknown>) => api.post('/generate/', body),
   chat: (body: Record<string, unknown>) => api.post('/generate/chat', body),
+  // Video Studio V2 AI Tools — AI Prompt Generator (first of six AI Tools cards).
+  prompt: (body: Record<string, unknown>) => api.post('/generate/prompt', body),
 }
 
 export const assetsApi = {
@@ -97,8 +107,53 @@ export const assetsApi = {
   zip:      (asset_ids: number[])          => api.post('/assets/zip', { asset_ids }, { responseType: 'blob' }),
   // Unauthenticated static path for <video>/<img>/<audio> src — the /assets/:id/download
   // route requires a Bearer header that browser-native media/anchor loads never send.
-  // file_path from the backend is relative (e.g. "uploads/1/x.mp4"), no leading slash.
-  previewUrl: (filePath: string)           => `${import.meta.env.VITE_API_URL ?? ''}/uploads/${filePath.replace(/^\/?uploads\//, '')}`,
+  // file_path from the backend is relative (e.g. "uploads/1/x.mp4" on Linux/macOS, but
+  // "uploads\1\x.mp4" on Windows — Path(...).__str__ uses the OS separator). Normalize to
+  // forward slashes first so the "uploads/" strip matches on every platform; otherwise on
+  // Windows it never matches and the URL doubles up into "/uploads/uploads\1\x.mp4".
+  // The absolute layout the Railway preview stores ("/data/uploads/1/x.mp4") is mapped to the same route too; any other path yields '' (see uploadPaths.ts).
+  previewUrl: (filePath: string)           => { const p = uploadUrlPath(filePath); return p === null ? '' : `${import.meta.env.VITE_API_URL ?? ''}/uploads/${p}` },
+}
+
+// Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Takes an asset_id already
+// returned by uploadApi.upload — never uploads a file itself; see reference_videos.py's own
+// module docstring on the backend for exact scope.
+export const referenceVideosApi = {
+  ingest:  (asset_id: number) => api.post('/reference-videos/', { asset_id }),
+  get:     (id: number)       => api.get(`/reference-videos/${id}`),
+  // Restoration path (post-Stage-3 defect fix): the caller's own ReferenceVideos, newest first
+  // — lets Import External restore an already-ingested reference after a reload/remount instead
+  // of only ever holding it in local component state.
+  list:    ()                 => api.get('/reference-videos/'),
+  // Video Deconstructor — Stage 3 (Reference Video Technical Analysis) ONLY. Deterministic
+  // ffmpeg-based facts, no AI — see reference_videos.py's own module docstring for exact scope.
+  analyze: (id: number)       => api.post(`/reference-videos/${id}/analyze`),
+  // Video Deconstructor — Stage 4 (Deterministic Shot/Cut Boundary Detection) ONLY. No semantic
+  // Scene grouping, no AI — see reference_videos.py's own module docstring for exact scope.
+  analyzeStructure: (id: number) => api.post(`/reference-videos/${id}/analyze-structure`),
+  // Video Deconstructor — Stage 5 (Visual Evidence / Representative Frames) ONLY. Deterministic
+  // ffmpeg + Pillow/numpy frame extraction, no AI/OCR/object detection — see reference_videos.py's
+  // own module docstring for exact scope.
+  analyzeFrames: (id: number) => api.post(`/reference-videos/${id}/analyze-frames`),
+  // Video Deconstructor — Stage 6 (OCR / On-Screen Text / Captions) ONLY. Local EasyOCR, no
+  // semantic classification/font ID/translation — see reference_videos.py's own module docstring
+  // for exact scope.
+  analyzeText: (id: number) => api.post(`/reference-videos/${id}/analyze-text`),
+}
+
+// Deconstructor -> Reconstructor (backend C1-C4). Reads are side-effect free. The three POSTs below are the
+// ONLY calls that can invoke a paid AI provider (and only where the operator has configured one); the UI
+// always tells the user before triggering them. `buildBlueprint` must be used ONLY when the user deliberately
+// asks for a NEW blueprint — an already-persisted blueprint is read with `blueprint`, never re-POSTed.
+export const deconstructorApi = {
+  deconstruct:       (id: number)                 => api.post(`/reference-videos/${id}/deconstruct-all`),
+  deconstructStatus: (id: number)                 => api.get(`/reference-videos/${id}/deconstruct-all/status`),
+  anatomy:           (id: number)                 => api.get(`/reference-videos/${id}/anatomy`),
+  mechanisms:        (id: number)                 => api.get(`/reference-videos/${id}/mechanisms`),
+  deriveMechanisms:  (id: number, anatomyFingerprint?: string | null) =>
+    api.post(`/reference-videos/${id}/mechanisms`, null, { params: anatomyFingerprint ? { anatomy_fingerprint: anatomyFingerprint } : {} }),
+  blueprint:         (id: number)                 => api.get(`/reference-videos/${id}/reconstruction-blueprint`),
+  buildBlueprint:    (id: number, body: Record<string, unknown>) => api.post(`/reference-videos/${id}/reconstruction-blueprint`, body),
 }
 
 export const templatesApi = {
@@ -108,6 +163,25 @@ export const templatesApi = {
     api.post('/templates/', body),
   update: (id: number, body: Record<string, unknown>)         => api.put(`/templates/${id}`, body),
   delete: (id: number)                                        => api.delete(`/templates/${id}`),
+}
+
+// Step 7.9: durable "Save Draft" / "My Drafts" storage for Video Studio V2 — a project_json
+// blob (opaque to the backend, shaped entirely by the frontend) plus a name/timestamps.
+export const videoStudioDraftsApi = {
+  list:   ()                                                    => api.get('/video-studio-drafts/'),
+  get:    (id: number)                                          => api.get(`/video-studio-drafts/${id}`),
+  create: (body: { name: string; project_json: unknown })       => api.post('/video-studio-drafts/', body),
+  update: (id: number, body: { name: string; project_json: unknown }) => api.put(`/video-studio-drafts/${id}`, body),
+  delete: (id: number)                                          => api.delete(`/video-studio-drafts/${id}`),
+}
+
+// STEP 7.15F: real Video Studio V2 export/render — POSTs the current project (see
+// ReviewTab.tsx's buildExportRequest) and gets the actual rendered MP4 back as a blob, the
+// exact same responseType: 'blob' pattern assetsApi.download/zip already use for real
+// downloads elsewhere in this app.
+export const videoExportApi = {
+  exportProject: (body: Record<string, unknown>) =>
+    api.post('/video-export/export', body, { responseType: 'blob' }),
 }
 
 export const uploadApi = {

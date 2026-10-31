@@ -16,10 +16,11 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def create_token(user_id: int, username: str, role: str) -> str:
+def create_token(user_id: int, username: str, role: str, token_version: int = 0) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return jwt.encode(
-        {"sub": str(user_id), "username": username, "role": role, "exp": expire},
+        # `tv` = the user's token_version at login; a password reset bumps it, which invalidates every token issued before.
+        {"sub": str(user_id), "username": username, "role": role, "tv": token_version, "exp": expire},
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM,
     )

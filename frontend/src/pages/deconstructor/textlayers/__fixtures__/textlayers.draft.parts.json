@@ -1,0 +1,447 @@
+{
+ "removePlaceholderIds": [
+  "bp:bp-008f30518f8d64f6:s1:text",
+  "bp:bp-008f30518f8d64f6:s2:text"
+ ],
+ "textOverlays": [
+  {
+   "id": "rc:5368:text:1",
+   "text": "Welcome to the show",
+   "x": 9.13,
+   "y": 74.294,
+   "width": 75.111,
+   "startTime": 1.056,
+   "endTime": 5.282,
+   "fontFamily": "Inter",
+   "fontSize": 68,
+   "bold": false,
+   "italic": false,
+   "color": "#FFFFFF",
+   "bgColor": "transparent",
+   "bgOpacity": 0,
+   "animation": "none",
+   "reconstruction": {
+    "schema": "reconstruction-v1",
+    "kind": "text",
+    "candidateId": "text:1",
+    "referenceVideoId": 5127,
+    "videoAnalysisId": 5368,
+    "engineVersion": "1.0.0",
+    "evidence": [
+     {
+      "kind": "ocr_group",
+      "id": 1
+     },
+     {
+      "kind": "ocr_observation",
+      "id": 100
+     },
+     {
+      "kind": "ocr_observation",
+      "id": 101
+     }
+    ],
+    "sourceConfidence": 0.92,
+    "properties": {
+     "text": {
+      "basis": "measured",
+      "note": "Read by OCR (engine 1.0.0 does not edit it)."
+     },
+     "startTime": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Between sampled frames; could be off by up to about 1.5 s. Stretched to fit the blueprint length."
+     },
+     "endTime": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Between sampled frames; could be off by up to about 1.5 s. Stretched to fit the blueprint length."
+     },
+     "x": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box position, adjusted for the export renderer."
+     },
+     "y": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box position, adjusted for the export renderer."
+     },
+     "width": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box width, with room to hold the text on one line."
+     },
+     "fontSize": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Estimated from the detected box (72px by height, 68px by width); the original font is not recovered."
+     },
+     "color": {
+      "basis": "default",
+      "note": "The frame pixels were not read; plain white used."
+     },
+     "fontFamily": {
+      "basis": "default",
+      "note": "The original typeface is not recovered; the editor default is used."
+     }
+    },
+    "corrected": []
+   },
+   "blueprint": {
+    "blueprintId": "bp-008f30518f8d64f6",
+    "sectionNumber": 1,
+    "kind": "text",
+    "mechanismIds": [
+     "M01"
+    ],
+    "referenceVideoId": 5127,
+    "c3AttemptId": 12731
+   }
+  },
+  {
+   "id": "rc:5368:text:6",
+   "text": "My own brand line",
+   "x": 64.25,
+   "y": 27.524,
+   "width": 33.111,
+   "startTime": 1.056,
+   "endTime": 3.169,
+   "fontFamily": "Inter",
+   "fontSize": 42,
+   "bold": false,
+   "italic": false,
+   "color": "#FFFFFF",
+   "bgColor": "transparent",
+   "bgOpacity": 0,
+   "animation": "none",
+   "reconstruction": {
+    "schema": "reconstruction-v1",
+    "kind": "text",
+    "candidateId": "text:6",
+    "referenceVideoId": 5127,
+    "videoAnalysisId": 5368,
+    "engineVersion": "1.0.0",
+    "evidence": [
+     {
+      "kind": "ocr_group",
+      "id": 6
+     },
+     {
+      "kind": "ocr_observation",
+      "id": 600
+     }
+    ],
+    "sourceConfidence": 0.9,
+    "properties": {
+     "text": {
+      "basis": "user"
+     },
+     "startTime": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Between sampled frames; could be off by up to about 1.5 s. Stretched to fit the blueprint length."
+     },
+     "endTime": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Between sampled frames; could be off by up to about 1.5 s. Stretched to fit the blueprint length."
+     },
+     "x": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box position, adjusted for the export renderer."
+     },
+     "y": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box position, adjusted for the export renderer."
+     },
+     "width": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box width, with room to hold the text on one line."
+     },
+     "fontSize": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Estimated from the detected box (61px by height, 42px by width); the original font is not recovered."
+     },
+     "color": {
+      "basis": "default",
+      "note": "The frame pixels were not read; plain white used."
+     },
+     "fontFamily": {
+      "basis": "default",
+      "note": "The original typeface is not recovered; the editor default is used."
+     }
+    },
+    "corrected": [
+     "text"
+    ]
+   }
+  },
+  {
+   "id": "rc:5368:text:2",
+   "text": "Second line",
+   "x": 9.171,
+   "y": 79.373,
+   "width": 39.111,
+   "startTime": 5.282,
+   "endTime": 7.394,
+   "fontFamily": "Inter",
+   "fontSize": 59,
+   "bold": false,
+   "italic": false,
+   "color": "#FFFFFF",
+   "bgColor": "transparent",
+   "bgOpacity": 0,
+   "animation": "none",
+   "reconstruction": {
+    "schema": "reconstruction-v1",
+    "kind": "text",
+    "candidateId": "text:2",
+    "referenceVideoId": 5127,
+    "videoAnalysisId": 5368,
+    "engineVersion": "1.0.0",
+    "evidence": [
+     {
+      "kind": "ocr_group",
+      "id": 2
+     },
+     {
+      "kind": "ocr_observation",
+      "id": 200
+     }
+    ],
+    "sourceConfidence": 0.81,
+    "properties": {
+     "text": {
+      "basis": "measured",
+      "note": "Read by OCR (engine 1.0.0 does not edit it)."
+     },
+     "startTime": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Between sampled frames; could be off by up to about 1.5 s. Stretched to fit the blueprint length."
+     },
+     "endTime": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Between sampled frames; could be off by up to about 1.5 s. Stretched to fit the blueprint length."
+     },
+     "x": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box position, adjusted for the export renderer."
+     },
+     "y": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box position, adjusted for the export renderer."
+     },
+     "width": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box width, with room to hold the text on one line."
+     },
+     "fontSize": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Estimated from the detected box (72px by height, 59px by width); the original font is not recovered."
+     },
+     "color": {
+      "basis": "default",
+      "note": "The frame pixels were not read; plain white used."
+     },
+     "fontFamily": {
+      "basis": "default",
+      "note": "The original typeface is not recovered; the editor default is used."
+     }
+    },
+    "corrected": []
+   }
+  },
+  {
+   "id": "rc:5368:text:7",
+   "text": "Great Offer",
+   "x": 9.079,
+   "y": 9.196,
+   "width": 51.111,
+   "startTime": 15.845,
+   "endTime": 24.507,
+   "fontFamily": "Inter",
+   "fontSize": 79,
+   "bold": false,
+   "italic": false,
+   "color": "#FFFFFF",
+   "bgColor": "transparent",
+   "bgOpacity": 0,
+   "animation": "none",
+   "reconstruction": {
+    "schema": "reconstruction-v1",
+    "kind": "text",
+    "candidateId": "text:7",
+    "referenceVideoId": 5127,
+    "videoAnalysisId": 5368,
+    "engineVersion": "1.0.0",
+    "evidence": [
+     {
+      "kind": "ocr_group",
+      "id": 7
+     },
+     {
+      "kind": "ocr_observation",
+      "id": 700
+     },
+     {
+      "kind": "ocr_observation",
+      "id": 701
+     }
+    ],
+    "sourceConfidence": 0.88,
+    "properties": {
+     "text": {
+      "basis": "measured",
+      "note": "Read by OCR (engine 1.0.0 does not edit it)."
+     },
+     "startTime": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Between sampled frames; could be off by up to about 7.8 s. Stretched to fit the blueprint length."
+     },
+     "endTime": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Between sampled frames; could be off by up to about 7.8 s. Stretched to fit the blueprint length."
+     },
+     "x": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box position, adjusted for the export renderer."
+     },
+     "y": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box position, adjusted for the export renderer."
+     },
+     "width": {
+      "basis": "inferred",
+      "confidence": "medium",
+      "note": "From the detected box width, with room to hold the text on one line."
+     },
+     "fontSize": {
+      "basis": "inferred",
+      "confidence": "low",
+      "note": "Estimated from the detected box (82px by height, 79px by width); the original font is not recovered."
+     },
+     "color": {
+      "basis": "default",
+      "note": "The frame pixels were not read; plain white used."
+     },
+     "fontFamily": {
+      "basis": "default",
+      "note": "The original typeface is not recovered; the editor default is used."
+     }
+    },
+    "corrected": []
+   }
+  }
+ ],
+ "reconstruction": {
+  "schema": "reconstruction-v1",
+  "kind": "text",
+  "engineVersion": "1.0.0",
+  "referenceVideoId": 5127,
+  "videoAnalysisId": 5368,
+  "createdAt": "2026-11-01T00:00:00.000Z",
+  "timeMap": {
+   "mode": "fit",
+   "factor": 0.704,
+   "referenceSeconds": 42.6,
+   "planSeconds": 30
+  },
+  "counts": {
+   "detected": 7,
+   "included": 4,
+   "excludedByDefault": 2,
+   "excludedByUser": 0,
+   "blocked": 1,
+   "duplicates": 0,
+   "outside": 0,
+   "invalid": 0
+  },
+  "items": [
+   {
+    "candidateId": "text:1",
+    "status": "included",
+    "message": "Replaces 2 placeholders.",
+    "replaces": [
+     "bp:bp-008f30518f8d64f6:s1:text",
+     "bp:bp-008f30518f8d64f6:s2:text"
+    ]
+   },
+   {
+    "candidateId": "text:6",
+    "status": "included",
+    "message": "Will be added as an editable text layer."
+   },
+   {
+    "candidateId": "text:2",
+    "status": "included",
+    "message": "Will be added as an editable text layer."
+   },
+   {
+    "candidateId": "text:3",
+    "status": "blocked_conflict",
+    "message": "Overlaps the text placeholder for scene 3. Replace the placeholder with this text, or leave this text out.",
+    "conflictsWith": [
+     "bp:bp-008f30518f8d64f6:s3:text"
+    ]
+   },
+   {
+    "candidateId": "text:4",
+    "status": "excluded_default",
+    "message": "The OCR was only 35% sure of this reading."
+   },
+   {
+    "candidateId": "text:5",
+    "status": "excluded_default",
+    "message": "The OCR was only 31% sure of this reading."
+   },
+   {
+    "candidateId": "text:7",
+    "status": "included",
+    "message": "Will be added as an editable text layer."
+   }
+  ],
+  "replacedPlaceholders": [
+   "bp:bp-008f30518f8d64f6:s1:text",
+   "bp:bp-008f30518f8d64f6:s2:text"
+  ],
+  "claims": {
+   "burnedInTextRemoved": false,
+   "originalFontsRecovered": false,
+   "originalLayersRecovered": false,
+   "backgroundPixelsRecovered": false
+  },
+  "limitations": [
+   "The text in the reference video is still burned into its pixels. Nothing was removed or hidden; these layers are new, separate text.",
+   "Fonts, weights, outlines and shadows were not recovered. Size, position and colour are estimates from the detected box and the frame.",
+   "When the text appeared and disappeared is only known between sampled frames.",
+   "Export draws text in the exporter’s own font, upright; the exported position can differ slightly from the editor preview."
+  ]
+ },
+ "expectedOverlayIds": [
+  "bp:bp-008f30518f8d64f6:s3:text",
+  "bp:bp-008f30518f8d64f6:s4:text",
+  "bp:bp-008f30518f8d64f6:s5:text",
+  "bp:bp-008f30518f8d64f6:s6:text",
+  "bp:bp-008f30518f8d64f6:s7:text",
+  "bp:bp-008f30518f8d64f6:s7:cta",
+  "rc:5368:text:1",
+  "rc:5368:text:6",
+  "rc:5368:text:2",
+  "rc:5368:text:7"
+ ]
+}

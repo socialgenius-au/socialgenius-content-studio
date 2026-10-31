@@ -82,6 +82,258 @@ export interface Asset {
   created_at: string
 }
 
+// Video Deconstructor — Stage 2 (Reference Video Ingestion) and Stage 3 (Technical Analysis).
+// Mirrors backend app/schemas/reference_video.py exactly; see reference_videos.py's own module
+// docstring for scope.
+export interface VideoAnalysisSummary {
+  id: number
+  analysis_tier: 'quick' | 'standard' | 'deep'
+  status: 'pending' | 'running' | 'complete' | 'failed'
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+  // Populated on a real failure of whichever pass most recently failed (Stage 3's
+  // technical_probe, or Stage 4's scene_segmentation) — a real, truthful message, never
+  // fabricated.
+  error: string | null
+  // Stage 4: each named pass's own state, tracked independently — e.g.
+  // {"technical_probe": "complete", "scene_segmentation": "running"}. A running/failed
+  // scene_segmentation never implies technical_probe's own already-complete state changed.
+  pass_status: Record<string, string>
+}
+
+// One Stage-5 representative still frame extracted from a Shot. certainty is always "MEASURED" —
+// every field here is a direct, deterministic fact about the extracted image itself (timestamp,
+// dimensions, pixel measurements), never an interpretation of what it shows. measurements mirrors
+// TechnicalDetails' own "small versioned JSON payload" convention:
+// {width, height, luminance_mean, is_black_frame, sharpness_score}.
+export interface ShotFrameSummary {
+  id: number
+  order: number
+  timestamp: number
+  extraction_method: string
+  width: number
+  height: number
+  measurements: Record<string, number | boolean>
+  certainty: string
+  evidence_summary: string | null
+  produced_by_pass: string | null
+  // The extracted frame's own file — build a thumbnail URL via the existing
+  // assetsApi.previewUrl(), same helper ReferenceVideo.asset_file_path already uses.
+  asset_file_path: string
+}
+
+// One RAW OCR observation (Stage 6) — a single engine reading of a single candidate frame.
+// Always certainty "MEASURED". Never edited/merged/dropped once written — the permanent,
+// auditable evidence record a TextElementSummary's own `observations` list is built from.
+export interface TextObservationSummary {
+  id: number
+  text: string
+  timestamp: number
+  x: number
+  y: number
+  width: number
+  height: number
+  confidence_score: number | null
+  evidence_summary: string | null
+  source_frame_asset_file_path: string | null
+}
+
+// One Stage-6 Occurrence Group, represented by its own canonical head observation (the group's
+// highest-confidence raw reading — never a synthetic average). certainty is always "MEASURED" —
+// the recognized string, geometry, and confidence_score (the OCR engine's own reported
+// confidence) are all direct recognizer output on this one head row. category is always null
+// until a later, genuinely INFERRED stage populates it — Stage 6 cannot honestly know a text
+// occurrence's ROLE from OCR alone. `observations` carries EVERY raw detection grouped under
+// this head (head included, never hidden); start_time/end_time are this group's derived span
+// (earliest/latest member) — never a claim of continuous visibility across it.
+export interface TextElementSummary {
+  id: number
+  text: string
+  start_time: number
+  end_time: number
+  x: number
+  y: number
+  width: number
+  height: number
+  certainty: string
+  confidence_score: number | null
+  category: string | null
+  style_details: Record<string, unknown> | null
+  evidence_summary: string | null
+  produced_by_pass: string | null
+  source_frame_asset_file_path: string | null
+  observations: TextObservationSummary[]
+}
+
+// A cross-reference between 2+ Occurrence Groups (by TextElementSummary.id) that probably
+// represent the same real on-screen element reappearing — e.g. a watermark seen at separated
+// moments. Explicitly, unconditionally certainty "INFERRED" — never confused with the
+// unconditionally "MEASURED" TextElementSummary/TextObservationSummary above it. Carries no
+// merged time-span claim beyond start_time/end_time (the outer bounds of its own members) —
+// visibility in any gap between members is never claimed.
+export interface RecurringElementSummary {
+  id: number
+  member_text_element_ids: number[]
+  start_time: number
+  end_time: number
+  certainty: string
+  confidence_score: number | null
+  reasoning: string | null
+  evidence_summary: string | null
+  produced_by_pass: string | null
+}
+
+// One deterministically-detected cut-bounded segment (Stage 4). certainty is always "MEASURED".
+// evidence_summary carries the detector's own score/threshold as human-readable text — detector
+// evidence, not semantic confidence (a separate, unused-here confidence_score field is reserved
+// for later, genuinely INFERRED judgments).
+export interface ShotSummary {
+  id: number
+  order: number
+  start_time: number
+  end_time: number
+  certainty: string
+  evidence_summary: string | null
+  produced_by_pass: string | null
+  // Stage 5's representative-frame evidence set for this Shot, chronological order — empty
+  // until visual-evidence extraction completes at least once.
+  frames: ShotFrameSummary[]
+  // Stage 6's OCR text occurrences for this Shot, chronological order — empty until text
+  // analysis completes at least once.
+  text_elements: TextElementSummary[]
+  // Stage 8's raw visual-object detections for this Shot (COCO labels only). Optional: older responses and fixtures do not carry it.
+  visual_objects?: VisualObjectSummary[]
+}
+
+// One raw Stage-8 detection (a local COCO object detector): a label, a bounding box and a score for ONE sampled frame. It is evidence that a region
+// was labelled, never an isolated image of the thing, and it carries no rotation, scale or duration. Mirrors the fields of backend VisualObjectSummary
+// that the reconstruction path reads.
+export interface VisualObjectSummary {
+  id: number
+  label: string
+  category: string
+  class_id: number | null
+  x: number
+  y: number
+  width: number
+  height: number
+  start_time: number
+  end_time: number
+  certainty: string
+  confidence_score: number | null
+  evidence_summary: string | null
+  source: string | null
+  produced_by_pass: string | null
+  source_frame_id: number | null
+  source_frame_asset_file_path: string | null
+}
+
+// Mirrors backend app/services/ffmpeg_svc._empty_technical_details() exactly — a controlled,
+// versioned structure (schema_version), not an unrestricted raw-ffmpeg dump. Every non-null
+// value is directly observed/measured by ffmpeg's own container/stream metadata; null means
+// "not reliably determined by this probe mechanism," never a guess. Derived-only values (aspect
+// ratio label, etc.) are deliberately absent here — see CreateEditTab's deriveAspectRatioLabel.
+export interface TechnicalDetails {
+  schema_version: number
+  probe: { mechanism: string; ffmpeg_build: string | null }
+  container: {
+    format_name: string | null
+    format_long_name: string | null
+    duration_seconds: number | null
+    size_bytes: number | null
+    bitrate_kbps: number | null
+  }
+  video: {
+    codec_name: string | null
+    codec_long_name: string | null
+    profile: string | null
+    width: number | null
+    height: number | null
+    coded_width: number | null
+    coded_height: number | null
+    pixel_format: string | null
+    sample_aspect_ratio: string | null
+    display_aspect_ratio: string | null
+    frame_rate: number | null
+    average_frame_rate: number | null
+    time_base: string | null
+    frame_count: number | null
+    bitrate_kbps: number | null
+    rotation_degrees: number | null
+    duration_seconds: number | null
+  }
+  audio: {
+    present: boolean
+    codec_name: string | null
+    codec_long_name: string | null
+    sample_rate_hz: number | null
+    channels: number | null
+    channel_layout: string | null
+    bitrate_kbps: number | null
+    duration_seconds: number | null
+  }
+  streams: { count: number; video_count: number; audio_count: number }
+}
+
+export interface ReferenceVideo {
+  id: number
+  asset_id: number
+  original_filename: string
+  // Reference Preview (post-Stage-4 UI gap fix): the underlying Asset's own file_path — build a
+  // preview URL with the existing assetsApi.previewUrl(), same as every editor clip already
+  // does. Never used to write/modify anything; read-only source for an independent player.
+  asset_file_path: string
+  source: 'upload' | 'url'
+  original_url: string | null
+  rights_status: 'owned' | 'licensed' | 'unknown_third_party'
+  created_at: string
+  latest_analysis: VideoAnalysisSummary
+  technical_details: TechnicalDetails | null
+  // Stage 4's deterministically-detected shot segments, chronological order — empty until
+  // structural analysis completes at least once.
+  shots: ShotSummary[]
+  // Stage 6's Recurring Element cross-references — video-level (a recurring element may span
+  // multiple Shots), not nested under any one Shot; empty until text analysis completes at
+  // least once, and even then only present when 2+ Occurrence Groups were actually linked.
+  recurring_elements: RecurringElementSummary[]
+  // Stage 9's boundary-triggered transition MEASUREMENTS, one per detected cut (video-level, spans two Shots). Optional: older responses and fixtures do not carry it.
+  transition_evidence?: TransitionEvidenceSummary[]
+  // Stage 7's speech-recognition evidence: video-level transcript segments (a local speech recogniser's output, with its own quality diagnostics). Optional: older responses and fixtures do not carry it.
+  speech_segments?: SpeechSegmentSummary[]
+}
+
+// One measured window around one Shot boundary: how the picture and brightness changed across a few sampled frames. It carries NO transition name -- the analysis
+// deliberately stops at measurements. Mirrors the fields of backend TransitionEvidenceSummary that the reconstruction path reads.
+export interface TransitionEvidenceSummary {
+  id: number
+  boundary_timestamp: number
+  window_start: number
+  window_end: number
+  preceding_shot_id: number | null
+  following_shot_id: number | null
+  sampling_fps: number
+  sample_count: number
+  frame_pair_count: number
+  sample_timestamps: number[]
+  luminance: { values: number[]; first_value: number; last_value: number; min: number; max: number; signed_total_change: number }
+  frame_difference: { values: number[]; median: number; max: number; argmax_index: number }
+  black_frame_flags: boolean[]
+  certainty: string
+}
+
+// One transcript segment as a speech recogniser decoded it. A machine transcript, not a script: the words can be wrong, the timing is only as good as the recogniser's, and
+// `analysis_details` holds the recogniser's own diagnostics verbatim (never a calibrated probability). Mirrors the backend SpeechSegmentSummary fields the reconstruction path reads.
+export interface SpeechSegmentSummary {
+  id: number
+  start_time: number
+  end_time: number
+  text: string
+  language: string | null
+  certainty: string
+  analysis_details?: { avg_logprob?: number; no_speech_prob?: number; compression_ratio?: number; temperature?: number } | null
+}
+
 // ── Studio types ──────────────────────────────────────────────────────────────
 
 export type Platform =
@@ -118,13 +370,64 @@ export interface VideoClip {
   endTime: number
   trimIn: number
   trimOut: number
-  colorGrade: 'none' | 'warm' | 'cool' | 'cinematic' | 'bw' | 'high_contrast' | 'desaturated'
-  speed: 0.25 | 0.5 | 1 | 2
+  colorGrade: 'none' | 'warm' | 'cool' | 'cinematic' | 'bw' | 'high_contrast' | 'desaturated' | 'sepia'
+  speed: 0.25 | 0.5 | 0.75 | 1 | 1.25 | 1.5 | 2
   brightness: number
   contrast: number
   saturation: number
   transition: 'cut' | 'dissolve' | 'whip_pan' | 'fade_black' | 'zoom_punch'
   transitionDuration: number
+  // Step 7 (Original Video Audio controls): this clip's OWN embedded audio only — mirrors
+  // MediaOverlay's own muted/volume convention exactly. Independent of, and additive to, the
+  // existing "muted once separated to A1" auto-mute rule (Step 7.6A) — this is a separate,
+  // explicit per-clip control the user can set regardless of whether an A1 track exists for
+  // it. Optional/undefined (treated as unmuted/100%) for any clip created before this field
+  // existed, so it never needs a migration.
+  muted?: boolean
+  volume?: number
+  // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): how this clip's source frame maps
+  // onto the platform canvas box when their aspect ratios differ (near-universal across 7
+  // platform formats spanning 9:16 down to 2:3 — a single source rarely matches all of them).
+  // 'fit' (the long-standing default, so every clip authored before this field existed renders
+  // exactly as it always has) letterboxes/pillarboxes to show the whole frame, same as CSS
+  // object-fit:contain. 'fill' scales to cover the entire canvas with no bars, cropping
+  // whichever dimension overflows — same as object-fit:cover — which is what "Crop &
+  // Reposition" in the toolbar switches a clip into; cropOffsetX/Y (both 0-100, default 50/50
+  // = centered) are that crop's position, directly usable as CSS object-position so the
+  // preview and export share the exact same positioning math. Optional/undefined (treated as
+  // 'fit'/50/50) for any clip created before this field existed.
+  fitMode?: 'fit' | 'fill'
+  cropOffsetX?: number
+  cropOffsetY?: number
+  // Phase 1 (V2 Inserts/B-roll): canvas placement, meaningful ONLY on an entry in
+  // StudioContext's additionalVideoClips array (V2) — a V1 clip never sets these and stays
+  // full-frame exactly as before. Percent-of-canvas, same convention as MediaOverlay's own
+  // x/y/width/height, so the same drag/resize math already used for Overlay applies unchanged.
+  // Undefined on any V2 clip until it's actually moved/resized — insertAdditionalVideoClipAt
+  // gives every new V2 clip an explicit starting box, so this is never read as "undefined" in
+  // practice, just optional for type-safety/backward-compat.
+  insertX?: number
+  insertY?: number
+  insertWidth?: number
+  insertHeight?: number
+  // Phase 1 — Requirement 5 ("opacity where appropriate"): meaningful only on a V2 clip, same
+  // 0-100 convention MediaOverlay's own `opacity` field would use if it were on that scale
+  // (MediaOverlay's is actually 0-1 — VideoClip's other %-based fields here are all 0-100, so
+  // this follows THIS type's own convention instead). Undefined/100 = fully opaque.
+  opacity?: number
+  // Phase 1: how a V2 clip's own embedded audio is handled — meaningful ONLY when the source
+  // video actually has an embedded audio track (probeHasAudioTrack). 'keep' mirrors it onto an
+  // independent AudioTrack (A1), exactly like V1's own embedded-audio separation. 'muted' and
+  // 'removed' both mean "play back silent, no AudioTrack created" at this layer — genuinely
+  // stripping the audio stream from the file is an export-time (ffmpeg) concern, out of Phase
+  // 1's scope (preview/canvas/timeline only) — the distinct value is still stored so a later
+  // export phase can act on the user's real choice rather than only ever seeing "muted".
+  brollAudio?: 'keep' | 'muted' | 'removed'
+  // Phase 1: id of the AudioTrack (in StudioContext's audioTracks/A1) created when brollAudio
+  // was set to 'keep' — lets switching back to 'muted'/'removed' clean up that exact track
+  // (and switching to 'keep' again be a no-op if it's still there) instead of stacking
+  // duplicate tracks on repeated toggling. Undefined whenever brollAudio isn't 'keep'.
+  brollAudioTrackId?: string
 }
 
 export interface TextOverlay {
@@ -143,6 +446,77 @@ export interface TextOverlay {
   bgColor: string
   bgOpacity: number
   animation: 'none' | 'fade_in' | 'slide_left' | 'slide_right' | 'slide_top' | 'slide_bottom' | 'typewriter' | 'pop'
+  // Layers reorder: canvas paint order relative to other visual (Text/Overlay) elements — higher
+  // paints later (more in front). Shares one numeric space with MediaOverlay.order so the two
+  // types can freely interleave. Optional/undefined (treated as 0) for any element created
+  // before this field existed, so it never needs a migration.
+  order?: number
+
+  // Phase 3 (Video Studio V2 — Advanced Text Properties). All additive/optional so nothing
+  // predating this field (including anything legacy /studio's TextOverlayEditor.tsx has ever
+  // created, or already-saved V2 drafts) needs a migration — every reader treats undefined as
+  // "off"/"default", never as an error.
+  align?: 'left' | 'center' | 'right'
+  underline?: boolean
+  letterSpacing?: number // px
+  lineSpacing?: number   // unitless line-height multiplier (CSS line-height convention)
+  // 0-1, matching MediaOverlay.opacity's own existing convention (not VideoClip's 0-100 one —
+  // Text and Overlay are the closer siblings here).
+  opacity?: number
+  strokeColor?: string
+  strokeWidth?: number // px
+  // "Glow" is deliberately not a separate field — a glow is a shadow with zero offset and a
+  // larger blur; the Shadow controls below already reach it without inventing a parallel model.
+  shadowColor?: string
+  shadowBlur?: number    // px
+  shadowOffsetX?: number // px
+  shadowOffsetY?: number // px
+  useGradient?: boolean
+  gradientFrom?: string
+  gradientTo?: string
+  // Background/readability. bgColor/bgOpacity already existed (and are already real — legacy
+  // /studio's PreviewCanvas.tsx already composites them as `${bgColor}${alphaHex}`); the fields
+  // below extend that same background box rather than replacing it. bgBorderRadius doubles as
+  // the "pill / rectangle / banner" shape control (0 = rectangle, a large value = pill);
+  // bgFullWidth is "banner" specifically — the background spans the full canvas width regardless
+  // of the text's own width.
+  bgPadding?: number // px
+  bgBorderRadius?: number // px
+  bgBorderColor?: string
+  bgBorderWidth?: number // px
+  bgBlur?: boolean
+  bgFullWidth?: boolean
+
+  // Traceability (Reconstruction Blueprint -> Video Studio V2). Set ONLY on a PLACEHOLDER text overlay created by
+  // "Use Blueprint": it records which blueprint section produced it, so Reference -> Mechanism -> Blueprint -> Scene ->
+  // Final Content stays traceable across Save Draft / Reopen. Additive and optional -- every reader treats undefined as
+  // "not blueprint-created", so nothing predating this field needs a migration.
+  blueprint?: {
+    blueprintId: string
+    sectionNumber: number
+    kind: 'text' | 'cta'
+    mechanismIds: string[]
+    referenceVideoId: number
+    c3AttemptId: number | null
+  }
+
+  // Traceability (Reconstructor M2.1 -> Video Studio V2). Set ONLY on a text layer a person approved from text the
+  // reference analysis READ (OCR). It records which analysis evidence the layer came from, how sure the source is, and which
+  // properties were measured, inferred, defaulted or set by the person -- so nothing inferred is ever presented as measured.
+  // Additive and optional, like `blueprint`: every reader treats undefined as "not a reconstruction layer", and the editor
+  // keeps it untouched when the layer is edited (it merges partial patches onto the whole object).
+  reconstruction?: {
+    schema: 'reconstruction-v1'
+    kind: 'text'
+    candidateId: string
+    referenceVideoId: number
+    videoAnalysisId: number
+    engineVersion: string
+    evidence: { kind: 'ocr_group' | 'ocr_observation'; id: number }[]
+    sourceConfidence: number | null
+    properties: Record<string, { basis: 'measured' | 'inferred' | 'default' | 'user'; confidence?: 'high' | 'medium' | 'low'; note?: string }>
+    corrected: string[]
+  }
 }
 
 export interface MediaOverlay {
@@ -156,6 +530,167 @@ export interface MediaOverlay {
   opacity: number
   startTime: number
   endTime: number
+  // Step 5 follow-up: audio properties for a video-backed Overlay (ignored for an image-backed
+  // one) — mirrors AudioTrack's own `volume` field/convention rather than inventing a new one.
+  muted?: boolean
+  volume?: number
+  // Step 5 follow-up: same non-destructive colour-grade/adjustment fields VideoClip already
+  // has, extended to Overlay so Filters/Adjust can apply to a visual Overlay (image or video)
+  // too, per that step's requirement — same field shapes, so both share one rendering helper.
+  colorGrade?: VideoClip['colorGrade']
+  brightness?: number
+  contrast?: number
+  saturation?: number
+  // Layers reorder: see TextOverlay.order — same shared numeric space.
+  order?: number
+
+  // Traceability (Reconstructor M2.2a -> Video Studio V2). Set ONLY on an image layer a person approved while reconstructing a reference: it records the
+  // reference region the layer stands in for, which image was placed there (the person's own upload, or an opt-in rectangular crop of the reference frame),
+  // and which properties were measured, inferred, defaulted or set by the person. Additive and optional, like TextOverlay.reconstruction: every reader treats
+  // undefined as "not a reconstruction layer", and the editor keeps it untouched when the layer is edited (it merges partial patches onto the whole object).
+  reconstruction?: ImageReconstructionProvenance
+}
+
+export interface ImageReconstructionProvenance {
+  schema: 'reconstruction-v1'
+  kind: 'image'
+  candidateId: string
+  referenceVideoId: number
+  videoAnalysisId: number
+  engineVersion: string
+  /** Where the SLOT came from: a detector's bounding box, or a region the person drew on a reference frame. */
+  origin: 'detected_region' | 'user_region'
+  evidence: { kind: 'visual_object'; id: number }[]
+  /** The reference frame the region sits on, and when it was taken (a single sampled instant, not a duration). */
+  frame: { id: number | null; path: string | null; timestamp: number; width: number | null; height: number | null }
+  /** The region exactly as it stood when approved: normalised 0..1 on that frame, top-left origin. */
+  region: { x: number; y: number; w: number; h: number }
+  image: {
+    source: 'user_upload' | 'reference_frame_crop'
+    assetId: number
+    width: number
+    height: number
+    fileName: string
+    hasAlpha: boolean | null
+    /** Only for a crop of the reference: the person confirmed they may use it, and the rights status the reference carried at the time. */
+    rightsAcknowledged?: boolean
+    referenceRightsStatus?: string | null
+  }
+  sourceConfidence: number | null
+  properties: Record<string, { basis: 'measured' | 'inferred' | 'default' | 'user'; confidence?: 'high' | 'medium' | 'low'; note?: string }>
+  corrected: string[]
+  /** What this layer does NOT claim. Always false: a flattened video holds no separate, clean image to extract. */
+  claims: { isolated: false; backgroundRemoved: false; burnedInContentRemoved: false; originalResolutionRecovered: false }
+}
+
+// Phase 4 (Video Studio V2 — Independent Shapes). A brand-new type — no legacy /studio
+// equivalent exists (confirmed by inspection), so unlike VideoClip/LowerThird/TextOverlay this
+// needed no backward-compatibility constraint at all; every field below is real from the start.
+//
+// "rounded rectangle" is deliberately not its own `kind` — it's 'rectangle' + borderRadius > 0,
+// the same continuous-control-over-rigid-enum choice TextOverlay's own background shape
+// (Rectangle/Pill/Banner, Phase 3) already made. 'circle' renders via CSS 50% radius,
+// independent of borderRadius. 'line' and 'highlight' share the rectangle primitive with
+// different creation defaults (thin/full-height respectively) — real, distinctly offered shapes
+// per the spec, not silently merged away, even though they share one render path.
+export interface Shape {
+  id: string
+  kind: 'rectangle' | 'circle' | 'line' | 'banner' | 'highlight'
+  x: number
+  y: number
+  width: number
+  height: number
+  fillColor: string
+  opacity: number // 0-1, matching MediaOverlay's own convention
+  borderColor?: string
+  borderWidth?: number  // px
+  borderRadius?: number // px — meaningful for 'rectangle'/'highlight' only ('circle' ignores it)
+  // 'banner': the shape spans the full canvas width regardless of its own width — same
+  // full-width convention TextOverlay.bgFullWidth already established in Phase 3.
+  fullWidth?: boolean
+  startTime: number
+  endTime: number
+  // Joins the same shared paint-order space Text/Overlay/LowerThird already use, so a shape can
+  // be dragged behind (or in front of) any of them in the Layers list — directly satisfying
+  // "place a shape behind text" as a normal reorder, not a special case.
+  order?: number
+  // M2.3b (Reconstructor): present only on a background plate the Reconstructor made from the colour of a letterbox bar it MEASURED on the reference's stills. Additive and optional, like
+  // TextOverlay.reconstruction: every reader treats undefined as "not a reconstruction layer", and the editor keeps it untouched when the shape is edited.
+  reconstruction?: BackgroundReconstructionProvenance
+}
+
+export interface BackgroundReconstructionProvenance {
+  schema: 'reconstruction-v1'
+  kind: 'background'
+  candidateId: string
+  referenceVideoId: number
+  videoAnalysisId: number
+  engineVersion: string
+  sceneNumber: number
+  side: 'top' | 'bottom' | 'left' | 'right'
+  /** What was measured on the stills: how many of the scene's frames were read, how many showed this bar, and how uniform it was. */
+  evidence: { framesMeasured: number; framesSeen: number; uniformity: number; size: number; frameIds: number[] }
+  properties: Record<'color' | 'region' | 'startTime' | 'endTime', { basis: 'measured' | 'inferred' | 'default' | 'user'; confidence?: 'high' | 'medium' | 'low'; note?: string }>
+  claims: { backgroundRecovered: false; contentBehindOverlaysRecovered: false; inpainted: false }
+}
+
+// Phase 5 (Video Studio V2 — Subtitles / Transcript). A subtitle segment's own visual styling —
+// the exact same subset of fields TextOverlay's own Phase 3 style already covers (font, colour,
+// background, alignment, outline, shadow), factored out as its own type here because it's used
+// TWICE per the spec's own "global style ... inherited, per-segment override" requirement: once
+// as the project-wide default (StudioContext's own subtitleStyle) and once, partially, as each
+// segment's optional override.
+export interface SubtitleStyle {
+  fontFamily: string
+  fontSize: number
+  color: string
+  bgColor: string
+  bgOpacity: number
+  align: 'left' | 'center' | 'right'
+  outlineColor?: string
+  outlineWidth?: number // px
+  shadowColor?: string
+  shadowBlur?: number // px
+}
+
+// Each segment carries its own real position/size (Requirement: "movable on canvas, resizable,
+// positionable anywhere") — never fixed to one predefined spot. `styleOverride` is a PARTIAL
+// SubtitleStyle: any field left unset falls back to StudioContext's subtitleStyle (the "global
+// style ... inherited" the spec asks for) — see resolveSubtitleStyle in CreateEditTab.tsx, the
+// one place that merge happens, so canvas render, Properties, and (later) export all agree.
+export interface SubtitleSegment {
+  id: string
+  text: string
+  startTime: number
+  endTime: number
+  x: number
+  y: number
+  width: number // "width/maxWidth" per the spec
+  styleOverride?: Partial<SubtitleStyle>
+  // Joins the same shared paint-order space every other real visual layer uses.
+  order?: number
+  // Traceability (Reconstructor M2.5a -> Video Studio V2). Set ONLY on a subtitle a person approved from the reference's machine transcript: which transcript segment it
+  // came from, how the recogniser rated it, and which properties are measured, inferred or the person's own. Additive and optional, like the other `reconstruction` fields.
+  reconstruction?: SpeechReconstructionProvenance
+}
+
+export interface SpeechReconstructionProvenance {
+  schema: 'reconstruction-v1'
+  kind: 'speech'
+  candidateId: string
+  referenceVideoId: number
+  videoAnalysisId: number
+  engineVersion: string
+  evidence: { kind: 'speech_segment'; id: number }[]
+  language: string | null
+  /** The recogniser's own numbers for this segment, kept verbatim. */
+  diagnostics: { avgLogprob: number | null; noSpeechProb: number | null; compressionRatio: number | null }
+  /** The words as the recogniser wrote them, kept even after the person rewords the subtitle. */
+  transcribedText: string
+  properties: Record<string, { basis: 'measured' | 'inferred' | 'default' | 'user'; confidence?: 'high' | 'medium' | 'low'; note?: string }>
+  corrected: string[]
+  /** What this subtitle does NOT claim. Always false. */
+  claims: { wordsVerifiedAgainstAudio: false; speakerVoiceRecovered: false; scriptIsOriginal: false }
 }
 
 export interface AudioTrack {
@@ -221,10 +756,28 @@ export interface LowerThird {
   name: string
   title: string
   animation: 'slide_left' | 'fade_in' | 'pop_up'
+  // duration/positionY predate Video Studio V2 and are what legacy /studio's own
+  // LowerThirdBuilder.tsx still reads/writes — kept exactly as-is, untouched, so that
+  // component (out of scope for this work) keeps working unchanged. Video Studio V2's own
+  // canvas/timeline logic uses endTime/x/y/width/height below instead, the same real
+  // startTime+endTime+box-position shape every other V2 visual element (TextOverlay,
+  // MediaOverlay) already has — additive only, nothing here replaces or removes the above.
   duration: number
   positionY: number
   showLogo: boolean
   startTime: number
+  // Phase 2 (Video Studio V2 — Lower Thirds): optional so any LowerThird predating this field
+  // (there are none in practice — no UI ever created one before Phase 2 — but the type stays
+  // structurally consistent with how every other additive V2 field in this file is declared)
+  // never needs a migration. A V2 lower third always sets all four on creation.
+  endTime?: number
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  // Joins the same shared paint-order numeric space TextOverlay.order/MediaOverlay.order
+  // already use, so Lower Thirds interleave correctly in the Layers list and on canvas.
+  order?: number
 }
 
 export interface IntroOutro {

@@ -1,0 +1,318 @@
+{
+ "status": "current",
+ "reused": false,
+ "reference_video_id": 5127,
+ "video_analysis_id": 5368,
+ "input_pin": {
+  "anatomy_fingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+  "current_anatomy_fingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+  "anatomy_version": "c2-v1"
+ },
+ "mechanism_count": 4,
+ "mechanisms": [
+  {
+   "mechanism_id": "M01",
+   "mechanism_type": "hook_curiosity",
+   "other_label": null,
+   "other_rationale": null,
+   "statement": "The opening presents a sweeping, unqualified claim about two contrasting types of women, delivered as bare speech over a single static shot, which structurally sets up a binary comparison the rest of the video elaborates.",
+   "scope": "sections",
+   "section_numbers": [
+    1
+   ],
+   "supporting_evidence_ids": {
+    "shots": [
+     3907
+    ],
+    "speech_segments": [
+     704,
+     705
+    ]
+   },
+   "anatomy_features_used": [
+    "hook_classification",
+    "speech"
+   ],
+   "transferable_principle": "Open with a bold, generalized dual-contrast claim before any explanation, prompting the audience to want resolution of the comparison.",
+   "non_transferable_elements": [
+    {
+     "kind": "wording",
+     "description": "Specific phrasing about a 'broken' versus other type of woman"
+    },
+    {
+     "kind": "subject_matter",
+     "description": "Content centers on a specific gendered relationship narrative"
+    }
+   ],
+   "confidence": "medium",
+   "certainty": "INFERRED",
+   "limitations": {
+    "model_stated": [
+     "Narrative and emotional intent not established, only structural framing inferred."
+    ],
+    "anatomy_gaps": [
+     {
+      "field": "narrative_role",
+      "kind": "not_established",
+      "reason": "Scene.narrative_role is not populated by any upstream stage (that classification pass is deferred)",
+      "section_number": null
+     }
+    ]
+   },
+   "provenance": {
+    "reference_video_id": 5127,
+    "video_analysis_id": 5368,
+    "anatomy_fingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+    "anatomy_version": "c2-v1",
+    "taxonomy_version": "v1",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5",
+    "prompt_version": "v2"
+   }
+  },
+  {
+   "mechanism_id": "M02",
+   "mechanism_type": "contrast",
+   "other_label": null,
+   "other_rationale": null,
+   "statement": "The middle sections repeatedly juxtapose one version of the subject who gives excessive love/loyalty against another who reacts by destroying or withdrawing, creating a structural back-and-forth contrast across sections 3-10.",
+   "scope": "sections",
+   "section_numbers": [
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+   ],
+   "supporting_evidence_ids": {
+    "speech_segments": [
+     707,
+     708,
+     709,
+     712,
+     713,
+     715
+    ],
+    "story_beats": [
+     5278,
+     5279,
+     5282,
+     5283,
+     5285
+    ]
+   },
+   "anatomy_features_used": [
+    "progression",
+    "speech",
+    "transcript"
+   ],
+   "transferable_principle": "Structure a narrative by alternating between two opposing behavioral outcomes tied to the same subject, reinforcing a before/after or type-A/type-B dichotomy.",
+   "non_transferable_elements": [
+    {
+     "kind": "wording",
+     "description": "Specific Urdu/Hindi phrases describing love, betrayal, and destruction"
+    },
+    {
+     "kind": "subject_matter",
+     "description": "Relationship-specific content about betrayal and emotional withdrawal"
+    }
+   ],
+   "confidence": "medium",
+   "certainty": "INFERRED",
+   "limitations": {
+    "model_stated": [
+     "No narrative_role classification exists to confirm intended contrast function."
+    ],
+    "anatomy_gaps": [
+     {
+      "field": "narrative_role",
+      "kind": "not_established",
+      "reason": "Scene.narrative_role is not populated by any upstream stage (that classification pass is deferred)",
+      "section_number": null
+     }
+    ]
+   },
+   "provenance": {
+    "reference_video_id": 5127,
+    "video_analysis_id": 5368,
+    "anatomy_fingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+    "anatomy_version": "c2-v1",
+    "taxonomy_version": "v1",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5",
+    "prompt_version": "v2"
+   }
+  },
+  {
+   "mechanism_id": "M03",
+   "mechanism_type": "text_attention",
+   "other_label": null,
+   "other_rationale": null,
+   "statement": "On-screen captions largely mirror the spoken lines in near-synchrony across most sections, appearing to reinforce spoken content visually rather than introduce new information.",
+   "scope": "sections",
+   "section_numbers": [
+    2,
+    4,
+    6,
+    8,
+    10,
+    12,
+    13
+   ],
+   "supporting_evidence_ids": {
+    "speech_segments": [
+     706,
+     708,
+     711,
+     716,
+     717
+    ],
+    "text_elements": [
+     1253,
+     1271,
+     1311,
+     1339,
+     1355
+    ]
+   },
+   "anatomy_features_used": [
+    "on_screen_text",
+    "speech"
+   ],
+   "transferable_principle": "Pair spoken narration with synchronized on-screen text restating the same content to reinforce the message through a parallel visual channel.",
+   "non_transferable_elements": [
+    {
+     "kind": "wording",
+     "description": "Transliterated caption text matching specific spoken lines"
+    },
+    {
+     "kind": "brand_or_name",
+     "description": "Recurring creator watermark text overlay"
+    }
+   ],
+   "confidence": "medium",
+   "certainty": "INFERRED",
+   "limitations": {
+    "model_stated": [
+     "Caption function is inferred from co-occurrence timing; no explicit design rationale is given."
+    ],
+    "anatomy_gaps": []
+   },
+   "provenance": {
+    "reference_video_id": 5127,
+    "video_analysis_id": 5368,
+    "anatomy_fingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+    "anatomy_version": "c2-v1",
+    "taxonomy_version": "v1",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5",
+    "prompt_version": "v2"
+   }
+  },
+  {
+   "mechanism_id": "M04",
+   "mechanism_type": "pacing_rhythm",
+   "other_label": null,
+   "other_rationale": null,
+   "statement": "The video sustains a single continuous shot for nearly its entire duration with only one cut near the end, producing a low-cut, steady rhythm that shifts abruptly at the close with a transition and silences.",
+   "scope": "video",
+   "section_numbers": [
+    13,
+    14
+   ],
+   "supporting_evidence_ids": {
+    "pacing_phases": [
+     5951,
+     5952,
+     5965,
+     5966
+    ],
+    "shots": [
+     3907,
+     3908
+    ],
+    "silence_intervals": [
+     2204,
+     2205
+    ]
+   },
+   "anatomy_features_used": [
+    "pacing_profile",
+    "structural_pattern"
+   ],
+   "transferable_principle": "Maintain an unbroken visual continuity through most of a piece, then mark closure with a single cut and pauses to signal an ending.",
+   "non_transferable_elements": [
+    {
+     "kind": "timing_specific",
+     "description": "Exact cut placement at ~39.7 seconds of a 43.9-second video"
+    }
+   ],
+   "confidence": "medium",
+   "certainty": "INFERRED",
+   "limitations": {
+    "model_stated": [
+     "Only one measured cut exists, limiting confidence in a deliberate rhythm design versus incidental filming."
+    ],
+    "anatomy_gaps": []
+   },
+   "provenance": {
+    "reference_video_id": 5127,
+    "video_analysis_id": 5368,
+    "anatomy_fingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+    "anatomy_version": "c2-v1",
+    "taxonomy_version": "v1",
+    "provider": "anthropic",
+    "model": "claude-sonnet-5",
+    "prompt_version": "v2"
+   }
+  }
+ ],
+ "overall_limitations": [
+  "No accepted retention devices are present in the anatomy (retention analysis status: examined_none_accepted); none were assumed.",
+  "The anatomy carries no narrative, messaging, emotional or CTA roles (unknown, not absent); mechanisms resting on them are lower-confidence inferences.",
+  "No narrative, messaging, emotional, or CTA roles are established by upstream analysis.",
+  "Zero retention devices were accepted, so no confirmed retention mechanism can be claimed.",
+  "Transcript contains transcription uncertainties (language tagged 'hi' but content appears Urdu), limiting semantic confidence.",
+  "Single continuous shot for most of the video limits evidence for cut-based pacing claims."
+ ],
+ "anatomy_gaps": [
+  {
+   "field": "narrative_role",
+   "kind": "not_established",
+   "reason": "Scene.narrative_role is not populated by any upstream stage (that classification pass is deferred)",
+   "section_number": null
+  },
+  {
+   "field": "messaging_role",
+   "kind": "unsupported_in_v1",
+   "reason": "no upstream analysis produces messaging roles",
+   "section_number": null
+  },
+  {
+   "field": "emotional_function",
+   "kind": "unsupported_in_v1",
+   "reason": "no upstream analysis produces emotional or psychological function",
+   "section_number": null
+  },
+  {
+   "field": "cta_role",
+   "kind": "unsupported_in_v1",
+   "reason": "no upstream analysis produces CTA roles (CTA analysis does not exist yet)",
+   "section_number": null
+  }
+ ],
+ "provenance": {
+  "reasoning_attempt_id": 12731,
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "prompt_version": "v2",
+  "taxonomy_version": "v1",
+  "certainty": "INFERRED",
+  "llm_calls": 0,
+  "persisted": true,
+  "effective_since": "2026-09-25T09:18:09.015846+00:00"
+ }
+}

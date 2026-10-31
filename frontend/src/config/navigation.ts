@@ -1,10 +1,11 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, Users, Radar, Target, ClipboardCheck, Map, Megaphone, Sparkles,
-  Clapperboard, Scissors, Palette, Library, Send, Calendar, Plug, TrendingUp,
+  Clapperboard, Scissors, GitBranch, Palette, Library, Send, Calendar, Plug, TrendingUp,
   MessagesSquare, ListChecks, SlidersHorizontal, BarChart3, BookOpen, Settings,
 } from 'lucide-react'
 import type { StaffRole } from '@/types/domain'
+import { VIDEO_STUDIO_ROUTE } from './studioRoutes'
 
 export interface NavItem {
   id: string
@@ -48,8 +49,9 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Growth',
     items: [
       { id: 'campaigns', label: 'Campaigns', icon: Megaphone, path: '/clients/{clientId}/campaigns', roles: ['admin', 'strategist', 'content_creator'], clientScoped: true },
-      { id: 'create', label: 'Create', icon: Sparkles, path: '/clients/{clientId}/create', roles: ['admin', 'content_creator'], clientScoped: true },
-      { id: 'studio', label: 'Video Studio', icon: Clapperboard, path: '/clients/{clientId}/studio', roles: ['admin', 'content_creator'], clientScoped: true },
+      { id: 'post-creator', label: 'Post Creator', icon: Sparkles, path: '/post-creator-v2', roles: ['admin', 'content_creator'], clientScoped: false },
+      { id: 'studio', label: 'Video Studio', icon: Clapperboard, path: VIDEO_STUDIO_ROUTE, roles: ['admin', 'content_creator'], clientScoped: false },
+      { id: 'deconstructor', label: 'Reconstruct', icon: GitBranch, path: '/deconstructor', roles: ['admin', 'content_creator'], clientScoped: false },
       { id: 'repurpose', label: 'Repurpose', icon: Scissors, path: '/clients/{clientId}/repurpose', roles: ['admin', 'content_creator'], clientScoped: true },
       { id: 'brand-kit', label: 'Brand Kit', icon: Palette, path: '/clients/{clientId}/brand-kit', roles: ['admin', 'content_creator', 'strategist'], clientScoped: true },
       { id: 'library', label: 'Library', icon: Library, path: '/clients/{clientId}/library', roles: ['admin', 'content_creator', 'strategist'], clientScoped: true },

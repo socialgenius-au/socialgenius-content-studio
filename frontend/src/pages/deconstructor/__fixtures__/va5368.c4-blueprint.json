@@ -1,0 +1,673 @@
+{
+ "status": "current",
+ "reused": false,
+ "reference_video_id": 5127,
+ "video_analysis_id": 5368,
+ "input_pin": {
+  "anatomy_fingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+  "current_anatomy_fingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+  "mechanism_attempt_id": 12731,
+  "current_mechanism_attempt_id": 12731,
+  "intent_hash": "36db64fb92354ef085b714171d87e5a8ad5df39cbc1d317ebd2d431666c262d7"
+ },
+ "blueprint": {
+  "blueprint_id": "bp-008f30518f8d64f6",
+  "blueprint_version": "c4-v1",
+  "intent": {
+   "product_service_or_topic": "choosing tiles for a home renovation",
+   "target_audience": "homeowners planning a renovation",
+   "objective": "help homeowners understand how different tile choices can affect the finished result and make a more informed selection",
+   "business_or_brand": "generic tile retailer",
+   "desired_cta": "visit the showroom or contact the business for guidance",
+   "tone_style_constraints": [
+    "clear, helpful, credible, practical; educational rather than high-pressure sales language"
+   ],
+   "duration_platform_constraints": {
+    "platform": "short-form social video",
+    "target_duration_seconds": null,
+    "notes": "keep the plan concise and practical"
+   },
+   "mandatory_points": [
+    "different tile choices can create different finished outcomes",
+    "suitability depends on the room/use case",
+    "customers can seek guidance before choosing"
+   ],
+   "prohibited_claims_or_elements": [
+    "guaranteed results",
+    "unsupported performance claims",
+    "copying the reference creator's relationship/gender narrative",
+    "source-specific names, wording, watermark or identity"
+   ]
+  },
+  "intent_summary": "Topic: choosing tiles for a home renovation. Audience: homeowners planning a renovation. Objective: help homeowners understand how different tile choices can affect the finished result and make a more informed selection. Business: generic tile retailer. Format: short-form social video.",
+  "structural_approach": "Open with a bold dual-contrast claim about tile choice outcomes, then hold the decision constant (same room type) while alternating between a mismatched tile choice and a well-matched one, reinforced by synchronized on-screen text, closing with a single visual break and pause before a guidance-seeking call to action.",
+  "target": {
+   "platform": "short-form social video",
+   "target_duration_seconds": null,
+   "planned_total_seconds": 30
+  },
+  "mechanisms_used": [
+   "M01",
+   "M02",
+   "M03",
+   "M04"
+  ],
+  "mechanisms_not_used": [],
+  "mechanism_dispositions": [
+   {
+    "mechanism_id": "M01",
+    "mechanism_type": "hook_curiosity",
+    "decision": "USED",
+    "reason_category": null,
+    "reason": null,
+    "applied_in_sections": [
+     1
+    ],
+    "authoritative_sections": [
+     1
+    ],
+    "application_rationale": "Section 1 opens with a generalized claim contrasting two finished-result outcomes from tile choice, before any explanation, to prompt curiosity about which is which.",
+    "transferable_principle": "Open with a bold, generalized dual-contrast claim before any explanation, prompting the audience to want resolution of the comparison."
+   },
+   {
+    "mechanism_id": "M02",
+    "mechanism_type": "contrast",
+    "decision": "USED",
+    "reason_category": null,
+    "reason": null,
+    "applied_in_sections": [
+     2,
+     3,
+     4,
+     5
+    ],
+    "authoritative_sections": [
+     2,
+     3,
+     4
+    ],
+    "application_rationale": "Sections 2-5 hold the same room/use-case constant and alternate between the outcome of a poorly-suited tile choice and a well-suited one, preserving the same-subject-opposing-outcome relationship.",
+    "transferable_principle": "Structure a narrative by alternating between two opposing behavioral outcomes tied to the same subject, reinforcing a before/after or type-A/type-B dichotomy."
+   },
+   {
+    "mechanism_id": "M03",
+    "mechanism_type": "text_attention",
+    "decision": "USED",
+    "reason_category": null,
+    "reason": null,
+    "applied_in_sections": [
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "authoritative_sections": [
+     2,
+     3,
+     4,
+     5
+    ],
+    "application_rationale": "Each demonstration and principle section pairs narration with on-screen text restating the same point, reinforcing the message visually without adding new content.",
+    "transferable_principle": "Pair spoken narration with synchronized on-screen text restating the same content to reinforce the message through a parallel visual channel."
+   },
+   {
+    "mechanism_id": "M04",
+    "mechanism_type": "pacing_rhythm",
+    "decision": "USED",
+    "reason_category": null,
+    "reason": null,
+    "applied_in_sections": [
+     6,
+     7
+    ],
+    "authoritative_sections": [
+     6,
+     7
+    ],
+    "application_rationale": "Visual continuity is kept through the comparison sections, then a single cut and a brief pause in sections 6-7 mark the shift into resolution and closing, signalling an ending.",
+    "transferable_principle": "Maintain an unbroken visual continuity through most of a piece, then mark closure with a single cut and pauses to signal an ending."
+   }
+  ],
+  "constraints": {
+   "tone_style": [
+    "clear, helpful, credible, practical; educational rather than high-pressure sales language"
+   ],
+   "duration_platform": {
+    "platform": "short-form social video",
+    "target_duration_seconds": null,
+    "notes": "keep the plan concise and practical"
+   },
+   "prohibited_claims_or_elements": [
+    "guaranteed results",
+    "unsupported performance claims",
+    "copying the reference creator's relationship/gender narrative",
+    "source-specific names, wording, watermark or identity"
+   ],
+   "do_not_reproduce": [
+    {
+     "mechanism_id": "M01",
+     "kind": "wording",
+     "description": "Specific phrasing about a 'broken' versus other type of woman"
+    },
+    {
+     "mechanism_id": "M01",
+     "kind": "subject_matter",
+     "description": "Content centers on a specific gendered relationship narrative"
+    },
+    {
+     "mechanism_id": "M02",
+     "kind": "wording",
+     "description": "Specific Urdu/Hindi phrases describing love, betrayal, and destruction"
+    },
+    {
+     "mechanism_id": "M02",
+     "kind": "subject_matter",
+     "description": "Relationship-specific content about betrayal and emotional withdrawal"
+    },
+    {
+     "mechanism_id": "M03",
+     "kind": "wording",
+     "description": "Transliterated caption text matching specific spoken lines"
+    },
+    {
+     "mechanism_id": "M03",
+     "kind": "brand_or_name",
+     "description": "Recurring creator watermark text overlay"
+    },
+    {
+     "mechanism_id": "M04",
+     "kind": "timing_specific",
+     "description": "Exact cut placement at ~39.7 seconds of a 43.9-second video"
+    }
+   ],
+   "copy_policy": "Instructions only. This blueprint contains no final hook lines, captions, scripts, headlines, CTA wording or voiceover copy; those are produced downstream from these instructions.",
+   "performance_policy": "Structural design logic is transferred; no performance, engagement, retention or conversion outcome is claimed or implied."
+  },
+  "sections": [
+   {
+    "section_number": 1,
+    "section_purpose": "Hook the audience with a broad claim that tile choice changes the finished look and feel of a room.",
+    "structural_role": "opening",
+    "target_duration_seconds": 4,
+    "mechanisms_applied": [
+     "M01"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      1
+     ]
+    },
+    "content_instruction": "State a generalized contrast between two different finished outcomes that can result from tile choice, without yet naming specific tiles or rooms, to create anticipation.",
+    "required_information": [],
+    "visual_direction": "Show a quick establishing shot of a renovation space, neutral and unbranded.",
+    "text_direction": "Short on-screen phrase mirroring the spoken contrast claim.",
+    "speech_direction": "Deliver the opening contrast claim in a confident, clear tone.",
+    "pacing_direction": "Single continuous shot, fast entry, no cuts.",
+    "transition_direction": null,
+    "cta_direction": null,
+    "mandatory_points_assigned": [
+     "MP01"
+    ],
+    "prohibited_elements": [
+     "guaranteed results",
+     "unsupported performance claims",
+     "copying the reference creator's relationship/gender narrative",
+     "source-specific names, wording, watermark or identity"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      1
+     ],
+     "mechanism_ids": [
+      "M01"
+     ]
+    },
+    "confidence": "medium",
+    "limitations": []
+   },
+   {
+    "section_number": 2,
+    "section_purpose": "Show the mismatched tile outcome for a specific room/use case.",
+    "structural_role": "contrast",
+    "target_duration_seconds": 5,
+    "mechanisms_applied": [
+     "M02",
+     "M03"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      3,
+      4
+     ]
+    },
+    "content_instruction": "Present one room/use case and demonstrate the negative consequence of an unsuitable tile choice for that context (e.g. durability, moisture, style mismatch), keeping the room constant for later contrast.",
+    "required_information": [
+     "to be supplied: specific example room and tile type to illustrate mismatch"
+    ],
+    "visual_direction": "Show the chosen room type with a tile finish that visibly clashes with its function.",
+    "text_direction": "On-screen caption naming the issue caused by the mismatch, synced to narration.",
+    "speech_direction": "Explain plainly why this tile choice underperforms in this context.",
+    "pacing_direction": "Single continuous shot, steady pace.",
+    "transition_direction": "Cut to matched version in next section.",
+    "cta_direction": null,
+    "mandatory_points_assigned": [
+     "MP02"
+    ],
+    "prohibited_elements": [
+     "guaranteed results",
+     "unsupported performance claims",
+     "copying the reference creator's relationship/gender narrative",
+     "source-specific names, wording, watermark or identity"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      3,
+      4
+     ],
+     "mechanism_ids": [
+      "M02",
+      "M03"
+     ]
+    },
+    "confidence": "medium",
+    "limitations": [
+     "Specific tile examples not supplied by intent"
+    ]
+   },
+   {
+    "section_number": 3,
+    "section_purpose": "Show the well-matched tile outcome for the same room/use case.",
+    "structural_role": "contrast",
+    "target_duration_seconds": 5,
+    "mechanisms_applied": [
+     "M02",
+     "M03"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      5,
+      6
+     ]
+    },
+    "content_instruction": "Return to the same room/use case and show the positive outcome achieved with a well-suited tile choice, directly opposing section 2's outcome.",
+    "required_information": [
+     "to be supplied: matching tile example for the same room"
+    ],
+    "visual_direction": "Show the same room type with a tile finish appropriate to its function and aesthetic.",
+    "text_direction": "On-screen caption naming the benefit of the matched choice, synced to narration.",
+    "speech_direction": "Explain plainly why this tile choice works well in this context.",
+    "pacing_direction": "Single continuous shot, steady pace.",
+    "transition_direction": "Move into a second room example to broaden the point.",
+    "cta_direction": null,
+    "mandatory_points_assigned": [
+     "MP01",
+     "MP02"
+    ],
+    "prohibited_elements": [
+     "guaranteed results",
+     "unsupported performance claims",
+     "copying the reference creator's relationship/gender narrative",
+     "source-specific names, wording, watermark or identity"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      5,
+      6
+     ],
+     "mechanism_ids": [
+      "M02",
+      "M03"
+     ]
+    },
+    "confidence": "medium",
+    "limitations": []
+   },
+   {
+    "section_number": 4,
+    "section_purpose": "Repeat the mismatch versus match contrast with a second, different room/use case to generalize the principle.",
+    "structural_role": "development",
+    "target_duration_seconds": 6,
+    "mechanisms_applied": [
+     "M02",
+     "M03"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      7,
+      8,
+      9
+     ]
+    },
+    "content_instruction": "Briefly show a second room/use case with the same mismatch-versus-match pairing, more quickly than sections 2-3, to reinforce that suitability depends on context rather than one universal best tile.",
+    "required_information": [
+     "to be supplied: second example room and tile pairing"
+    ],
+    "visual_direction": "Split or sequential shots contrasting the two outcomes in the new room type.",
+    "text_direction": "Short synced captions labeling each outcome.",
+    "speech_direction": "Summarize the same mismatch/match logic applied to the new context.",
+    "pacing_direction": "Slightly faster cadence than sections 2-3, still single continuous shots.",
+    "transition_direction": "Move to a summarizing principle statement.",
+    "cta_direction": null,
+    "mandatory_points_assigned": [
+     "MP02"
+    ],
+    "prohibited_elements": [
+     "guaranteed results",
+     "unsupported performance claims",
+     "copying the reference creator's relationship/gender narrative",
+     "source-specific names, wording, watermark or identity"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      7,
+      8,
+      9
+     ],
+     "mechanism_ids": [
+      "M02",
+      "M03"
+     ]
+    },
+    "confidence": "medium",
+    "limitations": []
+   },
+   {
+    "section_number": 5,
+    "section_purpose": "Derive a practical selection principle from the preceding comparisons.",
+    "structural_role": "development",
+    "target_duration_seconds": 5,
+    "mechanisms_applied": [
+     "M03"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      10
+     ]
+    },
+    "content_instruction": "State the general rule that emerges from the contrasts: the right tile choice depends on the specific room and its use, not on any single tile being universally best.",
+    "required_information": [],
+    "visual_direction": "Neutral shot summarizing the space, perhaps a wider view of multiple tile samples.",
+    "text_direction": "On-screen summary line matching the spoken principle.",
+    "speech_direction": "Deliver the takeaway rule in a calm, instructive tone.",
+    "pacing_direction": "Continuous shot, measured pace.",
+    "transition_direction": "Lead into closing pause.",
+    "cta_direction": null,
+    "mandatory_points_assigned": [
+     "MP02"
+    ],
+    "prohibited_elements": [
+     "guaranteed results",
+     "unsupported performance claims",
+     "copying the reference creator's relationship/gender narrative",
+     "source-specific names, wording, watermark or identity"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      10
+     ],
+     "mechanism_ids": [
+      "M03"
+     ]
+    },
+    "confidence": "medium",
+    "limitations": []
+   },
+   {
+    "section_number": 6,
+    "section_purpose": "Mark closure of the educational content with a visual break before the call to action.",
+    "structural_role": "closing",
+    "target_duration_seconds": 2,
+    "mechanisms_applied": [
+     "M04"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      13
+     ]
+    },
+    "content_instruction": "Introduce a single clean cut to a new shot signalling the piece is wrapping up, with a brief pause in narration.",
+    "required_information": [],
+    "visual_direction": "Cut to a calmer, final framing, e.g. a tidy finished space or product display.",
+    "text_direction": "Minimal or no text, allowing the pause to register visually.",
+    "speech_direction": "Pause briefly after the previous statement before the final line.",
+    "pacing_direction": "One cut, brief silence.",
+    "transition_direction": "Lead directly into the call to action.",
+    "cta_direction": null,
+    "mandatory_points_assigned": [],
+    "prohibited_elements": [
+     "guaranteed results",
+     "unsupported performance claims",
+     "copying the reference creator's relationship/gender narrative",
+     "source-specific names, wording, watermark or identity"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      13
+     ],
+     "mechanism_ids": [
+      "M04"
+     ]
+    },
+    "confidence": "medium",
+    "limitations": []
+   },
+   {
+    "section_number": 7,
+    "section_purpose": "Invite the audience to seek personalized guidance before finalizing their tile choice.",
+    "structural_role": "call_to_action",
+    "target_duration_seconds": 3,
+    "mechanisms_applied": [
+     "M04"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      14
+     ]
+    },
+    "content_instruction": "Encourage the audience to visit the showroom or contact the business for guidance tailored to their specific room and needs, framed as helpful rather than pressuring.",
+    "required_information": [
+     "to be supplied: showroom location or contact method"
+    ],
+    "visual_direction": "Simple closing shot, calm framing consistent with section 6.",
+    "text_direction": "Short on-screen prompt reinforcing the spoken call to action.",
+    "speech_direction": "Deliver the invitation in a warm, low-pressure tone.",
+    "pacing_direction": "Slow final pace with a closing pause.",
+    "transition_direction": null,
+    "cta_direction": "Prompt the viewer to visit the showroom or contact the business for personalized guidance on choosing tiles.",
+    "mandatory_points_assigned": [
+     "MP03"
+    ],
+    "prohibited_elements": [
+     "guaranteed results",
+     "unsupported performance claims",
+     "copying the reference creator's relationship/gender narrative",
+     "source-specific names, wording, watermark or identity"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      14
+     ],
+     "mechanism_ids": [
+      "M04"
+     ]
+    },
+    "confidence": "medium",
+    "limitations": []
+   }
+  ],
+  "mandatory_point_accounting": [
+   {
+    "id": "MP01",
+    "text": "different tile choices can create different finished outcomes",
+    "status": "ASSIGNED",
+    "section_numbers": [
+     1,
+     3
+    ],
+    "reason": null
+   },
+   {
+    "id": "MP02",
+    "text": "suitability depends on the room/use case",
+    "status": "ASSIGNED",
+    "section_numbers": [
+     2,
+     3,
+     4,
+     5
+    ],
+    "reason": null
+   },
+   {
+    "id": "MP03",
+    "text": "customers can seek guidance before choosing",
+    "status": "ASSIGNED",
+    "section_numbers": [
+     7
+    ],
+    "reason": null
+   }
+  ],
+  "gaps": [
+   {
+    "field": "duration_platform_constraints.target_duration_seconds",
+    "kind": "not_supplied",
+    "reason": "no target duration was supplied; section durations are planning guidance only"
+   },
+   {
+    "field": "reference:narrative_role",
+    "kind": "reference_gap",
+    "reason": "Scene.narrative_role is not populated by any upstream stage (that classification pass is deferred)"
+   },
+   {
+    "field": "reference:messaging_role",
+    "kind": "reference_gap",
+    "reason": "no upstream analysis produces messaging roles"
+   },
+   {
+    "field": "reference:emotional_function",
+    "kind": "reference_gap",
+    "reason": "no upstream analysis produces emotional or psychological function"
+   },
+   {
+    "field": "reference:cta_role",
+    "kind": "reference_gap",
+    "reason": "no upstream analysis produces CTA roles (CTA analysis does not exist yet)"
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "No accepted retention devices are present in the anatomy (retention analysis status: examined_none_accepted); none were assumed."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "The anatomy carries no narrative, messaging, emotional or CTA roles (unknown, not absent); mechanisms resting on them are lower-confidence inferences."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "No narrative, messaging, emotional, or CTA roles are established by upstream analysis."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "Zero retention devices were accepted, so no confirmed retention mechanism can be claimed."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "Transcript contains transcription uncertainties (language tagged 'hi' but content appears Urdu), limiting semantic confidence."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "Single continuous shot for most of the video limits evidence for cut-based pacing claims."
+   },
+   {
+    "field": "blueprint",
+    "kind": "provider_limitation",
+    "reason": "Specific tile types, rooms, and showroom contact details were not supplied and are marked as required_information."
+   },
+   {
+    "field": "blueprint",
+    "kind": "provider_limitation",
+    "reason": "No narrative, emotional, or messaging role data was available from the reference beyond structural timing."
+   },
+   {
+    "field": "all_mechanisms_used",
+    "kind": "quality_note",
+    "reason": "all 4 mechanisms were marked USED -- the reasoner did not exercise NOT_USED; check that each is genuinely applied rather than mechanically transferred."
+   },
+   {
+    "field": "mechanism_section_mapping_mismatch:M02",
+    "kind": "quality_note",
+    "reason": "M02: the disposition declares sections [2, 3, 4, 5] but the authoritative section.mechanisms_applied mapping is [2, 3, 4]; downstream uses only section.mechanisms_applied (the two were not reconciled)."
+   },
+   {
+    "field": "application_rationale_names_no_section:M03",
+    "kind": "quality_note",
+    "reason": "M03.application_rationale explains how the principle is instantiated but names no section, which would make it easier to inspect."
+   },
+   {
+    "field": "mechanism_section_mapping_mismatch:M03",
+    "kind": "quality_note",
+    "reason": "M03: the disposition declares sections [2, 3, 4, 5, 6] but the authoritative section.mechanisms_applied mapping is [2, 3, 4, 5]; downstream uses only section.mechanisms_applied (the two were not reconciled)."
+   }
+  ],
+  "limitations": [
+   "Specific tile types, rooms, and showroom contact details were not supplied and are marked as required_information.",
+   "No narrative, emotional, or messaging role data was available from the reference beyond structural timing."
+  ],
+  "provenance": {
+   "reference_video_id": 5127,
+   "video_analysis_id": 5368,
+   "anatomy_fingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+   "anatomy_version": "c2-v1",
+   "mechanism_attempt_id": 12731,
+   "mechanism_provider": "anthropic",
+   "mechanism_model": "claude-sonnet-5",
+   "mechanism_prompt_version": "v2",
+   "taxonomy_version": "v1",
+   "intent_hash": "36db64fb92354ef085b714171d87e5a8ad5df39cbc1d317ebd2d431666c262d7",
+   "provider": "anthropic",
+   "model": "claude-sonnet-5",
+   "prompt_version": "v3",
+   "blueprint_version": "c4-v1",
+   "certainty": "INFERRED",
+   "source_mechanism_count": 4,
+   "ignored_null_fields": [],
+   "response_meta": {
+    "stop_reason": "end_turn",
+    "input_tokens": 5522,
+    "output_tokens": 3308,
+    "raw_response_sha256": "5edc4dbf6d2f2fd0dc4ec8d09ed8f6c24b69c478ccac3930d96430e33ac32456",
+    "replay_of_saved_response": true,
+    "generated_under_prompt_version": "v3",
+    "note": "persistence of the already-paid run-2 response (validators corrected offline); NOT a new model call"
+   },
+   "mechanism_mapping_authority": "section.mechanisms_applied",
+   "reasoning_attempt_id": 15831
+  }
+ },
+ "provenance": {
+  "reasoning_attempt_id": 15831,
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "prompt_version": "v3",
+  "blueprint_version": "c4-v1",
+  "taxonomy_version": "v1",
+  "certainty": "INFERRED",
+  "llm_calls": 0,
+  "persisted": true,
+  "effective_since": "2026-09-25T12:20:05.333866+00:00"
+ }
+}

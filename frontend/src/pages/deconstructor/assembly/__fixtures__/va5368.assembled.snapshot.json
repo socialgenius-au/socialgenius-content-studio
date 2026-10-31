@@ -1,0 +1,1446 @@
+{
+  "name": "Blueprint — choosing tiles for a home renovation (2026-10-29)",
+  "snapshot": {
+    "videoClips": [
+      {
+        "id": "asm:bp-008f30518f8d64f6:s1:c0",
+        "assetId": 9000,
+        "url": "/uploads/f1.mp4",
+        "name": "f1.mp4",
+        "duration": 20,
+        "startTime": 0,
+        "endTime": 4,
+        "trimIn": 0,
+        "trimOut": 16,
+        "colorGrade": "none",
+        "speed": 1,
+        "brightness": 0,
+        "contrast": 0,
+        "saturation": 0,
+        "transition": "cut",
+        "transitionDuration": 0.5
+      },
+      {
+        "id": "asm:bp-008f30518f8d64f6:s2:c0",
+        "assetId": 9001,
+        "url": "/uploads/f2.mp4",
+        "name": "f2.mp4",
+        "duration": 21,
+        "startTime": 4,
+        "endTime": 9,
+        "trimIn": 0,
+        "trimOut": 16,
+        "colorGrade": "none",
+        "speed": 1,
+        "brightness": 0,
+        "contrast": 0,
+        "saturation": 0,
+        "transition": "cut",
+        "transitionDuration": 0.5
+      },
+      {
+        "id": "asm:bp-008f30518f8d64f6:s3:c0",
+        "assetId": 9002,
+        "url": "/uploads/f3.mp4",
+        "name": "f3.mp4",
+        "duration": 22,
+        "startTime": 9,
+        "endTime": 14,
+        "trimIn": 0,
+        "trimOut": 17,
+        "colorGrade": "none",
+        "speed": 1,
+        "brightness": 0,
+        "contrast": 0,
+        "saturation": 0,
+        "transition": "cut",
+        "transitionDuration": 0.5
+      },
+      {
+        "id": "asm:bp-008f30518f8d64f6:s4:c0",
+        "assetId": 9003,
+        "url": "/uploads/f4.mp4",
+        "name": "f4.mp4",
+        "duration": 23,
+        "startTime": 14,
+        "endTime": 20,
+        "trimIn": 0,
+        "trimOut": 17,
+        "colorGrade": "none",
+        "speed": 1,
+        "brightness": 0,
+        "contrast": 0,
+        "saturation": 0,
+        "transition": "cut",
+        "transitionDuration": 0.5
+      },
+      {
+        "id": "asm:bp-008f30518f8d64f6:s5:c0",
+        "assetId": 9004,
+        "url": "/uploads/f5.mp4",
+        "name": "f5.mp4",
+        "duration": 24,
+        "startTime": 20,
+        "endTime": 25,
+        "trimIn": 0,
+        "trimOut": 19,
+        "colorGrade": "none",
+        "speed": 1,
+        "brightness": 0,
+        "contrast": 0,
+        "saturation": 0,
+        "transition": "cut",
+        "transitionDuration": 0.5
+      },
+      {
+        "id": "asm:bp-008f30518f8d64f6:s6:c0",
+        "assetId": 9005,
+        "url": "/uploads/f6.mp4",
+        "name": "f6.mp4",
+        "duration": 25,
+        "startTime": 25,
+        "endTime": 27,
+        "trimIn": 0,
+        "trimOut": 23,
+        "colorGrade": "none",
+        "speed": 1,
+        "brightness": 0,
+        "contrast": 0,
+        "saturation": 0,
+        "transition": "cut",
+        "transitionDuration": 0.5
+      },
+      {
+        "id": "asm:bp-008f30518f8d64f6:s7:c0",
+        "assetId": 9006,
+        "url": "/uploads/f7.mp4",
+        "name": "f7.mp4",
+        "duration": 26,
+        "startTime": 27,
+        "endTime": 30,
+        "trimIn": 0,
+        "trimOut": 23,
+        "colorGrade": "none",
+        "speed": 1,
+        "brightness": 0,
+        "contrast": 0,
+        "saturation": 0,
+        "transition": "cut",
+        "transitionDuration": 0.5
+      }
+    ],
+    "additionalVideoClips": [],
+    "textOverlays": [
+      {
+        "id": "bp:bp-008f30518f8d64f6:s1:text",
+        "text": "TEXT PLACEHOLDER — Short on-screen phrase mirroring the spoken contrast claim.",
+        "x": 5,
+        "y": 72,
+        "width": 90,
+        "startTime": 0,
+        "endTime": 4,
+        "fontFamily": "Inter",
+        "fontSize": 30,
+        "bold": false,
+        "italic": true,
+        "color": "#FFFFFF",
+        "bgColor": "#111827",
+        "bgOpacity": 0.78,
+        "animation": "none",
+        "blueprint": {
+          "blueprintId": "bp-008f30518f8d64f6",
+          "sectionNumber": 1,
+          "kind": "text",
+          "mechanismIds": [
+            "M01"
+          ],
+          "referenceVideoId": 5127,
+          "c3AttemptId": 12731
+        }
+      },
+      {
+        "id": "bp:bp-008f30518f8d64f6:s2:text",
+        "text": "TEXT PLACEHOLDER — On-screen caption naming the issue caused by the mismatch, synced to narration.",
+        "x": 5,
+        "y": 72,
+        "width": 90,
+        "startTime": 4,
+        "endTime": 9,
+        "fontFamily": "Inter",
+        "fontSize": 30,
+        "bold": false,
+        "italic": true,
+        "color": "#FFFFFF",
+        "bgColor": "#111827",
+        "bgOpacity": 0.78,
+        "animation": "none",
+        "blueprint": {
+          "blueprintId": "bp-008f30518f8d64f6",
+          "sectionNumber": 2,
+          "kind": "text",
+          "mechanismIds": [
+            "M02",
+            "M03"
+          ],
+          "referenceVideoId": 5127,
+          "c3AttemptId": 12731
+        }
+      },
+      {
+        "id": "bp:bp-008f30518f8d64f6:s3:text",
+        "text": "TEXT PLACEHOLDER — On-screen caption naming the benefit of the matched choice, synced to narration.",
+        "x": 5,
+        "y": 72,
+        "width": 90,
+        "startTime": 9,
+        "endTime": 14,
+        "fontFamily": "Inter",
+        "fontSize": 30,
+        "bold": false,
+        "italic": true,
+        "color": "#FFFFFF",
+        "bgColor": "#111827",
+        "bgOpacity": 0.78,
+        "animation": "none",
+        "blueprint": {
+          "blueprintId": "bp-008f30518f8d64f6",
+          "sectionNumber": 3,
+          "kind": "text",
+          "mechanismIds": [
+            "M02",
+            "M03"
+          ],
+          "referenceVideoId": 5127,
+          "c3AttemptId": 12731
+        }
+      },
+      {
+        "id": "bp:bp-008f30518f8d64f6:s4:text",
+        "text": "TEXT PLACEHOLDER — Short synced captions labeling each outcome.",
+        "x": 5,
+        "y": 72,
+        "width": 90,
+        "startTime": 14,
+        "endTime": 20,
+        "fontFamily": "Inter",
+        "fontSize": 30,
+        "bold": false,
+        "italic": true,
+        "color": "#FFFFFF",
+        "bgColor": "#111827",
+        "bgOpacity": 0.78,
+        "animation": "none",
+        "blueprint": {
+          "blueprintId": "bp-008f30518f8d64f6",
+          "sectionNumber": 4,
+          "kind": "text",
+          "mechanismIds": [
+            "M02",
+            "M03"
+          ],
+          "referenceVideoId": 5127,
+          "c3AttemptId": 12731
+        }
+      },
+      {
+        "id": "bp:bp-008f30518f8d64f6:s5:text",
+        "text": "TEXT PLACEHOLDER — On-screen summary line matching the spoken principle.",
+        "x": 5,
+        "y": 72,
+        "width": 90,
+        "startTime": 20,
+        "endTime": 25,
+        "fontFamily": "Inter",
+        "fontSize": 30,
+        "bold": false,
+        "italic": true,
+        "color": "#FFFFFF",
+        "bgColor": "#111827",
+        "bgOpacity": 0.78,
+        "animation": "none",
+        "blueprint": {
+          "blueprintId": "bp-008f30518f8d64f6",
+          "sectionNumber": 5,
+          "kind": "text",
+          "mechanismIds": [
+            "M03"
+          ],
+          "referenceVideoId": 5127,
+          "c3AttemptId": 12731
+        }
+      },
+      {
+        "id": "bp:bp-008f30518f8d64f6:s6:text",
+        "text": "TEXT PLACEHOLDER — Minimal or no text, allowing the pause to register visually.",
+        "x": 5,
+        "y": 72,
+        "width": 90,
+        "startTime": 25,
+        "endTime": 27,
+        "fontFamily": "Inter",
+        "fontSize": 30,
+        "bold": false,
+        "italic": true,
+        "color": "#FFFFFF",
+        "bgColor": "#111827",
+        "bgOpacity": 0.78,
+        "animation": "none",
+        "blueprint": {
+          "blueprintId": "bp-008f30518f8d64f6",
+          "sectionNumber": 6,
+          "kind": "text",
+          "mechanismIds": [
+            "M04"
+          ],
+          "referenceVideoId": 5127,
+          "c3AttemptId": 12731
+        }
+      },
+      {
+        "id": "bp:bp-008f30518f8d64f6:s7:text",
+        "text": "TEXT PLACEHOLDER — Short on-screen prompt reinforcing the spoken call to action.",
+        "x": 5,
+        "y": 72,
+        "width": 90,
+        "startTime": 27,
+        "endTime": 30,
+        "fontFamily": "Inter",
+        "fontSize": 30,
+        "bold": false,
+        "italic": true,
+        "color": "#FFFFFF",
+        "bgColor": "#111827",
+        "bgOpacity": 0.78,
+        "animation": "none",
+        "blueprint": {
+          "blueprintId": "bp-008f30518f8d64f6",
+          "sectionNumber": 7,
+          "kind": "text",
+          "mechanismIds": [
+            "M04"
+          ],
+          "referenceVideoId": 5127,
+          "c3AttemptId": 12731
+        }
+      },
+      {
+        "id": "bp:bp-008f30518f8d64f6:s7:cta",
+        "text": "CTA PLACEHOLDER — Prompt the viewer to visit the showroom or contact the business for personalized guidance on choosing tiles.",
+        "x": 5,
+        "y": 58,
+        "width": 90,
+        "startTime": 27,
+        "endTime": 30,
+        "fontFamily": "Inter",
+        "fontSize": 30,
+        "bold": false,
+        "italic": true,
+        "color": "#FFFFFF",
+        "bgColor": "#111827",
+        "bgOpacity": 0.78,
+        "animation": "none",
+        "blueprint": {
+          "blueprintId": "bp-008f30518f8d64f6",
+          "sectionNumber": 7,
+          "kind": "cta",
+          "mechanismIds": [
+            "M04"
+          ],
+          "referenceVideoId": 5127,
+          "c3AttemptId": 12731
+        }
+      }
+    ],
+    "mediaOverlays": [],
+    "audioTracks": [],
+    "lowerThirds": [],
+    "shapes": [],
+    "subtitles": [],
+    "mediaAssets": [
+      {
+        "id": 9000,
+        "job_id": null,
+        "user_id": 1,
+        "original_filename": "f1.mp4",
+        "stored_filename": "f1.mp4",
+        "file_path": "/uploads/f1.mp4",
+        "file_type": "video",
+        "mime_type": "video/mp4",
+        "file_size": 1,
+        "created_at": "2026-10-29T12:00:00.000Z"
+      },
+      {
+        "id": 9001,
+        "job_id": null,
+        "user_id": 1,
+        "original_filename": "f2.mp4",
+        "stored_filename": "f2.mp4",
+        "file_path": "/uploads/f2.mp4",
+        "file_type": "video",
+        "mime_type": "video/mp4",
+        "file_size": 1,
+        "created_at": "2026-10-29T12:00:00.000Z"
+      },
+      {
+        "id": 9002,
+        "job_id": null,
+        "user_id": 1,
+        "original_filename": "f3.mp4",
+        "stored_filename": "f3.mp4",
+        "file_path": "/uploads/f3.mp4",
+        "file_type": "video",
+        "mime_type": "video/mp4",
+        "file_size": 1,
+        "created_at": "2026-10-29T12:00:00.000Z"
+      },
+      {
+        "id": 9003,
+        "job_id": null,
+        "user_id": 1,
+        "original_filename": "f4.mp4",
+        "stored_filename": "f4.mp4",
+        "file_path": "/uploads/f4.mp4",
+        "file_type": "video",
+        "mime_type": "video/mp4",
+        "file_size": 1,
+        "created_at": "2026-10-29T12:00:00.000Z"
+      },
+      {
+        "id": 9004,
+        "job_id": null,
+        "user_id": 1,
+        "original_filename": "f5.mp4",
+        "stored_filename": "f5.mp4",
+        "file_path": "/uploads/f5.mp4",
+        "file_type": "video",
+        "mime_type": "video/mp4",
+        "file_size": 1,
+        "created_at": "2026-10-29T12:00:00.000Z"
+      },
+      {
+        "id": 9005,
+        "job_id": null,
+        "user_id": 1,
+        "original_filename": "f6.mp4",
+        "stored_filename": "f6.mp4",
+        "file_path": "/uploads/f6.mp4",
+        "file_type": "video",
+        "mime_type": "video/mp4",
+        "file_size": 1,
+        "created_at": "2026-10-29T12:00:00.000Z"
+      },
+      {
+        "id": 9006,
+        "job_id": null,
+        "user_id": 1,
+        "original_filename": "f7.mp4",
+        "stored_filename": "f7.mp4",
+        "file_path": "/uploads/f7.mp4",
+        "file_type": "video",
+        "mime_type": "video/mp4",
+        "file_size": 1,
+        "created_at": "2026-10-29T12:00:00.000Z"
+      }
+    ],
+    "timeline": {
+      "currentTime": 0,
+      "duration": 30,
+      "playing": false,
+      "markIn": null,
+      "markOut": null
+    },
+    "canvasItemPositions": {},
+    "clientIdentity": {
+      "client": "Blueprint draft",
+      "campaign": "Topic: choosing tiles for a home renovation. Audience: homeowners planning a ren"
+    },
+    "blueprintPlan": {
+      "schema": "blueprint-plan-v1",
+      "blueprintId": "bp-008f30518f8d64f6",
+      "blueprintVersion": "c4-v1",
+      "referenceVideoId": 5127,
+      "videoAnalysisId": 5368,
+      "c3AttemptId": 12731,
+      "blueprintAttemptId": 15831,
+      "anatomyFingerprint": "f997ac509987d1500791b57323950592087b6acb0deaf4df35c3ff1c3e1c4c51",
+      "intentHash": "36db64fb92354ef085b714171d87e5a8ad5df39cbc1d317ebd2d431666c262d7",
+      "intentSummary": "Topic: choosing tiles for a home renovation. Audience: homeowners planning a renovation. Objective: help homeowners understand how different tile choices can affect the finished result and make a more informed selection. Business: generic tile retailer. Format: short-form social video.",
+      "structuralApproach": "Open with a bold dual-contrast claim about tile choice outcomes, then hold the decision constant (same room type) while alternating between a mismatched tile choice and a well-matched one, reinforced by synchronized on-screen text, closing with a single visual break and pause before a guidance-seeking call to action.",
+      "platform": "short-form social video",
+      "totalSeconds": 30,
+      "mechanismsUsed": [
+        "M01",
+        "M02",
+        "M03",
+        "M04"
+      ],
+      "createdAt": "2026-09-25T10:00:00.000Z",
+      "scenes": [
+        {
+          "sceneNumber": 1,
+          "order": 0,
+          "startTime": 0,
+          "endTime": 4,
+          "duration": 4,
+          "purpose": "Hook the audience with a broad claim that tile choice changes the finished look and feel of a room.",
+          "structuralRole": "opening",
+          "contentInstruction": "State a generalized contrast between two different finished outcomes that can result from tile choice, without yet naming specific tiles or rooms, to create anticipation.",
+          "requiredInformation": [],
+          "visual": "Show a quick establishing shot of a renovation space, neutral and unbranded.",
+          "text": "Short on-screen phrase mirroring the spoken contrast claim.",
+          "speech": "Deliver the opening contrast claim in a confident, clear tone.",
+          "pacing": "Single continuous shot, fast entry, no cuts.",
+          "transition": null,
+          "cta": null,
+          "mandatoryPoints": [
+            {
+              "id": "MP01",
+              "text": "different tile choices can create different finished outcomes"
+            }
+          ],
+          "mechanisms": [
+            {
+              "id": "M01",
+              "type": "hook_curiosity",
+              "principle": "Open with a bold, generalized dual-contrast claim before any explanation, prompting the audience to want resolution of the comparison."
+            }
+          ],
+          "anatomySections": [
+            1
+          ],
+          "confidence": "medium",
+          "limitations": [],
+          "trace": {
+            "blueprintId": "bp-008f30518f8d64f6",
+            "sectionNumber": 1,
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "c3AttemptId": 12731,
+            "blueprintAttemptId": 15831,
+            "mechanismIds": [
+              "M01"
+            ]
+          }
+        },
+        {
+          "sceneNumber": 2,
+          "order": 1,
+          "startTime": 4,
+          "endTime": 9,
+          "duration": 5,
+          "purpose": "Show the mismatched tile outcome for a specific room/use case.",
+          "structuralRole": "contrast",
+          "contentInstruction": "Present one room/use case and demonstrate the negative consequence of an unsuitable tile choice for that context (e.g. durability, moisture, style mismatch), keeping the room constant for later contrast.",
+          "requiredInformation": [
+            "to be supplied: specific example room and tile type to illustrate mismatch"
+          ],
+          "visual": "Show the chosen room type with a tile finish that visibly clashes with its function.",
+          "text": "On-screen caption naming the issue caused by the mismatch, synced to narration.",
+          "speech": "Explain plainly why this tile choice underperforms in this context.",
+          "pacing": "Single continuous shot, steady pace.",
+          "transition": "Cut to matched version in next section.",
+          "cta": null,
+          "mandatoryPoints": [
+            {
+              "id": "MP02",
+              "text": "suitability depends on the room/use case"
+            }
+          ],
+          "mechanisms": [
+            {
+              "id": "M02",
+              "type": "contrast",
+              "principle": "Structure a narrative by alternating between two opposing behavioral outcomes tied to the same subject, reinforcing a before/after or type-A/type-B dichotomy."
+            },
+            {
+              "id": "M03",
+              "type": "text_attention",
+              "principle": "Pair spoken narration with synchronized on-screen text restating the same content to reinforce the message through a parallel visual channel."
+            }
+          ],
+          "anatomySections": [
+            3,
+            4
+          ],
+          "confidence": "medium",
+          "limitations": [
+            "Specific tile examples not supplied by intent"
+          ],
+          "trace": {
+            "blueprintId": "bp-008f30518f8d64f6",
+            "sectionNumber": 2,
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "c3AttemptId": 12731,
+            "blueprintAttemptId": 15831,
+            "mechanismIds": [
+              "M02",
+              "M03"
+            ]
+          }
+        },
+        {
+          "sceneNumber": 3,
+          "order": 2,
+          "startTime": 9,
+          "endTime": 14,
+          "duration": 5,
+          "purpose": "Show the well-matched tile outcome for the same room/use case.",
+          "structuralRole": "contrast",
+          "contentInstruction": "Return to the same room/use case and show the positive outcome achieved with a well-suited tile choice, directly opposing section 2's outcome.",
+          "requiredInformation": [
+            "to be supplied: matching tile example for the same room"
+          ],
+          "visual": "Show the same room type with a tile finish appropriate to its function and aesthetic.",
+          "text": "On-screen caption naming the benefit of the matched choice, synced to narration.",
+          "speech": "Explain plainly why this tile choice works well in this context.",
+          "pacing": "Single continuous shot, steady pace.",
+          "transition": "Move into a second room example to broaden the point.",
+          "cta": null,
+          "mandatoryPoints": [
+            {
+              "id": "MP01",
+              "text": "different tile choices can create different finished outcomes"
+            },
+            {
+              "id": "MP02",
+              "text": "suitability depends on the room/use case"
+            }
+          ],
+          "mechanisms": [
+            {
+              "id": "M02",
+              "type": "contrast",
+              "principle": "Structure a narrative by alternating between two opposing behavioral outcomes tied to the same subject, reinforcing a before/after or type-A/type-B dichotomy."
+            },
+            {
+              "id": "M03",
+              "type": "text_attention",
+              "principle": "Pair spoken narration with synchronized on-screen text restating the same content to reinforce the message through a parallel visual channel."
+            }
+          ],
+          "anatomySections": [
+            5,
+            6
+          ],
+          "confidence": "medium",
+          "limitations": [],
+          "trace": {
+            "blueprintId": "bp-008f30518f8d64f6",
+            "sectionNumber": 3,
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "c3AttemptId": 12731,
+            "blueprintAttemptId": 15831,
+            "mechanismIds": [
+              "M02",
+              "M03"
+            ]
+          }
+        },
+        {
+          "sceneNumber": 4,
+          "order": 3,
+          "startTime": 14,
+          "endTime": 20,
+          "duration": 6,
+          "purpose": "Repeat the mismatch versus match contrast with a second, different room/use case to generalize the principle.",
+          "structuralRole": "development",
+          "contentInstruction": "Briefly show a second room/use case with the same mismatch-versus-match pairing, more quickly than sections 2-3, to reinforce that suitability depends on context rather than one universal best tile.",
+          "requiredInformation": [
+            "to be supplied: second example room and tile pairing"
+          ],
+          "visual": "Split or sequential shots contrasting the two outcomes in the new room type.",
+          "text": "Short synced captions labeling each outcome.",
+          "speech": "Summarize the same mismatch/match logic applied to the new context.",
+          "pacing": "Slightly faster cadence than sections 2-3, still single continuous shots.",
+          "transition": "Move to a summarizing principle statement.",
+          "cta": null,
+          "mandatoryPoints": [
+            {
+              "id": "MP02",
+              "text": "suitability depends on the room/use case"
+            }
+          ],
+          "mechanisms": [
+            {
+              "id": "M02",
+              "type": "contrast",
+              "principle": "Structure a narrative by alternating between two opposing behavioral outcomes tied to the same subject, reinforcing a before/after or type-A/type-B dichotomy."
+            },
+            {
+              "id": "M03",
+              "type": "text_attention",
+              "principle": "Pair spoken narration with synchronized on-screen text restating the same content to reinforce the message through a parallel visual channel."
+            }
+          ],
+          "anatomySections": [
+            7,
+            8,
+            9
+          ],
+          "confidence": "medium",
+          "limitations": [],
+          "trace": {
+            "blueprintId": "bp-008f30518f8d64f6",
+            "sectionNumber": 4,
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "c3AttemptId": 12731,
+            "blueprintAttemptId": 15831,
+            "mechanismIds": [
+              "M02",
+              "M03"
+            ]
+          }
+        },
+        {
+          "sceneNumber": 5,
+          "order": 4,
+          "startTime": 20,
+          "endTime": 25,
+          "duration": 5,
+          "purpose": "Derive a practical selection principle from the preceding comparisons.",
+          "structuralRole": "development",
+          "contentInstruction": "State the general rule that emerges from the contrasts: the right tile choice depends on the specific room and its use, not on any single tile being universally best.",
+          "requiredInformation": [],
+          "visual": "Neutral shot summarizing the space, perhaps a wider view of multiple tile samples.",
+          "text": "On-screen summary line matching the spoken principle.",
+          "speech": "Deliver the takeaway rule in a calm, instructive tone.",
+          "pacing": "Continuous shot, measured pace.",
+          "transition": "Lead into closing pause.",
+          "cta": null,
+          "mandatoryPoints": [
+            {
+              "id": "MP02",
+              "text": "suitability depends on the room/use case"
+            }
+          ],
+          "mechanisms": [
+            {
+              "id": "M03",
+              "type": "text_attention",
+              "principle": "Pair spoken narration with synchronized on-screen text restating the same content to reinforce the message through a parallel visual channel."
+            }
+          ],
+          "anatomySections": [
+            10
+          ],
+          "confidence": "medium",
+          "limitations": [],
+          "trace": {
+            "blueprintId": "bp-008f30518f8d64f6",
+            "sectionNumber": 5,
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "c3AttemptId": 12731,
+            "blueprintAttemptId": 15831,
+            "mechanismIds": [
+              "M03"
+            ]
+          }
+        },
+        {
+          "sceneNumber": 6,
+          "order": 5,
+          "startTime": 25,
+          "endTime": 27,
+          "duration": 2,
+          "purpose": "Mark closure of the educational content with a visual break before the call to action.",
+          "structuralRole": "closing",
+          "contentInstruction": "Introduce a single clean cut to a new shot signalling the piece is wrapping up, with a brief pause in narration.",
+          "requiredInformation": [],
+          "visual": "Cut to a calmer, final framing, e.g. a tidy finished space or product display.",
+          "text": "Minimal or no text, allowing the pause to register visually.",
+          "speech": "Pause briefly after the previous statement before the final line.",
+          "pacing": "One cut, brief silence.",
+          "transition": "Lead directly into the call to action.",
+          "cta": null,
+          "mandatoryPoints": [],
+          "mechanisms": [
+            {
+              "id": "M04",
+              "type": "pacing_rhythm",
+              "principle": "Maintain an unbroken visual continuity through most of a piece, then mark closure with a single cut and pauses to signal an ending."
+            }
+          ],
+          "anatomySections": [
+            13
+          ],
+          "confidence": "medium",
+          "limitations": [],
+          "trace": {
+            "blueprintId": "bp-008f30518f8d64f6",
+            "sectionNumber": 6,
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "c3AttemptId": 12731,
+            "blueprintAttemptId": 15831,
+            "mechanismIds": [
+              "M04"
+            ]
+          }
+        },
+        {
+          "sceneNumber": 7,
+          "order": 6,
+          "startTime": 27,
+          "endTime": 30,
+          "duration": 3,
+          "purpose": "Invite the audience to seek personalized guidance before finalizing their tile choice.",
+          "structuralRole": "call_to_action",
+          "contentInstruction": "Encourage the audience to visit the showroom or contact the business for guidance tailored to their specific room and needs, framed as helpful rather than pressuring.",
+          "requiredInformation": [
+            "to be supplied: showroom location or contact method"
+          ],
+          "visual": "Simple closing shot, calm framing consistent with section 6.",
+          "text": "Short on-screen prompt reinforcing the spoken call to action.",
+          "speech": "Deliver the invitation in a warm, low-pressure tone.",
+          "pacing": "Slow final pace with a closing pause.",
+          "transition": null,
+          "cta": "Prompt the viewer to visit the showroom or contact the business for personalized guidance on choosing tiles.",
+          "mandatoryPoints": [
+            {
+              "id": "MP03",
+              "text": "customers can seek guidance before choosing"
+            }
+          ],
+          "mechanisms": [
+            {
+              "id": "M04",
+              "type": "pacing_rhythm",
+              "principle": "Maintain an unbroken visual continuity through most of a piece, then mark closure with a single cut and pauses to signal an ending."
+            }
+          ],
+          "anatomySections": [
+            14
+          ],
+          "confidence": "medium",
+          "limitations": [],
+          "trace": {
+            "blueprintId": "bp-008f30518f8d64f6",
+            "sectionNumber": 7,
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "c3AttemptId": 12731,
+            "blueprintAttemptId": 15831,
+            "mechanismIds": [
+              "M04"
+            ]
+          }
+        }
+      ]
+    },
+    "assembly": {
+      "schema": "assembly-v1",
+      "engineVersion": "1.0.0",
+      "blueprintId": "bp-008f30518f8d64f6",
+      "referenceVideoId": 5127,
+      "videoAnalysisId": 5368,
+      "createdAt": "2026-10-29T12:00:00.000Z",
+      "inputDigest": "146e60d38b08c5",
+      "scenes": [
+        {
+          "sceneNumber": 1,
+          "order": 0,
+          "startTime": 0,
+          "endTime": 4,
+          "duration": 4,
+          "evidence": {
+            "origin": "reference_evidence",
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "anatomySections": [
+              1
+            ],
+            "confidence": "medium",
+            "limitations": []
+          },
+          "structure": {
+            "origin": "inferred_structure",
+            "purpose": "Hook the audience with a broad claim that tile choice changes the finished look and feel of a room.",
+            "structuralRole": "opening",
+            "mechanismIds": [
+              "M01"
+            ],
+            "instructions": {
+              "content": "State a generalized contrast between two different finished outcomes that can result from tile choice, without yet naming specific tiles or rooms, to create anticipation.",
+              "visual": "Show a quick establishing shot of a renovation space, neutral and unbranded.",
+              "text": "Short on-screen phrase mirroring the spoken contrast claim.",
+              "speech": "Deliver the opening contrast claim in a confident, clear tone.",
+              "pacing": "Single continuous shot, fast entry, no cuts.",
+              "transition": null,
+              "cta": null
+            },
+            "mandatoryPoints": [
+              {
+                "id": "MP01",
+                "text": "different tile choices can create different finished outcomes"
+              }
+            ]
+          },
+          "media": {
+            "origin": "user_supplied",
+            "clips": [
+              {
+                "elementId": "asm:bp-008f30518f8d64f6:s1:c0",
+                "footageKey": "f1",
+                "assetId": 9000,
+                "name": "f1.mp4",
+                "sourceDuration": 20,
+                "trimIn": 0,
+                "trimOut": 16,
+                "speed": 1,
+                "timelineStart": 0,
+                "timelineEnd": 4
+              }
+            ],
+            "coverage": {
+              "filledSeconds": 4,
+              "gapSeconds": 0,
+              "status": "filled"
+            }
+          },
+          "text": {
+            "origin": "placeholder",
+            "textElementId": "bp:bp-008f30518f8d64f6:s1:text",
+            "ctaElementId": null,
+            "replaced": false,
+            "editability": "automatic"
+          }
+        },
+        {
+          "sceneNumber": 2,
+          "order": 1,
+          "startTime": 4,
+          "endTime": 9,
+          "duration": 5,
+          "evidence": {
+            "origin": "reference_evidence",
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "anatomySections": [
+              3,
+              4
+            ],
+            "confidence": "medium",
+            "limitations": [
+              "Specific tile examples not supplied by intent"
+            ]
+          },
+          "structure": {
+            "origin": "inferred_structure",
+            "purpose": "Show the mismatched tile outcome for a specific room/use case.",
+            "structuralRole": "contrast",
+            "mechanismIds": [
+              "M02",
+              "M03"
+            ],
+            "instructions": {
+              "content": "Present one room/use case and demonstrate the negative consequence of an unsuitable tile choice for that context (e.g. durability, moisture, style mismatch), keeping the room constant for later contrast.",
+              "visual": "Show the chosen room type with a tile finish that visibly clashes with its function.",
+              "text": "On-screen caption naming the issue caused by the mismatch, synced to narration.",
+              "speech": "Explain plainly why this tile choice underperforms in this context.",
+              "pacing": "Single continuous shot, steady pace.",
+              "transition": "Cut to matched version in next section.",
+              "cta": null
+            },
+            "mandatoryPoints": [
+              {
+                "id": "MP02",
+                "text": "suitability depends on the room/use case"
+              }
+            ]
+          },
+          "media": {
+            "origin": "user_supplied",
+            "clips": [
+              {
+                "elementId": "asm:bp-008f30518f8d64f6:s2:c0",
+                "footageKey": "f2",
+                "assetId": 9001,
+                "name": "f2.mp4",
+                "sourceDuration": 21,
+                "trimIn": 0,
+                "trimOut": 16,
+                "speed": 1,
+                "timelineStart": 4,
+                "timelineEnd": 9
+              }
+            ],
+            "coverage": {
+              "filledSeconds": 5,
+              "gapSeconds": 0,
+              "status": "filled"
+            }
+          },
+          "text": {
+            "origin": "placeholder",
+            "textElementId": "bp:bp-008f30518f8d64f6:s2:text",
+            "ctaElementId": null,
+            "replaced": false,
+            "editability": "automatic"
+          }
+        },
+        {
+          "sceneNumber": 3,
+          "order": 2,
+          "startTime": 9,
+          "endTime": 14,
+          "duration": 5,
+          "evidence": {
+            "origin": "reference_evidence",
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "anatomySections": [
+              5,
+              6
+            ],
+            "confidence": "medium",
+            "limitations": []
+          },
+          "structure": {
+            "origin": "inferred_structure",
+            "purpose": "Show the well-matched tile outcome for the same room/use case.",
+            "structuralRole": "contrast",
+            "mechanismIds": [
+              "M02",
+              "M03"
+            ],
+            "instructions": {
+              "content": "Return to the same room/use case and show the positive outcome achieved with a well-suited tile choice, directly opposing section 2's outcome.",
+              "visual": "Show the same room type with a tile finish appropriate to its function and aesthetic.",
+              "text": "On-screen caption naming the benefit of the matched choice, synced to narration.",
+              "speech": "Explain plainly why this tile choice works well in this context.",
+              "pacing": "Single continuous shot, steady pace.",
+              "transition": "Move into a second room example to broaden the point.",
+              "cta": null
+            },
+            "mandatoryPoints": [
+              {
+                "id": "MP01",
+                "text": "different tile choices can create different finished outcomes"
+              },
+              {
+                "id": "MP02",
+                "text": "suitability depends on the room/use case"
+              }
+            ]
+          },
+          "media": {
+            "origin": "user_supplied",
+            "clips": [
+              {
+                "elementId": "asm:bp-008f30518f8d64f6:s3:c0",
+                "footageKey": "f3",
+                "assetId": 9002,
+                "name": "f3.mp4",
+                "sourceDuration": 22,
+                "trimIn": 0,
+                "trimOut": 17,
+                "speed": 1,
+                "timelineStart": 9,
+                "timelineEnd": 14
+              }
+            ],
+            "coverage": {
+              "filledSeconds": 5,
+              "gapSeconds": 0,
+              "status": "filled"
+            }
+          },
+          "text": {
+            "origin": "placeholder",
+            "textElementId": "bp:bp-008f30518f8d64f6:s3:text",
+            "ctaElementId": null,
+            "replaced": false,
+            "editability": "automatic"
+          }
+        },
+        {
+          "sceneNumber": 4,
+          "order": 3,
+          "startTime": 14,
+          "endTime": 20,
+          "duration": 6,
+          "evidence": {
+            "origin": "reference_evidence",
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "anatomySections": [
+              7,
+              8,
+              9
+            ],
+            "confidence": "medium",
+            "limitations": []
+          },
+          "structure": {
+            "origin": "inferred_structure",
+            "purpose": "Repeat the mismatch versus match contrast with a second, different room/use case to generalize the principle.",
+            "structuralRole": "development",
+            "mechanismIds": [
+              "M02",
+              "M03"
+            ],
+            "instructions": {
+              "content": "Briefly show a second room/use case with the same mismatch-versus-match pairing, more quickly than sections 2-3, to reinforce that suitability depends on context rather than one universal best tile.",
+              "visual": "Split or sequential shots contrasting the two outcomes in the new room type.",
+              "text": "Short synced captions labeling each outcome.",
+              "speech": "Summarize the same mismatch/match logic applied to the new context.",
+              "pacing": "Slightly faster cadence than sections 2-3, still single continuous shots.",
+              "transition": "Move to a summarizing principle statement.",
+              "cta": null
+            },
+            "mandatoryPoints": [
+              {
+                "id": "MP02",
+                "text": "suitability depends on the room/use case"
+              }
+            ]
+          },
+          "media": {
+            "origin": "user_supplied",
+            "clips": [
+              {
+                "elementId": "asm:bp-008f30518f8d64f6:s4:c0",
+                "footageKey": "f4",
+                "assetId": 9003,
+                "name": "f4.mp4",
+                "sourceDuration": 23,
+                "trimIn": 0,
+                "trimOut": 17,
+                "speed": 1,
+                "timelineStart": 14,
+                "timelineEnd": 20
+              }
+            ],
+            "coverage": {
+              "filledSeconds": 6,
+              "gapSeconds": 0,
+              "status": "filled"
+            }
+          },
+          "text": {
+            "origin": "placeholder",
+            "textElementId": "bp:bp-008f30518f8d64f6:s4:text",
+            "ctaElementId": null,
+            "replaced": false,
+            "editability": "automatic"
+          }
+        },
+        {
+          "sceneNumber": 5,
+          "order": 4,
+          "startTime": 20,
+          "endTime": 25,
+          "duration": 5,
+          "evidence": {
+            "origin": "reference_evidence",
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "anatomySections": [
+              10
+            ],
+            "confidence": "medium",
+            "limitations": []
+          },
+          "structure": {
+            "origin": "inferred_structure",
+            "purpose": "Derive a practical selection principle from the preceding comparisons.",
+            "structuralRole": "development",
+            "mechanismIds": [
+              "M03"
+            ],
+            "instructions": {
+              "content": "State the general rule that emerges from the contrasts: the right tile choice depends on the specific room and its use, not on any single tile being universally best.",
+              "visual": "Neutral shot summarizing the space, perhaps a wider view of multiple tile samples.",
+              "text": "On-screen summary line matching the spoken principle.",
+              "speech": "Deliver the takeaway rule in a calm, instructive tone.",
+              "pacing": "Continuous shot, measured pace.",
+              "transition": "Lead into closing pause.",
+              "cta": null
+            },
+            "mandatoryPoints": [
+              {
+                "id": "MP02",
+                "text": "suitability depends on the room/use case"
+              }
+            ]
+          },
+          "media": {
+            "origin": "user_supplied",
+            "clips": [
+              {
+                "elementId": "asm:bp-008f30518f8d64f6:s5:c0",
+                "footageKey": "f5",
+                "assetId": 9004,
+                "name": "f5.mp4",
+                "sourceDuration": 24,
+                "trimIn": 0,
+                "trimOut": 19,
+                "speed": 1,
+                "timelineStart": 20,
+                "timelineEnd": 25
+              }
+            ],
+            "coverage": {
+              "filledSeconds": 5,
+              "gapSeconds": 0,
+              "status": "filled"
+            }
+          },
+          "text": {
+            "origin": "placeholder",
+            "textElementId": "bp:bp-008f30518f8d64f6:s5:text",
+            "ctaElementId": null,
+            "replaced": false,
+            "editability": "automatic"
+          }
+        },
+        {
+          "sceneNumber": 6,
+          "order": 5,
+          "startTime": 25,
+          "endTime": 27,
+          "duration": 2,
+          "evidence": {
+            "origin": "reference_evidence",
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "anatomySections": [
+              13
+            ],
+            "confidence": "medium",
+            "limitations": []
+          },
+          "structure": {
+            "origin": "inferred_structure",
+            "purpose": "Mark closure of the educational content with a visual break before the call to action.",
+            "structuralRole": "closing",
+            "mechanismIds": [
+              "M04"
+            ],
+            "instructions": {
+              "content": "Introduce a single clean cut to a new shot signalling the piece is wrapping up, with a brief pause in narration.",
+              "visual": "Cut to a calmer, final framing, e.g. a tidy finished space or product display.",
+              "text": "Minimal or no text, allowing the pause to register visually.",
+              "speech": "Pause briefly after the previous statement before the final line.",
+              "pacing": "One cut, brief silence.",
+              "transition": "Lead directly into the call to action.",
+              "cta": null
+            },
+            "mandatoryPoints": []
+          },
+          "media": {
+            "origin": "user_supplied",
+            "clips": [
+              {
+                "elementId": "asm:bp-008f30518f8d64f6:s6:c0",
+                "footageKey": "f6",
+                "assetId": 9005,
+                "name": "f6.mp4",
+                "sourceDuration": 25,
+                "trimIn": 0,
+                "trimOut": 23,
+                "speed": 1,
+                "timelineStart": 25,
+                "timelineEnd": 27
+              }
+            ],
+            "coverage": {
+              "filledSeconds": 2,
+              "gapSeconds": 0,
+              "status": "filled"
+            }
+          },
+          "text": {
+            "origin": "placeholder",
+            "textElementId": "bp:bp-008f30518f8d64f6:s6:text",
+            "ctaElementId": null,
+            "replaced": false,
+            "editability": "automatic"
+          }
+        },
+        {
+          "sceneNumber": 7,
+          "order": 6,
+          "startTime": 27,
+          "endTime": 30,
+          "duration": 3,
+          "evidence": {
+            "origin": "reference_evidence",
+            "referenceVideoId": 5127,
+            "videoAnalysisId": 5368,
+            "anatomySections": [
+              14
+            ],
+            "confidence": "medium",
+            "limitations": []
+          },
+          "structure": {
+            "origin": "inferred_structure",
+            "purpose": "Invite the audience to seek personalized guidance before finalizing their tile choice.",
+            "structuralRole": "call_to_action",
+            "mechanismIds": [
+              "M04"
+            ],
+            "instructions": {
+              "content": "Encourage the audience to visit the showroom or contact the business for guidance tailored to their specific room and needs, framed as helpful rather than pressuring.",
+              "visual": "Simple closing shot, calm framing consistent with section 6.",
+              "text": "Short on-screen prompt reinforcing the spoken call to action.",
+              "speech": "Deliver the invitation in a warm, low-pressure tone.",
+              "pacing": "Slow final pace with a closing pause.",
+              "transition": null,
+              "cta": "Prompt the viewer to visit the showroom or contact the business for personalized guidance on choosing tiles."
+            },
+            "mandatoryPoints": [
+              {
+                "id": "MP03",
+                "text": "customers can seek guidance before choosing"
+              }
+            ]
+          },
+          "media": {
+            "origin": "user_supplied",
+            "clips": [
+              {
+                "elementId": "asm:bp-008f30518f8d64f6:s7:c0",
+                "footageKey": "f7",
+                "assetId": 9006,
+                "name": "f7.mp4",
+                "sourceDuration": 26,
+                "trimIn": 0,
+                "trimOut": 23,
+                "speed": 1,
+                "timelineStart": 27,
+                "timelineEnd": 30
+              }
+            ],
+            "coverage": {
+              "filledSeconds": 3,
+              "gapSeconds": 0,
+              "status": "filled"
+            }
+          },
+          "text": {
+            "origin": "placeholder",
+            "textElementId": "bp:bp-008f30518f8d64f6:s7:text",
+            "ctaElementId": "bp:bp-008f30518f8d64f6:s7:cta",
+            "replaced": false,
+            "editability": "automatic"
+          }
+        }
+      ],
+      "summary": {
+        "scenes": 7,
+        "scenesWithMedia": 7,
+        "scenesWithoutMedia": 0,
+        "clipsPlaced": 7,
+        "plannedSeconds": 30,
+        "filledSeconds": 30,
+        "gapSeconds": 0
+      },
+      "elementClasses": [
+        {
+          "kind": "scene_structure",
+          "editability": "automatic",
+          "reason": "Scene order and timing come from the blueprint and are laid out on the timeline."
+        },
+        {
+          "kind": "clip_placement",
+          "editability": "automatic",
+          "reason": "The footage you supply becomes real video clips placed at each scene’s start."
+        },
+        {
+          "kind": "clip_trim",
+          "editability": "automatic",
+          "reason": "Each clip is trimmed to its scene; the trim values are real and editable in the editor."
+        },
+        {
+          "kind": "clip_speed",
+          "editability": "automatic",
+          "reason": "Speed is one of the editor’s own clip properties (only used when you pick it, or when a short clip is stretched)."
+        },
+        {
+          "kind": "text_placeholder",
+          "editability": "automatic",
+          "reason": "A real, editable text overlay that holds the blueprint’s instruction. It is a placeholder to replace, not final copy."
+        },
+        {
+          "kind": "cta_placeholder",
+          "editability": "automatic",
+          "reason": "A real, editable text overlay for the call to action, created only for scenes the blueprint marks as carrying one."
+        },
+        {
+          "kind": "transition",
+          "editability": "partial",
+          "reason": "The blueprint gives plain-language direction and the editor has five fixed transition types, so no automatic mapping is made. Clips start as cuts; the direction is kept in the scene’s notes."
+        },
+        {
+          "kind": "voiceover",
+          "editability": "partial",
+          "reason": "The blueprint’s speech direction is kept as an instruction. No voice is generated; you record or upload audio."
+        },
+        {
+          "kind": "music",
+          "editability": "partial",
+          "reason": "No music is selected or generated; you add an audio track in the editor."
+        },
+        {
+          "kind": "captions",
+          "editability": "partial",
+          "reason": "The editor can transcribe and caption, but assembly does not create captions."
+        },
+        {
+          "kind": "lower_third",
+          "editability": "partial",
+          "reason": "Editable in the editor, not generated here. Note: the current export button does not yet send lower thirds."
+        },
+        {
+          "kind": "shape",
+          "editability": "partial",
+          "reason": "Editable in the editor, not generated here. Note: the current export button does not yet send shapes."
+        },
+        {
+          "kind": "reference_footage",
+          "editability": "unsupported",
+          "reason": "The reference video’s own footage is never reused: a reconstruction applies its principles to your media, it does not copy it."
+        },
+        {
+          "kind": "reference_burned_in_text",
+          "editability": "unsupported",
+          "reason": "Text burned into the reference’s frames is flattened pixels, not a separate element, and is not copied or re-created as editable text."
+        },
+        {
+          "kind": "reference_graphics",
+          "editability": "unsupported",
+          "reason": "Graphics and logos baked into the reference’s frames cannot be separated from the picture."
+        },
+        {
+          "kind": "reference_color_grade",
+          "editability": "unsupported",
+          "reason": "The reference’s colour treatment is baked into its pixels and is not extracted as editable settings."
+        },
+        {
+          "kind": "reference_effects",
+          "editability": "unsupported",
+          "reason": "Effects and filters applied to the reference are baked in and cannot be recovered as editable effects."
+        },
+        {
+          "kind": "reference_audio_mix",
+          "editability": "unsupported",
+          "reason": "The reference’s mixed audio cannot be split back into editable tracks."
+        }
+      ],
+      "unsupported": [],
+      "issues": [
+        {
+          "severity": "note",
+          "code": "placeholder_text_present",
+          "message": "8 text placeholders are in the draft. They are real text overlays: replace or delete them before exporting, or their instruction text will be rendered into the video."
+        }
+      ]
+    }
+  }
+}
