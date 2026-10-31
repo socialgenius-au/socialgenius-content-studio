@@ -324,6 +324,7 @@ async def composite_media_overlays(
     input_path: str,
     overlays: list[dict],
     user_id: int,
+    duration: float | None = None,
 ) -> Path:
     """STEP 7.15H: same visual compositing as add_media_overlays above, but ALSO mixes in each
     video-backed overlay's own audio (Instruction 5) — add_media_overlays only ever mapped the
@@ -405,6 +406,8 @@ async def composite_media_overlays(
         maps += ["-map", "[aout]"]
     else:
         maps += ["-map", "0:a?"]
+    # Audio the pass does not touch is copied, not re-encoded: every AAC re-encode shaved about one AAC frame (23 ms) off the end and, through -shortest, the last video frame with it.
+    audio_codec = "aac" if len(audio_labels) > 1 else "copy"
 
     filter_complex = ";".join(filter_parts)
 
@@ -412,8 +415,8 @@ async def composite_media_overlays(
         FFMPEG_BIN, "-y", *inputs,
         "-filter_complex", filter_complex,
         *maps,
-        "-c:v", "libx264", "-c:a", "aac",
-        "-shortest",
+        "-c:v", "libx264", "-c:a", audio_codec,
+        *(["-t", f"{duration:.6f}"] if duration else ["-shortest"]),
         str(out),
     ])
     return out
@@ -570,7 +573,7 @@ async def build_clip_segment(
         s = max(0.0, 1 + saturation / 100)
         vf_parts.append(f"eq=brightness={b:.4f}:contrast={c:.4f}:saturation={s:.4f}")
     if speed != 1:
-        vf_parts.append(f"setpts=PTS/{speed}")
+        vf_parts.append(f"setpts=PTS/{speed},fps=30")        # re-sample to the output rate HERE: left to the output's -r, the first frames of a sped-up clip lagged by one output frame
     if fit_mode == "fit":
         vf_parts.append(
             f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease,"
@@ -585,6 +588,8 @@ async def build_clip_segment(
         )
     vf = ",".join(vf_parts)
 
+    # A speed change resamples to 30 fps; its last frame can land one past the intended length (0.75x gave 91 frames for 3.0 s). The segment is exactly source_duration / speed long, so cap it.
+    length_cap = ["-t", f"{source_duration / speed:.6f}"] if speed != 1 else []
     common_out = ["-r", "30", "-pix_fmt", "yuv420p", "-c:v", "libx264",
                   "-ar", "44100", "-ac", "2", "-c:a", "aac"]
 
@@ -597,7 +602,7 @@ async def build_clip_segment(
             af_parts.append(f"volume={volume}")
         if af_parts:
             cmd += ["-af", ",".join(af_parts)]
-        cmd += common_out + [str(out)]
+        cmd += common_out + length_cap + [str(out)]
     else:
         out_duration = source_duration / speed
         cmd = [
@@ -605,7 +610,7 @@ async def build_clip_segment(
             "-ss", str(trim_in), "-t", str(source_duration), "-i", input_path,
             "-f", "lavfi", "-t", str(out_duration), "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
             "-vf", vf, "-map", "0:v", "-map", "1:a",
-        ] + common_out + ["-shortest", str(out)]
+        ] + common_out + ["-shortest"] + length_cap + [str(out)]
 
     await _run(cmd)
     return out
@@ -744,7 +749,7 @@ async def mix_audio_tracks(base_video_path: str, tracks: list[dict], user_id: in
     return out
 
 
-async def composite_video_inserts(input_path: str, inserts: list[dict], user_id: int) -> Path:
+async def composite_video_inserts(input_path: str, inserts: list[dict], user_id: int, duration: float | None = None) -> Path:
     """Phase 7 (deferred item A/D — V2 Insert/B-roll export parity): a real, independent second
     video LAYER composited on top of the base timeline — Phase 1's own "true V2 insert", not the
     older add_media_overlays/composite_media_overlays shape (which treats a video overlay
@@ -826,14 +831,14 @@ async def composite_video_inserts(input_path: str, inserts: list[dict], user_id:
         FFMPEG_BIN, "-y", *inputs,
         "-filter_complex", filter_complex,
         "-map", f"[{base_label}]", "-map", "0:a?",
-        "-c:v", "libx264", "-c:a", "aac",
-        "-shortest",
+        "-c:v", "libx264", "-c:a", "copy",                      # this pass never touches the audio: copy it (see composite_media_overlays)
+        *(["-t", f"{duration:.6f}"] if duration else ["-shortest"]),
         str(out),
     ])
     return out
 
 
-async def composite_image_overlays(input_path: str, overlays: list[dict], user_id: int) -> Path:
+async def composite_image_overlays(input_path: str, overlays: list[dict], user_id: int, duration: float | None = None) -> Path:
     """The one shared time-gated positioned-PNG compositor behind every Phase 7 Pillow-rendered
     canvas element (see canvas_render_svc.py's own module docstring for why PNG+overlay replaced
     drawtext/drawbox entirely this phase) — Text Overlays, Lower Thirds, Shapes, and Subtitles
@@ -871,8 +876,8 @@ async def composite_image_overlays(input_path: str, overlays: list[dict], user_i
         FFMPEG_BIN, "-y", *inputs,
         "-filter_complex", filter_complex,
         "-map", f"[{base_label}]", "-map", "0:a?",
-        "-c:v", "libx264", "-c:a", "aac",
-        "-shortest",
+        "-c:v", "libx264", "-c:a", "copy",                      # this pass never touches the audio: copy it (see composite_media_overlays)
+        *(["-t", f"{duration:.6f}"] if duration else ["-shortest"]),
         str(out),
     ])
     return out
@@ -1106,7 +1111,7 @@ async def render_project(project: dict, user_id: int) -> Path:
     runs = timeline_plan.split_runs(clips)
     lead = timeline_plan.to_frames(clips[0]["start_time"])
     if len(runs) == 1 and lead < 1:
-        base, run_intermediates, _frames = await _render_clip_run(clips, cw, ch, policy, user_id)
+        base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id)
     else:
         parts: list[tuple[str | None, int]] = []
         run_intermediates: list[str] = []
@@ -1119,13 +1124,15 @@ async def render_project(project: dict, user_id: int) -> Path:
             parts.append((str(rb), frames)); pos += frames
             run_intermediates += im + [str(rb)]
         base = await concat_runs_with_gaps(parts, cw, ch, user_id)
+        base_frames = pos
 
     current = base
     intermediates = list(run_intermediates)
+    timeline_seconds = base_frames / timeline_plan.FPS       # the exact intended length: the overlay passes end here (not at -shortest, which, with copied audio, can cut the last video frames)
     rendered_pngs: list[str] = []
 
     if project.get("additional_video_clips"):
-        next_path = await composite_video_inserts(str(current), project["additional_video_clips"], user_id)
+        next_path = await composite_video_inserts(str(current), project["additional_video_clips"], user_id, duration=timeline_seconds)
         intermediates.append(str(current))
         current = next_path
 
@@ -1135,7 +1142,7 @@ async def render_project(project: dict, user_id: int) -> Path:
     for kind, items in _stack_runs(project):
         if kind == "media":
             # STEP 7.15H: composite_media_overlays (not add_media_overlays) -- the only difference is that this one also mixes in each overlay's own audio, muted/volume-aware.
-            next_path = await composite_media_overlays(str(current), items, user_id)
+            next_path = await composite_media_overlays(str(current), items, user_id, duration=timeline_seconds)
         else:
             if kind == "shape":
                 pngs = await _build_shape_overlays(items, cw, ch, user_id)
@@ -1146,7 +1153,7 @@ async def render_project(project: dict, user_id: int) -> Path:
                 pngs = await _build_text_overlay_pngs(items, cw, ch, user_id)
             else:
                 pngs = await _build_subtitle_overlays(items, project.get("subtitle_style", {}), cw, ch, user_id)
-            next_path = await composite_image_overlays(str(current), pngs, user_id)
+            next_path = await composite_image_overlays(str(current), pngs, user_id, duration=timeline_seconds)
             rendered_pngs += [o["path"] for o in pngs]
         intermediates.append(str(current))
         current = next_path
