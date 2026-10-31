@@ -38,12 +38,32 @@ _FONTS_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 _FONT_CACHE: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
 
 
-def _load_font(size: int, bold: bool) -> ImageFont.FreeTypeFont:
+# Arabic-script text (Arabic, Urdu, Persian, ...): the bundled DejaVu Sans has no glyph for letters such as U+06C1 and U+06D2, so such a line is drawn with the bundled Noto Naskh Arabic
+# (SIL OFL 1.1, one variable font: weight 400 regular / 700 bold, with Latin included so a mixed Urdu + English line needs one font, not per-run switching). Joining and right-to-left order
+# are Pillow's own Raqm layout (present in the production image; it is Pillow's default engine whenever Raqm is available). Every other line keeps DejaVu exactly as before.
+_ARABIC_RANGES = ((0x0600, 0x06FF), (0x0750, 0x077F), (0x0870, 0x089F), (0x08A0, 0x08FF), (0xFB50, 0xFDFF), (0xFE70, 0xFEFF))
+_NASKH_PATH = _FONTS_DIR / "NotoNaskhArabic-VF.ttf"
+
+
+def has_arabic_script(text: str) -> bool:
+    return any(lo <= ord(ch) <= hi for ch in text for lo, hi in _ARABIC_RANGES)
+
+
+def _load_font(size: int, bold: bool, arabic: bool = False) -> ImageFont.FreeTypeFont:
     size = max(1, round(size))
-    key = ("bold" if bold else "regular", size)
+    arabic = arabic and _NASKH_PATH.exists()                       # a missing file falls back to DejaVu rather than failing an export
+    key = (("naskh-bold" if bold else "naskh") if arabic else ("bold" if bold else "regular"), size)
     if key not in _FONT_CACHE:
-        name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
-        _FONT_CACHE[key] = ImageFont.truetype(str(_FONTS_DIR / name), size)
+        if arabic:
+            font = ImageFont.truetype(str(_NASKH_PATH), size)
+            try:
+                font.set_variation_by_axes([700 if bold else 400])
+            except Exception:                                      # no variable-font support in this build: the default weight is still correct text
+                pass
+            _FONT_CACHE[key] = font
+        else:
+            name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+            _FONT_CACHE[key] = ImageFont.truetype(str(_FONTS_DIR / name), size)
     return _FONT_CACHE[key]
 
 
@@ -137,7 +157,10 @@ def render_styled_text_box(
     computed from the wrapped text, matching the frontend's own "height is implicit from
     content" convention for these element types (TextOverlay/SubtitleSegment both have no
     stored height field)."""
-    font = _load_font(font_size, bold)
+    arabic = has_arabic_script(text)
+    font = _load_font(font_size, bold, arabic)
+    if arabic:
+        letter_spacing = 0                                         # per-character drawing would break joining; CSS letter-spacing is not applied to joined Arabic either
     probe = Image.new("RGBA", (1, 1))
     probe_draw = ImageDraw.Draw(probe)
     # Layout mode. Legacy (bg_padding_x None): square padding, stroke narrows the wrap width, shadows grow the box and push the text. Editor box (bg_padding_x given, M2.1b): the
@@ -325,11 +348,11 @@ def render_lower_third_png(lt: dict, canvas_w: int, canvas_h: int, user_id: int)
     bar_w = max(2, round(box_w * 0.012))
     draw.rectangle((0, 0, bar_w, box_h - 1), fill=(31, 143, 143, 255))  # var(--v-teal)
 
-    name_font = _load_font(round(box_h * 0.32), bold=True)
-    title_font = _load_font(round(box_h * 0.22), bold=False)
-    pad_x = round(box_w * 0.03)
     name = str(lt.get("name") or "")
     title = str(lt.get("title") or "")
+    name_font = _load_font(round(box_h * 0.32), bold=True, arabic=has_arabic_script(name))
+    title_font = _load_font(round(box_h * 0.22), bold=False, arabic=has_arabic_script(title))
+    pad_x = round(box_w * 0.03)
     if title:
         total_h = name_font.size + title_font.size + round(box_h * 0.06)
         name_y = max(2, (box_h - total_h) // 2)
