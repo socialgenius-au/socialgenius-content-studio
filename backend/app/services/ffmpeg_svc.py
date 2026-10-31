@@ -974,40 +974,9 @@ def _stack_runs(project: dict) -> list[tuple[str, list[dict]]]:
     return runs
 
 
-async def render_project(project: dict, user_id: int) -> Path:
-    """The single entry point the router calls. `project` shape (all paths already resolved to
-    real files on disk by the router, via each item's assetId — this function never touches the
-    database):
-
-    {
-      "canvas_width": int, "canvas_height": int,
-      "video_clips": [{path, trim_in, start_time, end_time, speed, color_grade,
-                        brightness, contrast, saturation, transition, transition_duration,
-                        has_separated_audio}],   # ordered by start_time
-      "additional_video_clips": [{...ExportAdditionalVideoClip fields, path}],  # Phase 7
-      "text_overlays": [{...ExportTextOverlay fields, text}],                   # Phase 7 shape
-      "shapes": [{...ExportShape fields}],                                      # Phase 7
-      "lower_thirds": [{...ExportLowerThird fields}],                           # Phase 7
-      "media_overlays": [{path, is_image, start, end, x, y, width, height, opacity}],
-      "subtitles": [{...ExportSubtitle fields}],                                # Phase 7
-      "subtitle_style": {...ExportSubtitleStyle fields},                        # Phase 7
-      "audio_tracks": [{path, trim_in, start_time, end_time, volume}],
-    }
-
-    Phase 7 (Video Studio V2 — Export/FFmpeg Compositing Parity) compositing order, base to top:
-    V1 concat -> V2 inserts/B-roll -> media overlays (image/video) -> shapes -> lower thirds ->
-    text overlays -> subtitles -> A1 audio mix. Every new step is skipped entirely (identical
-    pre-Phase-7 behaviour) when its list is empty/absent, so a pre-Phase-7 request/draft renders
-    exactly as it always did. text_overlays' own shape changed this phase (start/end -> start_
-    time/end_time, plus the full Phase 3 style fields) — see video_export.py's router, the only
-    caller that builds this dict; the OLD drawtext-based add_text_overlays() above is untouched
-    and still used as-is by the separate, older /process/export endpoint.
-    """
-    clips = project["video_clips"]
-    if not clips:
-        raise RuntimeError("Add at least one video clip to the timeline before exporting.")
-
-    cw, ch = project["canvas_width"], project["canvas_height"]
+async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, user_id: int) -> tuple[Path, list[str], int]:
+    """One CONTIGUOUS run of V1 clips (each starts where the previous ends) -> its base video, the intermediate files to clean up afterwards, and its exact length in frames. This is the
+    whole of what render_project always did for the V1 timeline; a project without a gap is exactly one run."""
 
     # Timeline plan (timeline_plan.py): where every clip sits in whole frames and how each join is realised without moving any footage. Source durations are only probed when a blend needs spare frames.
     file_durations: dict[str, float | None] = {}
@@ -1018,7 +987,7 @@ async def render_project(project: dict, user_id: int) -> Path:
                     file_durations[c["path"]] = await _get_duration(c["path"])
                 except Exception:
                     file_durations[c["path"]] = None
-    plan = timeline_plan.plan_timeline(clips, _XFADE_NAMES, file_durations, policy=project.get("transition_edge_policy", "shorten"))
+    plan = timeline_plan.plan_timeline(clips, _XFADE_NAMES, file_durations, policy=policy)
 
     segment_paths: list[str] = []
     has_audio_by_path: dict[str, bool] = {}
@@ -1058,8 +1027,101 @@ async def render_project(project: dict, user_id: int) -> Path:
     else:
         base = await concat_segments_with_transitions(segment_paths, plan, user_id)
 
+    return base, [p for p in segment_paths if p != str(base)], plan.total_f - plan.origin_f
+
+
+def build_gap_graph(parts: list[tuple[str | None, int]]) -> tuple[list[str], str]:
+    """Pure: the input arguments and filter graph that join runs (path) and gaps (None) end to end, every part forced to its exact frame / sample count so nothing after a gap can shift."""
+    F = timeline_plan.FPS
+    args: list[str] = []
+    chains: list[str] = []
+    idx = 0
+    for path, frames in parts:
+        secs = f"{frames / F:.6f}"
+        if path is None:
+            args += ["-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", f"color=c=black:s={{W}}x{{H}}:r={F}", "-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", "anullsrc=r=44100:cl=stereo"]
+            vi, ai = idx, idx + 1
+            idx += 2
+        else:
+            args += ["-i", path]
+            vi = ai = idx
+            idx += 1
+        n = len(chains) // 2
+        chains.append(f"[{vi}:v]fps={F},trim=end_frame={frames},setpts=PTS-STARTPTS[gv{n}]")
+        chains.append(f"[{ai}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur={secs},atrim=end={secs},asetpts=PTS-STARTPTS[ga{n}]")
+    n_parts = len(parts)
+    joined = "".join(f"[gv{i}][ga{i}]" for i in range(n_parts)) + f"concat=n={n_parts}:v=1:a=1[gvout][gaout]"
+    return args, ";".join(chains) + ";" + joined
+
+
+async def concat_runs_with_gaps(parts: list[tuple[str | None, int]], cw: int, ch: int, user_id: int) -> Path:
+    """Joins contiguous runs with black video and silence for each gap between them (leading gap included), so the exported timeline is as long as the editor's and every layer, subtitle
+    and A1 audio stays at its own absolute time."""
+    args, graph = build_gap_graph(parts)
+    args = [a.replace("{W}", str(cw)).replace("{H}", str(ch)) for a in args]
+    graph = graph
+    out = _out(user_id, "mp4")
+    await _run([FFMPEG_BIN, "-y", *args, "-filter_complex", graph, "-map", "[gvout]", "-map", "[gaout]", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(out)])
+    return out
+
+
+async def render_project(project: dict, user_id: int) -> Path:
+    """The single entry point the router calls. `project` shape (all paths already resolved to
+    real files on disk by the router, via each item's assetId — this function never touches the
+    database):
+
+    {
+      "canvas_width": int, "canvas_height": int,
+      "video_clips": [{path, trim_in, start_time, end_time, speed, color_grade,
+                        brightness, contrast, saturation, transition, transition_duration,
+                        has_separated_audio}],   # ordered by start_time
+      "additional_video_clips": [{...ExportAdditionalVideoClip fields, path}],  # Phase 7
+      "text_overlays": [{...ExportTextOverlay fields, text}],                   # Phase 7 shape
+      "shapes": [{...ExportShape fields}],                                      # Phase 7
+      "lower_thirds": [{...ExportLowerThird fields}],                           # Phase 7
+      "media_overlays": [{path, is_image, start, end, x, y, width, height, opacity}],
+      "subtitles": [{...ExportSubtitle fields}],                                # Phase 7
+      "subtitle_style": {...ExportSubtitleStyle fields},                        # Phase 7
+      "audio_tracks": [{path, trim_in, start_time, end_time, volume}],
+    }
+
+    Phase 7 (Video Studio V2 — Export/FFmpeg Compositing Parity) compositing order, base to top:
+    V1 concat -> V2 inserts/B-roll -> media overlays (image/video) -> shapes -> lower thirds ->
+    text overlays -> subtitles -> A1 audio mix. Every new step is skipped entirely (identical
+    pre-Phase-7 behaviour) when its list is empty/absent, so a pre-Phase-7 request/draft renders
+    exactly as it always did. text_overlays' own shape changed this phase (start/end -> start_
+    time/end_time, plus the full Phase 3 style fields) — see video_export.py's router, the only
+    caller that builds this dict; the OLD drawtext-based add_text_overlays() above is untouched
+    and still used as-is by the separate, older /process/export endpoint.
+    """
+    clips = project["video_clips"]
+    if not clips:
+        raise RuntimeError("Add at least one video clip to the timeline before exporting.")
+
+    cw, ch = project["canvas_width"], project["canvas_height"]
+    policy = project.get("transition_edge_policy", "shorten")
+
+    # V1 clips -> contiguous runs. A gap between runs (or before the first clip) is black video and silence, exactly as the editor shows it; a project without a gap is one run and takes
+    # the unchanged path.
+    runs = timeline_plan.split_runs(clips)
+    lead = timeline_plan.to_frames(clips[0]["start_time"])
+    if len(runs) == 1 and lead < 1:
+        base, run_intermediates, _frames = await _render_clip_run(clips, cw, ch, policy, user_id)
+    else:
+        parts: list[tuple[str | None, int]] = []
+        run_intermediates: list[str] = []
+        pos = 0
+        for run in runs:
+            gap = timeline_plan.to_frames(run[0]["start_time"]) - pos
+            if gap >= 1:
+                parts.append((None, gap)); pos += gap
+            rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id)
+            parts.append((str(rb), frames)); pos += frames
+            run_intermediates += im + [str(rb)]
+        base = await concat_runs_with_gaps(parts, cw, ch, user_id)
+
     current = base
-    intermediates = [p for p in segment_paths if p != str(base)]
+    intermediates = list(run_intermediates)
     rendered_pngs: list[str] = []
 
     if project.get("additional_video_clips"):
