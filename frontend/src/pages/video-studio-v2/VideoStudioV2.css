@@ -362,3 +362,50 @@
 .shot-row:focus-visible{outline:2px solid var(--v-accent);outline-offset:-2px}
 .shot-row.active{background:var(--v-soft);border-color:var(--v-accent)}
 .ai-prompt-result{margin-top:14px;padding-top:14px;border-top:1px solid var(--v-line)}
+
+/* Video Studio V2 layout: Preview above Timeline above AI Tools.
+   Additive overrides preserve all existing canvas, clip, drag/trim and panel rules.
+   Grid placement is explicit because AI Tools precedes Timeline in the JSX DOM. */
+@media (min-width:1001px) {
+  .editor-shell {
+    grid-template-columns:220px minmax(360px,1fr) 270px;
+    grid-template-rows:700px auto auto auto auto;
+  }
+  .editor-shell > .asset-panel { grid-column:1; grid-row:1; min-width:0; }
+  .editor-shell > .preview-area { grid-column:2; grid-row:1; min-width:0; }
+  .editor-shell > .properties-panel { grid-column:3; grid-row:1; min-width:0; border-right:0; }
+  .editor-shell > .timeline { grid-column:1/-1; grid-row:2; min-width:0; }
+  .editor-shell > .ai-tools-panel {
+    grid-column:1/-1;
+    grid-row:3;
+    min-width:0;
+    overflow:visible;
+    border-top:1px solid var(--v-line);
+  }
+  .editor-shell > .ai-assistant { grid-column:1/-1; grid-row:4; min-width:0; }
+  .editor-shell > .ai-chat-log { grid-column:1/-1; grid-row:5; min-width:0; }
+  .editor-shell.focus-mode { grid-template-columns:0px minmax(360px,1fr) 0px; }
+}
+@media (min-width:1001px) and (max-width:1500px) {
+  .editor-shell { grid-template-columns:180px minmax(320px,1fr) 240px; }
+}
+/* The original <=1000px rule uses display:block, which follows JSX order and
+   therefore shows AI Tools before Timeline. One-column grid fixes that ordering. */
+@media (max-width:1000px) {
+  .editor-shell { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto; }
+  .editor-shell > .asset-panel { grid-column:1; grid-row:1; min-width:0; }
+  .editor-shell > .preview-area { grid-column:1; grid-row:2; min-width:0; min-height:480px; border-right:0; }
+  .editor-shell > .properties-panel { grid-column:1; grid-row:3; min-width:0; border-right:0; }
+  .editor-shell > .timeline { grid-column:1; grid-row:4; min-width:0; overflow-x:auto; }
+  .editor-shell > .ai-tools-panel {
+    grid-column:1; grid-row:5; min-width:0; overflow:visible;
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .editor-shell > .ai-assistant { grid-column:1; grid-row:6; min-width:0; }
+  .editor-shell > .ai-chat-log { grid-column:1; grid-row:7; min-width:0; }
+  .editor-shell.focus-mode { grid-template-columns:minmax(0,1fr); }
+}
+@media (max-width:560px) {
+  .editor-shell > .preview-area { min-height:360px; }
+  .editor-shell > .ai-tools-panel { grid-template-columns:minmax(0,1fr); }
+}
