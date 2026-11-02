@@ -7,7 +7,7 @@ import { NO_CLAIMS } from './contract'
 import { makeTimeMap, resolveTransition, setTransitionCorrection } from './corrections'
 import { readTransitionEvidence } from './evidence'
 import { CLIP_END_TOLERANCE, mergeTransitions, planTransitions, type TransitionClip } from './materialize'
-import { CUT_TO_DARK, DISSOLVE, FADE_BLACK, FAST_MOTION, REAL_CUT, SHALLOW_DIP, evidenceFor, joinsFor, planWith, reference, summary } from './testkit'
+import { BRIGHT_SCENE_CUT, CUT_TO_DARK, DISSOLVE, FADE_WHITE, FLASH, FADE_BLACK, FAST_MOTION, REAL_CUT, SHALLOW_DIP, evidenceFor, joinsFor, planWith, reference, summary } from './testkit'
 
 const bd = (p = REAL_CUT) => evidenceFor([p]).boundaries[0]
 
@@ -22,6 +22,31 @@ describe('evidence', () => {
     expect(readTransitionEvidence({ id: 1 }, 1).boundaries).toEqual([])
     const bad = { ...summary(REAL_CUT), luminance: { ...summary(REAL_CUT).luminance, values: [1, 2] } }
     expect(readTransitionEvidence({ id: 1, transition_evidence: [bad, { ...summary(DISSOLVE), sampling_fps: 0 }, { ...summary(DISSOLVE), frame_difference: { values: [], median: 0, max: 0, argmax_index: 0 } }] }, 1).boundaries).toEqual([])
+  })
+})
+
+describe('classifier: flash and fade through white', () => {
+  it('reads a blink of white that comes back as a flash, proposes the nearest editor type (a hard cut), and says the flash is not recreated', () => {
+    const c = classifyBoundary(bd(FLASH))
+    expect(c).toMatchObject({ kind: 'cut', look: 'flash', confidence: 'medium', durationSeconds: null }); expect(c.features).toMatchObject({ peakInside: true, brightSamples: 1 })
+    expect(c.reasons.join(' ')).toMatch(/no white transition/i); expect(c.reasons.join(' ')).toMatch(/flash/i)
+  })
+  it('reads a gradual climb to white and back as a fade through white, proposes a dissolve with a duration, and never above medium', () => {
+    const c = classifyBoundary(bd(FADE_WHITE))
+    expect(c).toMatchObject({ kind: 'dissolve', look: 'fade_white', confidence: 'medium' }); expect(c.durationSeconds).toBeGreaterThanOrEqual(0.2); expect(c.durationSeconds).toBeLessThanOrEqual(2)
+    expect(c.reasons.join(' ')).toMatch(/fade through white/i)
+  })
+  it('does not call a cut between a bright scene and a darker one a flash, and leaves black dips, dissolves and the real cut as they were', () => {
+    expect(classifyBoundary(bd(BRIGHT_SCENE_CUT)).look).toBeUndefined()
+    for (const p of [REAL_CUT, DISSOLVE, FADE_BLACK, SHALLOW_DIP, FAST_MOTION, CUT_TO_DARK]) expect(classifyBoundary(bd(p)).look).toBeUndefined()
+    expect(classifyBoundary(bd(FADE_BLACK)).kind).toBe('fade_black')
+  })
+  it('flags it as information (not a warning), keeps the "could be motion" warning off a white fade, and includes a medium-confidence flash by default', () => {
+    const cs = buildTransitionCandidates(evidenceFor([DISSOLVE, FLASH, FADE_WHITE]), joinsFor([10, 40, 45, 60]), makeTimeMap(60, 60))
+    const flash = cs.find(c => c.boundary.id === FLASH.id)!, white = cs.find(c => c.boundary.id === FADE_WHITE.id)!, plain = cs.find(c => c.boundary.id === DISSOLVE.id)!
+    expect(flash.flags.find(f => f.code === 'white_look')).toMatchObject({ severity: 'info' }); expect(flash.defaultInclude).toBe(true)
+    expect(white.flags.map(f => f.code)).toContain('white_look'); expect(white.flags.map(f => f.code)).not.toContain('possible_motion')
+    expect(plain.flags.map(f => f.code)).toContain('possible_motion'); expect(plain.flags.map(f => f.code)).not.toContain('white_look')
   })
 })
 
