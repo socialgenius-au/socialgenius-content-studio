@@ -239,3 +239,5 @@ class ExportProjectRequest(BaseModel):
     # Opt-in: what a dissolve does at a join where a clip has no spare source frames. "shorten" (default) = the dissolve is shortened (never invents a frame); "hold_incoming" = the incoming
     # clip's first frame is held while it fades in, so the dissolve keeps its full length. Nothing else about the timeline changes.
     transition_edge_policy: Literal["shorten", "hold_incoming"] = "shorten"
+    # C3: what fills the bars of a letterboxed ("fit") clip. "color" (default) = canvas_background / black, exactly as before; "blur" = the same clip, scaled to cover the canvas and blurred.
+    canvas_backdrop: Literal["color", "blur"] = "color"

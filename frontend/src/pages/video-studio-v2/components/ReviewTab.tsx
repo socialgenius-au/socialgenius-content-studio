@@ -8,6 +8,7 @@ import { videoExportApi } from "../../../api/client";
 import { checkReconstructionExport } from "../blueprint/exportGuard";
 import { buildExportTextOverlays } from "../export/textOverlayExport";
 import { validCanvasBackground } from "../export/canvasBackground";
+import { validCanvasBackdrop } from "../export/canvasBackdrop";
 import { buildExportInserts, buildExportLowerThirds, buildExportShapes, buildExportSubtitles, buildExportSubtitleStyle, exportNotices, missingInsertSources } from "../export/layerExport";
 
 const PLATFORMS = [
@@ -114,6 +115,7 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
         subtitle_style: buildExportSubtitleStyle(subtitleStyle),
         ...(validCanvasBackground(canvasFormat.background) ? { canvas_background: validCanvasBackground(canvasFormat.background) } : {}),
         transition_edge_policy: edgePolicy,
+        ...(validCanvasBackdrop(canvasFormat.backdrop) ? { canvas_backdrop: validCanvasBackdrop(canvasFormat.backdrop) } : {}),
         media_overlays: mediaOverlays.map(o => ({
           asset_id: o.assetId, start_time: o.startTime, end_time: o.endTime,
           x: o.x, y: o.y, width: o.width, height: o.height, opacity: o.opacity, order: o.order ?? 0,
