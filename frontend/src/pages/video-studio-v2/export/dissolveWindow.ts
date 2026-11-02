@@ -149,6 +149,34 @@ export function activeBlendAt(windows: readonly BlendWindow[], t: number, only: 
   return null
 }
 
+export interface BlendPreview {
+  window: BlendWindow
+  /** the clip whose picture the extra preview element shows: the incoming clip before the join, the outgoing clip after it */
+  otherId: string
+  phase: 'before' | 'after'
+  /** true while t is inside the window; false during the look-ahead (the element is mounted and parked on its first frame, invisible) */
+  inside: boolean
+  /** timeline seconds of the window's first frame */
+  startS: number
+  /** opacity of the extra element. It always sits ON TOP of the active clip: before the join it is the incoming picture at alpha; after the join it is the outgoing picture at 1 - alpha over the incoming one. Both are the same blend, with no change of stacking at the join. */
+  opacity: number
+}
+
+/** What the editor's preview needs at timeline time `t`: the blend it is inside, or about to enter within `lookaheadS` seconds (so the second element can load before it is shown). */
+export function blendPreviewAt(windows: readonly BlendWindow[], t: number, lookaheadS = 1, only: readonly string[] = ['dissolve']): BlendPreview | null {
+  const f = t * FPS
+  for (const w of windows) {
+    if (!only.includes(w.transition)) continue
+    const start = w.joinFrame - w.pre, end = w.joinFrame + w.post
+    if (f < start - lookaheadS * FPS || f >= end) continue
+    const inside = f >= start
+    const phase = f < w.joinFrame ? 'before' : 'after'
+    const alpha = inside ? (f - start) / (w.pre + w.post) : 0
+    return { window: w, otherId: phase === 'before' ? w.inId : w.outId, phase, inside, startS: start / FPS, opacity: !inside ? 0 : phase === 'before' ? alpha : 1 - alpha }
+  }
+  return null
+}
+
 /** Source-file time a clip shows at timeline time `t`, using the editor's own linear mapping -- which simply continues past the clip's trimmed ends into the real pre-roll / post-roll. */
 export const sourceTimeAt = (clip: Pick<PlanClip, 'startTime' | 'trimIn' | 'speed'>, t: number) => Math.max(0, (t - clip.startTime) * (clip.speed || 1) + clip.trimIn)
 

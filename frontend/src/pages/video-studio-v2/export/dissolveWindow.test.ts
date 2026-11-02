@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import cases from './__fixtures__/dissolveWindow.cases.json'
-import { activeBlendAt, planBlendWindows, sourceTimeAt, type BlendPolicy, type PlanClip } from './dissolveWindow'
+import { activeBlendAt, blendPreviewAt, planBlendWindows, sourceTimeAt, type BlendPolicy, type PlanClip } from './dissolveWindow'
 
 describe('dissolveWindow follows the exporter planner (shared fixture generated from timeline_plan.py)', () => {
   it('agrees on every window of every generated case', () => {
@@ -53,4 +53,24 @@ describe('sourceTimeAt', () => {
     expect(sourceTimeAt(b, 0)).toBe(0)
     expect(sourceTimeAt(clip('a', 0, 4, { trimIn: 1 }), 4.3)).toBeCloseTo(5.3, 6)
   })
+})
+
+describe('blendPreviewAt', () => {
+  const windows = planBlendWindows([clip('a', 0, 4, { transition: 'dissolve', transitionDuration: 0.6, trimIn: 1 }), clip('b', 4, 8, { trimIn: 2 })])
+  it('is parked and invisible during the look-ahead, showing the incoming clip', () => {
+    const p = blendPreviewAt(windows, 3.2)!
+    expect(p).toMatchObject({ otherId: 'b', phase: 'before', inside: false, opacity: 0 })
+    expect(p.startS).toBeCloseTo(111 / 30, 6)
+    expect(blendPreviewAt(windows, 2.5)).toBeNull()
+  })
+  it('the overlay is the incoming picture at alpha before the join and the outgoing picture at 1 - alpha after it: the same blend, continuous across the join', () => {
+    const before = blendPreviewAt(windows, 4 - 1 / 60)!, after = blendPreviewAt(windows, 4 + 1 / 60)!
+    expect(before).toMatchObject({ otherId: 'b', phase: 'before', inside: true })
+    expect(after).toMatchObject({ otherId: 'a', phase: 'after', inside: true })
+    const incomingShare = (p: typeof before) => (p.phase === 'before' ? p.opacity : 1 - p.opacity)
+    expect(Math.abs(incomingShare(before) - incomingShare(after))).toBeLessThan(0.06)
+    expect(incomingShare(blendPreviewAt(windows, 112 / 30)!)).toBeCloseTo(1 / 18, 6)
+    expect(incomingShare(blendPreviewAt(windows, 128 / 30)!)).toBeCloseTo(17 / 18, 6)
+  })
+  it('gone after the window', () => { expect(blendPreviewAt(windows, 129 / 30)).toBeNull() })
 })
