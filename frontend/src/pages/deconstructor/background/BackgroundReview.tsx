@@ -63,5 +63,5 @@ export function BackgroundReview({ plan, generated, footage, onPlan, onPolicy, d
   useEffect(() => () => { onPlan(null); onPolicy('as_generated') }, [onPlan, onPolicy])             // leaving the panel never leaves stale changes behind
 
   const onCorrect = useCallback((id: string, patch: { include?: boolean; color?: string; size?: number }) => setCorrections(c => setPlateCorrection(c, id, patch)), [])
-  return <BackgroundReviewView state={state} evidence={evidence} candidates={candidates} corrections={corrections} plan={layerPlan} policy={policy} composition={composition} scenes={plan.scenes} onCorrect={onCorrect} onPolicy={setPolicy} />
+  return <BackgroundReviewView state={state} evidence={evidence} candidates={candidates} corrections={corrections} plan={layerPlan} policy={policy} composition={composition} scenes={plan.scenes} footage={footage} onCorrect={onCorrect} onPolicy={setPolicy} />
 }

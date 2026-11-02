@@ -3,7 +3,9 @@
 import { Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { LIMITATIONS, VARIANCE_LABEL } from './contract'
-import type { PlateCandidate } from './candidates'
+import { reachFlag, type PlateCandidate } from './candidates'
+import type { SceneFootage } from './footageReach'
+import { DEFAULT_CANVAS } from '../textlayers/geometry'
 import { BUCKET_LABEL, POLICY_LABEL, POLICY_RULES, layersByScene, type CompositionPlan, type OrderPolicy } from './composition'
 import type { PlateCorrections } from './corrections'
 import { resolvePlate } from './corrections'
@@ -25,6 +27,8 @@ export interface BackgroundReviewViewProps {
   composition: CompositionPlan
   /** The draft's scenes, to group the generated layers by scene. */
   scenes: readonly { sceneNumber: number; startTime: number; endTime: number }[]
+  /** What each scene's assigned clips are, so a size you set is checked against your footage too. */
+  footage?: SceneFootage
   onCorrect: (id: string, patch: { include?: boolean; color?: string; size?: number }) => void
   onPolicy: (p: OrderPolicy) => void
 }
@@ -83,6 +87,7 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
                     {p.corrections[cd.id]?.color && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { color: undefined })}>Use the measured colour</button>}
                   </div>
                   {cd.flags.map(f => <p key={f.code} className={f.severity === 'warning' ? 'text-amber-700 dark:text-amber-400' : sub} data-testid="background-flag">{f.message}</p>)}
+                  {r.corrected.includes('size') && (() => { const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS); return f?.code === 'footage_overlap' ? <p className="text-amber-700 dark:text-amber-400" data-testid="background-flag-size">At the size you set: {f.message}</p> : null })()}
                   {st && <p className={sub} data-testid="background-status">{st.message}</p>}
                 </li>
               )

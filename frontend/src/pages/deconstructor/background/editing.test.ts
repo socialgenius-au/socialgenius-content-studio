@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createElement } from 'react'
 import { BackgroundReviewView } from './BackgroundReviewView'
+import { reachFlag } from './candidates'
 import { buildPlateCandidates, footageBox, layersByScene, planBackground, planComposition, plateReach, sceneFootageOf, setPlateCorrection, PLATE_ORDER, type BackgroundEvidence, type SceneFootage } from '.'
 
 const CANVAS = { width: 1080, height: 1920 }
@@ -64,6 +65,15 @@ describe('an editable plate size', () => {
     expect(setPlateCorrection({}, 'x', { size: 0.9 })).toEqual({}); expect(setPlateCorrection({}, 'x', { size: 0.01 })).toEqual({}); expect(setPlateCorrection({}, 'x', { size: NaN })).toEqual({})
     expect(setPlateCorrection(setPlateCorrection({}, 'x', { size: 0.2 }), 'x', { size: undefined })).toEqual({})
     expect(planBackground([cand], {}, ctx).shapes[0].height).toBeCloseTo(18.9, 1); expect(planBackground([cand], {}, ctx).shapes[0].reconstruction?.properties.region.basis).toBe('measured')
+  })
+  it('enlarging a plate until it reaches the footage warns at the size you set, even though the measured size did not', () => {
+    const free: SceneFootage = { 1: [{ width: 1920, height: 1080 }] }               // the footage occupies y 34%..66% of a portrait canvas
+    expect(reachFlag('top', 0.189, free[1], CANVAS)).toBeNull()
+    expect(reachFlag('top', 0.45, free[1], CANVAS)).toMatchObject({ code: 'footage_overlap', severity: 'warning' })        // 45% reaches into it
+    const base = { state: { kind: 'ready' as const }, evidence, candidates: [cand], policy: 'as_generated' as const, composition: planComposition({ shapes: [], mediaOverlays: [], textOverlays: [], subtitles: [] }, 'as_generated'), scenes: [], footage: free, onCorrect: () => {}, onPolicy: () => {} }
+    const corr = { [cand.id]: { size: 0.45 } }
+    const html = renderToStaticMarkup(createElement(BackgroundReviewView, { ...base, corrections: corr, plan: planBackground([cand], corr, ctx) }))
+    expect(html).toContain('data-testid="background-flag-size"'); expect(html).toMatch(/At the size you set: Your footage in this scene reaches/)
   })
   it('the panel offers the size, in percent, with the reset only after a change', () => {
     const base = { state: { kind: 'ready' as const }, evidence, candidates: [cand], plan: planBackground([cand], {}, ctx), policy: 'as_generated' as const, composition: planComposition({ shapes: [], mediaOverlays: [], textOverlays: [], subtitles: [] }, 'as_generated'), scenes: [], onCorrect: () => {}, onPolicy: () => {} }
