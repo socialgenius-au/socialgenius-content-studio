@@ -40,11 +40,13 @@ export interface FootageAssignmentProps {
   backgroundPlan?: BackgroundPlan | null
   /** M2.3c (optional): stacking policy applied to the generated layers at save. Absent = the unchanged behaviour. */
   compositionPolicy?: OrderPolicy | null
+  /** Optional: a measured bar colour chosen as the editor's canvas background colour, saved into the draft. Absent = no canvas colour is written. */
+  canvasColour?: string | null
   /** Optional: told what each scene's assigned clips are (their own size and Fit/Fill), whenever that changes. Used by the background panel to tell whether footage reaches a bar. */
   onFootage?: (footage: SceneFootage) => void
 }
 
-export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy, onFootage }: FootageAssignmentProps) {
+export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy, canvasColour, onFootage }: FootageAssignmentProps) {
   const navigate = useNavigate()
   const deps = useMemo(() => libraryDeps ?? defaultLibraryDeps(), [libraryDeps])
   const [assets, setAssets] = useState<Asset[]>([])
@@ -124,7 +126,7 @@ export function FootageAssignment({ resp, plan, references, libraryDeps, textLay
     if (sig !== sentFootage.current) { sentFootage.current = sig; onFootage(info) }
   }, [view.assignments, view.footage, onFootage])
 
-  const signature = useMemo(() => JSON.stringify(textLayers || imageLayers || transitionPlan || speechPlan || backgroundPlan || compositionPolicy ? [edits, underfilled, ...(textLayers ? [textLayers.signature] : []), ...(imageLayers ? [`img:${imageLayers.signature}`] : []), ...(transitionPlan ? [`tr:${transitionPlan.signature}`] : []), ...(speechPlan ? [`sp:${speechPlan.signature}`] : []), ...(backgroundPlan ? [`bg:${backgroundPlan.signature}`] : []), ...(compositionPolicy && compositionPolicy !== 'as_generated' ? [`co:${compositionPolicy}`] : [])] : [edits, underfilled]), [edits, underfilled, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy])
+  const signature = useMemo(() => JSON.stringify(textLayers || imageLayers || transitionPlan || speechPlan || backgroundPlan || compositionPolicy || canvasColour ? [edits, underfilled, ...(textLayers ? [textLayers.signature] : []), ...(imageLayers ? [`img:${imageLayers.signature}`] : []), ...(transitionPlan ? [`tr:${transitionPlan.signature}`] : []), ...(speechPlan ? [`sp:${speechPlan.signature}`] : []), ...(backgroundPlan ? [`bg:${backgroundPlan.signature}`] : []), ...(compositionPolicy && compositionPolicy !== 'as_generated' ? [`co:${compositionPolicy}`] : []), ...(canvasColour ? [`cc:${canvasColour}`] : [])] : [edits, underfilled]), [edits, underfilled, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy, canvasColour])
 
   const onSave = async () => {
     if (!view.canSave) return
@@ -132,7 +134,7 @@ export function FootageAssignment({ resp, plan, references, libraryDeps, textLay
     try {
       const r = await saveAssembledDraft({
         resp, plan, footage: view.footage, assignments: view.assignments, existingDraftId: saved?.draftId ?? null,
-        options: { underfilled, referenceAssetIds: referenceIds, requestedElements: REQUESTED_ELEMENTS }, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy,
+        options: { underfilled, referenceAssetIds: referenceIds, requestedElements: REQUESTED_ELEMENTS }, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy, canvasColour,
       })
       if (!alive.current) return
       if (r.ok) setSaved({ draftId: r.draftId, name: r.name, clips: r.clips, plan: r.plan, signature })

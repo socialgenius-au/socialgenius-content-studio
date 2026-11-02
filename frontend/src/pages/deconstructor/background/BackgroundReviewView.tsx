@@ -11,6 +11,7 @@ import type { PlateCorrections } from './corrections'
 import { resolvePlate } from './corrections'
 import type { BackgroundEvidence } from './evidence'
 import type { BackgroundPlan } from './materialize'
+import { canvasColourChange, type CanvasColourOption } from './canvasColour'
 
 const box = 'rounded-xl border bg-card p-4'
 const sub = 'text-xs text-muted-foreground'
@@ -31,6 +32,10 @@ export interface BackgroundReviewViewProps {
   footage?: SceneFootage
   onCorrect: (id: string, patch: { include?: boolean; color?: string; size?: number }) => void
   onPolicy: (p: OrderPolicy) => void
+  /** Optional canvas colour: the distinct bar colours on offer, the one chosen (or null), and the setter. Absent = the control is not shown. */
+  colourOptions?: readonly CanvasColourOption[]
+  canvasColour?: string | null
+  onCanvasColour?: (c: string | null) => void
 }
 
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`
@@ -98,6 +103,30 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
           )}
         </>
       )}
+
+      {p.onCanvasColour && p.colourOptions && p.colourOptions.length > 0 && (() => {
+        const change = canvasColourChange(p.canvasColour ?? null)
+        return (
+          <fieldset className="space-y-1 border-t pt-3 text-xs" data-testid="canvas-colour">
+            <legend className="font-semibold">Canvas colour (optional)</legend>
+            <p className={sub}>Use one of the measured bar colours as the editor’s canvas background — the colour behind a letterboxed video and in gaps. Nothing is changed unless you choose a colour here.</p>
+            <label className="flex flex-wrap items-center gap-2">
+              <select value={p.canvasColour ?? ''} onChange={e => p.onCanvasColour!(e.target.value || null)} data-testid="canvas-colour-select" className="h-7 rounded border bg-background px-1 text-xs">
+                <option value="">Don’t change the canvas colour</option>
+                {p.colourOptions.map(o => <option key={o.colour} value={o.colour}>{o.colour} — {o.bars.join(', ')}</option>)}
+              </select>
+              {p.canvasColour && <span className="inline-block h-4 w-4 rounded border" style={{ background: p.canvasColour }} aria-label={`canvas colour ${p.canvasColour}`} />}
+            </label>
+            <div data-testid="canvas-colour-change" className="rounded-lg border bg-muted/40 px-3 py-2">
+              <p className="font-medium">{change.changes.length ? 'What will change' : 'Nothing will change'}</p>
+              {change.changes.map(t => <p key={t} data-testid="canvas-colour-will-change">{t}</p>)}
+              <p className="mt-1 font-medium">What stays as it is</p>
+              <ul className="ml-4 list-disc">{change.unchanged.map(t => <li key={t}>{t}</li>)}</ul>
+              {p.canvasColour && <p className={`${sub} mt-1`}>A bar you left included above is still added as a layer on top of your footage; untick it if you only want the colour behind it.</p>}
+            </div>
+          </fieldset>
+        )
+      })()}
 
       <fieldset className="space-y-1 border-t pt-3 text-xs" data-testid="composition-policy">
         <legend className="font-semibold">Stacking order of the layers generated here</legend>

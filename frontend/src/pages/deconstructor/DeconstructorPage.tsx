@@ -71,6 +71,7 @@ export default function DeconstructorPage() {
   const backgroundOn = m2Has('background')
   const [backgroundPlan, setBackgroundPlan] = useState<BackgroundPlan | null>(null)
   const [compositionPolicy, setCompositionPolicy] = useState<OrderPolicy>('as_generated')
+  const [canvasColour, setCanvasColour] = useState<string | null>(null)
   const [sceneFootage, setSceneFootage] = useState<SceneFootage>({})
   // M2.6 (preview): the read-only manifest of everything the panels above will write -- only with ?m2=manifest.
   const manifestOn = m2Has('manifest')
@@ -164,9 +165,9 @@ export default function DeconstructorPage() {
           {step === 'create' && plan && imageLayersOn && <ImageLayersReview key={`image:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setImageLayers} />}
           {step === 'create' && plan && transitionsOn && <TransitionsReview key={`tr:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTransitionPlan} />}
           {step === 'create' && plan && transcriptOn && <TranscriptReview key={`sp:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setSpeechPlan} />}
-          {step === 'create' && plan && backgroundOn && <BackgroundReview key={`bg:${routeId}:${plan.blueprintId}`} plan={plan} footage={sceneFootage} generated={{ shapes: [], mediaOverlays: textlessPictures(imageLayersOn ? imageLayers : null), textOverlays: textLayersOn && textLayers ? textLayers.overlays : [], subtitles: transcriptOn && speechPlan ? speechPlan.subtitles : [] }} onPlan={setBackgroundPlan} onPolicy={setCompositionPolicy} />}
-          {step === 'create' && plan && manifestOn && <ReconstructionManifest key={`mf:${routeId}:${plan.blueprintId}`} plan={plan} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} backgroundPlan={backgroundOn ? backgroundPlan : null} speechPlan={transcriptOn ? speechPlan : null} transitionPlan={transitionsOn ? transitionPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : 'as_generated'} />}
-          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} speechPlan={transcriptOn ? speechPlan : null} backgroundPlan={backgroundOn ? backgroundPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : null} onFootage={backgroundOn ? setSceneFootage : undefined} />}
+          {step === 'create' && plan && backgroundOn && <BackgroundReview key={`bg:${routeId}:${plan.blueprintId}`} plan={plan} footage={sceneFootage} generated={{ shapes: [], mediaOverlays: textlessPictures(imageLayersOn ? imageLayers : null), textOverlays: textLayersOn && textLayers ? textLayers.overlays : [], subtitles: transcriptOn && speechPlan ? speechPlan.subtitles : [] }} onPlan={setBackgroundPlan} onPolicy={setCompositionPolicy} onCanvasColour={setCanvasColour} />}
+          {step === 'create' && plan && manifestOn && <ReconstructionManifest key={`mf:${routeId}:${plan.blueprintId}`} plan={plan} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} backgroundPlan={backgroundOn ? backgroundPlan : null} speechPlan={transcriptOn ? speechPlan : null} transitionPlan={transitionsOn ? transitionPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : 'as_generated'} canvasColour={backgroundOn ? canvasColour : null} />}
+          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} speechPlan={transcriptOn ? speechPlan : null} backgroundPlan={backgroundOn ? backgroundPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : null} canvasColour={backgroundOn ? canvasColour : null} onFootage={backgroundOn ? setSceneFootage : undefined} />}
         </>
       )}
     </div>

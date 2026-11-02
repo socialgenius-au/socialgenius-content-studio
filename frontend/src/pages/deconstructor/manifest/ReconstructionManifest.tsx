@@ -18,15 +18,16 @@ export interface ReconstructionManifestProps {
   speechPlan: SpeechPlan | null
   transitionPlan: TransitionPlan | null
   compositionPolicy: OrderPolicy
+  canvasColour?: string | null
 }
 
-export function ReconstructionManifest({ plan, textLayers, imageLayers, backgroundPlan, speechPlan, transitionPlan, compositionPolicy }: ReconstructionManifestProps) {
+export function ReconstructionManifest({ plan, textLayers, imageLayers, backgroundPlan, speechPlan, transitionPlan, compositionPolicy, canvasColour }: ReconstructionManifestProps) {
   const manifest = useMemo(() => {
     const generated = { shapes: backgroundPlan ? backgroundPlan.shapes : [], mediaOverlays: imageLayers ? imageLayers.overlays : [], textOverlays: textLayers ? textLayers.overlays : [], subtitles: speechPlan ? speechPlan.subtitles : [] }
     return buildManifest({
       scenes: plan.scenes.map(s => ({ sceneNumber: s.sceneNumber, startTime: s.startTime, endTime: s.endTime })), textLayers, imageLayers, backgroundPlan, speechPlan, transitionPlan,
-      composition: { plan: planComposition(generated, compositionPolicy), policy: compositionPolicy },
+      composition: { plan: planComposition(generated, compositionPolicy), policy: compositionPolicy }, canvasColour,
     })
-  }, [plan.scenes, textLayers, imageLayers, backgroundPlan, speechPlan, transitionPlan, compositionPolicy])
+  }, [plan.scenes, textLayers, imageLayers, backgroundPlan, speechPlan, transitionPlan, compositionPolicy, canvasColour])
   return <ManifestView manifest={manifest} />
 }
