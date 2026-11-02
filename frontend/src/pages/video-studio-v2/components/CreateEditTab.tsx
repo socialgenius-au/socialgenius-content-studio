@@ -3,6 +3,7 @@ import { validCanvasBackground } from "../export/canvasBackground";
 import { clipFadeOpacity } from "../export/transitionFade";
 import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissolveWindow";
 import { previewBlurPx, validCanvasBackdrop } from "../export/canvasBackdrop";
+import { durationCorrection } from "../export/measuredDuration";
 import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useStudio } from "../../../contexts/StudioContext";
 import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
@@ -1292,6 +1293,30 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     return () => vid.removeEventListener("loadedmetadata", apply);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeline.currentTime, timeline.playing, blendOtherClip?.id, blendInside]);
+
+  // ---- Real source duration: a clip's recorded `duration` (the length of its source file) can be wrong -- the editor records a 10 s fallback when the metadata does not load in time, and a draft can carry a stale
+  // value -- and the dissolve window and speed changes read it. When a clip's own <video> reports valid metadata, a differing duration is corrected (export/measuredDuration.ts: never zero, NaN, Infinity or a
+  // fallback; trimOut moves with it so the clip's span and the timeline do not change). It only reads the element's metadata: no seeking, no playback, no master clock. ----
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !activeVideoClip) return;
+    const clip = activeVideoClip;
+    const onMeta = () => { const fix = durationCorrection(clip, vid.duration); if (fix) rawUpdateVideoClip(clip.id, fix); };
+    if (vid.readyState >= 1) onMeta();
+    vid.addEventListener("loadedmetadata", onMeta);
+    return () => vid.removeEventListener("loadedmetadata", onMeta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeClipId, hasRealSrc]);
+  useEffect(() => {
+    const vid = blendVideoRef.current;
+    const clip = blendOtherClip;
+    if (!vid || !clip) return;
+    const onMeta = () => { const fix = durationCorrection(clip, vid.duration); if (fix) rawUpdateVideoClip(clip.id, fix); };
+    if (vid.readyState >= 1) onMeta();
+    vid.addEventListener("loadedmetadata", onMeta);
+    return () => vid.removeEventListener("loadedmetadata", onMeta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blendOtherClip?.id]);
 
   // ---- Instruction 9: real audio playback, following the SAME offset/seek/play-pause pattern
   // as the video sync effects above — but purely reactive to timeline.currentTime/playing,
