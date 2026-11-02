@@ -1,5 +1,6 @@
 
 import { validCanvasBackground } from "../export/canvasBackground";
+import { clipFadeOpacity } from "../export/transitionFade";
 import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useStudio } from "../../../contexts/StudioContext";
 import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
@@ -2026,15 +2027,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // this architecture has exactly one <video ref={videoRef}> showing "the current clip" at any
   // moment (switched by source on cut), so that's a real second-video-element architecture
   // change, not implemented here — see the report.
-  const getClipTransitionOpacity = (clip: VideoClip, t: number) => {
-    if (clip.transition !== "fade_black" || clip.transitionDuration <= 0) return 1;
-    const d = clip.transitionDuration;
-    const intoClip = t - clip.startTime;
-    const beforeEnd = clip.endTime - t;
-    if (intoClip < d) return Math.max(0, Math.min(1, intoClip / d));
-    if (beforeEnd < d) return Math.max(0, Math.min(1, beforeEnd / d));
-    return 1;
-  };
+  // D2: the fade is at the JOIN, as the exporter does it (see export/transitionFade.ts): the outgoing clip's own last frames and the incoming clip's own first frames.
+  const getClipTransitionOpacity = (clip: VideoClip, t: number) => clipFadeOpacity(videoClips, clip, t);
 
   // Selection identification shown at the top of Properties, regardless of which kind of
   // element is selected — satisfies "recognise what type was selected" without building any
