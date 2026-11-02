@@ -3,7 +3,7 @@
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import type { SpeechCandidate, SpeechFlagCode } from './candidates'
-import { SCRIPT_LABEL, unsupportedScript } from './contract'
+import { ARABIC_NOTE, SCRIPT_LABEL, exporterCannotDraw, unsupportedScript } from './contract'
 import type { ResolvedSpeech, SpeechCorrection, TimeMap } from './corrections'
 import { FONT_SIZES, MAX_CHARS_RANGE, POSITION_LABEL, isDefaultLayout, type SubtitleLayout, type SubtitlePosition } from './layout'
 import type { SpeechItemStatus, SpeechPlan } from './materialize'
@@ -35,7 +35,7 @@ const STATUS: Record<SpeechItemStatus, { label: string; variant: 'success' | 'wa
   outside_timeline: { label: 'After the draft ends', variant: 'warning' }, duplicate: { label: 'Already represented', variant: 'outline' }, invalid: { label: 'Needs wording', variant: 'destructive' },
 }
 const FLAG_LABEL: Record<SpeechFlagCode, string> = {
-  third_party_words: 'Their words', machine_transcript: 'Machine transcript', low_quality: 'Poor rating', maybe_not_speech: 'Maybe not speech', repetitive: 'Repetitive', very_short: 'Very short', very_long: 'Very long', script_unsupported: 'Export script issue',
+  third_party_words: 'Their words', machine_transcript: 'Machine transcript', low_quality: 'Poor rating', maybe_not_speech: 'Maybe not speech', repetitive: 'Repetitive', very_short: 'Very short', very_long: 'Very long', script_unsupported: 'Export script issue', script_naskh: 'Arabic script',
 }
 const RIGHTS: Record<string, string> = { unknown_third_party: 'someone else’s video (rights unknown)', owned: 'your own video', licensed: 'a licensed video' }
 const secs = (n: number) => `${n.toFixed(1)}s`
@@ -65,6 +65,7 @@ export function TranscriptReviewView(props: TranscriptReviewViewProps) {
           <p className="text-xs" data-testid="transcript-summary">
             <strong>{c.transcribed}</strong> transcript {c.transcribed === 1 ? 'segment' : 'segments'} · <strong>{c.included}</strong> will be added · {c.excluded} left out
             {c.unsupportedScript > 0 && <> · <strong className="text-amber-700">{c.unsupportedScript} in a script the exporter cannot draw correctly yet</strong></>}
+            {c.arabicScript > 0 && <> · {c.arabicScript} in Arabic script (exported in Noto Naskh Arabic)</>}
             {c.outside + c.invalid + c.duplicates > 0 && <> · {c.outside + c.invalid + c.duplicates} cannot be added as they are</>}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -113,8 +114,9 @@ export function TranscriptReviewView(props: TranscriptReviewViewProps) {
                       <input type="checkbox" checked={r.include} onChange={e => set({ include: e.target.checked })} aria-label={`Use the line at ${secs(cand.segment.start)} as a subtitle`} data-testid={`speech-include-${k}`} />Use as a subtitle
                     </label>
                     <Badge variant={st.variant} data-testid={`speech-status-${k}`}>{st.label}</Badge>
-                    {scriptNow && <Badge variant="warning">{FLAG_LABEL.script_unsupported}</Badge>}
-                    {cand.flags.filter(f => f.code !== 'machine_transcript' && f.code !== 'script_unsupported').map(f => <Badge key={f.code} variant={f.severity === 'warning' ? 'warning' : 'outline'} title={f.message}>{FLAG_LABEL[f.code]}</Badge>)}
+                    {exporterCannotDraw(scriptNow) && <Badge variant="warning">{FLAG_LABEL.script_unsupported}</Badge>}
+                    {scriptNow === 'arabic' && <Badge variant="outline">{FLAG_LABEL.script_naskh}</Badge>}
+                    {cand.flags.filter(f => f.code !== 'machine_transcript' && f.code !== 'script_unsupported' && f.code !== 'script_naskh').map(f => <Badge key={f.code} variant={f.severity === 'warning' ? 'warning' : 'outline'} title={f.message}>{FLAG_LABEL[f.code]}</Badge>)}
                   </div>
                   <p className={sub} data-testid={`speech-evidence-${k}`}>Heard at {secs(cand.segment.start)}–{secs(cand.segment.end)} in the reference{cand.segment.language ? ` · language “${cand.segment.language}”` : ''}{cand.segment.diagnostics.avgLogprob !== null ? ` · recogniser rating ${cand.segment.diagnostics.avgLogprob.toFixed(2)}` : ''}</p>
                   <label className="block space-y-1"><span className={sub}>Wording {r.text.basis === 'user' ? '(your edit)' : '(as transcribed — check it)'}</span>
@@ -127,7 +129,8 @@ export function TranscriptReviewView(props: TranscriptReviewViewProps) {
                   {cand.flags.filter(f => ['low_quality', 'maybe_not_speech', 'repetitive'].includes(f.code)).map(f => (
                     <p key={f.code} role="alert" className="flex items-start gap-2 text-xs text-amber-700" data-testid={`speech-warning-${f.code}-${k}`}><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />{f.message}</p>
                   ))}
-                  {scriptNow && <p role="alert" className="flex items-start gap-2 text-xs text-amber-700" data-testid={`speech-warning-script_unsupported-${k}`}><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />This text is in {SCRIPT_LABEL[scriptNow]}. It looks right in the editor, but the exporter cannot lay it out correctly yet, so the exported subtitle would be wrong.</p>}
+                  {scriptNow === 'arabic' && <p className={sub} data-testid={`speech-note-arabic-script-${k}`}>This text is in Arabic script. {ARABIC_NOTE}</p>}
+                  {exporterCannotDraw(scriptNow) && <p role="alert" className="flex items-start gap-2 text-xs text-amber-700" data-testid={`speech-warning-script_unsupported-${k}`}><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />This text is in {SCRIPT_LABEL[scriptNow!]}. It looks right in the editor, but the exporter cannot lay it out correctly yet, so the exported subtitle would be wrong.</p>}
                   <p className={sub}>{item.message}</p>
                 </li>
               )

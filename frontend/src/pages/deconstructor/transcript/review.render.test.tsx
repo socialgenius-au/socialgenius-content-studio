@@ -31,12 +31,14 @@ describe('review panel', () => {
     expect(flat(m)).toContain('Heard at 0.0s–2.4s in the reference · language “en” · recogniser rating -0.30'); expect(m).toMatch(/data-testid="speech-text-sp-11"[^>]*value="Welcome to the show"|value="Welcome to the show"[^>]*data-testid="speech-text-sp-11"/)
     expect(m).toContain('(as transcribed — check it)')
   })
-  it('flags poorly rated, looping and not-speech lines with the recogniser’s numbers, and an Arabic-script line the exporter cannot lay out', () => {
+  it('flags poorly rated, looping and not-speech lines with the recogniser’s numbers, and gives an Arabic-script line an information note, not a warning', () => {
     expect(m).toMatch(/data-testid="speech-warning-low_quality-sp-13"/); expect(m).toContain('average log-probability -1.40'); expect(m).toContain('compression ratio 3.10'); expect(m).toContain('80 % no-speech')
-    expect(m).toMatch(/data-testid="speech-warning-script_unsupported-sp-18"/); expect(m).toContain('Arabic script'); expect(m).toContain('the exported subtitle would be wrong')
+    expect(m).not.toMatch(/data-testid="speech-warning-script_unsupported-sp-18"/); expect(m).toMatch(/data-testid="speech-note-arabic-script-sp-18"/)
+    expect(flat(m)).toContain('The exporter draws Arabic script in Noto Naskh Arabic, the standard Arabic style; it does not have the Nastaliq style often used for Urdu'); expect(m).not.toContain('the exported subtitle would be wrong')
   })
-  it('counts what will happen, including the lines in a script the exporter cannot draw', () => {
-    expect(flat(m)).toMatch(/<strong>9<\/strong> transcript segments · <strong>6<\/strong> will be added · 3 left out · <strong[^>]*>1 in a script the exporter cannot draw correctly yet<\/strong>/)
+  it('counts what will happen, including the Arabic-script lines (drawn in Naskh) and none as undrawable', () => {
+    expect(flat(m)).toMatch(/<strong>9<\/strong> transcript segments · <strong>6<\/strong> will be added · 3 left out · 1 in Arabic script \(exported in Noto Naskh Arabic\)/)
+    expect(flat(m)).not.toContain('cannot draw correctly yet')
   })
   it('for a third party’s reference: warns whose words these are, leaves every line out, and offers “Include all” as the person’s own choice', () => {
     const t = html(props({ rights: 'unknown_third_party' }))

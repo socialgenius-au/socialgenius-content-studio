@@ -24,21 +24,29 @@ export const LIMITATIONS: readonly string[] = [
   'The timing is the recogniser’s, usually within a few tenths of a second, and is stretched if the draft is a different length.',
   'The speaker’s voice, music and sound effects are not recovered: this gives words and times only. Narration, music and effects are yours to supply.',
   'The words are the reference’s speaker’s. Unless the reference is yours, treat them as a draft to rewrite, not text to publish.',
-  'The exporter has one font and no right-to-left or complex-text layout. Arabic, Hebrew, Indic, Thai and CJK subtitles look right in the editor but export in the wrong direction, and any letter the font lacks (for example the Urdu letters U+06C1 and U+06D2) shows as an empty box, until a font and layout engine are added.',
+  'Arabic-script subtitles (Arabic, Urdu, Persian...) are drawn on export in Noto Naskh Arabic with joined letters, right to left; this was checked on sample Urdu lines. It is the Naskh style, not Nastaliq, and rare characters were not all checked. Hebrew, Indic, Thai and CJK subtitles look right in the editor but the exporter has no font or layout for them yet, so they export wrongly.',
 ]
 
-/** Scripts the exporter cannot draw correctly (no shaping / right-to-left layout / glyphs): flagged, never silently exported. */
+/** Scripts the exporter does not draw correctly (no shaping / right-to-left layout / glyphs): flagged, never silently exported. Arabic script is the exception since the exporter bundles Noto Naskh Arabic: it is drawn, with the limits in ARABIC_NOTE. */
 export type UnsupportedScript = 'arabic' | 'hebrew' | 'indic' | 'thai' | 'cjk'
 const RANGES: [UnsupportedScript, number, number][] = [
   ['arabic', 0x0600, 0x06ff], ['arabic', 0x0750, 0x077f], ['arabic', 0x08a0, 0x08ff], ['arabic', 0xfb50, 0xfdff], ['arabic', 0xfe70, 0xfeff], ['hebrew', 0x0590, 0x05ff],
   ['indic', 0x0900, 0x0dff], ['thai', 0x0e00, 0x0e7f], ['cjk', 0x3040, 0x30ff], ['cjk', 0x3400, 0x9fff], ['cjk', 0xac00, 0xd7af],
 ]
+/** The script in `text` the exporter has trouble with: a truly unsupported one wins over Arabic script (which the exporter does draw), and Arabic script is reported only when nothing worse is present. */
 export function unsupportedScript(text: string): UnsupportedScript | null {
+  let arabic = false
   for (const ch of text) {
     const cp = ch.codePointAt(0)!
     const hit = RANGES.find(([, lo, hi]) => cp >= lo && cp <= hi)
-    if (hit) return hit[0]
+    if (!hit) continue
+    if (hit[0] === 'arabic') arabic = true; else return hit[0]
   }
-  return null
+  return arabic ? 'arabic' : null
 }
+/** What to tell the person about Arabic-script lines (Arabic, Urdu, Persian, Pashto...). */
+export const ARABIC_NOTE =
+  'The exporter draws Arabic script in Noto Naskh Arabic, the standard Arabic style; it does not have the Nastaliq style often used for Urdu. Letters join and run right to left, and it was checked on sample Urdu lines, but not on every dialect or rare character, so look at the exported frame.'
+/** True for a script the exporter cannot draw correctly. Arabic script is not one of them. */
+export const exporterCannotDraw = (s: UnsupportedScript | null): boolean => s !== null && s !== 'arabic'
 export const SCRIPT_LABEL: Record<UnsupportedScript, string> = { arabic: 'Arabic script', hebrew: 'Hebrew', indic: 'an Indic script', thai: 'Thai', cjk: 'CJK characters' }

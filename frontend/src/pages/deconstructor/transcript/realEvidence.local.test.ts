@@ -29,10 +29,10 @@ d('real VA5368 transcript (local only)', () => {
     expect(evidence.rightsStatus).toBe('unknown_third_party'); expect(cands.every(c => !c.defaultInclude)).toBe(true)
     expect(planSpeech(cands, {}, ctx).subtitles).toEqual([])
   })
-  it('is in a script the exporter cannot lay out: every segment is flagged, and the count says so', () => {
-    expect(cands.every(c => c.script === 'arabic' && c.flags.some(f => f.code === 'script_unsupported'))).toBe(true)
+  it('is in Arabic script (Urdu): every segment carries the Naskh note, none is flagged as undrawable, and the count says so', () => {
+    expect(cands.every(c => c.script === 'arabic' && c.flags.some(f => f.code === 'script_naskh') && !c.flags.some(f => f.code === 'script_unsupported'))).toBe(true)
     const p = planSpeech(cands, setAllIncluded({}, cands.map(c => c.id), true), ctx)
-    expect(p.record.counts.unsupportedScript).toBe(p.subtitles.length); expect(p.subtitles.length).toBeGreaterThan(10)
+    expect(p.record.counts.arabicScript).toBe(p.subtitles.length); expect(p.record.counts.unsupportedScript).toBe(0); expect(p.subtitles.length).toBeGreaterThan(10)
   })
   it('turns an explicit “include all” into editable subtitles on the draft’s timeline and a script covering the blueprint’s scenes', () => {
     const p = planSpeech(cands, setAllIncluded({}, cands.map(c => c.id), true), ctx)
