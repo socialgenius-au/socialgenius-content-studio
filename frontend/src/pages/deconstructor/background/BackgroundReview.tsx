@@ -69,6 +69,6 @@ export function BackgroundReview({ plan, generated, footage, onPlan, onPolicy, o
   useEffect(() => { onCanvasColour?.(chosenColour) }, [chosenColour, onCanvasColour])
   useEffect(() => () => { onPlan(null); onPolicy('as_generated'); onCanvasColour?.(null) }, [onPlan, onPolicy, onCanvasColour])             // leaving the panel never leaves stale changes behind
 
-  const onCorrect = useCallback((id: string, patch: { include?: boolean; color?: string; size?: number }) => setCorrections(c => setPlateCorrection(c, id, patch)), [])
+  const onCorrect = useCallback((id: string, patch: { include?: boolean; color?: string; size?: number; offset?: number }) => setCorrections(c => setPlateCorrection(c, id, patch)), [])
   return <BackgroundReviewView state={state} evidence={evidence} candidates={candidates} corrections={corrections} plan={layerPlan} policy={policy} composition={composition} scenes={plan.scenes} footage={footage} onCorrect={onCorrect} onPolicy={setPolicy} colourOptions={colourOptions} canvasColour={chosenColour} onCanvasColour={setCanvasColour} />
 }

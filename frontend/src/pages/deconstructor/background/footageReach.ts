@@ -63,3 +63,16 @@ export function plateReach(side: Side, size: number, uses: readonly SceneFootage
 
 /** More than this share of a plate under footage counts as "the footage reaches the bar". */
 export const REACH_THRESHOLD = 0.02
+
+/** The thickest this plate can be, from its `offset`, without covering any known footage (each clip's box is avoided; an unknown size is not guessed). Null when nothing is known to avoid, 0 when the footage already reaches the plate's start. Used to offer "shrink to clear your footage". */
+export function clearSize(side: Side, offset: number, uses: readonly SceneFootageUse[] | undefined, canvas: { width: number; height: number }): number | null {
+  if (!uses || uses.length === 0) return null
+  let room: number | null = null
+  for (const u of uses) {
+    const box = footageBox(u, canvas)
+    if (!box) continue
+    const free = side === 'top' ? box.y : side === 'bottom' ? 1 - (box.y + box.h) : side === 'left' ? box.x : 1 - (box.x + box.w)
+    room = room === null ? free - offset : Math.min(room, free - offset)
+  }
+  return room === null ? null : Math.max(0, round3(Math.floor(room * 1000 + 1e-9) / 1000))
+}

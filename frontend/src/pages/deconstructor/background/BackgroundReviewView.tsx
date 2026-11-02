@@ -4,7 +4,8 @@ import { Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { LIMITATIONS, VARIANCE_LABEL } from './contract'
 import { reachFlag, type PlateCandidate } from './candidates'
-import type { SceneFootage } from './footageReach'
+import { clearSize, type SceneFootage } from './footageReach'
+import { MIN_PLATE } from './contract'
 import { DEFAULT_CANVAS } from '../textlayers/geometry'
 import { BUCKET_LABEL, POLICY_LABEL, POLICY_RULES, layersByScene, type CompositionPlan, type OrderPolicy } from './composition'
 import type { PlateCorrections } from './corrections'
@@ -30,7 +31,7 @@ export interface BackgroundReviewViewProps {
   scenes: readonly { sceneNumber: number; startTime: number; endTime: number }[]
   /** What each scene's assigned clips are, so a size you set is checked against your footage too. */
   footage?: SceneFootage
-  onCorrect: (id: string, patch: { include?: boolean; color?: string; size?: number }) => void
+  onCorrect: (id: string, patch: { include?: boolean; color?: string; size?: number; offset?: number }) => void
   onPolicy: (p: OrderPolicy) => void
   /** Optional canvas colour: the distinct bar colours on offer, the one chosen (or null), and the setter. Absent = the control is not shown. */
   colourOptions?: readonly CanvasColourOption[]
@@ -65,6 +66,14 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
             <strong>{c.measured}</strong> measured {candidates.some(x => x.part) ? (c.measured === 1 ? 'bar or gradient step' : 'bars and gradient steps') : (c.measured === 1 ? 'bar' : 'bars')} on {evidence.frameCount} {evidence.frameCount === 1 ? 'still' : 'stills'} · <strong>{c.included}</strong> will be added · {c.excluded} left out
             {evidence.scenes.some(s => s.framesUnreadable > 0) && <> · {evidence.scenes.reduce((n, s) => n + s.framesUnreadable, 0)} stills could not be read</>}
           </p>
+          {(() => {
+            const hiding = candidates.filter(cd => { const r = resolvePlate(cd, p.corrections[cd.id]); return r.include && reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, r.offset.value)?.code === 'footage_overlap' })
+            return hiding.length > 0 ? (
+              <p role="alert" className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300" data-testid="background-obscure-summary">
+                <strong>{hiding.length}</strong> {hiding.length === 1 ? 'bar you have included may' : 'bars you have included may'} cover your footage (scene{hiding.length === 1 ? '' : 's'} {[...new Set(hiding.map(h => h.sceneNumber))].join(', ')}). A bar is drawn on top of the footage: shrink it, move it, leave it out, or use its colour as the canvas colour.
+              </p>
+            ) : null
+          })()}
           {candidates.length === 0 && <p className={sub} data-testid="background-no-bars">No flat bar was measured in any scene, so no plate is offered. Nothing was invented.</p>}
           <ul className="space-y-2" data-testid="background-list">
             {candidates.map(cd => {
@@ -78,6 +87,7 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
                     <span className="inline-block h-4 w-4 rounded border" style={{ background: r.color.value }} aria-label={`colour ${r.color.value}`} />
                     <code>{r.color.value}</code>
                     <Badge variant="outline">{r.corrected.includes('color') ? 'Set by you' : 'Measured'}</Badge>
+                    {(() => { const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, r.offset.value); return f?.code === 'footage_overlap' ? <Badge variant="warning" data-testid="background-obscure-badge">May cover your footage</Badge> : null })()}
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={sub}>Measured on {cd.framesSeen} of {cd.framesMeasured} {cd.framesMeasured === 1 ? 'still' : 'stills'} · flatness {(cd.uniformity * 100).toFixed(0)}% · {cd.variance ? VARIANCE_LABEL[cd.variance] : ''}</span>
@@ -88,11 +98,26 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
                         onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }} />
                       % of the {cd.side === 'top' || cd.side === 'bottom' ? 'height' : 'width'} <Badge variant="outline">{r.corrected.includes('size') ? 'Size set by you' : 'Size measured'}</Badge>
                     </label>
+                    <label className={`${sub} flex items-center gap-1`}>Distance from the {cd.side} edge
+                      <input key={`${cd.id}:off:${r.offset.value}`} type="number" min={0} max={50} step={0.5} defaultValue={+(r.offset.value * 100).toFixed(1)} data-testid="background-offset" className="h-6 w-16 rounded border bg-background px-1 text-xs"
+                        onBlur={e => { const v = Number(e.currentTarget.value) / 100; if (Number.isFinite(v) && Math.abs(v - r.offset.value) > 1e-6) p.onCorrect(cd.id, { offset: v }) }}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }} />
+                      % <Badge variant="outline">{r.corrected.includes('offset') ? 'Position set by you' : 'Position measured'}</Badge>
+                    </label>
+                    {p.corrections[cd.id]?.offset !== undefined && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { offset: undefined })} data-testid="background-offset-reset">Use the measured position</button>}
                     {p.corrections[cd.id]?.size !== undefined && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { size: undefined })}>Use the measured size</button>}
                     {p.corrections[cd.id]?.color && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { color: undefined })}>Use the measured colour</button>}
                   </div>
                   {cd.flags.map(f => <p key={f.code} className={f.severity === 'warning' ? 'text-amber-700 dark:text-amber-400' : sub} data-testid="background-flag">{f.message}</p>)}
-                  {r.corrected.includes('size') && (() => { const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, cd.offset ?? 0); return f?.code === 'footage_overlap' ? <p className="text-amber-700 dark:text-amber-400" data-testid="background-flag-size">At the size you set: {f.message}</p> : null })()}
+                  {(r.corrected.includes('size') || r.corrected.includes('offset')) && (() => { const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, r.offset.value); return f?.code === 'footage_overlap' ? <p className="text-amber-700 dark:text-amber-400" data-testid="background-flag-size">{r.corrected.includes('offset') ? 'At the size and position you set' : 'At the size you set'}: {f.message}</p> : null })()}
+                  {(() => {
+                    const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, r.offset.value)
+                    if (f?.code !== 'footage_overlap') return null
+                    const room = clearSize(cd.side, r.offset.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS)
+                    return room !== null && room >= MIN_PLATE
+                      ? <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { size: room })} data-testid="background-clear">Shrink to {(room * 100).toFixed(1)}% so it clears your footage</button>
+                      : <p className={sub} data-testid="background-clear-none">Your footage fills this part of the canvas, so no bar here can sit clear of it: leave it out, or use its colour as the canvas colour.</p>
+                  })()}
                   {st && <p className={sub} data-testid="background-status">{st.message}</p>}
                 </li>
               )

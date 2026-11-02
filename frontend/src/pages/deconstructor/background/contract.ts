@@ -35,6 +35,7 @@ export const UNIFORM_SHARE = 0.985              // a line counts as flat when th
 export const MIN_BAR = 0.02                     // a band thinner than 2% of the frame is not a bar
 export const MAX_BAR = 0.45                     // a band over 45% is not a letterbox bar: the frame is mostly one colour
 export const RING = 0.06                        // the outer 6% of the frame is "the border"
+export const MAX_OFFSET = 0.5                   // how far in from its edge a plate may be placed (share of the canvas); size + offset is clamped to the canvas when written
 export const MIN_PLATE = 0.03                   // a plate thinner than 3% of the canvas is not worth a layer
 export const ASPECT_TOLERANCE = 0.08            // reference frame versus canvas proportions
 export const DEFAULT_UNIFORMITY = 0.97
