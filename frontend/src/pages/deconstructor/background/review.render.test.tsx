@@ -23,7 +23,7 @@ function props(over: Partial<BackgroundReviewViewProps> & { corrections?: PlateC
   const corrections = over.corrections ?? {}
   const plan: BackgroundPlan = planBackground(candidates, corrections, ctx)
   const policy = over.policy ?? 'as_generated'
-  return { state: { kind: 'ready' }, evidence, candidates, corrections, plan, policy, composition: planComposition({ shapes: plan.shapes, mediaOverlays: [], textOverlays: [], subtitles: [{ id: 'rs:9:a', order: -1 }] }, policy), onCorrect: () => {}, onPolicy: () => {}, ...over }
+  return { state: { kind: 'ready' }, evidence, candidates, corrections, plan, policy, composition: planComposition({ shapes: plan.shapes, mediaOverlays: [], textOverlays: [], subtitles: [{ id: 'rs:9:a', order: -1 }] }, policy), scenes: [{ sceneNumber: 1, startTime: 0, endTime: 10 }, { sceneNumber: 2, startTime: 10, endTime: 20 }], onCorrect: () => {}, onPolicy: () => {}, ...over }
 }
 const html = (p: BackgroundReviewViewProps) => renderToStaticMarkup(<BackgroundReviewView {...p} />).replace(/<!-- -->/g, '')
 

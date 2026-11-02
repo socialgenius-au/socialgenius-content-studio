@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { LIMITATIONS, VARIANCE_LABEL } from './contract'
 import type { PlateCandidate } from './candidates'
-import { BUCKET_LABEL, POLICY_LABEL, POLICY_RULES, type CompositionPlan, type OrderPolicy } from './composition'
+import { BUCKET_LABEL, POLICY_LABEL, POLICY_RULES, layersByScene, type CompositionPlan, type OrderPolicy } from './composition'
 import type { PlateCorrections } from './corrections'
 import { resolvePlate } from './corrections'
 import type { BackgroundEvidence } from './evidence'
@@ -23,7 +23,9 @@ export interface BackgroundReviewViewProps {
   plan: BackgroundPlan
   policy: OrderPolicy
   composition: CompositionPlan
-  onCorrect: (id: string, patch: { include?: boolean; color?: string }) => void
+  /** The draft's scenes, to group the generated layers by scene. */
+  scenes: readonly { sceneNumber: number; startTime: number; endTime: number }[]
+  onCorrect: (id: string, patch: { include?: boolean; color?: string; size?: number }) => void
   onPolicy: (p: OrderPolicy) => void
 }
 
@@ -71,6 +73,13 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={sub}>Measured on {cd.framesSeen} of {cd.framesMeasured} {cd.framesMeasured === 1 ? 'still' : 'stills'} · flatness {(cd.uniformity * 100).toFixed(0)}% · {cd.variance ? VARIANCE_LABEL[cd.variance] : ''}</span>
                     <label className={`${sub} flex items-center gap-1`}>Colour <input type="color" value={r.color.value} onChange={e => p.onCorrect(cd.id, { color: e.target.value })} data-testid="background-colour" /></label>
+                    <label className={`${sub} flex items-center gap-1`}>Size
+                      <input key={`${cd.id}:${r.size.value}`} type="number" min={3} max={45} step={0.5} defaultValue={+(r.size.value * 100).toFixed(1)} data-testid="background-size" className="h-6 w-16 rounded border bg-background px-1 text-xs"
+                        onBlur={e => { const v = Number(e.currentTarget.value) / 100; if (Number.isFinite(v) && Math.abs(v - r.size.value) > 1e-6) p.onCorrect(cd.id, { size: v }) }}
+                        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }} />
+                      % of the {cd.side === 'top' || cd.side === 'bottom' ? 'height' : 'width'} <Badge variant="outline">{r.corrected.includes('size') ? 'Size set by you' : 'Size measured'}</Badge>
+                    </label>
+                    {p.corrections[cd.id]?.size !== undefined && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { size: undefined })}>Use the measured size</button>}
                     {p.corrections[cd.id]?.color && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { color: undefined })}>Use the measured colour</button>}
                   </div>
                   {cd.flags.map(f => <p key={f.code} className={f.severity === 'warning' ? 'text-amber-700 dark:text-amber-400' : sub} data-testid="background-flag">{f.message}</p>)}
@@ -98,6 +107,29 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
           {p.composition.layers.length > 0 && <> Generated so far: {(['recovered', 'inferred', 'manual'] as const).map(b => `${p.composition.layers.filter(l => l.bucket === b).length} ${BUCKET_LABEL[b].toLowerCase()}`).join(', ')}.</>}
         </p>
       </fieldset>
+
+      {(() => {
+        const groups = layersByScene(p.composition, p.scenes)
+        if (groups.length === 0) return null
+        return (
+          <div className="space-y-2 border-t pt-3 text-xs" data-testid="composition-by-scene">
+            <h4 className="font-semibold">Generated layers by scene <span className={sub}>(bottom to top; “from → to” is the stacking position the policy above will write)</span></h4>
+            {groups.map(g => (
+              <div key={g.sceneNumber} data-testid="composition-scene" data-scene={g.sceneNumber}>
+                <p className="font-medium">Scene {g.sceneNumber} <span className={sub}>{g.startTime.toFixed(1)}–{g.endTime.toFixed(1)} s</span></p>
+                <ul className="ml-3 space-y-0.5">
+                  {g.rows.map(row => (
+                    <li key={row.id} data-testid="composition-row" data-moved={row.moved ? 'yes' : 'no'}>
+                      {row.label} <Badge variant="outline">{BUCKET_LABEL[row.bucket]}</Badge>
+                      <span className={sub}> {row.startTime?.toFixed(1)}–{row.endTime?.toFixed(1)} s · stacking {row.moved ? `${row.before} → ${row.after}` : row.after}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
     </section>
   )
 }

@@ -5,7 +5,7 @@ import type { Asset } from '../../../types'
 import { errorMessage } from '../useDeconstructor'
 import { isVideoAsset, readyEntry, type LibraryEntry, footageKeyFor } from './footageModel'
 
-export type ProbeResult = { ok: true; duration: number } | { ok: false; reason: string }
+export type ProbeResult = { ok: true; duration: number; width?: number; height?: number } | { ok: false; reason: string }
 
 export interface LibraryDeps {
   listAssets: () => Promise<Asset[]>
@@ -30,7 +30,7 @@ export function probeVideoDuration(url: string, timeoutMs = 10000): Promise<Prob
     const timer = setTimeout(() => finish({ ok: false, reason: 'The video took too long to load, so its length could not be read.' }), timeoutMs)
     vid.preload = 'metadata'
     vid.onloadedmetadata = () => finish(Number.isFinite(vid.duration) && vid.duration > 0
-      ? { ok: true, duration: vid.duration }
+      ? { ok: true, duration: vid.duration, ...(vid.videoWidth > 0 && vid.videoHeight > 0 ? { width: vid.videoWidth, height: vid.videoHeight } : {}) }
       : { ok: false, reason: 'This video file does not report a usable length.' })
     vid.onerror = () => finish({ ok: false, reason: 'This file could not be opened as a video.' })
     vid.src = url
@@ -59,7 +59,7 @@ export async function probeAsset(asset: Asset, deps: LibraryDeps): Promise<Libra
   let r: ProbeResult
   try { r = await deps.probe(deps.previewUrl(asset.file_path)) } catch { r = { ok: false, reason: 'This video could not be read.' } }
   if (!r.ok) return { state: 'failed', key, assetId: asset.id, name: asset.original_filename, reason: r.reason }
-  return readyEntry(asset, r.duration, deps.previewUrl)
+  return readyEntry(asset, r.duration, deps.previewUrl, { width: r.width, height: r.height })
 }
 
 export const UPLOAD_NOT_VIDEO = 'That file is not a video. Choose a video file (for example MP4 or MOV).'

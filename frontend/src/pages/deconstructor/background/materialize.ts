@@ -60,7 +60,7 @@ function provenanceOf(r: ResolvedPlate, ctx: BackgroundContext, start: number, e
     evidence: { framesMeasured: c.framesMeasured, framesSeen: c.framesSeen, uniformity: c.uniformity, size: c.size, frameIds: [...c.frameIds] },
     properties: {
       color: { basis: r.color.basis, ...(r.color.note ? { note: r.color.note } : {}) },
-      region: { basis: 'measured', note: `The ${c.side} bar, ${(c.size * 100).toFixed(1)}% of the frame, measured on ${c.framesSeen} still${c.framesSeen === 1 ? '' : 's'}.` },
+      region: { basis: r.size.basis, note: r.size.basis === 'user' ? `The ${c.side} bar at ${(r.size.value * 100).toFixed(1)}% of the frame, as set by you (measured: ${(c.size * 100).toFixed(1)}%).` : `The ${c.side} bar, ${(c.size * 100).toFixed(1)}% of the frame, measured on ${c.framesSeen} still${c.framesSeen === 1 ? '' : 's'}.` },
       startTime: { basis: 'inferred', confidence: 'medium', note: `The span of scene ${c.sceneNumber} on the draft’s timeline.` },
       endTime: { basis: 'inferred', confidence: 'medium', note: `The span of scene ${c.sceneNumber} on the draft’s timeline.` },
     },
@@ -80,7 +80,7 @@ export function planBackground(candidates: readonly PlateCandidate[], correction
     if (end - start < 0.1) { add('outside_timeline', 'This scene is not inside the draft’s length.'); continue }
     const id = plateLayerId(ctx.videoAnalysisId, c)
     if (existing.has(id)) { add('duplicate', 'This plate is already in the draft.'); continue }
-    shapes.push({ id, ...geometry(c.side, c.size), fillColor: r.color.value, opacity: 1, borderWidth: 0, startTime: round3(start), endTime: round3(end), order: PLATE_ORDER, reconstruction: provenanceOf(r, ctx, start, end) })
+    shapes.push({ id, ...geometry(c.side, r.size.value), fillColor: r.color.value, opacity: 1, borderWidth: 0, startTime: round3(start), endTime: round3(end), order: PLATE_ORDER, reconstruction: provenanceOf(r, ctx, start, end) })
     add('included', 'Will be added as an editable shape in the bar.')
   }
   const count = (...s: PlateStatus[]) => items.filter(i => s.includes(i.status)).length

@@ -10,7 +10,8 @@ import type { TextLayerPlan } from '../textlayers'
 import type { ImageLayerPlan } from '../imagelayers'
 import type { TransitionPlan } from '../transitions'
 import type { SpeechPlan } from '../transcript'
-import type { BackgroundPlan, OrderPolicy } from '../background'
+import type { BackgroundPlan, OrderPolicy, SceneFootage } from '../background'
+import { sceneFootageOf } from '../background/footageReach'
 import { openAssembledDraft, saveAssembledDraft } from './assembledDraft'
 import { defaultLibraryDeps, loadVideoAssets, probeAsset, uploadFootage, type LibraryDeps } from './footageLibrary'
 import {
@@ -39,9 +40,11 @@ export interface FootageAssignmentProps {
   backgroundPlan?: BackgroundPlan | null
   /** M2.3c (optional): stacking policy applied to the generated layers at save. Absent = the unchanged behaviour. */
   compositionPolicy?: OrderPolicy | null
+  /** Optional: told what each scene's assigned clips are (their own size and Fit/Fill), whenever that changes. Used by the background panel to tell whether footage reaches a bar. */
+  onFootage?: (footage: SceneFootage) => void
 }
 
-export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy }: FootageAssignmentProps) {
+export function FootageAssignment({ resp, plan, references, libraryDeps, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy, onFootage }: FootageAssignmentProps) {
   const navigate = useNavigate()
   const deps = useMemo(() => libraryDeps ?? defaultLibraryDeps(), [libraryDeps])
   const [assets, setAssets] = useState<Asset[]>([])
@@ -111,6 +114,16 @@ export function FootageAssignment({ resp, plan, references, libraryDeps, textLay
   }
 
   const view = useMemo(() => runAssembly({ plan, library, edits, referenceAssetIds: referenceIds, underfilled, createdAt: VALIDATION_STAMP }), [plan, library, edits, referenceIds, underfilled])
+
+  // Publish what each scene's clips are, only when it really changes (the callback is the page's setState, so an unchanged value must not be sent again).
+  const sentFootage = useRef('')
+  useEffect(() => {
+    if (!onFootage) return
+    const info = sceneFootageOf(view.assignments, view.footage)
+    const sig = JSON.stringify(info)
+    if (sig !== sentFootage.current) { sentFootage.current = sig; onFootage(info) }
+  }, [view.assignments, view.footage, onFootage])
+
   const signature = useMemo(() => JSON.stringify(textLayers || imageLayers || transitionPlan || speechPlan || backgroundPlan || compositionPolicy ? [edits, underfilled, ...(textLayers ? [textLayers.signature] : []), ...(imageLayers ? [`img:${imageLayers.signature}`] : []), ...(transitionPlan ? [`tr:${transitionPlan.signature}`] : []), ...(speechPlan ? [`sp:${speechPlan.signature}`] : []), ...(backgroundPlan ? [`bg:${backgroundPlan.signature}`] : []), ...(compositionPolicy && compositionPolicy !== 'as_generated' ? [`co:${compositionPolicy}`] : [])] : [edits, underfilled]), [edits, underfilled, textLayers, imageLayers, transitionPlan, speechPlan, backgroundPlan, compositionPolicy])
 
   const onSave = async () => {

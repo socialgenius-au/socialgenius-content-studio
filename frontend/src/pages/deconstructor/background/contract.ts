@@ -39,5 +39,5 @@ export const MIN_PLATE = 0.03                   // a plate thinner than 3% of th
 export const ASPECT_TOLERANCE = 0.08            // reference frame versus canvas proportions
 export const DEFAULT_UNIFORMITY = 0.97
 
-export type BackgroundFlagCode = 'single_frame' | 'seen_in_some_frames' | 'aspect_differs' | 'thin' | 'not_uniform' | 'frame_size_unknown'
+export type BackgroundFlagCode = 'single_frame' | 'seen_in_some_frames' | 'aspect_differs' | 'thin' | 'not_uniform' | 'frame_size_unknown' | 'footage_overlap' | 'footage_size_unknown' | 'no_footage_yet'
 export interface BackgroundFlag { code: BackgroundFlagCode; severity: 'info' | 'warning'; message: string }
