@@ -1,0 +1,397 @@
+diff --git a/backend/app/routers/video_export.py b/backend/app/routers/video_export.py
+index ff302bf..35b323c 100644
+--- a/backend/app/routers/video_export.py
++++ b/backend/app/routers/video_export.py
+@@ -238,6 +238,8 @@ async def export_project(
+         "subtitles": subtitles,
+         "subtitle_style": subtitle_style,
+         "audio_tracks": audio_tracks,
++        "canvas_background": body.canvas_background,
++        "transition_edge_policy": body.transition_edge_policy,
+     }
+ 
+     try:
+diff --git a/backend/app/schemas/video_export.py b/backend/app/schemas/video_export.py
+index e3459d8..9d8ebb8 100644
+--- a/backend/app/schemas/video_export.py
++++ b/backend/app/schemas/video_export.py
+@@ -1,4 +1,8 @@
+-from pydantic import BaseModel
++from typing import Literal
++
++import re
++
++from pydantic import BaseModel, field_validator
+ 
+ 
+ # STEP 7.15F: shape mirrors Video Studio V2's own editor state (VideoClip/TextOverlay/
+@@ -223,3 +227,15 @@ class ExportProjectRequest(BaseModel):
+     subtitles: list[ExportSubtitle] = []
+     subtitle_style: ExportSubtitleStyle = ExportSubtitleStyle()
+     audio_tracks: list[ExportAudioTrack] = []
++    # Optional colour behind a letterboxed ("fit") clip and in timeline gaps, "#rrggbb". Absent = black, exactly as before.
++    canvas_background: str | None = None
++
++    @field_validator("canvas_background")
++    @classmethod
++    def _hex_colour(cls, v):
++        if v is not None and not re.fullmatch(r"#[0-9a-fA-F]{6}", v):
++            raise ValueError("canvas_background must be a #rrggbb colour")
++        return v
++    # Opt-in: what a dissolve does at a join where a clip has no spare source frames. "shorten" (default) = the dissolve is shortened (never invents a frame); "hold_incoming" = the incoming
++    # clip's first frame is held while it fades in, so the dissolve keeps its full length. Nothing else about the timeline changes.
++    transition_edge_policy: Literal["shorten", "hold_incoming"] = "shorten"
+diff --git a/backend/app/services/ffmpeg_svc.py b/backend/app/services/ffmpeg_svc.py
+index 3b9d897..0b8cfaf 100644
+--- a/backend/app/services/ffmpeg_svc.py
++++ b/backend/app/services/ffmpeg_svc.py
+@@ -524,6 +524,7 @@ async def build_clip_segment(
+     fit_mode: str = "fit",
+     crop_x: float = 50.0,
+     crop_y: float = 50.0,
++    pad_color: str = "black",
+ ) -> Path:
+     """One clip's [trimIn, trimIn+sourceDuration) source range → a single normalized segment:
+     speed-adjusted, colour/brightness/contrast/saturation applied, scaled onto the project's
+@@ -577,7 +578,7 @@ async def build_clip_segment(
+     if fit_mode == "fit":
+         vf_parts.append(
+             f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease,"
+-            f"pad={canvas_w}:{canvas_h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
++            f"pad={canvas_w}:{canvas_h}:(ow-iw)/2:(oh-ih)/2:color={pad_color},setsar=1"
+         )
+     else:
+         crop_x_frac = max(0.0, min(1.0, crop_x / 100))
+@@ -979,7 +980,7 @@ def _stack_runs(project: dict) -> list[tuple[str, list[dict]]]:
+     return runs
+ 
+ 
+-async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, user_id: int) -> tuple[Path, list[str], int]:
++async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, user_id: int, pad_color: str = "black") -> tuple[Path, list[str], int]:
+     """One CONTIGUOUS run of V1 clips (each starts where the previous ends) -> its base video, the intermediate files to clean up afterwards, and its exact length in frames. This is the
+     whole of what render_project always did for the V1 timeline; a project without a gap is exactly one run."""
+ 
+@@ -1023,7 +1024,7 @@ async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, use
+             c["path"], cp.source_trim_in, cp.source_duration, c["speed"],
+             c["color_grade"], c["brightness"], c["contrast"], c["saturation"],
+             cw, ch, keep_audio=keep_audio, volume=clip_volume, user_id=user_id,
+-            fit_mode=c.get("fit_mode", "fit"), crop_x=c.get("crop_x", 50.0), crop_y=c.get("crop_y", 50.0),
++            fit_mode=c.get("fit_mode", "fit"), crop_x=c.get("crop_x", 50.0), crop_y=c.get("crop_y", 50.0), pad_color=pad_color,
+         )
+         segment_paths.append(str(seg))
+ 
+@@ -1035,7 +1036,7 @@ async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, use
+     return base, [p for p in segment_paths if p != str(base)], plan.total_f - plan.origin_f
+ 
+ 
+-def build_gap_graph(parts: list[tuple[str | None, int]]) -> tuple[list[str], str]:
++def build_gap_graph(parts: list[tuple[str | None, int]], color: str = "black") -> tuple[list[str], str]:
+     """Pure: the input arguments and filter graph that join runs (path) and gaps (None) end to end, every part forced to its exact frame / sample count so nothing after a gap can shift."""
+     F = timeline_plan.FPS
+     args: list[str] = []
+@@ -1044,7 +1045,7 @@ def build_gap_graph(parts: list[tuple[str | None, int]]) -> tuple[list[str], str
+     for path, frames in parts:
+         secs = f"{frames / F:.6f}"
+         if path is None:
+-            args += ["-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", f"color=c=black:s={{W}}x{{H}}:r={F}", "-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", "anullsrc=r=44100:cl=stereo"]
++            args += ["-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", f"color=c={color}:s={{W}}x{{H}}:r={F}", "-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", "anullsrc=r=44100:cl=stereo"]
+             vi, ai = idx, idx + 1
+             idx += 2
+         else:
+@@ -1059,10 +1060,10 @@ def build_gap_graph(parts: list[tuple[str | None, int]]) -> tuple[list[str], str
+     return args, ";".join(chains) + ";" + joined
+ 
+ 
+-async def concat_runs_with_gaps(parts: list[tuple[str | None, int]], cw: int, ch: int, user_id: int) -> Path:
++async def concat_runs_with_gaps(parts: list[tuple[str | None, int]], cw: int, ch: int, user_id: int, color: str = "black") -> Path:
+     """Joins contiguous runs with black video and silence for each gap between them (leading gap included), so the exported timeline is as long as the editor's and every layer, subtitle
+     and A1 audio stays at its own absolute time."""
+-    args, graph = build_gap_graph(parts)
++    args, graph = build_gap_graph(parts, color)
+     args = [a.replace("{W}", str(cw)).replace("{H}", str(ch)) for a in args]
+     graph = graph
+     out = _out(user_id, "mp4")
+@@ -1105,13 +1106,15 @@ async def render_project(project: dict, user_id: int) -> Path:
+ 
+     cw, ch = project["canvas_width"], project["canvas_height"]
+     policy = project.get("transition_edge_policy", "shorten")
++    bg = project.get("canvas_background")
++    pad_color = "0x" + bg[1:] if isinstance(bg, str) and len(bg) == 7 and bg.startswith("#") else "black"
+ 
+     # V1 clips -> contiguous runs. A gap between runs (or before the first clip) is black video and silence, exactly as the editor shows it; a project without a gap is one run and takes
+     # the unchanged path.
+     runs = timeline_plan.split_runs(clips)
+     lead = timeline_plan.to_frames(clips[0]["start_time"])
+     if len(runs) == 1 and lead < 1:
+-        base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id)
++        base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id, pad_color)
+     else:
+         parts: list[tuple[str | None, int]] = []
+         run_intermediates: list[str] = []
+@@ -1120,10 +1123,10 @@ async def render_project(project: dict, user_id: int) -> Path:
+             gap = timeline_plan.to_frames(run[0]["start_time"]) - pos
+             if gap >= 1:
+                 parts.append((None, gap)); pos += gap
+-            rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id)
++            rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id, pad_color)
+             parts.append((str(rb), frames)); pos += frames
+             run_intermediates += im + [str(rb)]
+-        base = await concat_runs_with_gaps(parts, cw, ch, user_id)
++        base = await concat_runs_with_gaps(parts, cw, ch, user_id, pad_color)
+         base_frames = pos
+ 
+     current = base
+diff --git a/backend/tests/test_canvas_background.py b/backend/tests/test_canvas_background.py
+new file mode 100644
+index 0000000..fef95b1
+--- /dev/null
++++ b/backend/tests/test_canvas_background.py
+@@ -0,0 +1,70 @@
++"""(ships inside the C2 / C1 patches) The optional canvas background colour and the opt-in edge policy, end to end through the request schema, the router's project dict and a real ffmpeg render."""
++import asyncio
++from pathlib import Path
++
++import numpy as np
++import pytest
++from pydantic import ValidationError
++
++from app.schemas.video_export import ExportProjectRequest
++from app.services import ffmpeg_svc
++from test_timeline_sync_render import FPS, H, W, _clip, _frames, sources  # noqa: F401  (sources is a fixture)
++
++USER_ID = 995
++
++
++def _req(**kw):
++    return ExportProjectRequest(canvas_width=W, canvas_height=H, video_clips=[], **kw)
++
++
++def test_the_request_accepts_a_hex_colour_and_rejects_anything_else_and_defaults_to_none():
++    assert _req().canvas_background is None
++    assert _req(canvas_background="#aa3366").canvas_background == "#aa3366"
++    for bad in ("red", "#abc", "aa3366", "#gg3366", "#aa3366; drawtext=x"):
++        with pytest.raises(ValidationError):
++            _req(canvas_background=bad)
++
++
++def _render(clips, tmp_path, tag, **extra):
++    project = {"canvas_width": W, "canvas_height": H, "video_clips": clips, "text_overlays": [], "shapes": [], "audio_tracks": [], "subtitle_style": {}, **extra}
++    out = asyncio.run(ffmpeg_svc.render_project(project, USER_ID))
++    dst = tmp_path / f"{tag}.mp4"
++    dst.write_bytes(Path(out).read_bytes())
++    return _frames(str(dst))
++
++
++def _wide(sources, tmp_path):
++    """a clip whose picture is wider than the portrait canvas, so "fit" leaves bars above and below"""
++    import subprocess
++    p = tmp_path / "wide.mp4"
++    subprocess.run([ffmpeg_svc.FFMPEG_BIN, "-y", "-v", "error", "-i", sources["A"], "-vf", f"scale={W}:{W // 2},setsar=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "copy", "-t", "2", str(p)], check=True)
++    return str(p)
++
++
++def test_a_fit_clip_is_padded_with_the_chosen_colour_and_black_by_default(sources, tmp_path):
++    wide = _wide(sources, tmp_path)
++    clip = _clip(wide, 0, 2, trim=0.0)
++    black = _render([clip], tmp_path, "black")
++    red = _render([clip], tmp_path, "red", canvas_background="#cc2244")
++    top = slice(int(H * 0.05), int(H * 0.2))
++    centre = slice(int(H * 0.45), int(H * 0.55))
++    assert black[10, 0, top, :].mean() < 20                                          # default: black bars, as before
++    y, u, v = (red[10, c, top, :].mean() for c in range(3))
++    assert abs(u - 118) < 12 and abs(v - 190) < 12 and y > 40                       # #cc2244 in BT.601 YUV is about (66, 118, 190)
++    assert (red[10, 0, centre, :] == black[10, 0, centre, :]).mean() > 0.97         # the picture itself is unchanged
++    assert red.shape == black.shape
++
++
++def test_a_gap_in_the_timeline_uses_the_same_colour(sources, tmp_path):
++    clips = [_clip(sources["A"], 1, 3, trim=0.0)]                                    # starts at 1 s: the first second is a gap
++    red = _render(clips, tmp_path, "gapred", canvas_background="#cc2244")
++    plain = _render(clips, tmp_path, "gapblack")
++    assert plain[10, 0].mean() < 20 and abs(red[10, 1].mean() - 118) < 12 and abs(red[10, 2].mean() - 190) < 12
++    assert red.shape == plain.shape
++
++
++def test_without_the_field_the_render_is_unchanged(sources, tmp_path):
++    clips = [_clip(sources["A"], 0, 2, trim=0.0)]
++    a = _render(clips, tmp_path, "n1")
++    b = _render(clips, tmp_path, "n2", canvas_background=None)
++    assert a.shape == b.shape and (a == b).all()
+diff --git a/backend/tests/test_edge_policy_request.py b/backend/tests/test_edge_policy_request.py
+new file mode 100644
+index 0000000..8d27eb6
+--- /dev/null
++++ b/backend/tests/test_edge_policy_request.py
+@@ -0,0 +1,15 @@
++"""(ships with the C1 patch) The opt-in edge policy on the export request."""
++import pytest
++from pydantic import ValidationError
++
++from app.schemas.video_export import ExportProjectRequest
++
++
++def _req(**kw):
++    return ExportProjectRequest(canvas_width=360, canvas_height=640, video_clips=[], **kw)
++
++
++def test_the_request_edge_policy_defaults_to_shorten_and_allows_only_the_two_known_values():
++    assert _req().transition_edge_policy == "shorten" and _req(transition_edge_policy="hold_incoming").transition_edge_policy == "hold_incoming"
++    with pytest.raises(ValidationError):
++        _req(transition_edge_policy="hold")
+diff --git a/frontend/src/contexts/StudioContext.tsx b/frontend/src/contexts/StudioContext.tsx
+index c42c6eb..3880635 100644
+--- a/frontend/src/contexts/StudioContext.tsx
++++ b/frontend/src/contexts/StudioContext.tsx
+@@ -30,6 +30,8 @@ export interface CanvasFormatState {
+   ratio: string
+   width: number
+   height: number
++  /** Optional "#rrggbb" behind a letterboxed clip and in timeline gaps (preview and export). Absent = black. */
++  background?: string
+ }
+ 
+ const DEFAULT_CANVAS_FORMAT: CanvasFormatState = {
+diff --git a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
+index 8b9fb69..81b0e38 100644
+--- a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
++++ b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
+@@ -1,4 +1,5 @@
+ 
++import { validCanvasBackground } from "../export/canvasBackground";
+ import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+ import { useStudio } from "../../../contexts/StudioContext";
+ import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
+@@ -1032,7 +1033,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+     const label = `${CANVAS_PLATFORMS.find(p => p.key === platformKey)?.label ?? platformKey} - ${placement.label}`;
+     const next: CanvasFormatState = {
+       platformKey, placementKey: placement.key, label,
+-      ratio: placement.ratio, width: placement.width, height: placement.height,
++      ratio: placement.ratio, width: placement.width, height: placement.height, background: canvasFormat.background,
+     };
+     setCanvasFormat(next);
+     addCanvasVersion(next);
+@@ -1049,7 +1050,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+     setCustomW(w); setCustomH(h);
+     const next: CanvasFormatState = {
+       platformKey: "website", placementKey: "custom", label: "Website / General - Custom Size",
+-      ratio: "CUSTOM", width: w, height: h,
++      ratio: "CUSTOM", width: w, height: h, background: canvasFormat.background,
+     };
+     setCanvasFormat(next);
+     addCanvasVersion(next);
+@@ -5540,7 +5541,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+             key={`${v.platformKey}|${v.placementKey}`}
+             type="button"
+             className={v.platformKey === canvasFormat.platformKey && v.placementKey === canvasFormat.placementKey ? "active" : ""}
+-            onClick={() => setCanvasFormat(v)}
++            onClick={() => setCanvasFormat({ ...v, background: canvasFormat.background })}
+             title={`${v.width}×${v.height}`}
+           >
+             {v.label} ({v.ratio})
+@@ -5563,6 +5564,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+             <button type="button">✋</button>
+             <button className="active" type="button">⌁</button>
+             <span className="zoom-readout" title="Actual scale of the canvas as displayed">{Math.round((canvasBox.w / rawW) * 100)}%</span>
++            <label className="canvas-bg-control" title="Colour behind a letterboxed video (Fit) and in timeline gaps">
++              <input type="color" data-testid="canvas-background" value={validCanvasBackground(canvasFormat.background) ?? "#000000"} onChange={e => setCanvasFormat({ ...canvasFormat, background: e.target.value })} />
++              <button type="button" disabled={!canvasFormat.background} onClick={() => setCanvasFormat({ ...canvasFormat, background: undefined })}>Reset to black</button>
++            </label>
+             {/* STEP 7 (Platform Canvas / Full-Screen Video Acceptance): was a fully dead
+                 placeholder button (no onClick at all) — the same "decorative control" pattern
+                 already found and fixed for the preview mute speaker and Undo/Redo before this
+@@ -5661,7 +5666,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+               <div
+                 ref={videoPreviewBoxRef}
+                 className={`video-preview real canvas-selectable ${selectedClip?.id === activeVideoClip!.id ? "canvas-el-selected" : ""}`}
+-                style={{ width: canvasBox.w, height: canvasBox.h }}
++                style={{ width: canvasBox.w, height: canvasBox.h, ...(validCanvasBackground(canvasFormat.background) ? { background: validCanvasBackground(canvasFormat.background) } : {}) }}
+                 onClick={e => { e.stopPropagation(); setSelectedElement({ type: "clip", lane: "video", id: activeVideoClip!.id }); }}
+                 title={`${activeVideoClip!.name || "Video"} — click to select`}
+               >
+diff --git a/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx b/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx
+index c65d9ad..f0dac28 100644
+--- a/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx
++++ b/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx
+@@ -7,6 +7,7 @@ import { findActiveClip } from "../../../components/studio/videoPreviewUtils";
+ import { videoExportApi } from "../../../api/client";
+ import { checkReconstructionExport } from "../blueprint/exportGuard";
+ import { buildExportTextOverlays } from "../export/textOverlayExport";
++import { validCanvasBackground } from "../export/canvasBackground";
+ import { buildExportInserts, buildExportLowerThirds, buildExportShapes, buildExportSubtitles, buildExportSubtitleStyle, exportNotices, missingInsertSources } from "../export/layerExport";
+ 
+ const PLATFORMS = [
+@@ -50,6 +51,8 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
+   // (ffmpeg was never actually installed in this environment, so no ffmpeg_svc.py function
+   // could ever have worked here regardless of what the button did).
+   const [exportState, setExportState] = useState<"idle" | "exporting" | "error">("idle");
++  // Opt-in (default: the exporter's existing behaviour). Applies to the next export only; it is not saved in the draft.
++  const [edgePolicy, setEdgePolicy] = useState<"shorten" | "hold_incoming">("shorten");
+   const [exportError, setExportError] = useState<string | null>(null);
+ 
+   const handleExportVideo = async () => {
+@@ -109,6 +112,8 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
+         additional_video_clips: buildExportInserts(additionalVideoClips),
+         subtitles: buildExportSubtitles(subtitles),
+         subtitle_style: buildExportSubtitleStyle(subtitleStyle),
++        ...(validCanvasBackground(canvasFormat.background) ? { canvas_background: validCanvasBackground(canvasFormat.background) } : {}),
++        transition_edge_policy: edgePolicy,
+         media_overlays: mediaOverlays.map(o => ({
+           asset_id: o.assetId, start_time: o.startTime, end_time: o.endTime,
+           x: o.x, y: o.y, width: o.width, height: o.height, opacity: o.opacity, order: o.order ?? 0,
+@@ -242,6 +247,16 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
+         <div className="inline-status error">{exportError}</div>
+       )}
+ 
++      {videoClips.some(c => c.transition === "dissolve") && (
++        <label className="stack-field" data-testid="edge-policy">
++          <span>Dissolves where a clip has no spare footage</span>
++          <select value={edgePolicy} onChange={e => setEdgePolicy(e.target.value as "shorten" | "hold_incoming")}>
++            <option value="shorten">Shorten the dissolve (default)</option>
++            <option value="hold_incoming">Hold the incoming clip’s first frame while it fades in</option>
++          </select>
++        </label>
++      )}
++
+       <div className="stage-footer triple">
+         <button className="secondary" onClick={onBack} type="button">← Back: Create / Edit</button>
+         <div>
+diff --git a/frontend/src/pages/video-studio-v2/export/canvasBackground.test.ts b/frontend/src/pages/video-studio-v2/export/canvasBackground.test.ts
+new file mode 100644
+index 0000000..bf7b405
+--- /dev/null
++++ b/frontend/src/pages/video-studio-v2/export/canvasBackground.test.ts
+@@ -0,0 +1,23 @@
++// The canvas background colour: optional, "#rrggbb" only, survives the draft/local-copy round trip (it is part of canvasFormat), and an old copy without it means black.
++import { describe, expect, it } from 'vitest'
++import { parsePersistedProject } from '../projectPersistence'
++import { validCanvasBackground } from './canvasBackground'
++
++const FORMAT = { platformKey: 'instagram', placementKey: 'reel_story', label: 'Instagram - Reel / Story', ratio: '9:16', width: 1080, height: 1920 }
++
++describe('canvas background colour', () => {
++  it('accepts #rrggbb (any case, returned lower case) and nothing else', () => {
++    expect(validCanvasBackground('#CC2244')).toBe('#cc2244'); expect(validCanvasBackground('#cc2244')).toBe('#cc2244')
++    for (const bad of [undefined, null, '', 'red', '#abc', 'cc2244', '#gg2244', '#cc2244 ', '#cc2244; x', 42, {}]) expect(validCanvasBackground(bad), String(bad)).toBeUndefined()
++  })
++  it('survives the local working copy: a current copy keeps it, an older copy without it restores as black', () => {
++    const current = parsePersistedProject(JSON.stringify({ canvasFormat: { ...FORMAT, background: '#cc2244' }, videoClips: [] }))!
++    expect(validCanvasBackground(current.canvasFormat?.background)).toBe('#cc2244')
++    const older = parsePersistedProject(JSON.stringify({ canvasFormat: FORMAT, videoClips: [] }))!
++    expect(older.canvasFormat).toEqual(FORMAT); expect(validCanvasBackground(older.canvasFormat?.background)).toBeUndefined()
++  })
++  it('a malformed stored colour is ignored, not exported and not drawn', () => {
++    const odd = parsePersistedProject(JSON.stringify({ canvasFormat: { ...FORMAT, background: 'javascript:alert(1)' } }))!
++    expect(validCanvasBackground(odd.canvasFormat?.background)).toBeUndefined()
++  })
++})
+diff --git a/frontend/src/pages/video-studio-v2/export/canvasBackground.ts b/frontend/src/pages/video-studio-v2/export/canvasBackground.ts
+new file mode 100644
+index 0000000..3ff1960
+--- /dev/null
++++ b/frontend/src/pages/video-studio-v2/export/canvasBackground.ts
+@@ -0,0 +1,5 @@
++// The optional colour behind a letterboxed clip and in timeline gaps. It lives on the canvas format (`canvasFormat.background`), so it is saved in the draft and restored with it.
++// A draft or local copy written before it existed has none (black, as before); anything that is not "#rrggbb" is ignored rather than sent to the exporter, which would reject it.
++export const CANVAS_BACKGROUND_RE = /^#[0-9a-fA-F]{6}$/
++
++export const validCanvasBackground = (v: unknown): string | undefined => (typeof v === 'string' && CANVAS_BACKGROUND_RE.test(v) ? v.toLowerCase() : undefined)

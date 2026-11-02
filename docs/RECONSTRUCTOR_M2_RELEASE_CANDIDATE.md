@@ -57,3 +57,21 @@ The browser scripts are scratch harnesses, not part of the repository.
 2. D1 dissolve preview direction, C3 blurred backdrop (design only).
 3. Whether to include any of those patches in the candidate that goes to Railway, or ship this candidate as is and the patches afterwards.
 4. Deployment itself: fast-forward `preview/unified-v1` from `fdfca26` to the approved commit; rollback is a non-force revert commit.
+
+---
+
+# Candidate 2: the four authorised protected-file changes applied
+
+Branch `integration/m2-protected-changes` (worktree `…-m2-protected`), based on `integration/m2-fast-track-2` at `aaf02ae`. **Not deployed; not merged; nothing pushed from this branch.** D1 and C3 are not implemented.
+
+| Change | Commit | What it does | Protected files touched |
+|---|---|---|---|
+| C1 + C2 (one combined change) | `76a28d7` (`protected-patches/c1-c2-combined.applied.patch`) | C1: opt-in `transition_edge_policy` (`shorten` default / `hold_incoming`) on the export request and one select in Review (shown only when a clip has a dissolve; applies to the next export, not saved in the draft). C2: optional `canvasFormat.background` `#rrggbb`, a colour input in the canvas toolbar, the preview stage, the exporter's fit padding and timeline gaps | `backend/app/schemas/video_export.py`, `backend/app/routers/video_export.py`, `backend/app/services/ffmpeg_svc.py`, `frontend/src/contexts/StudioContext.tsx` (type), `…/CreateEditTab.tsx`, `…/ReviewTab.tsx` |
+| D3 | `cc313af` | Transition selector shows a stored dissolve / whip pan / zoom punch as itself, duration shown for any non-cut type, only an explicit pick writes | `CreateEditTab.tsx` |
+| D2 | `fd6896b` | Editor fades through black at the join, with the exporter's split of the window, no fade at project start/end or across a gap | `CreateEditTab.tsx` (calls the new pure helper `export/transitionFade.ts`) |
+
+Differences from the documented patches (all small, none changes behaviour beyond scope):
+- C2 also adds `validCanvasBackground()` (new file `export/canvasBackground.ts`), used by the preview and the export request, so a malformed colour in an old or hand-edited draft is ignored instead of breaking export. A saved draft with no colour is exactly as before.
+- D2's logic lives in a pure helper called by `getClipTransitionOpacity` instead of inline, so it can be unit-tested. The rule is the documented one; the helper also requires the two clips to touch (as the exporter does, which does no transition across a gap).
+
+Not done, and why: **dissolve preview is D1** (deferred): the editor still cannot show a blend, so dissolves are previewed as a cut and exported as a dissolve. D2 as documented concerns the *fade through black* only. The editor's preview in a timeline gap is its existing placeholder picture (it was never black), so the canvas colour is applied to the exported gap and to the stage behind the video; the placeholder itself is unchanged.
