@@ -10,6 +10,7 @@ import { makeTimeMap, resolveSpeech, setAllIncluded, setSpeechCorrection, type S
 import type { SpeechEvidence } from './evidence'
 import { loadSpeechEvidence } from './loadEvidence'
 import { planSpeech, type SpeechPlan } from './materialize'
+import { DEFAULT_LAYOUT, type SubtitleLayout } from './layout'
 import { TranscriptReviewView, type ReviewState } from './TranscriptReviewView'
 
 export interface TranscriptDeps { getReference: (id: number) => Promise<ReferenceVideo>; now: () => Date }
@@ -28,6 +29,7 @@ export function TranscriptReview({ plan, onPlan, deps: override }: TranscriptRev
   const [state, setState] = useState<ReviewState>({ kind: 'loading' })
   const [corrections, setCorrections] = useState<SpeechCorrections>({})
   const [modeOverride, setModeOverride] = useState<TimeMap['mode'] | undefined>(undefined)
+  const [layout, setLayout] = useState<SubtitleLayout>(DEFAULT_LAYOUT)
 
   useEffect(() => {
     let cancelled = false
@@ -47,9 +49,9 @@ export function TranscriptReview({ plan, onPlan, deps: override }: TranscriptRev
   const speechPlan = useMemo(
     () => planSpeech(candidates, corrections, {
       referenceVideoId: plan.referenceVideoId, videoAnalysisId: plan.videoAnalysisId, timeMap, scenes: plan.scenes.map(s => ({ sceneNumber: s.sceneNumber, startTime: s.startTime, endTime: s.endTime })),
-      existingSubtitleIds: [], createdAt: deps.now().toISOString(),
+      existingSubtitleIds: [], createdAt: deps.now().toISOString(), layout,
     }),
-    [candidates, corrections, timeMap, plan.scenes, plan.referenceVideoId, plan.videoAnalysisId, deps],
+    [candidates, corrections, timeMap, plan.scenes, plan.referenceVideoId, plan.videoAnalysisId, deps, layout],
   )
 
   useEffect(() => { onPlan(speechPlan.subtitles.length > 0 ? speechPlan : null) }, [speechPlan, onPlan])
@@ -57,5 +59,5 @@ export function TranscriptReview({ plan, onPlan, deps: override }: TranscriptRev
 
   const onCorrect = useCallback((id: string, patch: Partial<Record<keyof SpeechCorrection, unknown>>) => setCorrections(c => setSpeechCorrection(c, id, patch)), [])
   const onIncludeAll = useCallback((include: boolean) => setCorrections(c => setAllIncluded(c, candidates.map(x => x.id), include)), [candidates])
-  return <TranscriptReviewView state={state} rightsStatus={evidence?.rightsStatus ?? null} candidates={candidates} resolved={resolved} plan={speechPlan} timeMap={timeMap} onCorrect={onCorrect} onIncludeAll={onIncludeAll} onTimeMode={setModeOverride} />
+  return <TranscriptReviewView state={state} rightsStatus={evidence?.rightsStatus ?? null} candidates={candidates} resolved={resolved} plan={speechPlan} timeMap={timeMap} onCorrect={onCorrect} onIncludeAll={onIncludeAll} onTimeMode={setModeOverride} layout={layout} onLayout={patch => setLayout(l => ({ ...l, ...patch }))} />
 }
