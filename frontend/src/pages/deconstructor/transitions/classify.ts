@@ -3,6 +3,7 @@
 // synthetic profiles -- provisional, in the same spirit as the OCR and detector thresholds elsewhere -- and every result is a suggestion the person confirms.
 import { DEFAULT_DURATION, MAX_DURATION, MIN_DURATION, clamp, round3, type Confidence, type TransitionKind } from './contract'
 import type { BoundaryEvidence } from './evidence'
+import { MOTION_NOTE, estimateMotion, type MotionEstimate } from './motion'
 
 export const THRESHOLDS = {
   spikeRatio: 5,            // the biggest frame-to-frame change is at least this many times the typical (median) one: a cut
@@ -49,6 +50,8 @@ export interface Classification {
   kind: TransitionKind
   /** Set when the brightness profile looks like a flash or a fade through white. `kind` is then the nearest thing the editor can do, and `reasons` say so. */
   look?: WhiteLook
+  /** Set for a whip pan or zoom punch: what was measured, kept apart from the type that was inferred from it. */
+  motion?: MotionEstimate
   confidence: Confidence
   /** Seconds the effect seems to last; null for a hard cut. */
   durationSeconds: number | null
@@ -109,6 +112,15 @@ export function classifyBoundary(b: BoundaryEvidence): Classification {
     const bright = lum.filter(v => v >= f.edgeMax + 0.5 * (f.lumMax - f.edgeMax)).length
     const seconds = clamp(round3((bright + 1) / b.fps), MIN_DURATION, MAX_DURATION)
     return { kind: 'dissolve', look: 'fade_white', confidence: strong ? 'medium' : 'low', durationSeconds: seconds, features: f, reasons: [peak, `${f.brightSamples} bright samples in a row: a gradual fade through white, roughly ${num(seconds, 1)} s, so a dissolve is the nearest.`, note] }
+  }
+  // 1c. whip pan / zoom punch: a large, steady movement or scaling across several frame pairs, from the motion measurements the analysis stored. An ESTIMATE (never above medium).
+  const motion = estimateMotion(b.motion)
+  if (motion) {
+    const word = motion.kind === 'whip_pan' ? `a whip pan (the picture moving ${motion.direction})` : `a zoom punch (zooming ${motion.direction})`
+    return {
+      kind: motion.kind, motion, confidence: motion.confidence, durationSeconds: clamp(round3(Math.max(motion.seconds, MIN_DURATION)), MIN_DURATION, MAX_DURATION), features: f,
+      reasons: [...motion.reasons, `That is what ${word} looks like, so it is offered as one. ${MOTION_NOTE}`],
+    }
   }
   // 2. hard cut: one pair changes far more than the rest and carries most of the change
   if (f.spikeRatio >= T.spikeRatio && f.elevatedRun <= T.cutMaxRun && f.spikeShare >= T.spikeShareMin) {

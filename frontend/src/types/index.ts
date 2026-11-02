@@ -319,6 +319,9 @@ export interface TransitionEvidenceSummary {
   luminance: { values: number[]; first_value: number; last_value: number; min: number; max: number; signed_total_change: number }
   frame_difference: { values: number[]; median: number; max: number; argmax_index: number }
   black_frame_flags: boolean[]
+  /** Per-pair motion measurements the analysis stored (optional: older responses do not carry them). */
+  affine?: { pairs: { estimation_success: boolean; translation_x?: number | null; translation_y?: number | null; scale?: number | null; ransac_inlier_ratio?: number | null }[] } | null
+  phase_correlation?: { pairs: { dx: number; dy: number; response: number; phase_quality_issue?: string | null }[] } | null
   certainty: string
 }
 

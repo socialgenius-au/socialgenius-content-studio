@@ -7,7 +7,7 @@ import { NO_CLAIMS } from './contract'
 import { makeTimeMap, resolveTransition, setTransitionCorrection } from './corrections'
 import { readTransitionEvidence } from './evidence'
 import { CLIP_END_TOLERANCE, mergeTransitions, planTransitions, type TransitionClip } from './materialize'
-import { BRIGHT_SCENE_CUT, CUT_TO_DARK, DISSOLVE, FADE_WHITE, FLASH, FADE_BLACK, FAST_MOTION, REAL_CUT, SHALLOW_DIP, evidenceFor, joinsFor, planWith, reference, summary } from './testkit'
+import { BRIGHT_SCENE_CUT, CUT_TO_DARK, PAN_LEFT_2, PAN_RIGHT_3, PAN_UP_PHASE, SMALL_DRIFT, WEAK_FIT, WOBBLE, ZOOM_IN_3, ZOOM_OUT_2, DISSOLVE, FADE_WHITE, FLASH, FADE_BLACK, FAST_MOTION, REAL_CUT, SHALLOW_DIP, evidenceFor, joinsFor, planWith, reference, summary } from './testkit'
 
 const bd = (p = REAL_CUT) => evidenceFor([p]).boundaries[0]
 
@@ -22,6 +22,42 @@ describe('evidence', () => {
     expect(readTransitionEvidence({ id: 1 }, 1).boundaries).toEqual([])
     const bad = { ...summary(REAL_CUT), luminance: { ...summary(REAL_CUT).luminance, values: [1, 2] } }
     expect(readTransitionEvidence({ id: 1, transition_evidence: [bad, { ...summary(DISSOLVE), sampling_fps: 0 }, { ...summary(DISSOLVE), frame_difference: { values: [], median: 0, max: 0, argmax_index: 0 } }] }, 1).boundaries).toEqual([])
+  })
+})
+
+describe('classifier: whip pan and zoom punch, estimated from the stored motion measurements (synthetic inputs)', () => {
+  it('reads a large, steady shift on three consecutive pairs as a whip pan with its numbers and direction, at medium confidence', () => {
+    const c = classifyBoundary(bd(PAN_RIGHT_3))
+    expect(c).toMatchObject({ kind: 'whip_pan', confidence: 'medium' }); expect(c.motion).toMatchObject({ direction: 'right', pairs: 3, source: 'affine' }); expect(c.motion!.perPair).toEqual([0.2, 0.2, 0.2])
+    expect(c.reasons.join(' ')).toMatch(/moved right by 20 %, 20 %, 20 % of the frame width on 3 consecutive/); expect(c.reasons.join(' ')).toMatch(/not the original effect/)
+    expect(c.durationSeconds).toBeGreaterThanOrEqual(0.3); expect(c.durationSeconds).toBeLessThanOrEqual(2)
+  })
+  it('reads two agreeing pairs as low confidence, and a phase-correlation shift as a pan only where the feature fit failed', () => {
+    expect(classifyBoundary(bd(PAN_LEFT_2))).toMatchObject({ kind: 'whip_pan', confidence: 'low' })
+    const up = classifyBoundary(bd(PAN_UP_PHASE)); expect(up).toMatchObject({ kind: 'whip_pan', confidence: 'medium' }); expect(up.motion).toMatchObject({ direction: 'up', source: 'phase' })
+  })
+  it('reads steady scaling without sideways drift as a zoom punch (in or out), never above medium', () => {
+    expect(classifyBoundary(bd(ZOOM_IN_3))).toMatchObject({ kind: 'zoom_punch', confidence: 'medium' }); expect(classifyBoundary(bd(ZOOM_IN_3)).motion).toMatchObject({ direction: 'in' })
+    expect(classifyBoundary(bd(ZOOM_OUT_2))).toMatchObject({ kind: 'zoom_punch', confidence: 'low' }); expect(classifyBoundary(bd(ZOOM_OUT_2)).motion).toMatchObject({ direction: 'out' })
+  })
+  it('does not read a wobble, a weak fit, a small drift, missing motion data or an unknown frame size as a whip pan or zoom punch', () => {
+    for (const p of [WOBBLE, WEAK_FIT, SMALL_DRIFT]) expect(classifyBoundary(bd(p)).motion).toBeUndefined()
+    expect(classifyBoundary(bd(REAL_CUT))).toMatchObject({ kind: 'cut', confidence: 'high' }); expect(classifyBoundary(bd(REAL_CUT)).motion).toBeUndefined()
+    const noSize = readTransitionEvidence({ id: 1, shots: [], transition_evidence: [summary(PAN_RIGHT_3)] }, 1).boundaries[0]               // a response with no probed frame size
+    expect(noSize.motion).toBeNull(); expect(classifyBoundary(noSize).motion).toBeUndefined()
+  })
+  it('keeps black dips and white flashes ahead of motion, and never changes the other signatures', () => {
+    for (const p of [FADE_BLACK, FADE_WHITE, FLASH, DISSOLVE]) expect(classifyBoundary(bd(p)).motion).toBeUndefined()
+    expect(classifyBoundary(bd(FADE_BLACK)).kind).toBe('fade_black'); expect(classifyBoundary(bd(DISSOLVE)).kind).toBe('dissolve')
+  })
+  it('offers a motion estimate as information, leaves it out by default, and still lets the person include it', () => {
+    const cs = buildTransitionCandidates(evidenceFor([PAN_RIGHT_3, ZOOM_IN_3]), joinsFor([60, 63, 70]), makeTimeMap(70, 70))
+    expect(cs.map(c => c.classification.kind)).toEqual(['whip_pan', 'zoom_punch']); expect(cs.every(c => c.defaultInclude === false)).toBe(true)
+    expect(cs[0].flags.find(f => f.code === 'motion_estimate')).toMatchObject({ severity: 'info' }); expect(cs[0].flags.map(f => f.code)).not.toContain('possible_motion')
+    const ctx = { referenceVideoId: 5127, videoAnalysisId: 5368, timeMap: makeTimeMap(70, 70), createdAt: '2026-11-02T00:00:00.000Z' }
+    expect(planTransitions(cs, {}, ctx).changes).toEqual([])
+    const on = planTransitions(cs, { [cs[0].id]: { include: true } }, ctx).changes
+    expect(on).toHaveLength(1); expect(on[0]).toMatchObject({ kind: 'whip_pan', basis: { kind: 'inferred' } }); expect(on[0].basis.confidence).toBe('medium')
   })
 })
 
