@@ -2,6 +2,7 @@
 import { validCanvasBackground } from "../export/canvasBackground";
 import { clipFadeOpacity } from "../export/transitionFade";
 import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissolveWindow";
+import { previewBlurPx, validCanvasBackdrop } from "../export/canvasBackdrop";
 import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useStudio } from "../../../contexts/StudioContext";
 import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
@@ -1037,7 +1038,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     const label = `${CANVAS_PLATFORMS.find(p => p.key === platformKey)?.label ?? platformKey} - ${placement.label}`;
     const next: CanvasFormatState = {
       platformKey, placementKey: placement.key, label,
-      ratio: placement.ratio, width: placement.width, height: placement.height, background: canvasFormat.background,
+      ratio: placement.ratio, width: placement.width, height: placement.height, background: canvasFormat.background, backdrop: canvasFormat.backdrop,
     };
     setCanvasFormat(next);
     addCanvasVersion(next);
@@ -1054,7 +1055,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setCustomW(w); setCustomH(h);
     const next: CanvasFormatState = {
       platformKey: "website", placementKey: "custom", label: "Website / General - Custom Size",
-      ratio: "CUSTOM", width: w, height: h, background: canvasFormat.background,
+      ratio: "CUSTOM", width: w, height: h, background: canvasFormat.background, backdrop: canvasFormat.backdrop,
     };
     setCanvasFormat(next);
     addCanvasVersion(next);
@@ -1252,6 +1253,25 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // same blend with no change of stacking at the join. It is purely reactive to timeline.currentTime / playing, exactly like the V2 insert and A1 audio effects above: it never drives the master
   // clock, never reads the active clip's element, and mounts only while a dissolve is within a second of starting, so a project without a dissolve renders and plays exactly as before. Audio is
   // untouched (the active clip's own sound plays as before; the exporter's audio crossfade is not previewed). Whip pan and zoom punch are not previewed. ----
+  // ---- C3 (blurred backdrop): when the canvas backdrop is "blur" and the active clip is letterboxed (Fit), a muted copy of that same clip sits BEHIND it, covering the canvas and blurred, so the bars show the
+  // video's own light and colour -- the picture the exporter builds with ffmpeg (backend blurred_fit_filter). Same reactive pattern as the D1 block: it follows timeline.currentTime / playing and never drives them. ----
+  const backdropClip = hasRealSrc && validCanvasBackdrop(canvasFormat.backdrop) && activeVideoClip && activeVideoClip.fitMode !== "fill" ? activeVideoClip : null;
+  const backdropVideoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const vid = backdropVideoRef.current;
+    if (!vid || !backdropClip) return;
+    const target = sourceTimeAt(backdropClip, timeline.currentTime);
+    const apply = () => {
+      if (Math.abs(vid.currentTime - target) > (timeline.playing ? 0.3 : 0.05)) vid.currentTime = target;
+      vid.playbackRate = backdropClip.speed || 1;
+      if (timeline.playing) vid.play().catch(() => {});
+      else vid.pause();
+    };
+    if (vid.readyState >= 1) apply();
+    else vid.addEventListener("loadedmetadata", apply, { once: true });
+    return () => vid.removeEventListener("loadedmetadata", apply);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeline.currentTime, timeline.playing, backdropClip?.id]);
   const blendWindows = useMemo(() => planBlendWindows(videoClips), [videoClips]);
   const blendRaw = hasRealSrc ? blendPreviewAt(blendWindows, timeline.currentTime) : null;
   const blendPreview = blendRaw && activeVideoClip?.id === (blendRaw.phase === "before" ? blendRaw.window.outId : blendRaw.window.inId) ? blendRaw : null;
@@ -5569,7 +5589,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             key={`${v.platformKey}|${v.placementKey}`}
             type="button"
             className={v.platformKey === canvasFormat.platformKey && v.placementKey === canvasFormat.placementKey ? "active" : ""}
-            onClick={() => setCanvasFormat({ ...v, background: canvasFormat.background })}
+            onClick={() => setCanvasFormat({ ...v, background: canvasFormat.background, backdrop: canvasFormat.backdrop })}
             title={`${v.width}×${v.height}`}
           >
             {v.label} ({v.ratio})
@@ -5595,6 +5615,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             <label className="canvas-bg-control" title="Colour behind a letterboxed video (Fit) and in timeline gaps">
               <input type="color" data-testid="canvas-background" value={validCanvasBackground(canvasFormat.background) ?? "#000000"} onChange={e => setCanvasFormat({ ...canvasFormat, background: e.target.value })} />
               <button type="button" disabled={!canvasFormat.background} onClick={() => setCanvasFormat({ ...canvasFormat, background: undefined })}>Reset to black</button>
+            </label>
+            <label className="canvas-bg-control" title="What fills the bars of a letterboxed (Fit) video: the colour, or a blurred copy of the video itself">
+              <select data-testid="canvas-backdrop" value={canvasFormat.backdrop ?? "color"} onChange={e => setCanvasFormat({ ...canvasFormat, backdrop: validCanvasBackdrop(e.target.value) })}>
+                <option value="color">Bars: colour</option>
+                <option value="blur">Bars: blurred video</option>
+              </select>
             </label>
             {/* STEP 7 (Platform Canvas / Full-Screen Video Acceptance): was a fully dead
                 placeholder button (no onClick at all) — the same "decorative control" pattern
@@ -5698,6 +5724,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 onClick={e => { e.stopPropagation(); setSelectedElement({ type: "clip", lane: "video", id: activeVideoClip!.id }); }}
                 title={`${activeVideoClip!.name || "Video"} — click to select`}
               >
+                {backdropClip && (
+                  <video ref={backdropVideoRef} key={backdropClip.id} src={backdropClip.url} className="real-video-el" data-testid="canvas-backdrop-video" muted playsInline preload="auto" draggable={false}
+                    style={{
+                      position: "absolute", inset: 0, pointerEvents: "none", objectFit: "cover", transform: "scale(1.12)",
+                      filter: `${getMediaFilter(backdropClip) ?? ""} blur(${previewBlurPx(canvasBox.w, canvasFormat.width)}px)`.trim(),
+                    }} />
+                )}
                 <video ref={videoRef} src={activeVideoClip!.url} className="real-video-el" playsInline
                   // Manual test defect (Crop & Reposition drag not working in real Chrome):
                   // <video> (like <img>) is natively draggable in Chrome by default — a real,
@@ -5717,6 +5750,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                   draggable={false}
                   onMouseDown={beginCropDrag(activeVideoClip!)}
                   style={{
+                    ...(backdropClip ? { position: "relative" as const } : {}),
                     filter: getMediaFilter(activeVideoClip!),
                     opacity: getClipTransitionOpacity(activeVideoClip!, timeline.currentTime),
                     // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): 'fit' (undefined/

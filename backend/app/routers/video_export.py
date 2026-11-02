@@ -240,6 +240,7 @@ async def export_project(
         "audio_tracks": audio_tracks,
         "canvas_background": body.canvas_background,
         "transition_edge_policy": body.transition_edge_policy,
+        "canvas_backdrop": body.canvas_backdrop,
     }
 
     try:

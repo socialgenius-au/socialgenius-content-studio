@@ -32,6 +32,8 @@ export interface CanvasFormatState {
   height: number
   /** Optional "#rrggbb" behind a letterboxed clip and in timeline gaps (preview and export). Absent = black. */
   background?: string
+  /** C3: "blur" = the bars of a letterboxed (Fit) clip show a blurred copy of the clip instead of the plain colour. Absent = plain colour, as before. */
+  backdrop?: 'blur'
 }
 
 const DEFAULT_CANVAS_FORMAT: CanvasFormatState = {
