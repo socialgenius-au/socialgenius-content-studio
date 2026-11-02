@@ -28,7 +28,7 @@ const STATUS: Record<TransitionItemStatus, { label: string; variant: 'success' |
   included: { label: 'Will be applied', variant: 'success' }, excluded_default: { label: 'Left out by default', variant: 'outline' },
   excluded_user: { label: 'Left out', variant: 'outline' }, no_join: { label: 'No scene join near it', variant: 'warning' },
 }
-const FLAG_LABEL: Record<TransitionFlagCode, string> = { low_confidence: 'No clear signature', possible_motion: 'Could be motion', white_look: 'Looks like white', single_boundary: 'Only cut found', timing_mapped: 'Time stretched' }
+const FLAG_LABEL: Record<TransitionFlagCode, string> = { low_confidence: 'No clear signature', possible_motion: 'Could be motion', white_look: 'White transition detected', single_boundary: 'Only cut found', timing_mapped: 'Time stretched' }
 const secs = (n: number) => `${n.toFixed(2)}s`
 
 export function TransitionsReviewView(props: TransitionsReviewViewProps) {
