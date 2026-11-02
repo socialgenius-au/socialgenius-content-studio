@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import type { SpeechCandidate, SpeechFlagCode } from './candidates'
 import { SCRIPT_LABEL, unsupportedScript } from './contract'
 import type { ResolvedSpeech, SpeechCorrection, TimeMap } from './corrections'
+import { FONT_SIZES, MAX_CHARS_RANGE, POSITION_LABEL, isDefaultLayout, type SubtitleLayout, type SubtitlePosition } from './layout'
 import type { SpeechItemStatus, SpeechPlan } from './materialize'
 
 const box = 'rounded-xl border bg-card p-4'
@@ -24,6 +25,9 @@ export interface TranscriptReviewViewProps {
   onCorrect: (id: string, patch: Partial<Record<keyof SpeechCorrection, unknown>>) => void
   onIncludeAll: (include: boolean) => void
   onTimeMode: (mode: TimeMap['mode']) => void
+  /** Where the subtitles sit, their text size and line length. Both absent = the controls are not shown. */
+  layout?: SubtitleLayout
+  onLayout?: (patch: Partial<SubtitleLayout>) => void
 }
 
 const STATUS: Record<SpeechItemStatus, { label: string; variant: 'success' | 'warning' | 'destructive' | 'outline' }> = {
@@ -68,6 +72,27 @@ export function TranscriptReviewView(props: TranscriptReviewViewProps) {
             <button type="button" className={button} onClick={() => props.onIncludeAll(false)} data-testid="transcript-include-none">Include none</button>
             <span className={sub}>({ids.length} segments{thirdParty ? '; their words, so this is your choice' : ''})</span>
           </div>
+          {props.layout && props.onLayout && (
+            <fieldset className="grid grid-cols-1 gap-2 rounded-lg border bg-muted/20 p-3 sm:grid-cols-3" data-testid="subtitle-layout">
+              <legend className="px-1 text-xs font-semibold">How the subtitles look</legend>
+              <label className="space-y-1"><span className={sub}>Position</span>
+                <select className={field} value={props.layout.position} onChange={e => props.onLayout!({ position: e.target.value as SubtitlePosition })} data-testid="subtitle-position">
+                  {(Object.keys(POSITION_LABEL) as SubtitlePosition[]).map(p => <option key={p} value={p}>{POSITION_LABEL[p]}</option>)}
+                </select></label>
+              <label className="space-y-1"><span className={sub}>Text size</span>
+                <select className={field} value={props.layout.fontSize ?? ''} onChange={e => props.onLayout!({ fontSize: e.target.value === '' ? null : Number(e.target.value) })} data-testid="subtitle-size">
+                  <option value="">Your project’s subtitle style</option>
+                  {FONT_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select></label>
+              <label className="space-y-1"><span className={sub}>Break lines longer than (characters)</span>
+                <input type="number" min={MAX_CHARS_RANGE.min} max={MAX_CHARS_RANGE.max} step="1" placeholder="Off" className={field} value={props.layout.maxChars === 0 ? '' : props.layout.maxChars}
+                  onChange={e => props.onLayout!({ maxChars: e.target.value.trim() === '' ? 0 : Number(e.target.value) })} data-testid="subtitle-maxchars" /></label>
+              <p className={`${sub} sm:col-span-3`} data-testid="subtitle-layout-note">
+                These apply to every subtitle added here, and each one stays an ordinary subtitle you can still move, resize and restyle in Video Studio. Line breaks only move words onto a new line; the wording is not changed.
+                {!isDefaultLayout(props.layout) && ' Different from the editor’s defaults.'}
+              </p>
+            </fieldset>
+          )}
           {timeMap.referenceSeconds !== null && Math.abs(timeMap.referenceSeconds - timeMap.planSeconds) > 0.01 * timeMap.planSeconds && (
             <fieldset className="flex flex-wrap items-center gap-3 text-xs" data-testid="transcript-timing-mode">
               <legend className="sr-only">How reference timing maps onto the draft</legend>
