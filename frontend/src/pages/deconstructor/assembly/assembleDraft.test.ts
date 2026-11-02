@@ -462,7 +462,7 @@ describe('draft compatibility with the existing Video Studio V2 draft path', () 
     const open = editorSource.slice(editorSource.indexOf('(snap.videoClips ?? [])'), editorSource.indexOf('// Requirement 9'))
     const read = new Set([...open.matchAll(/snap\.([A-Za-z]+)/g)].map(m => m[1]))
     expect(read.size).toBeGreaterThan(10)
-    const optionalInEditor = new Set(['subtitleStyle', 'canvasFormat'])                           // the editor treats these as optional
+    const optionalInEditor = new Set(['subtitleStyle', 'canvasFormat', 'canvasBackground'])   // the editor treats these as optional (canvasBackground is written only when the person chose a canvas colour)
     for (const key of read) if (!optionalInEditor.has(key)) expect(Object.keys(snap), `missing ${key}`).toContain(key)
   })
 
