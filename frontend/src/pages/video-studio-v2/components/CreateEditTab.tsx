@@ -4952,12 +4952,17 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 existing 'fade_black' enum value and fades to/from the preview's own black
                 background at this clip's own start/end, via getClipTransitionOpacity above. */}
             <label className="stack-field"><span>Transition</span>
-              <select value={selectedClip.transition === "fade_black" ? "fade_black" : "cut"}
+              {/* D3: a stored value this selector has no option for (dissolve, whip pan, zoom punch — set from a reference) is shown as itself instead of as "None". Opening or
+                  focusing the selector changes nothing; only an explicit pick does. Export is unchanged: it reads the stored value. */}
+              <select value={selectedClip.transition === "fade_black" || selectedClip.transition === "cut" ? (selectedClip.transition === "fade_black" ? "fade_black" : "cut") : selectedClip.transition}
                 onChange={e => updateVideoClip(selectedClip.id, { transition: e.target.value as VideoClip["transition"] })}>
                 <option value="cut">None</option><option value="fade_black">Fade</option>
+                {selectedClip.transition !== "cut" && selectedClip.transition !== "fade_black" && (
+                  <option value={selectedClip.transition}>{{ dissolve: "Dissolve", whip_pan: "Whip pan", zoom_punch: "Zoom punch" }[selectedClip.transition]} (exported, not previewed)</option>
+                )}
               </select>
             </label>
-            {selectedClip.transition === "fade_black" && (
+            {selectedClip.transition !== "cut" && (
               <label className="stack-field"><span>Transition Duration</span>
                 <select value={String(selectedClip.transitionDuration)} onChange={e => updateVideoClip(selectedClip.id, { transitionDuration: Number(e.target.value) })}>
                   {[0.25, 0.5, 1].map(d => <option key={d} value={d}>{d}s</option>)}
