@@ -28,7 +28,7 @@ const STATUS: Record<TransitionItemStatus, { label: string; variant: 'success' |
   included: { label: 'Will be applied', variant: 'success' }, excluded_default: { label: 'Left out by default', variant: 'outline' },
   excluded_user: { label: 'Left out', variant: 'outline' }, no_join: { label: 'No scene join near it', variant: 'warning' },
 }
-const FLAG_LABEL: Record<TransitionFlagCode, string> = { low_confidence: 'No clear signature', possible_motion: 'Could be motion', single_boundary: 'Only cut found', timing_mapped: 'Time stretched' }
+const FLAG_LABEL: Record<TransitionFlagCode, string> = { low_confidence: 'No clear signature', possible_motion: 'Could be motion', white_look: 'Looks like white', single_boundary: 'Only cut found', timing_mapped: 'Time stretched' }
 const secs = (n: number) => `${n.toFixed(2)}s`
 
 export function TransitionsReviewView(props: TransitionsReviewViewProps) {
@@ -43,7 +43,7 @@ export function TransitionsReviewView(props: TransitionsReviewViewProps) {
       </div>
       <div role="note" data-testid="transitions-honesty" className="rounded-lg border bg-muted/40 px-3 py-2 text-xs">
         <strong>What this does not do.</strong> The analysis keeps measurements around each cut, not the effect that was used, so the type below is an estimate and the original effect and its settings are not recovered.
-        Only a hard cut, a dissolve and a fade through black can be told apart; whip pan and zoom punch are never guessed. Scene joins with no cut near them stay hard cuts.
+        Only a hard cut, a dissolve and a fade through black can be told apart (a flash or fade of white is noticed too, but the editor can only do it as a cut or a dissolve); whip pan and zoom punch are never guessed. Scene joins with no cut near them stay hard cuts.
       </div>
 
       {state.kind === 'loading' && <p className={`${sub} flex items-center gap-2`} role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" />Reading the analysis…</p>}

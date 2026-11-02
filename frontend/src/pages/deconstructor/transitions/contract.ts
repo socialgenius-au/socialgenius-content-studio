@@ -26,7 +26,7 @@ export const NO_CLAIMS = { originalEffectRecovered: false, originalSettingsRecov
 
 export const LIMITATIONS: readonly string[] = [
   'The analysis stores measurements around each cut, not the effect that was used. The type here is an estimate from those measurements.',
-  'Only a hard cut, a dissolve and a fade through black can be told apart from the measurements. Whip pan and zoom punch are never guessed: they are yours to choose.',
+  'Only a hard cut, a dissolve and a fade through black can be told apart from the measurements, and a blink or fade of white is recognised from the brightness (the editor has no white transition, so it is proposed as a hard cut or a dissolve). Whip pan and zoom punch are never guessed: they are yours to choose.',
   'A dissolve-like signature can also be fast motion or a flash. It is flagged, and the person decides.',
   'The reference’s cuts and the blueprint’s scene joins are different things. A cut is applied only to a scene join close to it in time; the rest stay hard cuts.',
 ]

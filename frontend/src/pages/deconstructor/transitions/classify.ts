@@ -17,6 +17,9 @@ export const THRESHOLDS = {
   dipRelative: 0.6,         // brightness falls to under 40 % of its edges ...
   dipDarkMax: 30,           // ... and is genuinely dark (0-255 scale)
   dipWithBlack: 0.4,        // when a frame inside the window is flagged black, a smaller dip is enough
+  flashRise: 0.45,          // brightness climbs through at least this share of the headroom to white (255) above its brighter edge ...
+  flashBrightMin: 150,      // ... and is genuinely bright (0-255 scale), somewhere strictly inside the window
+  flashMaxSamples: 2,       // up to this many bright samples is a flash (a blink of white); more is a gradual fade through white
 } as const
 
 export interface Features {
@@ -32,10 +35,20 @@ export interface Features {
   lumDip: number                  // how far brightness fell below the dimmer edge, 0..1
   dipInside: boolean              // the darkest sample is neither the first nor the last
   blackInside: boolean            // a sample strictly inside the window is flagged black
+  lumMax: number
+  edgeMax: number
+  flashRise: number               // how far brightness climbed toward white above the brighter edge, 0..1 of the headroom
+  peakInside: boolean             // the brightest sample is neither the first nor the last
+  brightSamples: number           // samples above the bright threshold that sit inside the window
 }
+
+/** What the brightness did, when it climbed toward white and came back. The editor has no white transition, so this is described, never given its own kind. */
+export type WhiteLook = 'flash' | 'fade_white'
 
 export interface Classification {
   kind: TransitionKind
+  /** Set when the brightness profile looks like a flash or a fade through white. `kind` is then the nearest thing the editor can do, and `reasons` say so. */
+  look?: WhiteLook
   confidence: Confidence
   /** Seconds the effect seems to last; null for a hard cut. */
   durationSeconds: number | null
@@ -55,7 +68,11 @@ export function extractFeatures(b: BoundaryEvidence): Features {
   const min = Math.min(...lum)
   const argmin = lum.indexOf(min)
   const edgeMin = Math.min(lum[0], lum[lum.length - 1])
+  const max_ = Math.max(...lum), argmax = lum.indexOf(max_), edgeMax = Math.max(lum[0], lum[lum.length - 1])
+  const brightLimit = Math.max(THRESHOLDS.flashBrightMin, edgeMax + 0.5 * (255 - edgeMax))
   return {
+    lumMax: max_, edgeMax, flashRise: edgeMax < 255 ? Math.max(0, (max_ - edgeMax) / (255 - edgeMax)) : 0, peakInside: argmax > 0 && argmax < lum.length - 1,
+    brightSamples: lum.slice(1, -1).filter(v => v >= brightLimit).length,
     pairs: d.length, diffMax: max, diffMedian: b.diff.median, spikeRatio: max / Math.max(median, 0.002), spikeShare: max / total, elevatedRun: best, elevatedCount: count,
     lumMin: min, edgeMin, lumDip: edgeMin > 0 ? Math.max(0, (edgeMin - min) / edgeMin) : 0, dipInside: argmin > 0 && argmin < lum.length - 1,
     blackInside: b.blackFlags.slice(1, -1).some(Boolean),
@@ -79,6 +96,19 @@ export function classifyBoundary(b: BoundaryEvidence): Classification {
       kind: 'fade_black', confidence: f.blackInside && f.lumDip >= T.dipRelative ? 'high' : 'medium', durationSeconds: seconds, features: f,
       reasons: [`Brightness dips to ${num(f.lumMin, 1)} from about ${num(f.edgeMin, 1)} inside the window${f.blackInside ? ' and a frame inside is flagged black' : ''}.`, `The dark stretch is about ${dark} of ${lum.length} samples, so roughly ${num(seconds, 1)} s.`],
     }
+  }
+  // 1b. flash or fade through white: brightness climbs most of the way to white inside the window and comes back. The editor has no white transition, so this is DESCRIBED (`look`)
+  //     and the nearest thing the editor can do is proposed: a blink of white -> a hard cut (the flash itself is not recreated); a gradual fade through white -> a dissolve.
+  if (f.peakInside && f.flashRise >= T.flashRise && f.lumMax >= T.flashBrightMin && f.brightSamples >= 1) {
+    const strong = f.flashRise >= 0.7
+    const peak = `Brightness climbs to ${num(f.lumMax, 1)} from about ${num(f.edgeMax, 1)} inside the window, ${pct(f.flashRise)} of the way to white, and comes back.`
+    const note = 'The editor has no white transition, so the original flash is not recreated; this is only the nearest transition it can do.'
+    if (f.brightSamples <= T.flashMaxSamples) {
+      return { kind: 'cut', look: 'flash', confidence: strong ? 'medium' : 'low', durationSeconds: null, features: f, reasons: [peak, `Only ${f.brightSamples} bright sample${f.brightSamples === 1 ? '' : 's'}: a blink of white, a flash, so a hard cut is the nearest.`, note] }
+    }
+    const bright = lum.filter(v => v >= f.edgeMax + 0.5 * (f.lumMax - f.edgeMax)).length
+    const seconds = clamp(round3((bright + 1) / b.fps), MIN_DURATION, MAX_DURATION)
+    return { kind: 'dissolve', look: 'fade_white', confidence: strong ? 'medium' : 'low', durationSeconds: seconds, features: f, reasons: [peak, `${f.brightSamples} bright samples in a row: a gradual fade through white, roughly ${num(seconds, 1)} s, so a dissolve is the nearest.`, note] }
   }
   // 2. hard cut: one pair changes far more than the rest and carries most of the change
   if (f.spikeRatio >= T.spikeRatio && f.elevatedRun <= T.cutMaxRun && f.spikeShare >= T.spikeShareMin) {

@@ -16,7 +16,7 @@ export function sceneJoins(plan: Pick<BlueprintPlan, 'scenes'>): SceneJoin[] {
 /** How far a boundary may sit from a join and still count as that join (seconds on the draft's timeline). */
 export const joinTolerance = (planSeconds: number) => Math.max(0.75, 0.04 * planSeconds)
 
-export type TransitionFlagCode = 'low_confidence' | 'possible_motion' | 'single_boundary' | 'timing_mapped'
+export type TransitionFlagCode = 'low_confidence' | 'possible_motion' | 'white_look' | 'single_boundary' | 'timing_mapped'
 export interface TransitionFlag { code: TransitionFlagCode; severity: 'info' | 'warning'; message: string }
 
 export interface TransitionCandidate {
@@ -41,7 +41,8 @@ export function buildTransitionCandidates(evidence: TransitionEvidence, joins: r
   return rows.map((r, i) => {
     const flags: TransitionFlag[] = []
     if (r.classification.confidence === 'low') flags.push({ code: 'low_confidence', severity: 'warning', message: 'The measurements do not show a clear signature.' })
-    if (r.classification.kind === 'dissolve') flags.push({ code: 'possible_motion', severity: 'warning', message: 'A gradual change can also be fast motion or a flash.' })
+    if (r.classification.look) flags.push({ code: 'white_look', severity: 'info', message: r.classification.look === 'flash' ? 'This looks like a flash of white. The editor has no white transition, so a hard cut is proposed and the flash is not recreated.' : 'This looks like a fade through white. The editor has no white transition, so a dissolve is proposed and the white is not recreated.' })
+    if (r.classification.kind === 'dissolve' && !r.classification.look) flags.push({ code: 'possible_motion', severity: 'warning', message: 'A gradual change can also be fast motion or a flash.' })
     if (rows.length === 1) flags.push({ code: 'single_boundary', severity: 'info', message: 'The analysis found one cut in the whole reference.' })
     if (timeMap.mode === 'fit' && Math.abs(timeMap.factor - 1) > 0.005) flags.push({ code: 'timing_mapped', severity: 'info', message: 'Its time is stretched to the blueprint’s length, so the match to a scene join is approximate.' })
     return { id: `tb:${r.boundary.id}`, boundary: r.boundary, classification: r.classification, planTime: r.planTime, join: assigned.get(i) ?? null, flags, defaultInclude: r.classification.confidence !== 'low' }

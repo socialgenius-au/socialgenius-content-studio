@@ -30,6 +30,9 @@ export const DISSOLVE: Profile = { id: 7002, at: 10, lum: [60, 60, 60, 58, 54, 5
 export const FADE_BLACK: Profile = { id: 7003, at: 20, lum: [58, 58, 55, 35, 9, 1, 8, 33, 54, 58], black: [false, false, false, false, false, true, false, false, false, false], diff: [0.004, 0.01, 0.06, 0.11, 0.1, 0.1, 0.1, 0.05, 0.004] }
 export const SHALLOW_DIP: Profile = { id: 7004, at: 22, lum: [58, 58, 52, 44, 40, 45, 52, 58, 58, 58], diff: [0.004, 0.004, 0.05, 0.05, 0.05, 0.05, 0.004, 0.004, 0.004] }
 export const FAST_MOTION: Profile = { id: 7005, at: 30, lum: [50, 50, 51, 50, 52, 50, 51, 50, 50, 50], diff: [0.02, 0.025, 0.03, 0.028, 0.026, 0.024, 0.027, 0.022, 0.02] }
+export const FLASH: Profile = { id: 7007, at: 40, lum: [60, 60, 60, 245, 62, 60, 60, 60, 60, 60], diff: [0.004, 0.004, 0.3, 0.3, 0.01, 0.004, 0.004, 0.004, 0.004] }
+export const FADE_WHITE: Profile = { id: 7008, at: 45, lum: [60, 60, 120, 200, 245, 250, 210, 130, 62, 60], diff: [0.004, 0.08, 0.12, 0.1, 0.03, 0.1, 0.12, 0.09, 0.004] }
+export const BRIGHT_SCENE_CUT: Profile = { id: 7009, at: 50, lum: [200, 200, 200, 200, 200, 120, 120, 120, 120, 120], diff: [0.004, 0.004, 0.004, 0.004, 0.25, 0.004, 0.004, 0.004, 0.004] }
 export const CUT_TO_DARK: Profile = { id: 7006, at: 35, lum: [60, 60, 60, 60, 4, 3, 3, 3, 3, 3], black: [false, false, false, false, true, true, true, true, true, true], diff: [0.004, 0.004, 0.004, 0.2, 0.004, 0.004, 0.004, 0.004, 0.004] }
 
 export const reference = (profiles: Profile[]): Pick<ReferenceVideo, 'id'> & Partial<Pick<ReferenceVideo, 'shots' | 'transition_evidence'>> => ({ id: 5127, shots: [], transition_evidence: profiles.map(summary) })
