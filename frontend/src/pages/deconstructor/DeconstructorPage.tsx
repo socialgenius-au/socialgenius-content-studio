@@ -20,6 +20,7 @@ import type { TransitionPlan } from './transitions'
 import { TranscriptReview } from './transcript/TranscriptReview'
 import type { SpeechPlan } from './transcript'
 import { BackgroundReview } from './background/BackgroundReview'
+import { ReconstructionManifest } from './manifest'
 import type { BackgroundPlan, OrderPolicy, SceneFootage } from './background'
 
 type Step = 'reference' | 'anatomy' | 'mechanisms' | 'intent' | 'blueprint' | 'create'
@@ -52,7 +53,8 @@ export default function DeconstructorPage() {
   // Preview panels are switched on by the address: ?m2=<name> for one, or a comma-separated list (?m2=text-layers,image-layers,background) to use several in one draft.
   // Without ?m2 the approved page is unchanged for everyone else.
   const m2Param = useSearchParams()[0].get('m2') ?? ''
-  const m2Has = (name: string) => m2Param.split(',').map(f => f.trim()).includes(name)
+  // ?m2=all switches on every preview panel at once (the manifest included); it is still only a preview flag.
+  const m2Has = (name: string) => { const flags = m2Param.split(',').map(f => f.trim()); return flags.includes(name) || flags.includes('all') }
   // M2.1a (preview): the text-layer review is shown only with ?m2=text-layers.
   const textLayersOn = m2Has('text-layers')
   const [textLayers, setTextLayers] = useState<TextLayerPlan | null>(null)
@@ -70,6 +72,8 @@ export default function DeconstructorPage() {
   const [backgroundPlan, setBackgroundPlan] = useState<BackgroundPlan | null>(null)
   const [compositionPolicy, setCompositionPolicy] = useState<OrderPolicy>('as_generated')
   const [sceneFootage, setSceneFootage] = useState<SceneFootage>({})
+  // M2.6 (preview): the read-only manifest of everything the panels above will write -- only with ?m2=manifest.
+  const manifestOn = m2Has('manifest')
   const [useMessage, setUseMessage] = useState<string | null>(null)
 
   const d = useDeconstructor(routeId)
@@ -161,6 +165,7 @@ export default function DeconstructorPage() {
           {step === 'create' && plan && transitionsOn && <TransitionsReview key={`tr:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTransitionPlan} />}
           {step === 'create' && plan && transcriptOn && <TranscriptReview key={`sp:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setSpeechPlan} />}
           {step === 'create' && plan && backgroundOn && <BackgroundReview key={`bg:${routeId}:${plan.blueprintId}`} plan={plan} footage={sceneFootage} generated={{ shapes: [], mediaOverlays: textlessPictures(imageLayersOn ? imageLayers : null), textOverlays: textLayersOn && textLayers ? textLayers.overlays : [], subtitles: transcriptOn && speechPlan ? speechPlan.subtitles : [] }} onPlan={setBackgroundPlan} onPolicy={setCompositionPolicy} />}
+          {step === 'create' && plan && manifestOn && <ReconstructionManifest key={`mf:${routeId}:${plan.blueprintId}`} plan={plan} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} backgroundPlan={backgroundOn ? backgroundPlan : null} speechPlan={transcriptOn ? speechPlan : null} transitionPlan={transitionsOn ? transitionPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : 'as_generated'} />}
           {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} speechPlan={transcriptOn ? speechPlan : null} backgroundPlan={backgroundOn ? backgroundPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : null} onFootage={backgroundOn ? setSceneFootage : undefined} />}
         </>
       )}
