@@ -152,6 +152,8 @@ const PLATFORM_SAFE_RIGHT_PCT = 8;
 // state, both places would read from it together.
 interface DraftProjectSnapshot {
   videoClips: VideoClip[];
+  // Reconstructor canvas colour: written only when the person chose a measured bar colour; applied as the background colour of the CURRENT canvas format, never as a format.
+  canvasBackground?: string;
   // Phase 1 (V2 Inserts/B-roll) — Requirement 7: V2 clips must survive Save/Refresh/Reopen.
   additionalVideoClips: VideoClip[];
   textOverlays: TextOverlay[];
@@ -610,6 +612,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     const existingAssetIds = new Set(mediaAssets.map(a => a.id));
     (snap.mediaAssets ?? []).forEach(a => { if (!existingAssetIds.has(a.id)) addMediaAsset(a); });
     if (snap.canvasFormat) setCanvasFormat(snap.canvasFormat);
+    const reconstructorColour = validCanvasBackground(snap.canvasBackground);
+    if (reconstructorColour) setCanvasFormat({ ...(snap.canvasFormat ?? canvasFormat), background: reconstructorColour });
     if (snap.timeline) setTimeline(snap.timeline);
     Object.entries(snap.canvasItemPositions ?? {}).forEach(([id, pos]) => setCanvasItemPosition(id, pos));
     setBlueprintPlan(isBlueprintPlan(snap.blueprintPlan) ? snap.blueprintPlan : null);
