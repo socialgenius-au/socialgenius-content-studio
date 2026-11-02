@@ -1,5 +1,5 @@
 export { measureFrame, type FrameBackground, type BarMeasure, type PaletteEntry } from './measure'
-export { buildBackgroundEvidence, measureFrames, type BackgroundEvidence, type SceneBackground, type SceneBar } from './evidence'
+export { buildBackgroundEvidence, measureFrames, type BackgroundEvidence, type SceneBackground, type SceneBar, type SceneGradient } from './evidence'
 export { buildPlateCandidates, candidateId, type PlateCandidate } from './candidates'
 export { setPlateCorrection, resolvePlate, isHexColour, type PlateCorrection, type PlateCorrections } from './corrections'
 export { planBackground, mergeBackground, PLATE_ORDER, plateLayerId, type BackgroundPlan, type BackgroundRecord } from './materialize'

@@ -7,6 +7,7 @@ import { SIDES, deepFreeze, round3, type Side, type VarianceClass } from './cont
 import type { FrameBackground, PaletteEntry } from './measure'
 
 export interface SceneBar { side: Side; size: number; color: string; uniformity: number; framesSeen: number; frameIds: number[] }
+export interface SceneGradient { side: Side; size: number; halves: [string, string]; uniformity: number; framesSeen: number; frameIds: number[] }
 export interface SceneBackground {
   sceneNumber: number
   startTime: number
@@ -16,6 +17,8 @@ export interface SceneBackground {
   /** Stills of this scene that could not be read (network, a cross-origin refusal): they count for nothing. */
   framesUnreadable: number
   bars: SceneBar[]
+  /** Smooth gradients along an edge, where no flat bar was found. */
+  gradients: SceneGradient[]
   palette: PaletteEntry[]
   variance: VarianceClass | null
 }
@@ -88,8 +91,18 @@ export function buildBackgroundEvidence(
         framesSeen: seen.length, frameIds: seen.map(x => x.id),
       })
     }
+    const gradients: SceneGradient[] = []
+    for (const side of SIDES) {
+      if (bars.some(b => b.side === side)) continue                                // a flat bar on that edge wins
+      const seen = slot.measured.map(x => ({ id: x.id, g: x.m.gradients?.find(g => g.side === side) })).filter((x): x is { id: number; g: NonNullable<typeof x.g> } => !!x.g)
+      if (seen.length === 0) continue
+      gradients.push({
+        side, size: round3(median(seen.map(x => x.g.size))), halves: [averageColour(seen.map(x => x.g.halves[0])), averageColour(seen.map(x => x.g.halves[1]))], uniformity: round3(mean(seen.map(x => x.g.uniformity))),
+        framesSeen: seen.length, frameIds: seen.map(x => x.id),
+      })
+    }
     return {
-      sceneNumber: s.sceneNumber, startTime: s.startTime, endTime: s.endTime, framesMeasured: slot.measured.length, framesUnreadable: slot.unreadable, bars,
+      sceneNumber: s.sceneNumber, startTime: s.startTime, endTime: s.endTime, framesMeasured: slot.measured.length, framesUnreadable: slot.unreadable, bars, gradients,
       palette: slot.measured.length ? mergePalettes(slot.measured.map(x => x.m.palette)) : [], variance: majority(slot.measured.map(x => x.m.variance)),
     }
   })

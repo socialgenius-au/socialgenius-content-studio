@@ -57,7 +57,7 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
       {state.kind === 'ready' && evidence && (
         <>
           <p className="text-xs" data-testid="background-summary">
-            <strong>{c.measured}</strong> measured {c.measured === 1 ? 'bar' : 'bars'} on {evidence.frameCount} {evidence.frameCount === 1 ? 'still' : 'stills'} · <strong>{c.included}</strong> will be added · {c.excluded} left out
+            <strong>{c.measured}</strong> measured {candidates.some(x => x.part) ? (c.measured === 1 ? 'bar or gradient step' : 'bars and gradient steps') : (c.measured === 1 ? 'bar' : 'bars')} on {evidence.frameCount} {evidence.frameCount === 1 ? 'still' : 'stills'} · <strong>{c.included}</strong> will be added · {c.excluded} left out
             {evidence.scenes.some(s => s.framesUnreadable > 0) && <> · {evidence.scenes.reduce((n, s) => n + s.framesUnreadable, 0)} stills could not be read</>}
           </p>
           {candidates.length === 0 && <p className={sub} data-testid="background-no-bars">No flat bar was measured in any scene, so no plate is offered. Nothing was invented.</p>}
@@ -69,7 +69,7 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
                 <li key={cd.id} className="rounded-lg border p-3 text-xs space-y-1" data-testid="background-item" data-candidate={cd.id}>
                   <label className="flex items-center gap-2 font-medium">
                     <input type="checkbox" checked={r.include} onChange={e => p.onCorrect(cd.id, { include: e.target.checked })} data-testid="background-include" />
-                    Scene {cd.sceneNumber}: {cd.side} bar, {pct(cd.size)} of the {cd.side === 'top' || cd.side === 'bottom' ? 'height' : 'width'}
+                    Scene {cd.sceneNumber}: {cd.side} {cd.part ? (cd.part === 'outer' ? 'gradient, outer step' : 'gradient, inner step') : 'bar'}, {pct(cd.size)} of the {cd.side === 'top' || cd.side === 'bottom' ? 'height' : 'width'}
                     <span className="inline-block h-4 w-4 rounded border" style={{ background: r.color.value }} aria-label={`colour ${r.color.value}`} />
                     <code>{r.color.value}</code>
                     <Badge variant="outline">{r.corrected.includes('color') ? 'Set by you' : 'Measured'}</Badge>
@@ -87,7 +87,7 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
                     {p.corrections[cd.id]?.color && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { color: undefined })}>Use the measured colour</button>}
                   </div>
                   {cd.flags.map(f => <p key={f.code} className={f.severity === 'warning' ? 'text-amber-700 dark:text-amber-400' : sub} data-testid="background-flag">{f.message}</p>)}
-                  {r.corrected.includes('size') && (() => { const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS); return f?.code === 'footage_overlap' ? <p className="text-amber-700 dark:text-amber-400" data-testid="background-flag-size">At the size you set: {f.message}</p> : null })()}
+                  {r.corrected.includes('size') && (() => { const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, cd.offset ?? 0); return f?.code === 'footage_overlap' ? <p className="text-amber-700 dark:text-amber-400" data-testid="background-flag-size">At the size you set: {f.message}</p> : null })()}
                   {st && <p className={sub} data-testid="background-status">{st.message}</p>}
                 </li>
               )

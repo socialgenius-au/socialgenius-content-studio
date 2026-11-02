@@ -628,6 +628,8 @@ export interface BackgroundReconstructionProvenance {
   engineVersion: string
   sceneNumber: number
   side: 'top' | 'bottom' | 'left' | 'right'
+  /** Set when this plate is one of two flat steps standing in for a smooth gradient: the half at the edge ('outer') or the half nearer the picture ('inner'). */
+  gradientPart?: 'outer' | 'inner'
   /** What was measured on the stills: how many of the scene's frames were read, how many showed this bar, and how uniform it was. */
   evidence: { framesMeasured: number; framesSeen: number; uniformity: number; size: number; frameIds: number[] }
   properties: Record<'color' | 'region' | 'startTime' | 'endTime', { basis: 'measured' | 'inferred' | 'default' | 'user'; confidence?: 'high' | 'medium' | 'low'; note?: string }>

@@ -21,7 +21,7 @@ export function backgroundManifest(plan: BackgroundPlan | null | undefined): Man
   return plan.shapes.map(s => ({
     family: 'background', id: s.id, scene: s.reconstruction?.sceneNumber ?? null, element: 'background_plate', bucket: bucketOf(s.reconstruction),
     claims: { ...(s.reconstruction?.claims ?? { backgroundRecovered: false, contentBehindOverlaysRecovered: false, inpainted: false }) },
-    note: `A flat ${s.fillColor} block in the ${s.reconstruction?.side ?? ''} bar, from ${s.reconstruction?.evidence.framesSeen ?? 0} measured still(s).`,
+    note: `A flat ${s.fillColor} block in the ${s.reconstruction?.side ?? ''} ${s.reconstruction?.gradientPart ? `gradient (${s.reconstruction.gradientPart} step)` : 'bar'}, from ${s.reconstruction?.evidence.framesSeen ?? 0} measured still(s).`,
   }))
 }
 

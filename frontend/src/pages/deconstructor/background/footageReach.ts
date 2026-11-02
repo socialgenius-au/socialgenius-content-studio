@@ -30,13 +30,13 @@ export function footageBox(use: SceneFootageUse, canvas: { width: number; height
   return { x: round3((1 - w) / 2), y: round3((1 - h) / 2), w: round3(w), h: round3(h) }
 }
 
-/** The rectangle a plate fills, as fractions of the canvas (size = share of the height for top/bottom, of the width for left/right). */
-export function plateRect(side: Side, size: number): Rect {
+/** The rectangle a plate fills, as fractions of the canvas (size = share of the height for top/bottom, of the width for left/right; offset = how far in from that edge it starts, 0 for a bar against the edge). */
+export function plateRect(side: Side, size: number, offset = 0): Rect {
   switch (side) {
-    case 'top': return { x: 0, y: 0, w: 1, h: size }
-    case 'bottom': return { x: 0, y: 1 - size, w: 1, h: size }
-    case 'left': return { x: 0, y: 0, w: size, h: 1 }
-    case 'right': return { x: 1 - size, y: 0, w: size, h: 1 }
+    case 'top': return { x: 0, y: offset, w: 1, h: size }
+    case 'bottom': return { x: 0, y: 1 - offset - size, w: 1, h: size }
+    case 'left': return { x: offset, y: 0, w: size, h: 1 }
+    case 'right': return { x: 1 - offset - size, y: 0, w: size, h: 1 }
   }
 }
 
@@ -47,9 +47,9 @@ export type Reach =
   | { kind: 'unknown' }                                            // footage is assigned but its size could not be read
   | { kind: 'known'; share: number }                               // the largest share of the plate any clip of the scene would cover, 0..1
 
-export function plateReach(side: Side, size: number, uses: readonly SceneFootageUse[] | undefined, canvas: { width: number; height: number }): Reach {
+export function plateReach(side: Side, size: number, uses: readonly SceneFootageUse[] | undefined, canvas: { width: number; height: number }, offset = 0): Reach {
   if (!uses || uses.length === 0) return { kind: 'no_footage' }
-  const plate = plateRect(side, size)
+  const plate = plateRect(side, size, offset)
   const plateArea = plate.w * plate.h
   let known = false, worst = 0
   for (const u of uses) {

@@ -21,7 +21,7 @@ export const NO_CLAIMS = { backgroundRecovered: false, contentBehindOverlaysReco
 
 export const LIMITATIONS: readonly string[] = [
   'Only flat bands along a still’s edges are measured. Nothing behind text, graphics or the picture itself is recovered, and nothing is painted over or removed.',
-  'A plate is one flat colour. A gradient or a texture is reported as such, but is not rebuilt.',
+  'A plate is one flat colour. A smooth gradient along an edge is rebuilt as two flat steps (the average colour of each half), not as a true gradient; a texture is reported but not rebuilt.',
   'The stills are small and sparse (about one per few seconds), so a colour is a measurement of a few samples, not a copy.',
   'Plates sit above your footage in the editor. They only make sense where your footage does not reach the bar; if it does, leave the plate out.',
   'Colours measured from a reference are facts about its pixels, not content; no picture from the reference is copied by this step.',
@@ -38,6 +38,11 @@ export const RING = 0.06                        // the outer 6% of the frame is 
 export const MIN_PLATE = 0.03                   // a plate thinner than 3% of the canvas is not worth a layer
 export const ASPECT_TOLERANCE = 0.08            // reference frame versus canvas proportions
 export const DEFAULT_UNIFORMITY = 0.97
+export const MIN_GRADIENT = 0.06               // a gradient band thinner than 6% of the frame cannot be split into two steps worth a layer each
+export const GRADIENT_STEP = 14                 // between neighbouring lines of a gradient the colour changes by at most this much (summed RGB)
+export const GRADIENT_MIN_DRIFT = 40            // and from its first line to its last by at least this much, or it is a flat bar
+export const GRADIENT_WANDER = 1.6              // the colour must travel nearly straight: its path may be at most this many times the distance between its ends
+export type GradientPart = 'outer' | 'inner'    // the half nearer the frame's edge, and the half nearer the picture
 
-export type BackgroundFlagCode = 'single_frame' | 'seen_in_some_frames' | 'aspect_differs' | 'thin' | 'not_uniform' | 'frame_size_unknown' | 'footage_overlap' | 'footage_size_unknown' | 'no_footage_yet'
+export type BackgroundFlagCode = 'single_frame' | 'seen_in_some_frames' | 'aspect_differs' | 'thin' | 'not_uniform' | 'frame_size_unknown' | 'footage_overlap' | 'footage_size_unknown' | 'no_footage_yet' | 'gradient_step'
 export interface BackgroundFlag { code: BackgroundFlagCode; severity: 'info' | 'warning'; message: string }

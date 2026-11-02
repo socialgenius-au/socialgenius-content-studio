@@ -69,7 +69,7 @@ export function buildManifest(input: ManifestInput): Manifest {
   for (const o of input.imageLayers?.overlays ?? []) entries.push(make('picture', o.id, 'Picture cut from the reference', o.startTime, o.endTime, bucketOf(o.reconstruction), null, { ...(input.imageLayers!.record.claims) }))
   for (const s of input.backgroundPlan?.shapes ?? []) {
     const side = s.reconstruction?.side
-    entries.push(make('plate', s.id, `${side ? `${side[0].toUpperCase()}${side.slice(1)} bar` : 'Bar'}, flat ${s.fillColor}`, s.startTime, s.endTime, bucketOf(s.reconstruction), s.reconstruction?.sceneNumber ?? null,
+    entries.push(make('plate', s.id, `${side ? `${side[0].toUpperCase()}${side.slice(1)} ${s.reconstruction?.gradientPart ? `gradient (${s.reconstruction.gradientPart} step)` : 'bar'}` : 'Bar'}, flat ${s.fillColor}`, s.startTime, s.endTime, bucketOf(s.reconstruction), s.reconstruction?.sceneNumber ?? null,
       { ...(s.reconstruction?.claims ?? { backgroundRecovered: false, contentBehindOverlaysRecovered: false, inpainted: false }) }))
   }
   for (const s of input.speechPlan?.subtitles ?? []) entries.push(make('subtitle', s.id, `“${clip(s.text)}”`, s.startTime, s.endTime, bucketOf(s.reconstruction), null, { ...(input.speechPlan!.record.claims) }))

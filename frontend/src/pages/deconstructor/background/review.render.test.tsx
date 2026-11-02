@@ -11,8 +11,8 @@ import type { OrderPolicy } from './composition'
 const evidence: BackgroundEvidence = {
   referenceVideoId: 1, videoAnalysisId: 9, frameSize: { width: 480, height: 864 }, durationSeconds: 20, frameCount: 4,
   scenes: [
-    { sceneNumber: 1, startTime: 0, endTime: 10, framesMeasured: 2, framesUnreadable: 0, variance: 'solid', palette: [{ color: '#090909', share: 0.85 }], bars: [{ side: 'top', size: 0.189, color: '#080808', uniformity: 1, framesSeen: 2, frameIds: [1, 2] }] },
-    { sceneNumber: 2, startTime: 10, endTime: 20, framesMeasured: 2, framesUnreadable: 1, variance: 'busy', palette: [{ color: '#1f1f1f', share: 0.4 }], bars: [] },
+    { sceneNumber: 1, startTime: 0, endTime: 10, framesMeasured: 2, framesUnreadable: 0, gradients: [], variance: 'solid', palette: [{ color: '#090909', share: 0.85 }], bars: [{ side: 'top', size: 0.189, color: '#080808', uniformity: 1, framesSeen: 2, frameIds: [1, 2] }] },
+    { sceneNumber: 2, startTime: 10, endTime: 20, framesMeasured: 2, framesUnreadable: 1, gradients: [], variance: 'busy', palette: [{ color: '#1f1f1f', share: 0.4 }], bars: [] },
   ],
 }
 const canvas = { width: 1080, height: 1920 }
