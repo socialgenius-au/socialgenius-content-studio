@@ -2,6 +2,7 @@ export { measureFrame, type FrameBackground, type BarMeasure, type PaletteEntry 
 export { buildBackgroundEvidence, measureFrames, type BackgroundEvidence, type SceneBackground, type SceneBar, type SceneGradient } from './evidence'
 export { buildPlateCandidates, candidateId, type PlateCandidate } from './candidates'
 export { setPlateCorrection, resolvePlate, isHexColour, type PlateCorrection, type PlateCorrections } from './corrections'
+export { canvasColourOptions, canvasColourChange, withCanvasColour, validCanvasColour, type CanvasColourOption } from './canvasColour'
 export { planBackground, mergeBackground, PLATE_ORDER, plateLayerId, type BackgroundPlan, type BackgroundRecord } from './materialize'
 export { planComposition, applyComposition, generatedLayers, layersByScene, bucketOf, BANDS, POLICY_LABEL, POLICY_RULES, BUCKET_LABEL, type OrderPolicy, type CompositionPlan, type Bucket } from './composition'
 export { backgroundManifest, compositionManifest, type ManifestEntry } from './manifest'

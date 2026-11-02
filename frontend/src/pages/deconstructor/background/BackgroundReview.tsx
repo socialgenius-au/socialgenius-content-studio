@@ -13,6 +13,7 @@ import { setPlateCorrection, type PlateCorrections } from './corrections'
 import type { BackgroundEvidence } from './evidence'
 import { browserPixelReader, evidenceKey, loadBackgroundEvidence, type PixelReader } from './loadEvidence'
 import { planBackground, type BackgroundPlan } from './materialize'
+import { canvasColourOptions } from './canvasColour'
 import type { SceneFootage } from './footageReach'
 import { BackgroundReviewView, type ReviewState } from './BackgroundReviewView'
 
@@ -27,15 +28,18 @@ export interface BackgroundReviewProps {
   footage?: SceneFootage
   onPlan: (plan: BackgroundPlan | null) => void
   onPolicy: (policy: OrderPolicy) => void
+  /** Optional: the measured bar colour the person chose as the editor's canvas colour, or null. */
+  onCanvasColour?: (colour: string | null) => void
   deps?: Partial<BackgroundDeps>
 }
 
-export function BackgroundReview({ plan, generated, footage, onPlan, onPolicy, deps: override }: BackgroundReviewProps) {
+export function BackgroundReview({ plan, generated, footage, onPlan, onPolicy, onCanvasColour, deps: override }: BackgroundReviewProps) {
   const deps = useMemo(() => ({ ...defaultBackgroundDeps(), ...override }), [override])
   const [evidence, setEvidence] = useState<BackgroundEvidence | null>(null)
   const [state, setState] = useState<ReviewState>({ kind: 'loading' })
   const [corrections, setCorrections] = useState<PlateCorrections>({})
   const [policy, setPolicy] = useState<OrderPolicy>('as_generated')
+  const [canvasColour, setCanvasColour] = useState<string | null>(null)
 
   const key = evidenceKey(plan)
   useEffect(() => {
@@ -56,12 +60,15 @@ export function BackgroundReview({ plan, generated, footage, onPlan, onPolicy, d
     () => planBackground(candidates, corrections, { referenceVideoId: plan.referenceVideoId, videoAnalysisId: plan.videoAnalysisId, planSeconds: plan.totalSeconds, existingShapes: [], createdAt: deps.now().toISOString() }),
     [candidates, corrections, plan.referenceVideoId, plan.videoAnalysisId, plan.totalSeconds, deps],
   )
+  const colourOptions = useMemo(() => canvasColourOptions(candidates, corrections), [candidates, corrections])
+  const chosenColour = canvasColour && colourOptions.some(o => o.colour === canvasColour) ? canvasColour : null          // a colour that is no longer one of the bars (you changed it) is dropped, never kept silently
   const composition = useMemo(() => planComposition({ ...generated, shapes: [...generated.shapes, ...layerPlan.shapes] }, policy), [generated, layerPlan, policy])
 
   useEffect(() => { onPlan(layerPlan.shapes.length > 0 ? layerPlan : null) }, [layerPlan, onPlan])
   useEffect(() => { onPolicy(policy) }, [policy, onPolicy])
-  useEffect(() => () => { onPlan(null); onPolicy('as_generated') }, [onPlan, onPolicy])             // leaving the panel never leaves stale changes behind
+  useEffect(() => { onCanvasColour?.(chosenColour) }, [chosenColour, onCanvasColour])
+  useEffect(() => () => { onPlan(null); onPolicy('as_generated'); onCanvasColour?.(null) }, [onPlan, onPolicy, onCanvasColour])             // leaving the panel never leaves stale changes behind
 
   const onCorrect = useCallback((id: string, patch: { include?: boolean; color?: string; size?: number }) => setCorrections(c => setPlateCorrection(c, id, patch)), [])
-  return <BackgroundReviewView state={state} evidence={evidence} candidates={candidates} corrections={corrections} plan={layerPlan} policy={policy} composition={composition} scenes={plan.scenes} footage={footage} onCorrect={onCorrect} onPolicy={setPolicy} />
+  return <BackgroundReviewView state={state} evidence={evidence} candidates={candidates} corrections={corrections} plan={layerPlan} policy={policy} composition={composition} scenes={plan.scenes} footage={footage} onCorrect={onCorrect} onPolicy={setPolicy} colourOptions={colourOptions} canvasColour={chosenColour} onCanvasColour={setCanvasColour} />
 }

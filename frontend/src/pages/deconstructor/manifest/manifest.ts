@@ -10,9 +10,9 @@ import type { TextLayerPlan } from '../textlayers/materialize'
 import type { TransitionPlan } from '../transitions/materialize'
 import { KIND_LABEL as TRANSITION_LABEL } from '../transitions/contract'
 
-export type ManifestFamily = 'text' | 'picture' | 'plate' | 'transition' | 'subtitle' | 'stacking'
-export const FAMILY_LABEL: Record<ManifestFamily, string> = { text: 'Text', picture: 'Pictures', plate: 'Background bars', transition: 'Transitions', subtitle: 'Subtitles', stacking: 'Stacking order' }
-const FAMILY_ORDER: ManifestFamily[] = ['text', 'picture', 'plate', 'subtitle', 'transition', 'stacking']
+export type ManifestFamily = 'text' | 'picture' | 'plate' | 'transition' | 'subtitle' | 'stacking' | 'canvas'
+export const FAMILY_LABEL: Record<ManifestFamily, string> = { text: 'Text', picture: 'Pictures', plate: 'Background bars', transition: 'Transitions', subtitle: 'Subtitles', stacking: 'Stacking order', canvas: 'Canvas colour' }
+const FAMILY_ORDER: ManifestFamily[] = ['text', 'picture', 'plate', 'subtitle', 'transition', 'stacking', 'canvas']
 
 /** What every entry in the manifest leaves unclaimed, in plain words. Shown once; each entry's own `claims` object is all false. */
 export const NEVER_CLAIMED: readonly string[] = [
@@ -46,6 +46,8 @@ export interface ManifestInput {
   speechPlan?: SpeechPlan | null
   transitionPlan?: TransitionPlan | null
   composition?: { plan: CompositionPlan | null; policy: OrderPolicy } | null
+  /** The measured bar colour chosen as the editor's canvas background colour, if any. */
+  canvasColour?: string | null
 }
 
 export interface ManifestSummary { family: ManifestFamily; label: string; total: number; byBucket: Record<Bucket, number> }
@@ -81,6 +83,7 @@ export function buildManifest(input: ManifestInput): Manifest {
   if (input.composition && input.composition.plan && input.composition.plan.changes.length > 0) {
     entries.push(make('stacking', `composition:${input.composition.policy}`, `${POLICY_LABEL[input.composition.policy]}: order set on ${input.composition.plan.changes.length} layer${input.composition.plan.changes.length === 1 ? '' : 's'}`, null, null, 'inferred', null, { originalLayerStructureRecovered: false }))
   }
+  if (input.canvasColour) entries.push(make('canvas', 'canvas-colour', `Canvas background colour ${input.canvasColour} (the canvas format is not changed)`, null, null, 'manual', null, { canvasFormatChanged: false, backgroundRecovered: false }))
   entries.sort((a, b) => (a.scene ?? 1e9) - (b.scene ?? 1e9) || (a.startTime ?? -1) - (b.startTime ?? -1) || FAMILY_ORDER.indexOf(a.family) - FAMILY_ORDER.indexOf(b.family) || a.id.localeCompare(b.id))
 
   const summary: ManifestSummary[] = FAMILY_ORDER.map(family => {
