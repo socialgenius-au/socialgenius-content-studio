@@ -238,6 +238,8 @@ async def export_project(
         "subtitles": subtitles,
         "subtitle_style": subtitle_style,
         "audio_tracks": audio_tracks,
+        "canvas_background": body.canvas_background,
+        "transition_edge_policy": body.transition_edge_policy,
     }
 
     try:

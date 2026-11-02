@@ -524,6 +524,7 @@ async def build_clip_segment(
     fit_mode: str = "fit",
     crop_x: float = 50.0,
     crop_y: float = 50.0,
+    pad_color: str = "black",
 ) -> Path:
     """One clip's [trimIn, trimIn+sourceDuration) source range → a single normalized segment:
     speed-adjusted, colour/brightness/contrast/saturation applied, scaled onto the project's
@@ -577,7 +578,7 @@ async def build_clip_segment(
     if fit_mode == "fit":
         vf_parts.append(
             f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease,"
-            f"pad={canvas_w}:{canvas_h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
+            f"pad={canvas_w}:{canvas_h}:(ow-iw)/2:(oh-ih)/2:color={pad_color},setsar=1"
         )
     else:
         crop_x_frac = max(0.0, min(1.0, crop_x / 100))
@@ -979,7 +980,7 @@ def _stack_runs(project: dict) -> list[tuple[str, list[dict]]]:
     return runs
 
 
-async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, user_id: int) -> tuple[Path, list[str], int]:
+async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, user_id: int, pad_color: str = "black") -> tuple[Path, list[str], int]:
     """One CONTIGUOUS run of V1 clips (each starts where the previous ends) -> its base video, the intermediate files to clean up afterwards, and its exact length in frames. This is the
     whole of what render_project always did for the V1 timeline; a project without a gap is exactly one run."""
 
@@ -1023,7 +1024,7 @@ async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, use
             c["path"], cp.source_trim_in, cp.source_duration, c["speed"],
             c["color_grade"], c["brightness"], c["contrast"], c["saturation"],
             cw, ch, keep_audio=keep_audio, volume=clip_volume, user_id=user_id,
-            fit_mode=c.get("fit_mode", "fit"), crop_x=c.get("crop_x", 50.0), crop_y=c.get("crop_y", 50.0),
+            fit_mode=c.get("fit_mode", "fit"), crop_x=c.get("crop_x", 50.0), crop_y=c.get("crop_y", 50.0), pad_color=pad_color,
         )
         segment_paths.append(str(seg))
 
@@ -1035,7 +1036,7 @@ async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, use
     return base, [p for p in segment_paths if p != str(base)], plan.total_f - plan.origin_f
 
 
-def build_gap_graph(parts: list[tuple[str | None, int]]) -> tuple[list[str], str]:
+def build_gap_graph(parts: list[tuple[str | None, int]], color: str = "black") -> tuple[list[str], str]:
     """Pure: the input arguments and filter graph that join runs (path) and gaps (None) end to end, every part forced to its exact frame / sample count so nothing after a gap can shift."""
     F = timeline_plan.FPS
     args: list[str] = []
@@ -1044,7 +1045,7 @@ def build_gap_graph(parts: list[tuple[str | None, int]]) -> tuple[list[str], str
     for path, frames in parts:
         secs = f"{frames / F:.6f}"
         if path is None:
-            args += ["-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", f"color=c=black:s={{W}}x{{H}}:r={F}", "-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", "anullsrc=r=44100:cl=stereo"]
+            args += ["-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", f"color=c={color}:s={{W}}x{{H}}:r={F}", "-f", "lavfi", "-t", f"{frames / F + 0.2:.6f}", "-i", "anullsrc=r=44100:cl=stereo"]
             vi, ai = idx, idx + 1
             idx += 2
         else:
@@ -1059,10 +1060,10 @@ def build_gap_graph(parts: list[tuple[str | None, int]]) -> tuple[list[str], str
     return args, ";".join(chains) + ";" + joined
 
 
-async def concat_runs_with_gaps(parts: list[tuple[str | None, int]], cw: int, ch: int, user_id: int) -> Path:
+async def concat_runs_with_gaps(parts: list[tuple[str | None, int]], cw: int, ch: int, user_id: int, color: str = "black") -> Path:
     """Joins contiguous runs with black video and silence for each gap between them (leading gap included), so the exported timeline is as long as the editor's and every layer, subtitle
     and A1 audio stays at its own absolute time."""
-    args, graph = build_gap_graph(parts)
+    args, graph = build_gap_graph(parts, color)
     args = [a.replace("{W}", str(cw)).replace("{H}", str(ch)) for a in args]
     graph = graph
     out = _out(user_id, "mp4")
@@ -1105,13 +1106,15 @@ async def render_project(project: dict, user_id: int) -> Path:
 
     cw, ch = project["canvas_width"], project["canvas_height"]
     policy = project.get("transition_edge_policy", "shorten")
+    bg = project.get("canvas_background")
+    pad_color = "0x" + bg[1:] if isinstance(bg, str) and len(bg) == 7 and bg.startswith("#") else "black"
 
     # V1 clips -> contiguous runs. A gap between runs (or before the first clip) is black video and silence, exactly as the editor shows it; a project without a gap is one run and takes
     # the unchanged path.
     runs = timeline_plan.split_runs(clips)
     lead = timeline_plan.to_frames(clips[0]["start_time"])
     if len(runs) == 1 and lead < 1:
-        base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id)
+        base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id, pad_color)
     else:
         parts: list[tuple[str | None, int]] = []
         run_intermediates: list[str] = []
@@ -1120,10 +1123,10 @@ async def render_project(project: dict, user_id: int) -> Path:
             gap = timeline_plan.to_frames(run[0]["start_time"]) - pos
             if gap >= 1:
                 parts.append((None, gap)); pos += gap
-            rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id)
+            rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id, pad_color)
             parts.append((str(rb), frames)); pos += frames
             run_intermediates += im + [str(rb)]
-        base = await concat_runs_with_gaps(parts, cw, ch, user_id)
+        base = await concat_runs_with_gaps(parts, cw, ch, user_id, pad_color)
         base_frames = pos
 
     current = base

@@ -1,4 +1,5 @@
 
+import { validCanvasBackground } from "../export/canvasBackground";
 import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useStudio } from "../../../contexts/StudioContext";
 import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
@@ -1032,7 +1033,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     const label = `${CANVAS_PLATFORMS.find(p => p.key === platformKey)?.label ?? platformKey} - ${placement.label}`;
     const next: CanvasFormatState = {
       platformKey, placementKey: placement.key, label,
-      ratio: placement.ratio, width: placement.width, height: placement.height,
+      ratio: placement.ratio, width: placement.width, height: placement.height, background: canvasFormat.background,
     };
     setCanvasFormat(next);
     addCanvasVersion(next);
@@ -1049,7 +1050,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setCustomW(w); setCustomH(h);
     const next: CanvasFormatState = {
       platformKey: "website", placementKey: "custom", label: "Website / General - Custom Size",
-      ratio: "CUSTOM", width: w, height: h,
+      ratio: "CUSTOM", width: w, height: h, background: canvasFormat.background,
     };
     setCanvasFormat(next);
     addCanvasVersion(next);
@@ -5540,7 +5541,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             key={`${v.platformKey}|${v.placementKey}`}
             type="button"
             className={v.platformKey === canvasFormat.platformKey && v.placementKey === canvasFormat.placementKey ? "active" : ""}
-            onClick={() => setCanvasFormat(v)}
+            onClick={() => setCanvasFormat({ ...v, background: canvasFormat.background })}
             title={`${v.width}×${v.height}`}
           >
             {v.label} ({v.ratio})
@@ -5563,6 +5564,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             <button type="button">✋</button>
             <button className="active" type="button">⌁</button>
             <span className="zoom-readout" title="Actual scale of the canvas as displayed">{Math.round((canvasBox.w / rawW) * 100)}%</span>
+            <label className="canvas-bg-control" title="Colour behind a letterboxed video (Fit) and in timeline gaps">
+              <input type="color" data-testid="canvas-background" value={validCanvasBackground(canvasFormat.background) ?? "#000000"} onChange={e => setCanvasFormat({ ...canvasFormat, background: e.target.value })} />
+              <button type="button" disabled={!canvasFormat.background} onClick={() => setCanvasFormat({ ...canvasFormat, background: undefined })}>Reset to black</button>
+            </label>
             {/* STEP 7 (Platform Canvas / Full-Screen Video Acceptance): was a fully dead
                 placeholder button (no onClick at all) — the same "decorative control" pattern
                 already found and fixed for the preview mute speaker and Undo/Redo before this
@@ -5661,7 +5666,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               <div
                 ref={videoPreviewBoxRef}
                 className={`video-preview real canvas-selectable ${selectedClip?.id === activeVideoClip!.id ? "canvas-el-selected" : ""}`}
-                style={{ width: canvasBox.w, height: canvasBox.h }}
+                style={{ width: canvasBox.w, height: canvasBox.h, ...(validCanvasBackground(canvasFormat.background) ? { background: validCanvasBackground(canvasFormat.background) } : {}) }}
                 onClick={e => { e.stopPropagation(); setSelectedElement({ type: "clip", lane: "video", id: activeVideoClip!.id }); }}
                 title={`${activeVideoClip!.name || "Video"} — click to select`}
               >

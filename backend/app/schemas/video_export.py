@@ -1,4 +1,8 @@
-from pydantic import BaseModel
+from typing import Literal
+
+import re
+
+from pydantic import BaseModel, field_validator
 
 
 # STEP 7.15F: shape mirrors Video Studio V2's own editor state (VideoClip/TextOverlay/
@@ -223,3 +227,15 @@ class ExportProjectRequest(BaseModel):
     subtitles: list[ExportSubtitle] = []
     subtitle_style: ExportSubtitleStyle = ExportSubtitleStyle()
     audio_tracks: list[ExportAudioTrack] = []
+    # Optional colour behind a letterboxed ("fit") clip and in timeline gaps, "#rrggbb". Absent = black, exactly as before.
+    canvas_background: str | None = None
+
+    @field_validator("canvas_background")
+    @classmethod
+    def _hex_colour(cls, v):
+        if v is not None and not re.fullmatch(r"#[0-9a-fA-F]{6}", v):
+            raise ValueError("canvas_background must be a #rrggbb colour")
+        return v
+    # Opt-in: what a dissolve does at a join where a clip has no spare source frames. "shorten" (default) = the dissolve is shortened (never invents a frame); "hold_incoming" = the incoming
+    # clip's first frame is held while it fades in, so the dissolve keeps its full length. Nothing else about the timeline changes.
+    transition_edge_policy: Literal["shorten", "hold_incoming"] = "shorten"

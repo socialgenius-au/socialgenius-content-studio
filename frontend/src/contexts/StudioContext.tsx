@@ -30,6 +30,8 @@ export interface CanvasFormatState {
   ratio: string
   width: number
   height: number
+  /** Optional "#rrggbb" behind a letterboxed clip and in timeline gaps (preview and export). Absent = black. */
+  background?: string
 }
 
 const DEFAULT_CANVAS_FORMAT: CanvasFormatState = {

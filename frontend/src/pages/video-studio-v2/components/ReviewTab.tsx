@@ -7,6 +7,7 @@ import { findActiveClip } from "../../../components/studio/videoPreviewUtils";
 import { videoExportApi } from "../../../api/client";
 import { checkReconstructionExport } from "../blueprint/exportGuard";
 import { buildExportTextOverlays } from "../export/textOverlayExport";
+import { validCanvasBackground } from "../export/canvasBackground";
 import { buildExportInserts, buildExportLowerThirds, buildExportShapes, buildExportSubtitles, buildExportSubtitleStyle, exportNotices, missingInsertSources } from "../export/layerExport";
 
 const PLATFORMS = [
@@ -50,6 +51,8 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
   // (ffmpeg was never actually installed in this environment, so no ffmpeg_svc.py function
   // could ever have worked here regardless of what the button did).
   const [exportState, setExportState] = useState<"idle" | "exporting" | "error">("idle");
+  // Opt-in (default: the exporter's existing behaviour). Applies to the next export only; it is not saved in the draft.
+  const [edgePolicy, setEdgePolicy] = useState<"shorten" | "hold_incoming">("shorten");
   const [exportError, setExportError] = useState<string | null>(null);
 
   const handleExportVideo = async () => {
@@ -109,6 +112,8 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
         additional_video_clips: buildExportInserts(additionalVideoClips),
         subtitles: buildExportSubtitles(subtitles),
         subtitle_style: buildExportSubtitleStyle(subtitleStyle),
+        ...(validCanvasBackground(canvasFormat.background) ? { canvas_background: validCanvasBackground(canvasFormat.background) } : {}),
+        transition_edge_policy: edgePolicy,
         media_overlays: mediaOverlays.map(o => ({
           asset_id: o.assetId, start_time: o.startTime, end_time: o.endTime,
           x: o.x, y: o.y, width: o.width, height: o.height, opacity: o.opacity, order: o.order ?? 0,
@@ -240,6 +245,16 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
       {status && <div className="inline-status">{status}</div>}
       {exportState === "error" && exportError && (
         <div className="inline-status error">{exportError}</div>
+      )}
+
+      {videoClips.some(c => c.transition === "dissolve") && (
+        <label className="stack-field" data-testid="edge-policy">
+          <span>Dissolves where a clip has no spare footage</span>
+          <select value={edgePolicy} onChange={e => setEdgePolicy(e.target.value as "shorten" | "hold_incoming")}>
+            <option value="shorten">Shorten the dissolve (default)</option>
+            <option value="hold_incoming">Hold the incoming clip’s first frame while it fades in</option>
+          </select>
+        </label>
       )}
 
       <div className="stage-footer triple">
