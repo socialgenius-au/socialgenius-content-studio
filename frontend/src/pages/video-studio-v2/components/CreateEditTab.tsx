@@ -5616,7 +5616,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               <input type="color" data-testid="canvas-background" value={validCanvasBackground(canvasFormat.background) ?? "#000000"} onChange={e => setCanvasFormat({ ...canvasFormat, background: e.target.value })} />
               <button type="button" disabled={!canvasFormat.background} onClick={() => setCanvasFormat({ ...canvasFormat, background: undefined })}>Reset to black</button>
             </label>
-            <label className="canvas-bg-control" title="What fills the bars of a letterboxed (Fit) video: the colour, or a blurred copy of the video itself">
+            <label className="canvas-bg-control" title="What fills the bars of a letterboxed (Fit) video: the colour, or a blurred copy of the video itself. Blur makes exports take longer. The preview shows the active clip's backdrop only: during a dissolve the other clip's backdrop is not drawn (the MP4 has it).">
               <select data-testid="canvas-backdrop" value={canvasFormat.backdrop ?? "color"} onChange={e => setCanvasFormat({ ...canvasFormat, backdrop: validCanvasBackdrop(e.target.value) })}>
                 <option value="color">Bars: colour</option>
                 <option value="blur">Bars: blurred video</option>

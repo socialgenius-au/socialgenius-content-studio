@@ -21,7 +21,12 @@ Frontend:
 - Browser (real editor, real backend, real MP4): the control starts on colour with no extra element; choosing blur mounts the muted backdrop with a blur of the export's sigma scaled to the preview (16.7 px x preview width / 1080), covering the canvas; while playing it follows the main video within 0.4 s; saving from the editor stores `canvasFormat.backdrop = "blur"`; after reload and reopen the choice and backdrop are back; the export request carries it; the MP4's bar is a blurred, coloured copy of the clip (screenshot checked) and the file is 4.0 s.
 - `tsc` clean; frontend export tests pass.
 
+## Cost (measured, this 10-core Windows PC)
+- Export: a 10 s 1280x720 clip on a 1080x1920 canvas takes 2.8-2.9 s with colour bars and 7.0 s with the blurred backdrop (about 2.4x, in two runs each); the output file is larger because the picture fills the whole frame (0.15 MB to 0.43 MB for a test pattern). Longer or higher-resolution clips scale roughly with length. Not measured on Railway's container.
+- Preview: one extra muted `<video>` decoder runs only while blur is selected and the active clip is Fit. With the control on "colour" no extra element is created (verified: none in the DOM).
+
 ## Limits
+- **Dissolve preview limitation (also in the control's tooltip):** during a D1 dissolve the preview draws the active clip's backdrop only; the other clip's backdrop is not drawn. The MP4 builds each clip's own backdrop and blends them.
 - Preview and export blurs match in sigma, not pixel for pixel (CSS gaussian vs ffmpeg box blur x2; the preview scales the copy 12% to hide its soft edges).
 - During a D1 dissolve the preview shows the active clip's backdrop only (the other clip's is not drawn); the export builds each clip's own backdrop and blends them.
 - The extra decoder in the preview (one more `<video>`) costs CPU while the backdrop is on; export time for affected clips rises (not measured on a long clip).
