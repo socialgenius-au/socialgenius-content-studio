@@ -88,7 +88,7 @@ describe('linking rules', () => {
   it('maps elements to the existing panels’ candidate ids', () => {
     expect(candidateIdsOf(handle())).toEqual({ text: ['text:1247', 'text:1259', 'text:1301'], image: ['rec:2202', 'user:ve:tt:rec:2202'], shape: [] })
     expect(candidateIdsOf(laptop()).image).toEqual(['det:102', 'user:ve:ot:det:102'])
-    expect(candidateIdsOf(topBar()).shape).toEqual(['bg:1:top', 'bg:1:top:outer', 'bg:1:top:inner'])
+    expect(candidateIdsOf(topBar()).shape).toEqual(['bg:1:top'])           // a gradient step is its own element (bt:S:side:outer|inner) with its own plate id
   })
   it('a layer from another element is never claimed', () => {
     const q = planElementReconstruction([caption()], { textOverlays: [textLayer('rt:99', 99)] }, ctx)
