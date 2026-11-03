@@ -155,6 +155,8 @@ class ExportShape(BaseModel):
     border_radius: float = 0
     full_width: bool = False
     order: float = 0
+    # Option C: the shape lies behind the footage (visible only where no picture is on screen). Absent = False = exactly the long-standing behaviour.
+    behind_footage: bool = False
 
 
 # Phase 7 — Requirement (Lower Third export/ffmpeg compositing, deferred item F). showLogo is

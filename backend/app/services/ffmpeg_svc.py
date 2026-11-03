@@ -22,7 +22,7 @@ import numpy as np
 from PIL import Image
 
 from app.config import settings
-from app.services import canvas_render_svc, timeline_plan
+from app.services import behind_footage, canvas_render_svc, timeline_plan
 
 FFMPEG_BIN = imageio_ffmpeg.get_ffmpeg_exe()
 
@@ -999,7 +999,7 @@ def _stack_runs(project: dict) -> list[tuple[str, list[dict]]]:
     return runs
 
 
-async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, user_id: int, pad_color: str = "black", backdrop: str = "color") -> tuple[Path, list[str], int]:
+async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, user_id: int, pad_color: str = "black", backdrop: str = "color", plans_out: list | None = None) -> tuple[Path, list[str], int]:
     """One CONTIGUOUS run of V1 clips (each starts where the previous ends) -> its base video, the intermediate files to clean up afterwards, and its exact length in frames. This is the
     whole of what render_project always did for the V1 timeline; a project without a gap is exactly one run."""
 
@@ -1013,6 +1013,8 @@ async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, use
                 except Exception:
                     file_durations[c["path"]] = None
     plan = timeline_plan.plan_timeline(clips, _XFADE_NAMES, file_durations, policy=policy)
+    if plans_out is not None:
+        plans_out.append((clips, plan))                                  # behind-footage shapes need where each picture is on screen
 
     segment_paths: list[str] = []
     has_audio_by_path: dict[str, bool] = {}
@@ -1133,8 +1135,10 @@ async def render_project(project: dict, user_id: int) -> Path:
     # the unchanged path.
     runs = timeline_plan.split_runs(clips)
     lead = timeline_plan.to_frames(clips[0]["start_time"])
+    behind_shapes = [s for s in (project.get("shapes") or []) if s.get("behind_footage")]
+    run_plans: list = []
     if len(runs) == 1 and lead < 1:
-        base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id, pad_color, backdrop)
+        base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id, pad_color, backdrop, plans_out=run_plans if behind_shapes else None)
     else:
         parts: list[tuple[str | None, int]] = []
         run_intermediates: list[str] = []
@@ -1143,7 +1147,7 @@ async def render_project(project: dict, user_id: int) -> Path:
             gap = timeline_plan.to_frames(run[0]["start_time"]) - pos
             if gap >= 1:
                 parts.append((None, gap)); pos += gap
-            rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id, pad_color, backdrop)
+            rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id, pad_color, backdrop, plans_out=run_plans if behind_shapes else None)
             parts.append((str(rb), frames)); pos += frames
             run_intermediates += im + [str(rb)]
         base = await concat_runs_with_gaps(parts, cw, ch, user_id, pad_color)
@@ -1154,6 +1158,18 @@ async def render_project(project: dict, user_id: int) -> Path:
     timeline_seconds = base_frames / timeline_plan.FPS       # the exact intended length: the overlay passes end here (not at -shortest, which, with copied audio, can cut the last video frames)
     rendered_pngs: list[str] = []
 
+    if behind_shapes:
+        # Option C (behind-footage shapes): composited straight after the V1 base and BEFORE V2 inserts, with the PNG cleared wherever footage is on screen at that moment (behind_footage.py).
+        # Nothing else about the V1 base, its transitions or the stacking pass changes; with no behind shape this block does not run.
+        sizes = await behind_footage.probe_display_sizes([c["path"] for c in clips], _probe)
+        events = [e for rc, rp in run_plans for e in behind_footage.run_events(rc, rp, cw, ch, sizes)]
+        behind_pngs, behind_temps = await behind_footage.plan_behind_overlays(behind_shapes, events, cw, ch, user_id, canvas_render_svc.render_shape_png)
+        rendered_pngs += behind_temps
+        if behind_pngs:
+            next_path = await composite_image_overlays(str(current), behind_pngs, user_id, duration=timeline_seconds)
+            intermediates.append(str(current))
+            current = next_path
+
     if project.get("additional_video_clips"):
         next_path = await composite_video_inserts(str(current), project["additional_video_clips"], user_id, duration=timeline_seconds)
         intermediates.append(str(current))
@@ -1162,7 +1178,7 @@ async def render_project(project: dict, user_id: int) -> Path:
     # M2.2b: image/video overlays, shapes, lower thirds, text and subtitles are stacked by ONE shared `order`, exactly as the editor paints them (CreateEditTab's
     # visualLayers: ascending order, ties broken by that fixed type sequence, then list position). Consecutive layers of the same kind are composited together, so a
     # project that never reordered anything costs the same passes as before; a layer moved in front of / behind another kind now is in front / behind in the MP4 too.
-    for kind, items in _stack_runs(project):
+    for kind, items in _stack_runs({**project, "shapes": [s for s in (project.get("shapes") or []) if not s.get("behind_footage")]} if behind_shapes else project):
         if kind == "media":
             # STEP 7.15H: composite_media_overlays (not add_media_overlays) -- the only difference is that this one also mixes in each overlay's own audio, muted/volume-aware.
             next_path = await composite_media_overlays(str(current), items, user_id, duration=timeline_seconds)

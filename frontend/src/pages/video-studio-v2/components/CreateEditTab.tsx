@@ -5,6 +5,10 @@ import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissol
 import { previewBlurPx, validCanvasBackdrop } from "../export/canvasBackdrop";
 import { durationCorrection } from "../export/measuredDuration";
 import { draftExtrasForSave, emptyExtras, pickDraftExtras, type DraftExtras } from "../export/draftExtras";
+import BehindFootageLayer from "../export/BehindFootageLayer";
+import { behindFootageRects } from "../export/behindFootagePreview";
+import { isBehindFootage } from "../export/footageGeometry";
+import { useVideoSizes } from "../export/useVideoSizes";
 import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useStudio } from "../../../contexts/StudioContext";
 import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
@@ -1285,6 +1289,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeline.currentTime, timeline.playing, backdropClip?.id]);
   const blendWindows = useMemo(() => planBlendWindows(videoClips), [videoClips]);
+  const behindSizes = useVideoSizes(videoClips.map(c => c.url), shapes.some(isBehindFootage));          // only loads anything while a shape is marked "behind footage"
   const blendRaw = hasRealSrc ? blendPreviewAt(blendWindows, timeline.currentTime) : null;
   const blendPreview = blendRaw && activeVideoClip?.id === (blendRaw.phase === "before" ? blendRaw.window.outId : blendRaw.window.inId) ? blendRaw : null;
   const blendOtherClip = blendPreview ? videoClips.find(c => c.id === blendPreview.otherId && !!c.url) ?? null : null;
@@ -3272,6 +3277,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     .map(sh => {
       return {
         order: sh.order ?? 0,
+        behind: isBehindFootage(sh),
         node: (
     <div
       key={sh.id}
@@ -3332,9 +3338,16 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // front) — plain DOM paint order, no z-index needed. Ties (both default to 0, e.g. before any
   // reorder has ever happened) keep Array.sort's stable ordering, which preserves the exact
   // pre-existing "all Overlays behind all Text" look until the user actually reorders something.
-  const visualLayers = [...overlayEntries, ...textEntries, ...lowerThirdEntries, ...shapeEntries, ...subtitleEntries]
+  const visualLayers = [...overlayEntries, ...textEntries, ...lowerThirdEntries, ...shapeEntries.filter(e => !e.behind), ...subtitleEntries]
     .sort((a, b) => a.order - b.order)
     .map(e => e.node);
+
+  // Option C: shapes marked "behind footage" are drawn in their own layer just above the V1 picture (below V2 inserts and every other layer), clipped away from the footage so they show only outside it.
+  const behindLayer = shapeEntries.some(e => e.behind) ? (
+    <BehindFootageLayer rects={hasRealSrc ? behindFootageRects(videoClips, behindSizes, blendWindows, rawW, rawH, timeline.currentTime) : []} canvasW={rawW} canvasH={rawH}>
+      {shapeEntries.filter(e => e.behind).sort((a, b) => a.order - b.order).map(e => e.node)}
+    </BehindFootageLayer>
+  ) : null;
 
   // Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping) — the visual guide overlay
   // itself: pure display, pointer-events:none throughout so it can never intercept a click or
@@ -5234,6 +5247,11 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 onChange={e => updateShape(selectedShape.id, { fullWidth: e.target.checked })} />
               <span>Full width (banner)</span>
             </label>
+            <label className="stack-field" style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: "row" }} title="Visible only where the footage is not (the bars of a Fit clip, gaps); never covers the picture">
+              <input type="checkbox" data-testid="shape-behind-footage" checked={isBehindFootage(selectedShape)}
+                onChange={e => updateShape(selectedShape.id, { behindFootage: e.target.checked } as Partial<Shape>)} />
+              <span>Behind footage</span>
+            </label>
             <h4>Transform</h4>
             <div className="row">
               <input value={`X ${Math.round(selectedShape.x)}%`} readOnly />
@@ -5818,6 +5836,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                     <button type="button" onClick={() => setRepositionClipId(null)}>Done</button>
                   </div>
                 )}
+                {behindLayer}
                 {insertLayer}
                 {visualLayers}
                 {guideOverlay}
@@ -5865,6 +5884,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 >
                   {activeVideoClip ? activeVideoClip.name : "VISIT OUR SHOWROOM TODAY"}
                 </div>
+                {behindLayer}
                 {insertLayer}
                 {visualLayers}
                 {guideOverlay}
