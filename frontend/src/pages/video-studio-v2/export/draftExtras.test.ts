@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { planElementReconstruction } from '../../deconstructor/reconstruction'
+import { planElementReconstruction, readElementReconstruction, validateElementAccount } from '../../deconstructor/reconstruction'
 import { brandAsLogo, caption, handle, imageLayer, laptop, person, textLayer, topBar } from '../../deconstructor/reconstruction/fixtures'
-import { DRAFT_EXTRAS_LARGE_BYTES, EXTRAS_REPORT_KEY, draftExtrasForSave, emptyExtras, pickDraftExtras } from './draftExtras'
+import { DRAFT_EXTRAS_LARGE_BYTES, EXTRAS_REPORT_KEY, draftExtrasForSave, emptyExtras, extrasNote, pickDraftExtras } from './draftExtras'
 
 const ctx = { referenceVideoId: 1, videoAnalysisId: 2, createdAt: '2026-11-03T00:00:00.000Z' }
 const layers = { textOverlays: [textLayer('rt:1247', 1247), textLayer('rt:21', 21)], mediaOverlays: [imageLayer('ri:1', 'det:102', 'user_upload', 'detected_region')], shapes: [] }
@@ -59,6 +59,45 @@ describe('draftExtrasForSave', () => {
     expect(first[EXTRAS_REPORT_KEY]).toHaveLength(1)
     expect(draftExtrasForSave(pickDraftExtras(first), layers)[EXTRAS_REPORT_KEY]).toHaveLength(1)
     expect(draftExtrasForSave(pickDraftExtras({ textReconstruction: { ok: true }, [EXTRAS_REPORT_KEY]: first[EXTRAS_REPORT_KEY] }), layers)[EXTRAS_REPORT_KEY]).toBeUndefined()
+    warn.mockRestore()
+  })
+})
+
+describe('an invalid record is kept but never used', () => {
+  it('a well-formed account passes the gate; a real one reads back', () => {
+    expect(validateElementAccount(record)).toEqual([]); expect(readElementReconstruction({ elementReconstruction: record })).toEqual(record)
+  })
+  it('the right schema with damaged contents is kept exactly as stored, NOT reconciled, reported with a reason and what to do, and not read as an account', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const broken = { ...JSON.parse(JSON.stringify(record)), items: [{ elementId: 7, status: 'faithful', layers: 'x' }, 'nope'] }
+    const out = draftExtrasForSave(pickDraftExtras({ elementReconstruction: broken }), layers)
+    expect(out.elementReconstruction).toEqual(broken)                                                        // nothing lost, nothing "fixed"
+    const issue = (out[EXTRAS_REPORT_KEY] as { key: string; issue: string; note: string }[])[0]
+    expect(issue).toMatchObject({ key: 'elementReconstruction', issue: 'invalid_account' }); expect(issue.note).toMatch(/NOT used/); expect(issue.note).toMatch(/rebuild the draft from the Reconstructor/); expect(issue.note).toMatch(/elementId must be text or null/)
+    expect(readElementReconstruction({ elementReconstruction: broken })).toBeNull()
+    warn.mockRestore()
+  })
+  it('counts that are missing or negative, an unknown status and a layer without an id are each rejected', () => {
+    const base = JSON.parse(JSON.stringify(record))
+    expect(validateElementAccount({ ...base, counts: undefined })).toContain('counts missing')
+    expect(validateElementAccount({ ...base, counts: { ...base.counts, faithful: -1 } }).join()).toMatch(/counts.faithful/)
+    expect(validateElementAccount({ ...base, items: [{ ...base.items[0], status: 'invented' }] }).join()).toMatch(/unknown status/)
+    expect(validateElementAccount({ ...base, items: [{ ...base.items[0], layers: [{ kind: 'text' }] }] }).join()).toMatch(/layers must be a list/)
+    expect(validateElementAccount(null)).toEqual(['not an object']); expect(validateElementAccount([])).toEqual(['not an object'])
+  })
+  it('preserved metadata can never override an editor-owned key: the output holds only records, the report, and nothing the editor models', () => {
+    const snap = { videoClips: [{ id: 'evil' }], textOverlays: [{ id: 'evil' }], canvasFormat: { width: 1 }, timeline: { duration: 1 }, canvasBackground: '#ff0000', elementReconstruction: record, assembly: { a: 1 } }
+    const out = draftExtrasForSave(pickDraftExtras(snap), layers)
+    expect(Object.keys(out).sort()).toEqual(['assembly', 'elementReconstruction'])
+  })
+})
+
+describe('the visible note', () => {
+  it('is empty when nothing is unusual, and otherwise one actionable sentence', () => {
+    expect(extrasNote(pickDraftExtras({ elementReconstruction: record }))).toBe('')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(extrasNote(pickDraftExtras({ textReconstruction: [1], imageReconstruction: 'x' }))).toMatch(/^ — note: 2 saved reconstruction records are not valid and were kept unchanged but not used .*rebuild the draft from the Reconstructor/)
+    expect(extrasNote(pickDraftExtras({ elementReconstruction: { rows: 'x'.repeat(DRAFT_EXTRAS_LARGE_BYTES + 5) } }))).toMatch(/unusually large and was kept in full/)
     warn.mockRestore()
   })
 })

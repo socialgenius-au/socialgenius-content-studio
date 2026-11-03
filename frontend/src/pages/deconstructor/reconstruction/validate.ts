@@ -36,3 +36,30 @@ export function validateVisualElement(x: unknown): string[] {
   if (!k || k.originalAssetRecovered !== false || k.backgroundSeparated !== false || k.exactStyleRecovered !== false) p.push('claims must all be false')
   return p
 }
+
+// ---- the saved ACCOUNT (not the M4 elements) -----------------------------------------------------------------------------------------------------------------------------------------------------------
+// A draft can carry an `elementReconstruction` record for a long time and be edited by other tools; anything that reads it back must treat it as untrusted. This is the gate: a record that fails it is kept
+// as stored (nothing is thrown away) but is never reconciled, displayed as a fact or used as an instruction.
+const STATUSES = ['faithful', 'approximate', 'user_supplied', 'placeholder', 'missing_asset', 'not_included', 'unsupported']
+const LAYER_KINDS = ['text', 'image', 'shape']
+const strings = (x: unknown): x is string[] => Array.isArray(x) && x.every(v => typeof v === 'string')
+
+export function validateElementAccount(x: unknown): string[] {
+  const p: string[] = []
+  const r = x as Record<string, any> | null
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return ['not an object']
+  if (r.schema !== 'element-reconstruction-v1') p.push('schema must be element-reconstruction-v1')
+  if (!Array.isArray(r.items)) return [...p, 'items must be a list']
+  if (!r.counts || typeof r.counts !== 'object') p.push('counts missing')
+  else for (const k of ['elements', ...STATUSES]) if (!Number.isFinite(r.counts[k]) || r.counts[k] < 0) p.push(`counts.${k} must be a non-negative number`)
+  r.items.forEach((it: any, i: number) => {
+    const at = `item ${i + 1}`
+    if (!it || typeof it !== 'object' || Array.isArray(it)) { p.push(`${at} is not an object`); return }
+    if (it.elementId !== null && typeof it.elementId !== 'string') p.push(`${at}: elementId must be text or null`)
+    if (!STATUSES.includes(it.status)) p.push(`${at}: unknown status`)
+    if (!Array.isArray(it.layers) || !it.layers.every((l: any) => l && typeof l.id === 'string' && LAYER_KINDS.includes(l.kind))) p.push(`${at}: layers must be a list of {id, kind}`)
+    if (!strings(it.reasons)) p.push(`${at}: reasons must be a list of text`)
+    if (it.candidateIds !== undefined && !strings(it.candidateIds)) p.push(`${at}: candidateIds must be a list of text`)
+  })
+  return p.slice(0, 5)
+}

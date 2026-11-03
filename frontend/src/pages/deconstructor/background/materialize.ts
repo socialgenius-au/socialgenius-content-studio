@@ -19,7 +19,7 @@ export interface BackgroundContext {
 }
 
 export type PlateStatus = 'included' | 'excluded_default' | 'excluded_user' | 'duplicate' | 'outside_timeline'
-export interface PlateItem { candidateId: string; status: PlateStatus; message: string }
+export interface PlateItem { candidateId: string; status: PlateStatus; message: string; /** present (true) only when the person chose "Place behind footage" for this bar */ behindFootage?: boolean }
 
 export interface BackgroundRecord {
   schema: typeof RECONSTRUCTION_SCHEMA
@@ -75,14 +75,14 @@ export function planBackground(candidates: readonly PlateCandidate[], correction
   const existing = new Set(ctx.existingShapes.map(s => s.id))
   for (const c of candidates) {
     const r = resolvePlate(c, corrections[c.id])
-    const add = (status: PlateStatus, message: string) => items.push({ candidateId: c.id, status, message })
+    const add = (status: PlateStatus, message: string) => items.push({ candidateId: c.id, status, message, ...(r.behind ? { behindFootage: true } : {}) })
     if (!r.include) { add(corrections[c.id]?.include === false ? 'excluded_user' : 'excluded_default', corrections[c.id]?.include === false ? 'Left out by you.' : (c.flags.find(f => f.severity === 'warning')?.message ?? 'Left out by default.')); continue }
     const start = Math.max(0, c.startTime), end = Math.min(ctx.planSeconds, c.endTime)
     if (end - start < 0.1) { add('outside_timeline', 'This scene is not inside the draft’s length.'); continue }
     const id = plateLayerId(ctx.videoAnalysisId, c)
     if (existing.has(id)) { add('duplicate', 'This plate is already in the draft.'); continue }
-    shapes.push({ id, ...geometry(c.side, r.size.value, r.offset.value), fillColor: r.color.value, opacity: 1, borderWidth: 0, startTime: round3(start), endTime: round3(end), order: PLATE_ORDER, reconstruction: provenanceOf(r, ctx, start, end) })
-    add('included', 'Will be added as an editable shape in the bar.')
+    shapes.push({ id, ...geometry(c.side, r.size.value, r.offset.value), fillColor: r.color.value, opacity: 1, borderWidth: 0, startTime: round3(start), endTime: round3(end), order: PLATE_ORDER, ...(r.behind ? { behindFootage: true } : {}), reconstruction: provenanceOf(r, ctx, start, end) } as Shape)
+    add('included', r.behind ? 'Will be added as an editable shape behind your footage: it shows only around the picture, never over it.' : 'Will be added as an editable shape in the bar.')
   }
   const count = (...s: PlateStatus[]) => items.filter(i => s.includes(i.status)).length
   const record: BackgroundRecord = {
@@ -90,7 +90,7 @@ export function planBackground(candidates: readonly PlateCandidate[], correction
     counts: { measured: candidates.length, included: count('included'), excluded: count('excluded_default', 'excluded_user'), duplicates: count('duplicate'), outside: count('outside_timeline') },
     items, claims: { ...NO_CLAIMS }, limitations: [...LIMITATIONS],
   }
-  return { shapes, items, record, signature: JSON.stringify(shapes.map(s => [s.id, s.fillColor, s.x, s.y, s.width, s.height, s.startTime, s.endTime])) }
+  return { shapes, items, record, signature: JSON.stringify(shapes.map(s => [s.id, s.fillColor, s.x, s.y, s.width, s.height, s.startTime, s.endTime, ...((s as { behindFootage?: boolean }).behindFootage === true ? ['behind'] : [])])) }
 }
 
 /** The part of a draft snapshot this touches. */

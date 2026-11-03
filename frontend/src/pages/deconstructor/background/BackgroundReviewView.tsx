@@ -31,7 +31,7 @@ export interface BackgroundReviewViewProps {
   scenes: readonly { sceneNumber: number; startTime: number; endTime: number }[]
   /** What each scene's assigned clips are, so a size you set is checked against your footage too. */
   footage?: SceneFootage
-  onCorrect: (id: string, patch: { include?: boolean; color?: string; size?: number; offset?: number }) => void
+  onCorrect: (id: string, patch: { include?: boolean; color?: string; size?: number; offset?: number; behindFootage?: boolean }) => void
   onPolicy: (p: OrderPolicy) => void
   /** Optional canvas colour: the distinct bar colours on offer, the one chosen (or null), and the setter. Absent = the control is not shown. */
   colourOptions?: readonly CanvasColourOption[]
@@ -87,7 +87,7 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
                     <span className="inline-block h-4 w-4 rounded border" style={{ background: r.color.value }} aria-label={`colour ${r.color.value}`} />
                     <code>{r.color.value}</code>
                     <Badge variant="outline">{r.corrected.includes('color') ? 'Set by you' : 'Measured'}</Badge>
-                    {(() => { const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, r.offset.value); return f?.code === 'footage_overlap' ? <Badge variant="warning" data-testid="background-obscure-badge">May cover your footage</Badge> : null })()}
+                    {(() => { const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, r.offset.value); return !r.behind && f?.code === 'footage_overlap' ? <Badge variant="warning" data-testid="background-obscure-badge">May cover your footage</Badge> : null })()}
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={sub}>Measured on {cd.framesSeen} of {cd.framesMeasured} {cd.framesMeasured === 1 ? 'still' : 'stills'} · flatness {(cd.uniformity * 100).toFixed(0)}% · {cd.variance ? VARIANCE_LABEL[cd.variance] : ''}</span>
@@ -104,20 +104,25 @@ export function BackgroundReviewView(p: BackgroundReviewViewProps) {
                         onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }} />
                       % <Badge variant="outline">{r.corrected.includes('offset') ? 'Position set by you' : 'Position measured'}</Badge>
                     </label>
+                    <label className={`${sub} flex items-center gap-1`} title="The bar shows only around your video, never over it. If your video fills the whole frame, there is nothing to show.">
+                      <input type="checkbox" checked={r.behind} onChange={e => p.onCorrect(cd.id, { behindFootage: e.target.checked })} data-testid="background-behind" />
+                      Place behind footage {r.behind && <Badge variant="outline">Set by you</Badge>}
+                    </label>
                     {p.corrections[cd.id]?.offset !== undefined && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { offset: undefined })} data-testid="background-offset-reset">Use the measured position</button>}
                     {p.corrections[cd.id]?.size !== undefined && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { size: undefined })}>Use the measured size</button>}
                     {p.corrections[cd.id]?.color && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { color: undefined })}>Use the measured colour</button>}
                   </div>
-                  {cd.flags.map(f => <p key={f.code} className={f.severity === 'warning' ? 'text-amber-700 dark:text-amber-400' : sub} data-testid="background-flag">{f.message}</p>)}
-                  {(r.corrected.includes('size') || r.corrected.includes('offset')) && (() => { const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, r.offset.value); return f?.code === 'footage_overlap' ? <p className="text-amber-700 dark:text-amber-400" data-testid="background-flag-size">{r.corrected.includes('offset') ? 'At the size and position you set' : 'At the size you set'}: {f.message}</p> : null })()}
+                  {cd.flags.filter(f => !(r.behind && f.code === 'footage_overlap')).map(f => <p key={f.code} className={f.severity === 'warning' ? 'text-amber-700 dark:text-amber-400' : sub} data-testid="background-flag">{f.message}</p>)}
+                  {(r.corrected.includes('size') || r.corrected.includes('offset')) && (() => { const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, r.offset.value); return !r.behind && f?.code === 'footage_overlap' ? <p className="text-amber-700 dark:text-amber-400" data-testid="background-flag-size">{r.corrected.includes('offset') ? 'At the size and position you set' : 'At the size you set'}: {f.message}</p> : null })()}
                   {(() => {
                     const f = reachFlag(cd.side, r.size.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS, r.offset.value)
-                    if (f?.code !== 'footage_overlap') return null
+                    if (r.behind || f?.code !== 'footage_overlap') return null
                     const room = clearSize(cd.side, r.offset.value, p.footage?.[cd.sceneNumber], DEFAULT_CANVAS)
                     return room !== null && room >= MIN_PLATE
                       ? <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => p.onCorrect(cd.id, { size: room })} data-testid="background-clear">Shrink to {(room * 100).toFixed(1)}% so it clears your footage</button>
                       : <p className={sub} data-testid="background-clear-none">Your footage fills this part of the canvas, so no bar here can sit clear of it: leave it out, or use its colour as the canvas colour.</p>
                   })()}
+                  {r.behind && <p className={sub} data-testid="background-behind-note">Behind your footage: this bar shows only around your video and never covers it. Where your video fills the whole frame it will not be visible. You can untick this later in the editor (“Behind footage” on the shape).{r.include ? '' : ' It is only added once you tick the bar above.'}</p>}
                   {st && <p className={sub} data-testid="background-status">{st.message}</p>}
                 </li>
               )

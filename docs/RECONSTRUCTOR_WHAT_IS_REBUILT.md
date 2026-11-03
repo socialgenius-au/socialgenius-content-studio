@@ -33,3 +33,7 @@ The reconstruction applies a reference's *look and structure* to **your own foot
 
 ## How you can see this in the product
 Add `?m2=visual` (with `text-layers`, `image-layers` and `background` to see the layers they make) on the Create step. "What was found on screen" lists every element with its class, confidence, reasons, evidence and what could be rebuilt; the Reconstruction manifest then lists, for each element, whether it was rebuilt, approximated, replaced by your content, needs your image, was not included, or is unsupported.
+
+## Place behind footage (Background panel, off by default)
+Each measured bar has a "Place behind footage" tick. Off (the default) means the bar is added exactly as before, on top of your footage. On, the bar's layer carries `behindFootage: true` and, through the editor's "Behind footage" option and the exporter's existing mask-overlay pipeline, shows only around your video, never over it (preview and MP4 agree). It is still an ordinary editable shape; untick "Behind footage" on it in the editor to put it back on top. Where your video fills the whole frame (Fill, or a picture the same shape as the canvas) a behind bar is not visible, and the panel says so. The tick never adds a bar by itself: the bar must also be ticked in.
+
