@@ -19,6 +19,15 @@ export const emptyExtras = (): DraftExtras => ({ kept: {}, issues: [] })
 
 const INVALID_NOTE = (why: string) => `is not a valid reconstruction account (${why}); kept exactly as stored and NOT used as an account or an instruction. Your layers, timing and canvas are unaffected; rebuild the draft from the Reconstructor to get a current account.`
 
+/** The problem with a carried element account, if any. Found when a draft is OPENED (so the status line can say so at once) and again on save. A record that has a problem is kept exactly as stored and never reconciled. */
+function accountIssue(acct: unknown, issues: readonly ExtrasIssue[]): ExtrasIssue | null {
+  if (acct === undefined || issues.some(i => i.key === 'elementReconstruction' && i.issue === 'not_an_object')) return null
+  const schemaOk = !!acct && typeof acct === 'object' && (acct as { schema?: unknown }).schema === ELEMENT_RECONSTRUCTION_SCHEMA
+  if (!schemaOk) return { key: 'elementReconstruction', issue: 'unrecognised_account', note: 'is not a recognised account version; kept exactly as stored and NOT used. Your layers are unaffected; rebuild the draft from the Reconstructor to get a current account.' }
+  const problems = validateElementAccount(acct)
+  return problems.length ? { key: 'elementReconstruction', issue: 'invalid_account', note: INVALID_NOTE(problems.join('; ')) } : null
+}
+
 function report(issues: ExtrasIssue[]) {
   if (issues.length && typeof console !== 'undefined') console.warn('[video-studio] draft records kept with a note:', issues.map(i => `${i.key}: ${i.note}`).join('; '))
 }
@@ -42,6 +51,8 @@ export function pickDraftExtras(snapshot: unknown): DraftExtras {
     if (v === null || typeof v !== 'object' || Array.isArray(v)) out.issues.push({ key: k, issue: 'not_an_object', note: 'is not a record object; kept unchanged' })
     if (bytes !== undefined && bytes > DRAFT_EXTRAS_LARGE_BYTES) out.issues.push({ key: k, issue: 'large', bytes, note: `is large (${Math.round(bytes / 1024)} KB); kept in full` })
   }
+  const ai = accountIssue(out.kept.elementReconstruction, out.issues)
+  if (ai) out.issues.push(ai)
   report(out.issues)
   return out
 }
@@ -51,13 +62,8 @@ export function draftExtrasForSave(extras: DraftExtras, layers: { textOverlays?:
   const out: Record<string, unknown> = { ...extras.kept }
   const issues = [...extras.issues]
   const acct = extras.kept.elementReconstruction as ElementReconstructionRecord | undefined
-  if (acct !== undefined) {
-    const schemaOk = !!acct && typeof acct === 'object' && (acct as { schema?: unknown }).schema === ELEMENT_RECONSTRUCTION_SCHEMA
-    const problems = schemaOk ? validateElementAccount(acct) : []
-    if (schemaOk && problems.length === 0) {
-      try { out.elementReconstruction = reconcileElementReconstruction(acct, layers as GeneratedLayers) } catch { issues.push({ key: 'elementReconstruction', issue: 'invalid_account', note: INVALID_NOTE('it could not be reconciled with the layers') }) }
-    } else if (schemaOk) issues.push({ key: 'elementReconstruction', issue: 'invalid_account', note: INVALID_NOTE(problems.join('; ')) })
-    else if (!issues.some(i => i.key === 'elementReconstruction' && i.issue === 'not_an_object')) issues.push({ key: 'elementReconstruction', issue: 'unrecognised_account', note: 'is not a recognised account version; kept exactly as stored and NOT used. Your layers are unaffected; rebuild the draft from the Reconstructor to get a current account.' })
+  if (acct !== undefined && !issues.some(i => i.key === 'elementReconstruction' && (i.issue === 'invalid_account' || i.issue === 'unrecognised_account' || i.issue === 'not_an_object'))) {
+    try { out.elementReconstruction = reconcileElementReconstruction(acct, layers as GeneratedLayers) } catch { issues.push({ key: 'elementReconstruction', issue: 'invalid_account', note: INVALID_NOTE('it could not be reconciled with the layers') }) }
   }
   const unique = issues.filter((i, n) => issues.findIndex(j => j.key === i.key && j.issue === i.issue) === n)
   if (unique.length) { out[EXTRAS_REPORT_KEY] = unique; report(unique.filter(i => !extras.issues.includes(i))) }

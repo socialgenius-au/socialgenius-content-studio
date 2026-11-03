@@ -11,12 +11,12 @@ const record = planElementReconstruction([handle(), caption(), person(), laptop(
 
 describe('pickDraftExtras', () => {
   it('takes the Reconstructor records and the assembly table, as copies, and nothing else', () => {
-    const snap = { videoClips: [{ id: 'a' }], textOverlays: [], elementReconstruction: { schema: 'element-reconstruction-v1', items: [{ elementId: 'x' }] }, textReconstruction: { kind: 'text' }, assembly: { createdAt: 'x' }, blueprintPlan: { a: 1 }, canvasFormat: {}, somethingElse: { a: 1 } }
+    const snap = { videoClips: [{ id: 'a' }], textOverlays: [], elementReconstruction: JSON.parse(JSON.stringify(record)), textReconstruction: { kind: 'text' }, assembly: { createdAt: 'x' }, blueprintPlan: { a: 1 }, canvasFormat: {}, somethingElse: { a: 1 } }
     const out = pickDraftExtras(snap)
     expect(Object.keys(out.kept).sort()).toEqual(['assembly', 'elementReconstruction', 'textReconstruction'])
     expect(out.kept.elementReconstruction).toEqual(snap.elementReconstruction); expect(out.kept.elementReconstruction).not.toBe(snap.elementReconstruction)
-    ;(snap.elementReconstruction.items[0] as { elementId: string }).elementId = 'changed'
-    expect((out.kept.elementReconstruction as { items: { elementId: string }[] }).items[0].elementId).toBe('x')            // later edits to the opened draft never reach the copy
+    ;(snap.elementReconstruction.items[0] as { elementId: string | null }).elementId = 'changed'
+    expect((out.kept.elementReconstruction as { items: { elementId: string }[] }).items[0].elementId).toBe(record.items[0].elementId)            // later edits to the opened draft never reach the copy
     expect(out.issues).toEqual([])
   })
   it('NEVER drops a record: an oversized one and a malformed one are kept in full and reported', () => {
@@ -25,7 +25,7 @@ describe('pickDraftExtras', () => {
     const out = pickDraftExtras({ elementReconstruction: big, textReconstruction: [1, 2], imageReconstruction: 'text', backgroundReconstruction: null })
     expect(out.kept.elementReconstruction).toEqual(big)
     expect(out.kept.textReconstruction).toEqual([1, 2]); expect(out.kept.imageReconstruction).toBe('text'); expect(out.kept.backgroundReconstruction).toBeNull()
-    expect(out.issues.map(i => `${i.key}:${i.issue}`).sort()).toEqual(['backgroundReconstruction:not_an_object', 'elementReconstruction:large', 'imageReconstruction:not_an_object', 'textReconstruction:not_an_object'])
+    expect(out.issues.map(i => `${i.key}:${i.issue}`).sort()).toEqual(['backgroundReconstruction:not_an_object', 'elementReconstruction:large', 'elementReconstruction:unrecognised_account', 'imageReconstruction:not_an_object', 'textReconstruction:not_an_object'])
     expect(warn).toHaveBeenCalled(); warn.mockRestore()
   })
   it('a snapshot that is not an object, or has no records, yields nothing, so such a draft is saved exactly as before', () => {
@@ -66,6 +66,14 @@ describe('draftExtrasForSave', () => {
 describe('an invalid record is kept but never used', () => {
   it('a well-formed account passes the gate; a real one reads back', () => {
     expect(validateElementAccount(record)).toEqual([]); expect(readElementReconstruction({ elementReconstruction: record })).toEqual(record)
+  })
+  it('the warning exists the moment the draft is OPENED, before any save, so the status line can show it', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const broken = { ...JSON.parse(JSON.stringify(record)), items: ['nope'] }
+    const opened = pickDraftExtras({ elementReconstruction: broken })
+    expect(opened.issues.map(i => i.issue)).toEqual(['invalid_account']); expect(extrasNote(opened)).toMatch(/not valid and was kept unchanged but not used/)
+    expect(pickDraftExtras({ elementReconstruction: record }).issues).toEqual([]); expect(extrasNote(pickDraftExtras({ elementReconstruction: record }))).toBe('')
+    warn.mockRestore()
   })
   it('the right schema with damaged contents is kept exactly as stored, NOT reconciled, reported with a reason and what to do, and not read as an account', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
