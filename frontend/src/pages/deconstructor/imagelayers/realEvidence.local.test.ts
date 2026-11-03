@@ -49,6 +49,9 @@ d('real VA5368 visual evidence (local only)', () => {
       expect(c.region.w * c.region.h).toBeLessThan(0.2)                                                       // a small mark, not a whole frame
     }
     expect(planImageLayers(rec, {}, {}, ctx).overlays).toEqual([])
+    const kinds = Object.fromEntries(rec.map(c => [c.id, c.classification?.kind]))
+    expect(kinds['rec:2202']).toBe('probable_mark')                                                           // the creator handle that hops between fixed spots
+    expect(kinds['rec:2203']).toBe('caption_text')                                                           // the caption word "Aap", not a logo
   })
   it('puts a drawn region on every sampled still, each timed inside its own scene', () => {
     const drawn = candidates.filter(c => c.origin === 'user_region')

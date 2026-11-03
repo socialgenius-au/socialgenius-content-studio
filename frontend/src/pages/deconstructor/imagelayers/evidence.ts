@@ -3,6 +3,7 @@
 // Output is a normalised, DEEP-FROZEN copy: whatever happens later (candidates, corrections, layers), the evidence itself cannot change.
 import type { ReferenceVideo, VisualObjectSummary } from '../../../types'
 import { deepFreeze, round3, type Rect } from './contract'
+import type { Sighting } from './recurring'
 
 export type ImageEvidenceInput = Pick<ReferenceVideo, 'id' | 'shots'> & Partial<Pick<ReferenceVideo, 'technical_details' | 'rights_status' | 'recurring_elements'>>
 
@@ -39,6 +40,8 @@ export interface RecurringMarkEvidence {
   box: Rect                         // the median box of the members
   frameId: number                   // the sampled still the earliest member was read on
   text: string                      // that member's reading, for the person's orientation only
+  /** Every linked reading with its box and time, in time order: what the classification looks at. */
+  sightings: Sighting[]
 }
 
 export interface ImageEvidence {
@@ -108,6 +111,7 @@ export function readImageEvidence(ref: ImageEvidenceInput, videoAnalysisId: numb
     recurring.push({
       id: r.id, confidence: finite(r.confidence_score) ? r.confidence_score : null, members: members.length, first: round3(finite(r.start_time) ? r.start_time : members[0].start), last: round3(finite(r.end_time) ? r.end_time : members[members.length - 1].start),
       box: { x: round3(median(members.map(m => m.box.x))), y: round3(median(members.map(m => m.box.y))), w: round3(median(members.map(m => m.box.w))), h: round3(median(members.map(m => m.box.h))) }, frameId: frameByPath.get(head.path!)!.id, text: head.text,
+      sightings: members.map(m => ({ text: m.text, box: { x: round3(m.box.x), y: round3(m.box.y), w: round3(m.box.w), h: round3(m.box.h) }, time: round3(m.start) })),
     })
   }
 

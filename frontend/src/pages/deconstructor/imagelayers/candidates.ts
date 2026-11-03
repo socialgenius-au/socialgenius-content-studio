@@ -6,6 +6,7 @@ import type { DetectionEvidence, FrameEvidence, ImageEvidence, RecurringMarkEvid
 import { clampRegion, isValidRegion } from './geometry'
 import { estimateFrameTiming, isTimingUncertain, type FrameTiming } from './timing'
 import { MIN_VISIBLE_SECONDS } from './contract'
+import { KIND_LABEL, classifyRecurring, type RecurringClassification } from './recurring'
 
 export const LOW_CONFIDENCE = 0.5
 
@@ -23,6 +24,8 @@ export interface ImageCandidate {
   timing: FrameTiming
   flags: ImageFlag[]
   defaultInclude: boolean
+  /** Only for an inferred slot: what the evidence says it looks like (a probable mark, a caption word, or unclear) and why. A judgment from a few readings, never a detection. */
+  classification?: RecurringClassification
 }
 
 export const isPerson = (d: Pick<DetectionEvidence, 'label' | 'category'>) => d.category === 'person' || d.label.toLowerCase() === 'person'
@@ -44,13 +47,20 @@ function recurringCandidate(r: RecurringMarkEvidence, frameById: ReadonlyMap<num
   const frame = frameById.get(r.frameId)!
   const base = estimateFrameTiming(frame, evidence.frames)
   const timing: FrameTiming = { ...base, start: r.first, end: Math.max(r.last, r.first + MIN_VISIBLE_SECONDS), startUncertainty: 0, endUncertainty: 0, shotStart: Math.min(base.shotStart, r.first), shotEnd: Math.max(base.shotEnd, r.last) }
+  const classification = classifyRecurring(r.sightings, evidence.durationSeconds, r.first, r.last)
+  const kindFlag: ImageFlag = classification.kind === 'probable_mark'
+    ? { code: 'probable_mark', severity: 'info', message: `Looks like a watermark or logo-like mark: ${classification.reasons.join(' ')}` }
+    : classification.kind === 'caption_text'
+    ? { code: 'caption_like', severity: 'warning', message: `Probably a caption word, not a logo: ${classification.reasons.join(' ')}` }
+    : { code: 'mark_unclear', severity: 'info', message: `Unclear whether this is a mark: ${classification.reasons.join(' ')}` }
   const flags: ImageFlag[] = [
+    kindFlag,
     { code: 'recurring_inferred', severity: 'info', message: `Inferred, not detected: the same text (“${r.text.slice(0, 24)}”) was linked across ${r.members} sightings in about the same place${r.confidence !== null ? ` (${Math.round(r.confidence * 100)}% sure)` : ''}. It may be a watermark or logo, but nothing says what it looks like.` },
     { code: 'span_outer_bounds', severity: 'warning', message: 'The span runs from the first to the last sighting. Whether it was visible in between is not known.' },
     { code: 'box_only', severity: 'info', message: 'Only the box around the recognised text is known. The mark itself is not outlined or separated from its background.' },
   ]
   if (!isValidRegion(r.box)) flags.push({ code: 'region_too_small', severity: 'warning', message: `The region is smaller than ${Math.round(MIN_REGION * 100)}% of the frame, too small to hold an image.` })
-  return { id: `rec:${r.id}`, origin: 'inferred_region', label: 'Recurring mark (inferred from repeated text)', evidence: [{ kind: 'recurring_element', id: r.id }], frame, region: r.box, sourceConfidence: r.confidence, timing, flags, defaultInclude: false }
+  return { id: `rec:${r.id}`, origin: 'inferred_region', label: KIND_LABEL[classification.kind], evidence: [{ kind: 'recurring_element', id: r.id }], frame, region: r.box, sourceConfidence: r.confidence, timing, flags, defaultInclude: false, classification }
 }
 
 export function buildImageCandidates(evidence: ImageEvidence, manual: readonly ManualRegion[] = []): ImageCandidate[] {

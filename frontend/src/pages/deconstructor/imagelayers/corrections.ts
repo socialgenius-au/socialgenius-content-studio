@@ -59,7 +59,7 @@ export function resolveImageCandidate(c: ImageCandidate, correction: ImageCorrec
   const suggestedRegion: Prop<Rect> = c.origin === 'user_region'
     ? fromUser(c.region)
     : c.origin === 'inferred_region'
-    ? { value: c.region, basis: 'inferred', confidence: 'low', note: 'Inferred from text the analysis linked across several moments (a possible watermark or logo): the box around that text, not an outline of the mark.' }
+    ? { value: c.region, basis: 'inferred', confidence: 'low', note: `Inferred from text the analysis linked across several moments (${c.classification ? c.classification.kind === 'caption_text' ? 'probably a caption word, not a logo' : c.classification.kind === 'probable_mark' ? 'a probable watermark or logo' : 'unclear whether it is a mark' : 'a possible watermark or logo'}): the box around that text, not an outline of the mark.` }
     : measured(c.region, 'The detector’s bounding box on this frame. It is a rectangle, not an outline of the object.')
   const asked = isRect(corr.region) ? clampRegion(corr.region) : undefined
   const region = pick('region', corr.region === undefined ? undefined : asked, asked !== undefined && isValidRegion(asked), suggestedRegion)

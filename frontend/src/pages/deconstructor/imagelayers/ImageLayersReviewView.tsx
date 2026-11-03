@@ -57,7 +57,7 @@ const STATUS: Record<ImageItemStatus, { label: string; variant: 'success' | 'war
 }
 
 const FLAG_LABEL: Record<ImageFlag['code'], string> = {
-  person_detected: 'Person', low_confidence: 'Low confidence', box_only: 'Box only', single_frame: 'Seen once', timing_inferred: 'Timing guessed', region_too_small: 'Too small', frame_size_assumed: 'Size not reported', recurring_inferred: 'Inferred', span_outer_bounds: 'Span is outer bounds',
+  person_detected: 'Person', low_confidence: 'Low confidence', box_only: 'Box only', single_frame: 'Seen once', timing_inferred: 'Timing guessed', region_too_small: 'Too small', frame_size_assumed: 'Size not reported', recurring_inferred: 'Inferred', span_outer_bounds: 'Span is outer bounds', probable_mark: 'Probable mark', caption_like: 'Caption-like', mark_unclear: 'Unclear',
 }
 
 const RIGHTS: Record<string, string> = { unknown_third_party: 'someone else’s video (rights unknown)', owned: 'your own video', licensed: 'a licensed video' }
@@ -104,6 +104,7 @@ function Item({ r, item, props }: { r: ResolvedImage; item: ImagePlanItem; props
               ? <>Inferred from repeated text (recurring element {c.evidence[0].id}){c.sourceConfidence !== null ? ` · ${pct(c.sourceConfidence)}` : ''} · the box around that text on the frame at {secs(frame.timestamp)}</>
               : <>A region you marked on the frame at {secs(frame.timestamp)}</>}
           </p>
+          {c.classification && <ul className={`${sub} ml-4 list-disc`} data-testid={`image-classification-${k}`} data-kind={c.classification.kind}>{c.classification.reasons.map(t => <li key={t}>{t}</li>)}</ul>}
           <p className={sub}>Only a rectangle is known. Nothing in the reference has been cut out or separated from its background.</p>
         </div>
       </div>
@@ -198,7 +199,7 @@ export function ImageLayersReviewView(props: ImageLayersReviewViewProps) {
         <>
           <MarkRegion props={props} />
           <p className="text-xs" data-testid="image-layers-summary">
-            <strong>{c.detected}</strong> detected {c.detected === 1 ? 'region' : 'regions'} · <strong>{c.drawn}</strong> marked by you · {c.inferred > 0 && <><strong>{c.inferred}</strong> inferred {c.inferred === 1 ? 'mark' : 'marks'} · </>} <strong>{c.included}</strong> will be added
+            <strong>{c.detected}</strong> detected {c.detected === 1 ? 'region' : 'regions'} · <strong>{c.drawn}</strong> marked by you · {c.inferred > 0 && <><strong>{c.inferred}</strong> inferred {c.inferred === 1 ? 'mark' : 'marks'} ({props.resolved.filter(r => r.candidate.classification?.kind === 'probable_mark').length} probable, {props.resolved.filter(r => r.candidate.classification?.kind === 'caption_text').length} caption-like) · </>} <strong>{c.included}</strong> will be added
             {c.waitingForUpload > 0 && <> · <strong className="text-amber-700">{c.waitingForUpload} ready to add</strong></>}
             {c.waitingForDecision > 0 && <> · {c.waitingForDecision} need an image or a decision</>}
             {c.excluded > 0 && <> · {c.excluded} left out</>}
