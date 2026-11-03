@@ -42,6 +42,8 @@ export interface ElementItem {
   readiness: ReadinessResult['state'] | null
   status: ReconstructionStatus
   layers: LinkedLayer[]
+  /** Every candidate id a layer for this element could carry, so the link survives edits (a deleted layer that is brought back by undo is found again). */
+  candidateIds?: string[]
   reasons: string[]
   limitations: string[]
   /** The analysis rows this item traces back to: M4's evidence references, verbatim. */
@@ -145,7 +147,7 @@ export function planElementReconstruction(elements: readonly VisualElement[], ge
     const layers = linkLayers(e, generated)
     const base = {
       elementId: e.id, class: e.classification.class, classBasis: e.classification.basis, classConfidence: { ...e.classification.confidence }, readiness: e.readiness.state,
-      layers, evidence: e.classification.evidence.map(x => ({ kind: x.kind, id: x.id, certainty: x.certainty })), first: e.first, last: e.last,
+      layers, candidateIds: (({ text, image, shape }) => [...text, ...image, ...shape])(candidateIdsOf(e)), evidence: e.classification.evidence.map(x => ({ kind: x.kind, id: x.id, certainty: x.certainty })), first: e.first, last: e.last,
     }
     if (layers.length > 0) {
       const s = statusOfLayers(layers, generated)
