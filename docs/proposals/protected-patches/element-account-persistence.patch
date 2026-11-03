@@ -1,12 +1,12 @@
 diff --git a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
-index 2a58f90..85dfe02 100644
+index 2a58f90..21dc919 100644
 --- a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
 +++ b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
 @@ -4,6 +4,7 @@ import { clipFadeOpacity } from "../export/transitionFade";
  import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissolveWindow";
  import { previewBlurPx, validCanvasBackdrop } from "../export/canvasBackdrop";
  import { durationCorrection } from "../export/measuredDuration";
-+import { pickDraftExtras } from "../export/draftExtras";
++import { draftExtrasForSave, emptyExtras, pickDraftExtras, type DraftExtras } from "../export/draftExtras";
  import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
  import { useStudio } from "../../../contexts/StudioContext";
  import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
@@ -14,11 +14,11 @@ index 2a58f90..85dfe02 100644
    const [draftsLoading, setDraftsLoading] = useState(false);
    const [draftsError, setDraftsError] = useState<string | null>(null);
  
-+  // Records the draft carries that this editor does not model (the Reconstructor's `*Reconstruction` records and `assembly`): picked up when a draft is opened and written back unchanged on save, so a save from
-+  // the editor no longer drops them. Named keys below always win; nothing here reads or edits a layer.
-+  const draftExtrasRef = useRef<Record<string, unknown>>({});
++  // Records the draft carries that this editor does not model (the Reconstructor's `*Reconstruction` records and its draft-level table): picked up when a draft is opened and written back on save, so a save from the editor no
++  // longer drops them. Named keys below always win; nothing here edits a layer (see export/draftExtras.ts).
++  const draftExtrasRef = useRef<DraftExtras>(emptyExtras());
    const buildProjectSnapshot = (): DraftProjectSnapshot => ({
-+    ...draftExtrasRef.current,
++    ...draftExtrasForSave(draftExtrasRef.current, { textOverlays, mediaOverlays, shapes }),
      videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, subtitles, subtitleStyle, mediaAssets,
      canvasFormat, timeline, canvasItemPositions,
      clientIdentity: PROJECT_CLIENT_IDENTITY,
@@ -34,71 +34,7 @@ index 2a58f90..85dfe02 100644
    // modified by this action.
    const handleNewDraft = () => {
      if (!window.confirm("Start a new project? This clears the current editor (any Saved Draft is not affected — you can reopen it from My Drafts).")) return;
-+    draftExtrasRef.current = {};
++    draftExtrasRef.current = emptyExtras();
      clearLiveProject();
      setBlueprintPlan(null);
      setDraftId(null);
-diff --git a/frontend/src/pages/video-studio-v2/export/draftExtras.test.ts b/frontend/src/pages/video-studio-v2/export/draftExtras.test.ts
-new file mode 100644
-index 0000000..bdd8e09
---- /dev/null
-+++ b/frontend/src/pages/video-studio-v2/export/draftExtras.test.ts
-@@ -0,0 +1,34 @@
-+import { readFileSync } from 'node:fs'
-+import { join } from 'node:path'
-+import { describe, expect, it } from 'vitest'
-+import { DRAFT_EXTRAS_MAX_BYTES, pickDraftExtras } from './draftExtras'
-+
-+describe('pickDraftExtras', () => {
-+  it('takes the Reconstructor records and the assembly table, as copies, and nothing else', () => {
-+    const snap = { videoClips: [{ id: 'a' }], textOverlays: [], elementReconstruction: { schema: 'element-reconstruction-v1', items: [{ elementId: 'x' }] }, textReconstruction: { kind: 'text' }, assembly: { createdAt: 'x' }, blueprintPlan: { a: 1 }, canvasFormat: {}, somethingElse: { a: 1 } }
-+    const out = pickDraftExtras(snap)
-+    expect(Object.keys(out).sort()).toEqual(['assembly', 'elementReconstruction', 'textReconstruction'])
-+    expect(out.elementReconstruction).toEqual(snap.elementReconstruction); expect(out.elementReconstruction).not.toBe(snap.elementReconstruction)
-+    ;(snap.elementReconstruction.items[0] as { elementId: string }).elementId = 'changed'
-+    expect((out.elementReconstruction as { items: { elementId: string }[] }).items[0].elementId).toBe('x')                    // later edits to the opened draft never reach the copy
-+  })
-+  it('ignores anything that is not a plain object of a sane size, and never throws', () => {
-+    expect(pickDraftExtras(null)).toEqual({}); expect(pickDraftExtras('x')).toEqual({}); expect(pickDraftExtras({})).toEqual({})
-+    expect(pickDraftExtras({ elementReconstruction: [1, 2], textReconstruction: 'x', imageReconstruction: null })).toEqual({})
-+    expect(pickDraftExtras({ elementReconstruction: { big: 'x'.repeat(DRAFT_EXTRAS_MAX_BYTES + 10) } })).toEqual({})
-+    const cyc: Record<string, unknown> = {}; cyc.self = cyc
-+    expect(() => pickDraftExtras({ elementReconstruction: cyc })).not.toThrow(); expect(pickDraftExtras({ elementReconstruction: cyc })).toEqual({})
-+  })
-+  it('a draft without any records yields nothing, so such a draft is saved exactly as before', () => {
-+    expect(pickDraftExtras({ videoClips: [], textOverlays: [], canvasFormat: {} })).toEqual({})
-+  })
-+})
-+
-+describe('wiring in the editor (source check)', () => {
-+  const src = readFileSync(join(__dirname, '../components/CreateEditTab.tsx'), 'utf8').replace(/\r\n/g, '\n')
-+  it('picks the extras up when a draft is opened, writes them first (named keys win), and clears them for a new project', () => {
-+    expect(src).toContain('draftExtrasRef.current = pickDraftExtras(snap)')
-+    expect(src).toMatch(/buildProjectSnapshot = \(\): DraftProjectSnapshot => \(\{\n\s+\.\.\.draftExtrasRef\.current,\n\s+videoClips,/)
-+    expect(src).toMatch(/draftExtrasRef\.current = \{\};\n\s+clearLiveProject\(\);/)
-+  })
-+})
-diff --git a/frontend/src/pages/video-studio-v2/export/draftExtras.ts b/frontend/src/pages/video-studio-v2/export/draftExtras.ts
-new file mode 100644
-index 0000000..07f62b7
---- /dev/null
-+++ b/frontend/src/pages/video-studio-v2/export/draftExtras.ts
-@@ -0,0 +1,18 @@
-+// Draft "extras": records a draft carries that the editor does not model itself (the Reconstructor's `*Reconstruction` records, e.g. `elementReconstruction`, and the `assembly` table). The editor's save writes
-+// ONLY the keys it models, and a save replaces the whole project JSON, so these were silently dropped the first time a draft was saved from the editor. This picks them up when a draft is opened so the save can
-+// write them back unchanged. It never reads, interprets or edits them, never touches a layer, and takes only keys of that shape and only plain objects of a sane size.
-+export const DRAFT_EXTRAS_MAX_BYTES = 512 * 1024
-+const EXTRA_KEY = /^(assembly|[a-z][A-Za-z]*Reconstruction)$/
-+
-+export function pickDraftExtras(snapshot: unknown): Record<string, unknown> {
-+  const out: Record<string, unknown> = {}
-+  if (!snapshot || typeof snapshot !== 'object') return out
-+  for (const [k, v] of Object.entries(snapshot as Record<string, unknown>)) {
-+    if (!EXTRA_KEY.test(k) || !v || typeof v !== 'object' || Array.isArray(v)) continue
-+    try {
-+      const text = JSON.stringify(v)
-+      if (text.length <= DRAFT_EXTRAS_MAX_BYTES) out[k] = JSON.parse(text)                 // a copy: later edits to the opened draft can never reach it
-+    } catch { /* not serialisable: not carried */ }
-+  }
-+  return out
-+}
