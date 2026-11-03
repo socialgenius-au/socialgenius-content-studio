@@ -13,10 +13,10 @@ export {
 export const IMAGE_ENGINE_VERSION = '1.0.0'
 
 export type ImageSource = 'user_upload' | 'reference_frame_crop'
-export type CandidateOrigin = 'detected_region' | 'user_region'
+export type CandidateOrigin = 'detected_region' | 'user_region' | 'inferred_region'
 
 export type ImageFlagCode =
-  | 'person_detected' | 'low_confidence' | 'box_only' | 'single_frame' | 'timing_inferred' | 'region_too_small' | 'frame_size_assumed'
+  | 'person_detected' | 'low_confidence' | 'box_only' | 'single_frame' | 'timing_inferred' | 'region_too_small' | 'frame_size_assumed' | 'recurring_inferred' | 'span_outer_bounds'
 export type Severity = 'info' | 'warning'
 export interface ImageFlag { code: ImageFlagCode; severity: Severity; message: string }
 

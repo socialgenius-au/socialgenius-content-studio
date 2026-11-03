@@ -48,7 +48,7 @@ export interface ImageReconstructionRecord {
   videoAnalysisId: number
   createdAt: string
   timeMap: { mode: TimeMap['mode']; factor: number; referenceSeconds: number | null; planSeconds: number }
-  counts: { detected: number; drawn: number; included: number; waitingForUpload: number; waitingForDecision: number; excluded: number; duplicates: number; outside: number; invalid: number }
+  counts: { detected: number; drawn: number; inferred: number; included: number; waitingForUpload: number; waitingForDecision: number; excluded: number; duplicates: number; outside: number; invalid: number }
   items: ImagePlanItem[]
   /** What this record does NOT claim. Always false. */
   claims: typeof NO_CLAIMS
@@ -131,7 +131,7 @@ export function planImageLayers(candidates: readonly ImageCandidate[], correctio
     schema: RECONSTRUCTION_SCHEMA, kind: 'image', engineVersion: IMAGE_ENGINE_VERSION, referenceVideoId: ctx.referenceVideoId, videoAnalysisId: ctx.videoAnalysisId, createdAt: ctx.createdAt,
     timeMap: { mode: ctx.timeMap.mode, factor: round3(ctx.timeMap.factor), referenceSeconds: ctx.timeMap.referenceSeconds, planSeconds: ctx.timeMap.planSeconds },
     counts: {
-      detected: candidates.filter(c => c.origin === 'detected_region').length, drawn: candidates.filter(c => c.origin === 'user_region').length,
+      detected: candidates.filter(c => c.origin === 'detected_region').length, drawn: candidates.filter(c => c.origin === 'user_region').length, inferred: candidates.filter(c => c.origin === 'inferred_region').length,
       included: count('included'), waitingForUpload: count('ready_to_upload'), waitingForDecision: count('needs_image', 'needs_rights', 'crop_outdated'),
       excluded: count('excluded_default', 'excluded_user'), duplicates: count('duplicate'), outside: count('outside_timeline'), invalid: count('invalid'),
     },

@@ -4,7 +4,7 @@
 import type { ReferenceVideo, VisualObjectSummary } from '../../../types'
 import { deepFreeze, round3, type Rect } from './contract'
 
-export type ImageEvidenceInput = Pick<ReferenceVideo, 'id' | 'shots'> & Partial<Pick<ReferenceVideo, 'technical_details' | 'rights_status'>>
+export type ImageEvidenceInput = Pick<ReferenceVideo, 'id' | 'shots'> & Partial<Pick<ReferenceVideo, 'technical_details' | 'rights_status' | 'recurring_elements'>>
 
 export interface FrameEvidence {
   id: number
@@ -29,6 +29,18 @@ export interface DetectionEvidence {
   timestamp: number
 }
 
+/** A mark the analysis INFERRED by linking the same recognised text across several moments (a possible watermark or logo). It is not a detection: it says the same text sat in about the same place, and nothing about what it looks like. */
+export interface RecurringMarkEvidence {
+  id: number                        // the Recurring Element's own id
+  confidence: number | null
+  members: number                   // how many occurrence groups were linked
+  first: number                     // outer bounds of its members (visibility in the gaps between them is never claimed)
+  last: number
+  box: Rect                         // the median box of the members
+  frameId: number                   // the sampled still the earliest member was read on
+  text: string                      // that member's reading, for the person's orientation only
+}
+
 export interface ImageEvidence {
   referenceVideoId: number
   videoAnalysisId: number
@@ -37,6 +49,7 @@ export interface ImageEvidence {
   frameSize: { width: number; height: number } | null
   frames: FrameEvidence[]           // every sampled still, chronological
   detections: DetectionEvidence[]
+  recurring: RecurringMarkEvidence[]
 }
 
 const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
@@ -55,6 +68,8 @@ export function readImageEvidence(ref: ImageEvidenceInput, videoAnalysisId: numb
   const frames: FrameEvidence[] = []
   const detections: DetectionEvidence[] = []
   const frameById = new Map<number, FrameEvidence>()
+  const frameByPath = new Map<string, FrameEvidence>()
+  const textById = new Map<number, { box: Rect; path: string | null; text: string; start: number }>()
   let maxShotEnd = 0
 
   for (const shot of ref.shots ?? []) {
@@ -67,7 +82,11 @@ export function readImageEvidence(ref: ImageEvidenceInput, videoAnalysisId: numb
         id: f.id, shotId: shot.id, shotStart, shotEnd, order: finite(f.order) ? f.order : 0, timestamp: round3(f.timestamp), path: f.asset_file_path,
         width: finite(f.width) && f.width > 0 ? f.width : frameSize?.width ?? null, height: finite(f.height) && f.height > 0 ? f.height : frameSize?.height ?? null,
       }
-      frames.push(fe); frameById.set(fe.id, fe)
+      frames.push(fe); frameById.set(fe.id, fe); frameByPath.set(fe.path, fe)
+    }
+    for (const t of shot.text_elements ?? []) {
+      const b = boxOf(t)
+      if (b && finite(t.id)) textById.set(t.id, { box: b, path: typeof t.source_frame_asset_file_path === 'string' ? t.source_frame_asset_file_path : null, text: typeof t.text === 'string' ? t.text : '', start: finite(t.start_time) ? t.start_time : shotStart })
     }
     for (const v of shot.visual_objects ?? []) {
       const b = boxOf(v)
@@ -80,10 +99,22 @@ export function readImageEvidence(ref: ImageEvidenceInput, videoAnalysisId: numb
     }
   }
 
+  const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b), m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
+  const recurring: RecurringMarkEvidence[] = []
+  for (const r of ref.recurring_elements ?? []) {
+    const members = (r.member_text_element_ids ?? []).map(id => textById.get(id)).filter((m): m is NonNullable<typeof m> => !!m).sort((a, b) => a.start - b.start)
+    const head = members.find(m => m.path !== null && frameByPath.has(m.path))                  // a member read on a still we have: the slot has to sit on a frame the person can see
+    if (!finite(r.id) || members.length < 2 || !head) continue
+    recurring.push({
+      id: r.id, confidence: finite(r.confidence_score) ? r.confidence_score : null, members: members.length, first: round3(finite(r.start_time) ? r.start_time : members[0].start), last: round3(finite(r.end_time) ? r.end_time : members[members.length - 1].start),
+      box: { x: round3(median(members.map(m => m.box.x))), y: round3(median(members.map(m => m.box.y))), w: round3(median(members.map(m => m.box.w))), h: round3(median(members.map(m => m.box.h))) }, frameId: frameByPath.get(head.path!)!.id, text: head.text,
+    })
+  }
+
   const probed = tech?.container?.duration_seconds ?? tech?.video?.duration_seconds
   return deepFreeze({
     referenceVideoId: ref.id, videoAnalysisId, durationSeconds: finite(probed) && probed > 0 ? probed : maxShotEnd > 0 ? maxShotEnd : null,
     rightsStatus: ref.rights_status ?? null, frameSize,
-    frames: frames.sort((a, b) => a.timestamp - b.timestamp || a.id - b.id), detections: detections.sort((a, b) => a.timestamp - b.timestamp || a.id - b.id),
+    frames: frames.sort((a, b) => a.timestamp - b.timestamp || a.id - b.id), detections: detections.sort((a, b) => a.timestamp - b.timestamp || a.id - b.id), recurring: recurring.sort((a, b) => a.first - b.first || a.id - b.id),
   })
 }

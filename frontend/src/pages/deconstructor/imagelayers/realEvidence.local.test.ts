@@ -38,6 +38,18 @@ d('real VA5368 visual evidence (local only)', () => {
     expect(detected.every(c => !c.defaultInclude && c.flags.some(f => f.code === 'person_detected'))).toBe(true)
     expect(planImageLayers(detected, {}, {}, ctx).overlays).toEqual([])
   })
+  it('finds the recurring creator watermark the analysis INFERRED, offers it as an inferred slot (never a detection), and leaves it out by default', () => {
+    const rec = candidates.filter(c => c.origin === 'inferred_region')
+    if (!(ref as unknown as { recurring_elements?: unknown[] }).recurring_elements?.length) return           // this evidence file was written without recurring elements
+    expect(evidence.recurring.length).toBeGreaterThanOrEqual(1)
+    expect(rec).toHaveLength(evidence.recurring.length)
+    for (const c of rec) {
+      expect(c.defaultInclude).toBe(false); expect(c.flags.some(f => f.code === 'recurring_inferred')).toBe(true)
+      expect(c.timing.end).toBeGreaterThan(c.timing.start)
+      expect(c.region.w * c.region.h).toBeLessThan(0.2)                                                       // a small mark, not a whole frame
+    }
+    expect(planImageLayers(rec, {}, {}, ctx).overlays).toEqual([])
+  })
   it('puts a drawn region on every sampled still, each timed inside its own scene', () => {
     const drawn = candidates.filter(c => c.origin === 'user_region')
     expect(drawn).toHaveLength(9)

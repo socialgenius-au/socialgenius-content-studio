@@ -561,9 +561,9 @@ export interface ImageReconstructionProvenance {
   referenceVideoId: number
   videoAnalysisId: number
   engineVersion: string
-  /** Where the SLOT came from: a detector's bounding box, or a region the person drew on a reference frame. */
-  origin: 'detected_region' | 'user_region'
-  evidence: { kind: 'visual_object'; id: number }[]
+  /** Where the SLOT came from: a detector's bounding box (measured), a region the person drew on a reference frame (set by you), or a mark the analysis INFERRED from repeated on-screen text (a possible watermark or logo; never a detection). */
+  origin: 'detected_region' | 'user_region' | 'inferred_region'
+  evidence: ({ kind: 'visual_object'; id: number } | { kind: 'recurring_element'; id: number })[]
   /** The reference frame the region sits on, and when it was taken (a single sampled instant, not a duration). */
   frame: { id: number | null; path: string | null; timestamp: number; width: number | null; height: number | null }
   /** The region exactly as it stood when approved: normalised 0..1 on that frame, top-left origin. */

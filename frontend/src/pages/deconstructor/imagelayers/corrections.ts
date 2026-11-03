@@ -58,6 +58,8 @@ export function resolveImageCandidate(c: ImageCandidate, correction: ImageCorrec
   const sNote = `A guess between sampled frames: it could be off by up to about ${Math.max(t.startUncertainty, t.endUncertainty).toFixed(1)} s, and one sighting says nothing about how long it stayed.${map.mode === 'fit' ? ' Stretched to fit the blueprint length.' : ''}`
   const suggestedRegion: Prop<Rect> = c.origin === 'user_region'
     ? fromUser(c.region)
+    : c.origin === 'inferred_region'
+    ? { value: c.region, basis: 'inferred', confidence: 'low', note: 'Inferred from text the analysis linked across several moments (a possible watermark or logo): the box around that text, not an outline of the mark.' }
     : measured(c.region, 'The detector’s bounding box on this frame. It is a rectangle, not an outline of the object.')
   const asked = isRect(corr.region) ? clampRegion(corr.region) : undefined
   const region = pick('region', corr.region === undefined ? undefined : asked, asked !== undefined && isValidRegion(asked), suggestedRegion)

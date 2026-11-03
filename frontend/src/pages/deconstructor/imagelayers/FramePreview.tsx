@@ -4,12 +4,13 @@ import { useRef, useState } from 'react'
 import { MIN_REGION, type Rect } from './contract'
 import { rectFromPoints } from './geometry'
 
-export interface PreviewRect { rect: Rect; kind: 'selected' | 'detected' | 'drawn' }
+export interface PreviewRect { rect: Rect; kind: 'selected' | 'detected' | 'drawn' | 'inferred' }
 
 const STYLE: Record<PreviewRect['kind'], string> = {
   selected: 'border-2 border-emerald-500 bg-emerald-500/15',
   detected: 'border border-dashed border-amber-500 bg-amber-500/10',
   drawn: 'border border-sky-500 bg-sky-500/10',
+  inferred: 'border border-dotted border-violet-500 bg-violet-500/10',
 }
 
 export interface FramePreviewProps {

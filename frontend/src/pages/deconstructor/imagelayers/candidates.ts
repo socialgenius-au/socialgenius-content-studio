@@ -2,9 +2,10 @@
 // A candidate is a SLOT (where something stood, on which frame, at which instant), never an image: what fills it is chosen at review. Nothing here edits the
 // evidence, and nothing is included by default that is the reference's own footage (people) or that the detector itself is unsure of.
 import { MIN_REGION, type CandidateOrigin, type ImageFlag, type Rect } from './contract'
-import type { DetectionEvidence, FrameEvidence, ImageEvidence } from './evidence'
+import type { DetectionEvidence, FrameEvidence, ImageEvidence, RecurringMarkEvidence } from './evidence'
 import { clampRegion, isValidRegion } from './geometry'
 import { estimateFrameTiming, isTimingUncertain, type FrameTiming } from './timing'
+import { MIN_VISIBLE_SECONDS } from './contract'
 
 export const LOW_CONFIDENCE = 0.5
 
@@ -15,7 +16,7 @@ export interface ImageCandidate {
   id: string
   origin: CandidateOrigin
   label: string                                    // "person (detector label)" or "Region you marked"
-  evidence: { kind: 'visual_object'; id: number }[]   // empty for a drawn region
+  evidence: ({ kind: 'visual_object'; id: number } | { kind: 'recurring_element'; id: number })[]   // empty for a drawn region
   frame: FrameEvidence
   region: Rect                                     // the suggestion: the detector's box, or the region as drawn
   sourceConfidence: number | null                  // the detector's own score; null for a drawn region
@@ -38,6 +39,20 @@ const candidateFlags = (origin: CandidateOrigin, label: string, person: boolean,
   return flags
 }
 
+/** A slot from a recurring mark the analysis INFERRED from repeated text. Never included by default; the span is the outer bounds of its sightings, not a claim that it was visible in between. */
+function recurringCandidate(r: RecurringMarkEvidence, frameById: ReadonlyMap<number, FrameEvidence>, evidence: ImageEvidence): ImageCandidate {
+  const frame = frameById.get(r.frameId)!
+  const base = estimateFrameTiming(frame, evidence.frames)
+  const timing: FrameTiming = { ...base, start: r.first, end: Math.max(r.last, r.first + MIN_VISIBLE_SECONDS), startUncertainty: 0, endUncertainty: 0, shotStart: Math.min(base.shotStart, r.first), shotEnd: Math.max(base.shotEnd, r.last) }
+  const flags: ImageFlag[] = [
+    { code: 'recurring_inferred', severity: 'info', message: `Inferred, not detected: the same text (“${r.text.slice(0, 24)}”) was linked across ${r.members} sightings in about the same place${r.confidence !== null ? ` (${Math.round(r.confidence * 100)}% sure)` : ''}. It may be a watermark or logo, but nothing says what it looks like.` },
+    { code: 'span_outer_bounds', severity: 'warning', message: 'The span runs from the first to the last sighting. Whether it was visible in between is not known.' },
+    { code: 'box_only', severity: 'info', message: 'Only the box around the recognised text is known. The mark itself is not outlined or separated from its background.' },
+  ]
+  if (!isValidRegion(r.box)) flags.push({ code: 'region_too_small', severity: 'warning', message: `The region is smaller than ${Math.round(MIN_REGION * 100)}% of the frame, too small to hold an image.` })
+  return { id: `rec:${r.id}`, origin: 'inferred_region', label: 'Recurring mark (inferred from repeated text)', evidence: [{ kind: 'recurring_element', id: r.id }], frame, region: r.box, sourceConfidence: r.confidence, timing, flags, defaultInclude: false }
+}
+
 export function buildImageCandidates(evidence: ImageEvidence, manual: readonly ManualRegion[] = []): ImageCandidate[] {
   const frameById = new Map(evidence.frames.map(f => [f.id, f] as const))
   const out: ImageCandidate[] = []
@@ -52,6 +67,7 @@ export function buildImageCandidates(evidence: ImageEvidence, manual: readonly M
       defaultInclude: !person && !(d.confidence !== null && d.confidence < LOW_CONFIDENCE),
     })
   }
+  for (const r of evidence.recurring ?? []) { if (frameById.has(r.frameId)) out.push(recurringCandidate(r, frameById, evidence)) }
   for (const m of manual) {
     const frame = frameById.get(m.frameId)
     if (!frame) continue
