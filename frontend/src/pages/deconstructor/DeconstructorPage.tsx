@@ -21,6 +21,8 @@ import { TranscriptReview } from './transcript/TranscriptReview'
 import type { SpeechPlan } from './transcript'
 import { BackgroundReview } from './background/BackgroundReview'
 import { ReconstructionManifest } from './manifest'
+import { VisualElementsReview } from './visual/VisualElementsReview'
+import type { ElementReconstructionPlan } from './reconstruction'
 import type { BackgroundPlan, OrderPolicy, SceneFootage } from './background'
 
 type Step = 'reference' | 'anatomy' | 'mechanisms' | 'intent' | 'blueprint' | 'create'
@@ -75,6 +77,9 @@ export default function DeconstructorPage() {
   const [sceneFootage, setSceneFootage] = useState<SceneFootage>({})
   // M2.6 (preview): the read-only manifest of everything the panels above will write -- only with ?m2=manifest.
   const manifestOn = m2Has('manifest')
+  const visualOn = m2Has('visual')
+  const [elementPlan, setElementPlan] = useState<ElementReconstructionPlan | null>(null)
+  const generatedLayers = useMemo(() => ({ textOverlays: textLayersOn && textLayers ? textLayers.overlays : [], mediaOverlays: imageLayersOn && imageLayers ? imageLayers.overlays : [], shapes: backgroundOn && backgroundPlan ? backgroundPlan.shapes : [] }), [textLayersOn, textLayers, imageLayersOn, imageLayers, backgroundOn, backgroundPlan])
   const [useMessage, setUseMessage] = useState<string | null>(null)
 
   const d = useDeconstructor(routeId)
@@ -166,8 +171,9 @@ export default function DeconstructorPage() {
           {step === 'create' && plan && transitionsOn && <TransitionsReview key={`tr:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTransitionPlan} />}
           {step === 'create' && plan && transcriptOn && <TranscriptReview key={`sp:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setSpeechPlan} />}
           {step === 'create' && plan && backgroundOn && <BackgroundReview key={`bg:${routeId}:${plan.blueprintId}`} plan={plan} footage={sceneFootage} generated={{ shapes: [], mediaOverlays: textlessPictures(imageLayersOn ? imageLayers : null), textOverlays: textLayersOn && textLayers ? textLayers.overlays : [], subtitles: transcriptOn && speechPlan ? speechPlan.subtitles : [] }} onPlan={setBackgroundPlan} onPolicy={setCompositionPolicy} onCanvasColour={setCanvasColour} />}
+          {step === 'create' && plan && visualOn && <VisualElementsReview key={`vis:${routeId}:${plan.blueprintId}`} plan={plan} generated={generatedLayers} onElementPlan={setElementPlan} />}
           {step === 'create' && plan && manifestOn && <ReconstructionManifest key={`mf:${routeId}:${plan.blueprintId}`} plan={plan} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} backgroundPlan={backgroundOn ? backgroundPlan : null} speechPlan={transcriptOn ? speechPlan : null} transitionPlan={transitionsOn ? transitionPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : 'as_generated'} canvasColour={backgroundOn ? canvasColour : null} />}
-          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} speechPlan={transcriptOn ? speechPlan : null} backgroundPlan={backgroundOn ? backgroundPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : null} canvasColour={backgroundOn ? canvasColour : null} onFootage={backgroundOn ? setSceneFootage : undefined} />}
+          {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} speechPlan={transcriptOn ? speechPlan : null} backgroundPlan={backgroundOn ? backgroundPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : null} canvasColour={backgroundOn ? canvasColour : null} elementPlan={visualOn ? elementPlan : null} onFootage={backgroundOn ? setSceneFootage : undefined} />}
         </>
       )}
     </div>
