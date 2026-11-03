@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import type { BlueprintPlan } from '../../video-studio-v2/blueprint/blueprintPlan'
 import { planComposition, type OrderPolicy } from '../background/composition'
 import type { BackgroundPlan } from '../background/materialize'
+import type { ElementReconstructionPlan } from '../reconstruction/plan'
 import type { ImageLayerPlan } from '../imagelayers/materialize'
 import type { SpeechPlan } from '../transcript/materialize'
 import type { TextLayerPlan } from '../textlayers/materialize'
@@ -19,15 +20,16 @@ export interface ReconstructionManifestProps {
   transitionPlan: TransitionPlan | null
   compositionPolicy: OrderPolicy
   canvasColour?: string | null
+  elementPlan?: ElementReconstructionPlan | null
 }
 
-export function ReconstructionManifest({ plan, textLayers, imageLayers, backgroundPlan, speechPlan, transitionPlan, compositionPolicy, canvasColour }: ReconstructionManifestProps) {
+export function ReconstructionManifest({ plan, textLayers, imageLayers, backgroundPlan, speechPlan, transitionPlan, compositionPolicy, canvasColour, elementPlan }: ReconstructionManifestProps) {
   const manifest = useMemo(() => {
     const generated = { shapes: backgroundPlan ? backgroundPlan.shapes : [], mediaOverlays: imageLayers ? imageLayers.overlays : [], textOverlays: textLayers ? textLayers.overlays : [], subtitles: speechPlan ? speechPlan.subtitles : [] }
     return buildManifest({
       scenes: plan.scenes.map(s => ({ sceneNumber: s.sceneNumber, startTime: s.startTime, endTime: s.endTime })), textLayers, imageLayers, backgroundPlan, speechPlan, transitionPlan,
-      composition: { plan: planComposition(generated, compositionPolicy), policy: compositionPolicy }, canvasColour,
+      composition: { plan: planComposition(generated, compositionPolicy), policy: compositionPolicy }, canvasColour, elementPlan,
     })
-  }, [plan.scenes, textLayers, imageLayers, backgroundPlan, speechPlan, transitionPlan, compositionPolicy, canvasColour])
+  }, [plan.scenes, textLayers, imageLayers, backgroundPlan, speechPlan, transitionPlan, compositionPolicy, canvasColour, elementPlan])
   return <ManifestView manifest={manifest} />
 }

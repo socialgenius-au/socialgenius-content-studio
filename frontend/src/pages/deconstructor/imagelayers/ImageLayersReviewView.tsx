@@ -57,7 +57,7 @@ const STATUS: Record<ImageItemStatus, { label: string; variant: 'success' | 'war
 }
 
 const FLAG_LABEL: Record<ImageFlag['code'], string> = {
-  person_detected: 'Person', low_confidence: 'Low confidence', box_only: 'Box only', single_frame: 'Seen once', timing_inferred: 'Timing guessed', region_too_small: 'Too small', frame_size_assumed: 'Size not reported', recurring_inferred: 'Inferred', span_outer_bounds: 'Span is outer bounds',
+  person_detected: 'Person', low_confidence: 'Low confidence', box_only: 'Box only', single_frame: 'Seen once', timing_inferred: 'Timing guessed', region_too_small: 'Too small', frame_size_assumed: 'Size not reported', recurring_inferred: 'Inferred', span_outer_bounds: 'Span is outer bounds', from_classified_element: 'Your classification',
 }
 
 const RIGHTS: Record<string, string> = { unknown_third_party: 'someone else’s video (rights unknown)', owned: 'your own video', licensed: 'a licensed video' }
@@ -90,7 +90,7 @@ function Item({ r, item, props }: { r: ResolvedImage; item: ImagePlanItem; props
         </label>
         <Badge variant={st.variant} data-testid={`image-status-${k}`}>{st.label}</Badge>
         {c.flags.filter(f => f.code !== 'frame_size_assumed').map(f => <Badge key={f.code} variant={f.severity === 'warning' ? 'warning' : 'outline'} title={f.message}>{FLAG_LABEL[f.code]}</Badge>)}
-        {c.origin === 'user_region' && <button type="button" className={`${button} ml-auto`} onClick={() => props.onRemoveRegion(id)} data-testid={`image-remove-region-${k}`} aria-label="Remove this region"><Trash2 className="inline h-3 w-3" /> Remove region</button>}
+        {c.origin === 'user_region' && !c.source && <button type="button" className={`${button} ml-auto`} onClick={() => props.onRemoveRegion(id)} data-testid={`image-remove-region-${k}`} aria-label="Remove this region"><Trash2 className="inline h-3 w-3" /> Remove region</button>}
       </div>
 
       <div className="flex gap-3">
@@ -100,6 +100,8 @@ function Item({ r, item, props }: { r: ResolvedImage; item: ImagePlanItem; props
           <p className={sub} data-testid={`image-evidence-${k}`}>
             {c.origin === 'detected_region'
               ? <>Detector label “{c.label.replace(' (detector label)', '')}” (item {c.evidence[0].id}) · {pct(c.sourceConfidence)} · one box on the frame at {secs(frame.timestamp)}</>
+              : c.source
+              ? <>From the element “{c.source.summary}”, which you classified as {c.source.classLabel.toLowerCase()} (analysis evidence: {c.source.evidence.map(e => `${e.kind.replace(/_/g, ' ')} ${e.id}`).join(', ')}) · the box the analysis saw it in, on the frame at {secs(frame.timestamp)}</>
               : c.origin === 'inferred_region'
               ? <>Inferred from repeated text (recurring element {c.evidence[0].id}){c.sourceConfidence !== null ? ` · ${pct(c.sourceConfidence)}` : ''} · the box around that text on the frame at {secs(frame.timestamp)}</>
               : <>A region you marked on the frame at {secs(frame.timestamp)}</>}
@@ -152,7 +154,8 @@ function Item({ r, item, props }: { r: ResolvedImage; item: ImagePlanItem; props
           </label>
           <span className={sub}>PNG (transparent works), JPG or WebP</span>
         </div>
-        <details className="text-xs" data-testid={`image-crop-box-${k}`}>
+        {c.userAssetRequired && <p className={sub} data-testid={`image-asset-required-${k}`}>Only your own image can fill this slot. A crop of the reference is not offered here: it would be the reference’s pixels, and the analysis never saw what the mark looks like.</p>}
+        {!c.userAssetRequired && <details className="text-xs" data-testid={`image-crop-box-${k}`}>
           <summary className="cursor-pointer text-muted-foreground">Or use a crop of the reference frame</summary>
           <div className="mt-2 space-y-2">
             <p className={sub}>This copies a plain rectangle of the reference’s own low-resolution still, background included. It is not a cleaned-up or isolated image, and it is enlarged to fit, so it will look soft. The reference is {rightsLabel}.</p>
@@ -162,7 +165,7 @@ function Item({ r, item, props }: { r: ResolvedImage; item: ImagePlanItem; props
             </label>
             <button type="button" className={button} disabled={!r.rightsAcknowledged || props.busy} onClick={() => props.onCrop(id)} data-testid={`image-crop-${k}`}>Crop this region</button>
           </div>
-        </details>
+        </details>}
       </div>
 
       {['needs_rights', 'crop_outdated', 'outside_timeline', 'invalid', 'duplicate'].includes(item.status) && (

@@ -18,11 +18,11 @@ export type VisualInput = Pick<ReferenceVideo, 'id' | 'shots'> & Partial<Pick<Re
 interface PersistentLite { id: number; member_visual_object_ids?: number[]; start_time?: number; end_time?: number; linkage_confidence?: number | null; native_label?: string | null }
 
 /** A flat band measured on the reference's stills (see ../background). Optional input: it is measured in the browser from pixels, not stored by the analysis. */
-export interface BarEvidence { sceneNumber: number; side: 'top' | 'bottom' | 'left' | 'right'; size: number; color: string; uniformity: number; framesSeen: number; framesMeasured: number; flat: boolean; startTime: number; endTime: number; frameIds: number[] }
+export interface BarEvidence { sceneNumber: number; side: 'top' | 'bottom' | 'left' | 'right'; size: number; /** how far in from its edge a gradient's inner step starts (share of the frame) */ offset?: number; /** which half of a gradient this step is; absent for a flat bar */ part?: 'outer' | 'inner'; color: string; uniformity: number; framesSeen: number; framesMeasured: number; flat: boolean; startTime: number; endTime: number; frameIds: number[] }
 
 export interface BuildOptions { videoAnalysisId: number; background?: readonly BarEvidence[]; corrections?: ClassCorrections }
 
-const barBox = (b: Pick<BarEvidence, 'side' | 'size'>): Rect => (b.side === 'top' ? { x: 0, y: 0, w: 1, h: b.size } : b.side === 'bottom' ? { x: 0, y: 1 - b.size, w: 1, h: b.size } : b.side === 'left' ? { x: 0, y: 0, w: b.size, h: 1 } : { x: 1 - b.size, y: 0, w: b.size, h: 1 })
+const barBox = (b: Pick<BarEvidence, 'side' | 'size' | 'offset'>): Rect => { const o = b.offset ?? 0; return b.side === 'top' ? { x: 0, y: o, w: 1, h: b.size } : b.side === 'bottom' ? { x: 0, y: 1 - o - b.size, w: 1, h: b.size } : b.side === 'left' ? { x: o, y: 0, w: b.size, h: 1 } : { x: 1 - o - b.size, y: 0, w: b.size, h: 1 } }
 
 // ── text tracks ──────────────────────────────────────────────────────────────────────────────────
 
@@ -123,7 +123,7 @@ export function buildVisualElements(ref: VisualInput, opts: BuildOptions): Visua
     })
   }
   for (const b of opts.background ?? []) {
-    const id = `bt:${b.sceneNumber}:${b.side}`
+    const id = `bt:${b.sceneNumber}:${b.side}${b.part ? `:${b.part}` : ''}`
     const box = barBox(b)
     const t: Track = { id, kind: 'background', shotIds: [], observations: [{ time: b.startTime, frameId: b.frameIds[0] ?? null, shotId: null, box, ocrConfidence: null, evidence: { kind: 'background_measurement', id, certainty: 'MEASURED', note: `A ${b.side} band of ${b.color}, ${(b.size * 100).toFixed(1)}% of the frame, measured on ${b.framesSeen} of ${b.framesMeasured} stills.` } }],
       intervals: [{ start: round3(b.startTime), end: round3(b.endTime), observed: [round3(b.startTime)], kind: 'span_between_sightings', shotId: null }], movement: movementOf([box]), linkage: { by: 'single', ids: [], crossesShotBoundary: false } }

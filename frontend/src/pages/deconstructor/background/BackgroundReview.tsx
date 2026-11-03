@@ -14,6 +14,7 @@ import type { BackgroundEvidence } from './evidence'
 import { browserPixelReader, evidenceKey, loadBackgroundEvidence, type PixelReader } from './loadEvidence'
 import { planBackground, type BackgroundPlan } from './materialize'
 import { canvasColourOptions } from './canvasColour'
+import type { BarEvidence } from '../visual/build'
 import type { SceneFootage } from './footageReach'
 import { BackgroundReviewView, type ReviewState } from './BackgroundReviewView'
 
@@ -30,10 +31,12 @@ export interface BackgroundReviewProps {
   onPolicy: (policy: OrderPolicy) => void
   /** Optional: the measured bar colour the person chose as the editor's canvas colour, or null. */
   onCanvasColour?: (colour: string | null) => void
+  /** Optional: the bars (and gradient steps) as MEASURED, for the visual-elements panel. Measured evidence only: your own colour or size choices are layer edits, not evidence. */
+  onBars?: (bars: BarEvidence[]) => void
   deps?: Partial<BackgroundDeps>
 }
 
-export function BackgroundReview({ plan, generated, footage, onPlan, onPolicy, onCanvasColour, deps: override }: BackgroundReviewProps) {
+export function BackgroundReview({ plan, generated, footage, onPlan, onPolicy, onCanvasColour, onBars, deps: override }: BackgroundReviewProps) {
   const deps = useMemo(() => ({ ...defaultBackgroundDeps(), ...override }), [override])
   const [evidence, setEvidence] = useState<BackgroundEvidence | null>(null)
   const [state, setState] = useState<ReviewState>({ kind: 'loading' })
@@ -60,6 +63,9 @@ export function BackgroundReview({ plan, generated, footage, onPlan, onPolicy, o
     () => planBackground(candidates, corrections, { referenceVideoId: plan.referenceVideoId, videoAnalysisId: plan.videoAnalysisId, planSeconds: plan.totalSeconds, existingShapes: [], createdAt: deps.now().toISOString() }),
     [candidates, corrections, plan.referenceVideoId, plan.videoAnalysisId, plan.totalSeconds, deps],
   )
+  const bars = useMemo<BarEvidence[]>(() => candidates.map(c => ({ sceneNumber: c.sceneNumber, side: c.side, size: c.size, ...(c.part ? { part: c.part, offset: c.offset ?? 0 } : {}), color: c.color, uniformity: c.uniformity, framesSeen: c.framesSeen, framesMeasured: c.framesMeasured, flat: !c.part, startTime: c.startTime, endTime: c.endTime, frameIds: [...c.frameIds] })), [candidates])
+  useEffect(() => { onBars?.(bars) }, [bars, onBars])
+  useEffect(() => () => onBars?.([]), [onBars])
   const colourOptions = useMemo(() => canvasColourOptions(candidates, corrections), [candidates, corrections])
   const chosenColour = canvasColour && colourOptions.some(o => o.colour === canvasColour) ? canvasColour : null          // a colour that is no longer one of the bars (you changed it) is dropped, never kept silently
   const composition = useMemo(() => planComposition({ ...generated, shapes: [...generated.shapes, ...layerPlan.shapes] }, policy), [generated, layerPlan, policy])

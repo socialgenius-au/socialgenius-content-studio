@@ -10,7 +10,9 @@ import { MIN_VISIBLE_SECONDS } from './contract'
 export const LOW_CONFIDENCE = 0.5
 
 /** A region a person drew on a frame. It is not evidence (nothing detected it); it is the person's own statement of where an image stood. */
-export interface ManualRegion { id: string; frameId: number; region: Rect }
+/** Where a slot came from when it was made from a visual element a person classified (M4/M5): which element, the class THEY set, and the analysis evidence it was seen with. Never evidence of what the mark looks like. */
+export interface ElementSource { elementId: string; classLabel: string; summary: string; evidence: { kind: string; id: number | string; certainty: string }[] }
+export interface ManualRegion { id: string; frameId: number; region: Rect; source?: ElementSource }
 
 export interface ImageCandidate {
   id: string
@@ -23,6 +25,9 @@ export interface ImageCandidate {
   timing: FrameTiming
   flags: ImageFlag[]
   defaultInclude: boolean
+  /** Set when the slot was made from an element the person classified as a logo or graphic: only their own image may fill it (no crop of the reference is offered). */
+  source?: ElementSource
+  userAssetRequired?: boolean
 }
 
 export const isPerson = (d: Pick<DetectionEvidence, 'label' | 'category'>) => d.category === 'person' || d.label.toLowerCase() === 'person'
@@ -74,8 +79,9 @@ export function buildImageCandidates(evidence: ImageEvidence, manual: readonly M
     const region = clampRegion(m.region)
     const timing = estimateFrameTiming(frame, evidence.frames)
     out.push({
-      id: m.id, origin: 'user_region', label: 'Region you marked', evidence: [], frame, region, sourceConfidence: null, timing,
-      flags: candidateFlags('user_region', 'region', false, null, region, timing, frame), defaultInclude: true,
+      id: m.id, origin: 'user_region', label: m.source ? `Image slot from an element you classified as ${m.source.classLabel.toLowerCase()}` : 'Region you marked', evidence: [], frame, region, sourceConfidence: null, timing,
+      flags: [...(m.source ? [{ code: 'from_classified_element' as const, severity: 'info' as const, message: `You classified “${m.source.summary}” as ${m.source.classLabel.toLowerCase()}. The analysis only saw its text or box here; nothing in it says what the mark looks like, so only your own image can fill this slot.` }] : []), ...candidateFlags('user_region', 'region', false, null, region, timing, frame)],
+      defaultInclude: true, ...(m.source ? { source: m.source, userAssetRequired: true } : {}),
     })
   }
   return out.sort((a, b) => a.frame.timestamp - b.frame.timestamp || (a.origin === b.origin ? a.id.localeCompare(b.id) : a.origin === 'detected_region' ? -1 : 1))

@@ -43,12 +43,14 @@ export interface ImageLayersReviewProps {
   plan: BlueprintPlan
   /** Receives the approved layers (or null when nothing is approved and uploaded) every time the review changes. */
   onPlan: (plan: ImageLayerPlan | null) => void
+  /** Optional: slots made from visual elements a person classified as a logo or graphic (M4/M5). They replace any earlier ones; only the person's own image can fill them. */
+  suggestedRegions?: readonly ManualRegion[]
   deps?: Partial<ImageLayersDeps>
 }
 
 interface Uploaded { token: string; assetId: number; url: string }
 
-export function ImageLayersReview({ plan, onPlan, deps: override }: ImageLayersReviewProps) {
+export function ImageLayersReview({ plan, onPlan, suggestedRegions, deps: override }: ImageLayersReviewProps) {
   const deps = useMemo(() => ({ ...defaultImageLayersDeps(), ...override }), [override])
   const [evidence, setEvidence] = useState<ImageEvidence | null>(null)
   const [state, setState] = useState<ReviewState>({ kind: 'loading' })
@@ -78,6 +80,8 @@ export function ImageLayersReview({ plan, onPlan, deps: override }: ImageLayersR
   }, [deps, plan.referenceVideoId, plan.videoAnalysisId])
   useEffect(() => () => { for (const p of Object.values(live.current)) URL.revokeObjectURL(p.previewUrl) }, [])        // pictures held in memory are released when the panel goes away
 
+  const suggestedKey = JSON.stringify(suggestedRegions ?? [])
+  useEffect(() => { setManual(m => [...m.filter(x => !x.id.startsWith('user:ve:')), ...((suggestedRegions ?? []) as ManualRegion[])]) }, [suggestedKey])       // eslint-disable-line react-hooks/exhaustive-deps
   const candidates = useMemo(() => (evidence ? buildImageCandidates(evidence, manual) : []), [evidence, manual])
   const timeMap = useMemo(() => makeTimeMap(evidence?.durationSeconds ?? null, plan.totalSeconds, modeOverride), [evidence, plan.totalSeconds, modeOverride])
   const resolved = useMemo(() => candidates.map(c => resolveImageCandidate(c, corrections[c.id], timeMap)), [candidates, corrections, timeMap])

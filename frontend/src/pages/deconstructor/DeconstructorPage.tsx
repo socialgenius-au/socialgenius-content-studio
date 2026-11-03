@@ -23,6 +23,8 @@ import { BackgroundReview } from './background/BackgroundReview'
 import { ReconstructionManifest } from './manifest'
 import { VisualElementsReview } from './visual/VisualElementsReview'
 import type { ElementReconstructionPlan } from './reconstruction'
+import type { BarEvidence } from './visual/build'
+import type { ManualRegion } from './imagelayers/candidates'
 import type { BackgroundPlan, OrderPolicy, SceneFootage } from './background'
 
 type Step = 'reference' | 'anatomy' | 'mechanisms' | 'intent' | 'blueprint' | 'create'
@@ -79,6 +81,8 @@ export default function DeconstructorPage() {
   const manifestOn = m2Has('manifest')
   const visualOn = m2Has('visual')
   const [elementPlan, setElementPlan] = useState<ElementReconstructionPlan | null>(null)
+  const [bars, setBars] = useState<BarEvidence[]>([])
+  const [slotRegions, setSlotRegions] = useState<ManualRegion[]>([])
   const generatedLayers = useMemo(() => ({ textOverlays: textLayersOn && textLayers ? textLayers.overlays : [], mediaOverlays: imageLayersOn && imageLayers ? imageLayers.overlays : [], shapes: backgroundOn && backgroundPlan ? backgroundPlan.shapes : [] }), [textLayersOn, textLayers, imageLayersOn, imageLayers, backgroundOn, backgroundPlan])
   const [useMessage, setUseMessage] = useState<string | null>(null)
 
@@ -167,12 +171,12 @@ export default function DeconstructorPage() {
           {step === 'blueprint' && <BlueprintStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} onNew={() => setStep('intent')} useMessage={useMessage} />}
           {step === 'create' && <CreateStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} sceneSummary={sceneSummary} useMessage={useMessage} />}
           {step === 'create' && plan && textLayersOn && <TextLayersReview key={`text:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTextLayers} />}
-          {step === 'create' && plan && imageLayersOn && <ImageLayersReview key={`image:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setImageLayers} />}
+          {step === 'create' && plan && imageLayersOn && <ImageLayersReview key={`image:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setImageLayers} suggestedRegions={visualOn ? slotRegions : undefined} />}
           {step === 'create' && plan && transitionsOn && <TransitionsReview key={`tr:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTransitionPlan} />}
           {step === 'create' && plan && transcriptOn && <TranscriptReview key={`sp:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setSpeechPlan} />}
-          {step === 'create' && plan && backgroundOn && <BackgroundReview key={`bg:${routeId}:${plan.blueprintId}`} plan={plan} footage={sceneFootage} generated={{ shapes: [], mediaOverlays: textlessPictures(imageLayersOn ? imageLayers : null), textOverlays: textLayersOn && textLayers ? textLayers.overlays : [], subtitles: transcriptOn && speechPlan ? speechPlan.subtitles : [] }} onPlan={setBackgroundPlan} onPolicy={setCompositionPolicy} onCanvasColour={setCanvasColour} />}
-          {step === 'create' && plan && visualOn && <VisualElementsReview key={`vis:${routeId}:${plan.blueprintId}`} plan={plan} generated={generatedLayers} onElementPlan={setElementPlan} />}
-          {step === 'create' && plan && manifestOn && <ReconstructionManifest key={`mf:${routeId}:${plan.blueprintId}`} plan={plan} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} backgroundPlan={backgroundOn ? backgroundPlan : null} speechPlan={transcriptOn ? speechPlan : null} transitionPlan={transitionsOn ? transitionPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : 'as_generated'} canvasColour={backgroundOn ? canvasColour : null} />}
+          {step === 'create' && plan && backgroundOn && <BackgroundReview key={`bg:${routeId}:${plan.blueprintId}`} plan={plan} footage={sceneFootage} generated={{ shapes: [], mediaOverlays: textlessPictures(imageLayersOn ? imageLayers : null), textOverlays: textLayersOn && textLayers ? textLayers.overlays : [], subtitles: transcriptOn && speechPlan ? speechPlan.subtitles : [] }} onPlan={setBackgroundPlan} onPolicy={setCompositionPolicy} onCanvasColour={setCanvasColour} onBars={visualOn ? setBars : undefined} />}
+          {step === 'create' && plan && visualOn && <VisualElementsReview key={`vis:${routeId}:${plan.blueprintId}`} plan={plan} generated={generatedLayers} onElementPlan={setElementPlan} background={backgroundOn ? bars : undefined} onSlotRegions={setSlotRegions} imagePanelOn={imageLayersOn} />}
+          {step === 'create' && plan && manifestOn && <ReconstructionManifest key={`mf:${routeId}:${plan.blueprintId}`} plan={plan} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} backgroundPlan={backgroundOn ? backgroundPlan : null} speechPlan={transcriptOn ? speechPlan : null} transitionPlan={transitionsOn ? transitionPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : 'as_generated'} canvasColour={backgroundOn ? canvasColour : null} elementPlan={visualOn ? elementPlan : null} />}
           {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} speechPlan={transcriptOn ? speechPlan : null} backgroundPlan={backgroundOn ? backgroundPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : null} canvasColour={backgroundOn ? canvasColour : null} elementPlan={visualOn ? elementPlan : null} onFootage={backgroundOn ? setSceneFootage : undefined} />}
         </>
       )}

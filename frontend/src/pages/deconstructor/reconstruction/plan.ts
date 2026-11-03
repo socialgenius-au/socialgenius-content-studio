@@ -97,8 +97,8 @@ export function candidateIdsOf(e: VisualElement): { text: string[]; image: strin
     for (const o of e.track.observations) if (o.evidence.kind === 'visual_object') out.image.push(`det:${o.evidence.id}`)
     out.image.push(`user:ve:${e.id}`)
   } else {
-    const m = /^bt:(\d+):(\w+)$/.exec(e.id)
-    if (m) out.shape.push(`bg:${m[1]}:${m[2]}`, `bg:${m[1]}:${m[2]}:outer`, `bg:${m[1]}:${m[2]}:inner`)
+    const m = /^bt:(\d+):([a-z]+)(?::(outer|inner))?$/.exec(e.id)
+    if (m) out.shape.push(m[3] ? `bg:${m[1]}:${m[2]}:${m[3]}` : `bg:${m[1]}:${m[2]}`)
   }
   return out
 }

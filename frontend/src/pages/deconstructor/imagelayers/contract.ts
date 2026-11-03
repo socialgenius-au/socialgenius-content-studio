@@ -16,7 +16,7 @@ export type ImageSource = 'user_upload' | 'reference_frame_crop'
 export type CandidateOrigin = 'detected_region' | 'user_region' | 'inferred_region'
 
 export type ImageFlagCode =
-  | 'person_detected' | 'low_confidence' | 'box_only' | 'single_frame' | 'timing_inferred' | 'region_too_small' | 'frame_size_assumed' | 'recurring_inferred' | 'span_outer_bounds'
+  | 'person_detected' | 'low_confidence' | 'box_only' | 'single_frame' | 'timing_inferred' | 'region_too_small' | 'frame_size_assumed' | 'recurring_inferred' | 'span_outer_bounds' | 'from_classified_element' | 'from_classified_element'
 export type Severity = 'info' | 'warning'
 export interface ImageFlag { code: ImageFlagCode; severity: Severity; message: string }
 

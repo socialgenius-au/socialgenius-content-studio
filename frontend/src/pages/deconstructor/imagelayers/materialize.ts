@@ -111,8 +111,9 @@ export function planImageLayers(candidates: readonly ImageCandidate[], correctio
     if (existingIds.has(id)) { add('duplicate', 'This is already in the draft as a reconstruction layer.'); continue }
 
     const image = images[c.id]
-    if (!image) { add('needs_image', 'Choose an image of your own, or a crop of the reference, to put here.'); continue }
+    if (!image) { add('needs_image', c.userAssetRequired ? 'Choose your own image to put here: this is a mark you classified, and nothing in the analysis says what it looks like.' : 'Choose an image of your own, or a crop of the reference, to put here.'); continue }
     const crop = image.source === 'reference_frame_crop'
+    if (crop && c.userAssetRequired) { add('needs_image', 'This slot is for a mark you classified: only your own image can fill it, not a crop of the reference.'); continue }
     if (crop && !r.rightsAcknowledged) { add('needs_rights', 'Confirm you may use this part of the reference video, or choose an image of your own.'); continue }
     if (crop && (!image.cropRegion || !sameRegion(image.cropRegion, r.region.value))) { add('crop_outdated', 'The region changed after the crop was made. Crop it again, or choose an image of your own.'); continue }
     const fit = fitContain(r.region.value, image, ctx.canvas)

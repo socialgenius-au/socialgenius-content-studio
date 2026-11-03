@@ -1,0 +1,1952 @@
+{
+ "id": 2098,
+ "asset_id": 3896,
+ "original_filename": "ref2.mp4",
+ "asset_file_path": "uploads\\880\\13cdaca46c184f598afa6c00cda5cf6c.mp4",
+ "source": "upload",
+ "original_url": null,
+ "rights_status": "unknown_third_party",
+ "latest_analysis": {
+  "id": 2155,
+  "analysis_tier": "standard",
+  "status": "complete",
+  "created_at": "2026-11-03T04:05:15.549307Z",
+  "started_at": "2026-11-03T04:05:15.762559Z",
+  "completed_at": "2026-11-03T04:05:15.886112Z",
+  "error": null,
+  "pass_status": {
+   "technical_probe": "complete",
+   "scene_segmentation": "complete",
+   "visual_evidence": "complete",
+   "text_analysis": "complete",
+   "visual_objects": "complete",
+   "visual_persistence": "complete"
+  }
+ },
+ "technical_details": {
+  "schema_version": 1,
+  "probe": {
+   "mechanism": "ffmpeg_stderr_probe",
+   "ffmpeg_build": "7.1-essentials_build-www.gyan.dev"
+  },
+  "container": {
+   "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+   "format_long_name": null,
+   "duration_seconds": 24.0,
+   "size_bytes": 231657,
+   "bitrate_kbps": 77
+  },
+  "video": {
+   "codec_name": "h264",
+   "codec_long_name": null,
+   "profile": "High",
+   "width": 1280,
+   "height": 720,
+   "coded_width": null,
+   "coded_height": null,
+   "pixel_format": "yuv420p",
+   "sample_aspect_ratio": null,
+   "display_aspect_ratio": null,
+   "frame_rate": 30.0,
+   "average_frame_rate": null,
+   "time_base": "1/15360",
+   "frame_count": null,
+   "bitrate_kbps": 66,
+   "rotation_degrees": null,
+   "duration_seconds": null
+  },
+  "audio": {
+   "present": true,
+   "codec_name": "aac",
+   "codec_long_name": null,
+   "sample_rate_hz": 44100,
+   "channels": 2,
+   "channel_layout": "stereo",
+   "bitrate_kbps": 2,
+   "duration_seconds": null
+  },
+  "streams": {
+   "count": 2,
+   "video_count": 1,
+   "audio_count": 1
+  }
+ },
+ "shots": [
+  {
+   "id": 1869,
+   "order": 0,
+   "start_time": 0.0,
+   "end_time": 8.0,
+   "certainty": "MEASURED",
+   "evidence_summary": "Start of the reference video — no preceding detected cut.",
+   "produced_by_pass": "scene_cut_detection_v1",
+   "frames": [
+    {
+     "id": 317,
+     "order": 0,
+     "timestamp": 0.15,
+     "extraction_method": "shot_start",
+     "width": 1280,
+     "height": 720,
+     "measurements": {
+      "width": 1280,
+      "height": 720,
+      "luminance_mean": 58.1,
+      "is_black_frame": false,
+      "sharpness_score": 731.49
+     },
+     "certainty": "MEASURED",
+     "evidence_summary": "Representative frame extracted via ffmpeg at 0.150s (shot_start); luminance_mean=58.1, sharpness_score=731.49.",
+     "produced_by_pass": "representative_frame_extraction_v1",
+     "asset_file_path": "uploads\\880\\cce7149a87d749d4a73b6c5dc46f9398.jpg"
+    },
+    {
+     "id": 318,
+     "order": 1,
+     "timestamp": 4.0,
+     "extraction_method": "shot_midpoint",
+     "width": 1280,
+     "height": 720,
+     "measurements": {
+      "width": 1280,
+      "height": 720,
+      "luminance_mean": 60.86,
+      "is_black_frame": false,
+      "sharpness_score": 1165.07
+     },
+     "certainty": "MEASURED",
+     "evidence_summary": "Representative frame extracted via ffmpeg at 4.000s (shot_midpoint); luminance_mean=60.86, sharpness_score=1165.07.",
+     "produced_by_pass": "representative_frame_extraction_v1",
+     "asset_file_path": "uploads\\880\\676d46f8ab124ea5bdaf2d890a9cc135.jpg"
+    },
+    {
+     "id": 319,
+     "order": 2,
+     "timestamp": 7.85,
+     "extraction_method": "shot_end",
+     "width": 1280,
+     "height": 720,
+     "measurements": {
+      "width": 1280,
+      "height": 720,
+      "luminance_mean": 57.81,
+      "is_black_frame": false,
+      "sharpness_score": 919.34
+     },
+     "certainty": "MEASURED",
+     "evidence_summary": "Representative frame extracted via ffmpeg at 7.850s (shot_end); luminance_mean=57.81, sharpness_score=919.34.",
+     "produced_by_pass": "representative_frame_extraction_v1",
+     "asset_file_path": "uploads\\880\\5c624eb2063749b48f4a419ac55b16e3.jpg"
+    }
+   ],
+   "text_elements": [
+    {
+     "id": 326,
+     "text": "@northwind studio",
+     "start_time": 0.15,
+     "end_time": 7.85,
+     "x": 0.78125,
+     "y": 0.05138888888888889,
+     "width": 0.19140625,
+     "height": 0.05,
+     "certainty": "MEASURED",
+     "confidence_score": 0.6933395105380643,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       11,
+       19,
+       46
+      ],
+      "dominant_background_color_rgb": [
+       157,
+       164,
+       179
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+hi) confidence=0.693. Canonical (highest-confidence) reading of an Occurrence Group with 10 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\ed855d4b146d4051acd060ef1d943a00.jpg",
+     "observations": [
+      {
+       "id": 334,
+       "text": "@northwind studio",
+       "timestamp": 0.15,
+       "x": 0.78125,
+       "y": 0.05138888888888889,
+       "width": 0.19140625,
+       "height": 0.05,
+       "confidence_score": 0.5960011463188596,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.596.",
+       "source_frame_asset_file_path": "uploads\\880\\cce7149a87d749d4a73b6c5dc46f9398.jpg"
+      },
+      {
+       "id": 335,
+       "text": "@northwind studio",
+       "timestamp": 0.15,
+       "x": 0.78125,
+       "y": 0.05138888888888889,
+       "width": 0.19140625,
+       "height": 0.05,
+       "confidence_score": 0.5657945856200436,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.566.",
+       "source_frame_asset_file_path": "uploads\\880\\cce7149a87d749d4a73b6c5dc46f9398.jpg"
+      },
+      {
+       "id": 326,
+       "text": "@northwind studio",
+       "timestamp": 1.3333333333333333,
+       "x": 0.78125,
+       "y": 0.05138888888888889,
+       "width": 0.19140625,
+       "height": 0.05,
+       "confidence_score": 0.6933395105380643,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.693. Canonical (highest-confidence) reading of an Occurrence Group with 10 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\ed855d4b146d4051acd060ef1d943a00.jpg"
+      },
+      {
+       "id": 330,
+       "text": "@northwind studio",
+       "timestamp": 1.3333333333333333,
+       "x": 0.78125,
+       "y": 0.05138888888888889,
+       "width": 0.19140625,
+       "height": 0.05,
+       "confidence_score": 0.6022400877562395,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.602.",
+       "source_frame_asset_file_path": "uploads\\880\\ed855d4b146d4051acd060ef1d943a00.jpg"
+      },
+      {
+       "id": 327,
+       "text": "@northwind studio",
+       "timestamp": 4.0,
+       "x": 0.78125,
+       "y": 0.05138888888888889,
+       "width": 0.19140625,
+       "height": 0.05,
+       "confidence_score": 0.6933395105380643,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.693.",
+       "source_frame_asset_file_path": "uploads\\880\\676d46f8ab124ea5bdaf2d890a9cc135.jpg"
+      },
+      {
+       "id": 331,
+       "text": "@northwind studio",
+       "timestamp": 4.0,
+       "x": 0.78125,
+       "y": 0.05138888888888889,
+       "width": 0.19140625,
+       "height": 0.05,
+       "confidence_score": 0.6022400877562395,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.602.",
+       "source_frame_asset_file_path": "uploads\\880\\676d46f8ab124ea5bdaf2d890a9cc135.jpg"
+      },
+      {
+       "id": 332,
+       "text": "@northwind studio",
+       "timestamp": 6.666666666666666,
+       "x": 0.78125,
+       "y": 0.05138888888888889,
+       "width": 0.19140625,
+       "height": 0.05,
+       "confidence_score": 0.6022400877562395,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.602.",
+       "source_frame_asset_file_path": "uploads\\880\\85cb93c8519941f9aac66f7e164ad18b.jpg"
+      },
+      {
+       "id": 328,
+       "text": "@northwind studio",
+       "timestamp": 6.666666666666666,
+       "x": 0.78125,
+       "y": 0.05138888888888889,
+       "width": 0.19140625,
+       "height": 0.05,
+       "confidence_score": 0.6933395105380643,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.693.",
+       "source_frame_asset_file_path": "uploads\\880\\85cb93c8519941f9aac66f7e164ad18b.jpg"
+      },
+      {
+       "id": 329,
+       "text": "@northwind studio",
+       "timestamp": 7.85,
+       "x": 0.78125,
+       "y": 0.05138888888888889,
+       "width": 0.19140625,
+       "height": 0.05,
+       "confidence_score": 0.6933395105380643,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.693.",
+       "source_frame_asset_file_path": "uploads\\880\\5c624eb2063749b48f4a419ac55b16e3.jpg"
+      },
+      {
+       "id": 333,
+       "text": "@northwind studio",
+       "timestamp": 7.85,
+       "x": 0.78125,
+       "y": 0.05138888888888889,
+       "width": 0.19140625,
+       "height": 0.05,
+       "confidence_score": 0.6022400877562395,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.602.",
+       "source_frame_asset_file_path": "uploads\\880\\5c624eb2063749b48f4a419ac55b16e3.jpg"
+      }
+     ]
+    },
+    {
+     "id": 336,
+     "text": "Spring Launch २०२६",
+     "start_time": 1.3333333333333333,
+     "end_time": 4.0,
+     "x": 0.2265625,
+     "y": 0.28888888888888886,
+     "width": 0.5484375,
+     "height": 0.13611111111111113,
+     "certainty": "MEASURED",
+     "confidence_score": 0.9402852505426976,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       23,
+       45,
+       95
+      ],
+      "dominant_background_color_rgb": [
+       165,
+       177,
+       197
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+hi) confidence=0.940. Canonical (highest-confidence) reading of an Occurrence Group with 4 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\ed855d4b146d4051acd060ef1d943a00.jpg",
+     "observations": [
+      {
+       "id": 336,
+       "text": "Spring Launch २०२६",
+       "timestamp": 1.3333333333333333,
+       "x": 0.2265625,
+       "y": 0.28888888888888886,
+       "width": 0.5484375,
+       "height": 0.13611111111111113,
+       "confidence_score": 0.9402852505426976,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.940. Canonical (highest-confidence) reading of an Occurrence Group with 4 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\ed855d4b146d4051acd060ef1d943a00.jpg"
+      },
+      {
+       "id": 338,
+       "text": "Spring Launch 2026",
+       "timestamp": 1.3333333333333333,
+       "x": 0.2265625,
+       "y": 0.28888888888888886,
+       "width": 0.5484375,
+       "height": 0.13611111111111113,
+       "confidence_score": 0.8647568986468489,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.865.",
+       "source_frame_asset_file_path": "uploads\\880\\ed855d4b146d4051acd060ef1d943a00.jpg"
+      },
+      {
+       "id": 337,
+       "text": "Spring Launch २०२६",
+       "timestamp": 4.0,
+       "x": 0.2265625,
+       "y": 0.28888888888888886,
+       "width": 0.5484375,
+       "height": 0.13611111111111113,
+       "confidence_score": 0.9361602241024075,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.936.",
+       "source_frame_asset_file_path": "uploads\\880\\676d46f8ab124ea5bdaf2d890a9cc135.jpg"
+      },
+      {
+       "id": 339,
+       "text": "Spring Launch 2026",
+       "timestamp": 4.0,
+       "x": 0.2265625,
+       "y": 0.28888888888888886,
+       "width": 0.5484375,
+       "height": 0.13611111111111113,
+       "confidence_score": 0.863082043020504,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.863.",
+       "source_frame_asset_file_path": "uploads\\880\\676d46f8ab124ea5bdaf2d890a9cc135.jpg"
+      }
+     ]
+    },
+    {
+     "id": 340,
+     "text": "Welcome to the product tour",
+     "start_time": 1.3333333333333333,
+     "end_time": 1.3333333333333333,
+     "x": 0.2625,
+     "y": 0.8597222222222223,
+     "width": 0.47734375,
+     "height": 0.08749999999999991,
+     "certainty": "MEASURED",
+     "confidence_score": 0.7832381528329925,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       15,
+       32,
+       60
+      ],
+      "dominant_background_color_rgb": [
+       146,
+       169,
+       200
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+hi) confidence=0.783. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\ed855d4b146d4051acd060ef1d943a00.jpg",
+     "observations": [
+      {
+       "id": 340,
+       "text": "Welcome to the product tour",
+       "timestamp": 1.3333333333333333,
+       "x": 0.2625,
+       "y": 0.8597222222222223,
+       "width": 0.47734375,
+       "height": 0.08749999999999991,
+       "confidence_score": 0.7832381528329925,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.783. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\ed855d4b146d4051acd060ef1d943a00.jpg"
+      },
+      {
+       "id": 341,
+       "text": "Welcome to the product tour",
+       "timestamp": 1.3333333333333333,
+       "x": 0.2625,
+       "y": 0.8597222222222223,
+       "width": 0.47734375,
+       "height": 0.08749999999999991,
+       "confidence_score": 0.5785194737393097,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.579.",
+       "source_frame_asset_file_path": "uploads\\880\\ed855d4b146d4051acd060ef1d943a00.jpg"
+      }
+     ]
+    },
+    {
+     "id": 342,
+     "text": "Let me show you three features",
+     "start_time": 4.0,
+     "end_time": 4.0,
+     "x": 0.240625,
+     "y": 0.8680555555555556,
+     "width": 0.5203125000000001,
+     "height": 0.07777777777777772,
+     "certainty": "MEASURED",
+     "confidence_score": 0.907522277511059,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       15,
+       32,
+       60
+      ],
+      "dominant_background_color_rgb": [
+       158,
+       179,
+       206
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+hi) confidence=0.908. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\676d46f8ab124ea5bdaf2d890a9cc135.jpg",
+     "observations": [
+      {
+       "id": 342,
+       "text": "Let me show you three features",
+       "timestamp": 4.0,
+       "x": 0.240625,
+       "y": 0.8680555555555556,
+       "width": 0.5203125000000001,
+       "height": 0.07777777777777772,
+       "confidence_score": 0.907522277511059,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.908. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\676d46f8ab124ea5bdaf2d890a9cc135.jpg"
+      },
+      {
+       "id": 343,
+       "text": "Let me show you three features",
+       "timestamp": 4.0,
+       "x": 0.240625,
+       "y": 0.8680555555555556,
+       "width": 0.5203125000000001,
+       "height": 0.07777777777777772,
+       "confidence_score": 0.6195473185731859,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.620.",
+       "source_frame_asset_file_path": "uploads\\880\\676d46f8ab124ea5bdaf2d890a9cc135.jpg"
+      }
+     ]
+    },
+    {
+     "id": 344,
+     "text": "First, the live dashboard",
+     "start_time": 6.666666666666666,
+     "end_time": 7.85,
+     "x": 0.29765625,
+     "y": 0.8652777777777778,
+     "width": 0.40234374999999994,
+     "height": 0.07638888888888884,
+     "certainty": "MEASURED",
+     "confidence_score": 0.6881331107948708,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       15,
+       32,
+       59
+      ],
+      "dominant_background_color_rgb": [
+       164,
+       184,
+       210
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+hi) confidence=0.688. Canonical (highest-confidence) reading of an Occurrence Group with 4 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\85cb93c8519941f9aac66f7e164ad18b.jpg",
+     "observations": [
+      {
+       "id": 344,
+       "text": "First, the live dashboard",
+       "timestamp": 6.666666666666666,
+       "x": 0.29765625,
+       "y": 0.8652777777777778,
+       "width": 0.40234374999999994,
+       "height": 0.07638888888888884,
+       "confidence_score": 0.6881331107948708,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.688. Canonical (highest-confidence) reading of an Occurrence Group with 4 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\85cb93c8519941f9aac66f7e164ad18b.jpg"
+      },
+      {
+       "id": 346,
+       "text": "First, the live dashboard",
+       "timestamp": 6.666666666666666,
+       "x": 0.29765625,
+       "y": 0.8652777777777778,
+       "width": 0.40234374999999994,
+       "height": 0.07638888888888884,
+       "confidence_score": 0.6010894735568186,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.601.",
+       "source_frame_asset_file_path": "uploads\\880\\85cb93c8519941f9aac66f7e164ad18b.jpg"
+      },
+      {
+       "id": 347,
+       "text": "First, the live dashboard",
+       "timestamp": 7.85,
+       "x": 0.29765625,
+       "y": 0.8652777777777778,
+       "width": 0.40234374999999994,
+       "height": 0.07638888888888884,
+       "confidence_score": 0.5899160651928157,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.590.",
+       "source_frame_asset_file_path": "uploads\\880\\5c624eb2063749b48f4a419ac55b16e3.jpg"
+      },
+      {
+       "id": 345,
+       "text": "First, the live dashboard",
+       "timestamp": 7.85,
+       "x": 0.29765625,
+       "y": 0.8652777777777778,
+       "width": 0.40234374999999994,
+       "height": 0.07638888888888884,
+       "confidence_score": 0.6682386887685179,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.668.",
+       "source_frame_asset_file_path": "uploads\\880\\5c624eb2063749b48f4a419ac55b16e3.jpg"
+      }
+     ]
+    }
+   ],
+   "visual_objects": [],
+   "persistent_visual_elements": [],
+   "same_frame_layout_pairs": [],
+   "layout_stability": [],
+   "global_motion_evidence": null,
+   "local_motion_evidence": null,
+   "local_motion_dynamics": null
+  },
+  {
+   "id": 1870,
+   "order": 1,
+   "start_time": 8.0,
+   "end_time": 16.0,
+   "certainty": "MEASURED",
+   "evidence_summary": "Detected via ffmpeg scene-difference filter (threshold=0.30, boundary score=0.9815).",
+   "produced_by_pass": "scene_cut_detection_v1",
+   "frames": [
+    {
+     "id": 320,
+     "order": 0,
+     "timestamp": 8.15,
+     "extraction_method": "shot_start",
+     "width": 1280,
+     "height": 720,
+     "measurements": {
+      "width": 1280,
+      "height": 720,
+      "luminance_mean": 170.04,
+      "is_black_frame": false,
+      "sharpness_score": 146.9
+     },
+     "certainty": "MEASURED",
+     "evidence_summary": "Representative frame extracted via ffmpeg at 8.150s (shot_start); luminance_mean=170.04, sharpness_score=146.9.",
+     "produced_by_pass": "representative_frame_extraction_v1",
+     "asset_file_path": "uploads\\880\\ece6aaa49e494d9990238f6524dc06d6.jpg"
+    },
+    {
+     "id": 321,
+     "order": 1,
+     "timestamp": 12.0,
+     "extraction_method": "shot_midpoint",
+     "width": 1280,
+     "height": 720,
+     "measurements": {
+      "width": 1280,
+      "height": 720,
+      "luminance_mean": 163.06,
+      "is_black_frame": false,
+      "sharpness_score": 435.68
+     },
+     "certainty": "MEASURED",
+     "evidence_summary": "Representative frame extracted via ffmpeg at 12.000s (shot_midpoint); luminance_mean=163.06, sharpness_score=435.68.",
+     "produced_by_pass": "representative_frame_extraction_v1",
+     "asset_file_path": "uploads\\880\\bc3c295690c1402d85212ded4c327e9c.jpg"
+    },
+    {
+     "id": 322,
+     "order": 2,
+     "timestamp": 15.85,
+     "extraction_method": "shot_end",
+     "width": 1280,
+     "height": 720,
+     "measurements": {
+      "width": 1280,
+      "height": 720,
+      "luminance_mean": 167.93,
+      "is_black_frame": false,
+      "sharpness_score": 284.77
+     },
+     "certainty": "MEASURED",
+     "evidence_summary": "Representative frame extracted via ffmpeg at 15.850s (shot_end); luminance_mean=167.93, sharpness_score=284.77.",
+     "produced_by_pass": "representative_frame_extraction_v1",
+     "asset_file_path": "uploads\\880\\61a7e3ad92bf417e881bbeb405eb85a2.jpg"
+    }
+   ],
+   "text_elements": [
+    {
+     "id": 348,
+     "text": "@northwind studio",
+     "start_time": 8.15,
+     "end_time": 9.333333333333334,
+     "x": 0.7828125,
+     "y": 0.05416666666666667,
+     "width": 0.18906250000000002,
+     "height": 0.04166666666666667,
+     "certainty": "MEASURED",
+     "confidence_score": 0.8648745943525996,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       157,
+       117,
+       71
+      ],
+      "dominant_background_color_rgb": [
+       250,
+       227,
+       195
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.865. Canonical (highest-confidence) reading of an Occurrence Group with 4 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\ece6aaa49e494d9990238f6524dc06d6.jpg",
+     "observations": [
+      {
+       "id": 348,
+       "text": "@northwind studio",
+       "timestamp": 8.15,
+       "x": 0.7828125,
+       "y": 0.05416666666666667,
+       "width": 0.18906250000000002,
+       "height": 0.04166666666666667,
+       "confidence_score": 0.8648745943525996,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.865. Canonical (highest-confidence) reading of an Occurrence Group with 4 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\ece6aaa49e494d9990238f6524dc06d6.jpg"
+      },
+      {
+       "id": 351,
+       "text": "@northwind studio",
+       "timestamp": 8.15,
+       "x": 0.7828125,
+       "y": 0.05416666666666667,
+       "width": 0.18906250000000002,
+       "height": 0.04166666666666667,
+       "confidence_score": 0.5892917587980435,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.589.",
+       "source_frame_asset_file_path": "uploads\\880\\ece6aaa49e494d9990238f6524dc06d6.jpg"
+      },
+      {
+       "id": 350,
+       "text": "@northwind studio",
+       "timestamp": 9.333333333333334,
+       "x": 0.7828125,
+       "y": 0.05416666666666667,
+       "width": 0.18906250000000002,
+       "height": 0.04166666666666667,
+       "confidence_score": 0.78034085296521,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.780.",
+       "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg"
+      },
+      {
+       "id": 349,
+       "text": "@northwind studio",
+       "timestamp": 9.333333333333334,
+       "x": 0.7828125,
+       "y": 0.05416666666666667,
+       "width": 0.18906250000000002,
+       "height": 0.04166666666666667,
+       "confidence_score": 0.8607601674999945,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.861.",
+       "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg"
+      }
+     ]
+    },
+    {
+     "id": 352,
+     "text": "Maria Lopez",
+     "start_time": 9.333333333333334,
+     "end_time": 9.333333333333334,
+     "x": 0.059375,
+     "y": 0.7472222222222222,
+     "width": 0.17031249999999998,
+     "height": 0.06666666666666665,
+     "certainty": "MEASURED",
+     "confidence_score": 0.7026890414765506,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       56,
+       38,
+       31
+      ],
+      "dominant_background_color_rgb": [
+       194,
+       178,
+       171
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+hi) confidence=0.703. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg",
+     "observations": [
+      {
+       "id": 352,
+       "text": "Maria Lopez",
+       "timestamp": 9.333333333333334,
+       "x": 0.059375,
+       "y": 0.7472222222222222,
+       "width": 0.17031249999999998,
+       "height": 0.06666666666666665,
+       "confidence_score": 0.7026890414765506,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.703. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg"
+      },
+      {
+       "id": 353,
+       "text": "Maria Lopez",
+       "timestamp": 9.333333333333334,
+       "x": 0.059375,
+       "y": 0.7472222222222222,
+       "width": 0.17031249999999998,
+       "height": 0.06666666666666665,
+       "confidence_score": 0.6261516213190523,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.626.",
+       "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg"
+      }
+     ]
+    },
+    {
+     "id": 354,
+     "text": "Head of Product",
+     "start_time": 9.333333333333334,
+     "end_time": 9.333333333333334,
+     "x": 0.059375,
+     "y": 0.8111111111111111,
+     "width": 0.1640625,
+     "height": 0.0444444444444444,
+     "certainty": "MEASURED",
+     "confidence_score": 0.6895300271349651,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       56,
+       36,
+       27
+      ],
+      "dominant_background_color_rgb": [
+       175,
+       145,
+       97
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.690. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg",
+     "observations": [
+      {
+       "id": 354,
+       "text": "Head of Product",
+       "timestamp": 9.333333333333334,
+       "x": 0.059375,
+       "y": 0.8111111111111111,
+       "width": 0.1640625,
+       "height": 0.0444444444444444,
+       "confidence_score": 0.6895300271349651,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.690. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg"
+      },
+      {
+       "id": 355,
+       "text": "Head of Product",
+       "timestamp": 9.333333333333334,
+       "x": 0.059375,
+       "y": 0.8111111111111111,
+       "width": 0.1640625,
+       "height": 0.0444444444444444,
+       "confidence_score": 0.33045196648125114,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.330.",
+       "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg"
+      }
+     ]
+    },
+    {
+     "id": 356,
+     "text": "It",
+     "start_time": 9.333333333333334,
+     "end_time": 9.333333333333334,
+     "x": 0.31953125,
+     "y": 0.8736111111111111,
+     "width": 0.03125,
+     "height": 0.05833333333333335,
+     "certainty": "MEASURED",
+     "confidence_score": 0.9439661858245927,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       59,
+       31,
+       23
+      ],
+      "dominant_background_color_rgb": [
+       207,
+       193,
+       187
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+hi) confidence=0.944. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg",
+     "observations": [
+      {
+       "id": 356,
+       "text": "It",
+       "timestamp": 9.333333333333334,
+       "x": 0.31953125,
+       "y": 0.8736111111111111,
+       "width": 0.03125,
+       "height": 0.05833333333333335,
+       "confidence_score": 0.9439661858245927,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.944. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg"
+      },
+      {
+       "id": 357,
+       "text": "|t",
+       "timestamp": 9.333333333333334,
+       "x": 0.31953125,
+       "y": 0.8736111111111111,
+       "width": 0.03125,
+       "height": 0.05833333333333335,
+       "confidence_score": 0.601953756339403,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.602.",
+       "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg"
+      }
+     ]
+    },
+    {
+     "id": 358,
+     "text": "updates in real time",
+     "start_time": 9.333333333333334,
+     "end_time": 9.333333333333334,
+     "x": 0.34921875,
+     "y": 0.8597222222222223,
+     "width": 0.33124999999999993,
+     "height": 0.0888888888888888,
+     "certainty": "MEASURED",
+     "confidence_score": 0.8140843758725225,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       85,
+       43,
+       30
+      ],
+      "dominant_background_color_rgb": [
+       240,
+       190,
+       172
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.814. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg",
+     "observations": [
+      {
+       "id": 358,
+       "text": "updates in real time",
+       "timestamp": 9.333333333333334,
+       "x": 0.34921875,
+       "y": 0.8597222222222223,
+       "width": 0.33124999999999993,
+       "height": 0.0888888888888888,
+       "confidence_score": 0.8140843758725225,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.814. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg"
+      },
+      {
+       "id": 359,
+       "text": "updates in real time",
+       "timestamp": 9.333333333333334,
+       "x": 0.34921875,
+       "y": 0.8597222222222223,
+       "width": 0.33124999999999993,
+       "height": 0.0888888888888888,
+       "confidence_score": 0.7060955373453109,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.706.",
+       "source_frame_asset_file_path": "uploads\\880\\45949c23d67349bdba41f67af0e4078a.jpg"
+      }
+     ]
+    },
+    {
+     "id": 360,
+     "text": "@northwind studio",
+     "start_time": 15.85,
+     "end_time": 15.85,
+     "x": 0.7828125,
+     "y": 0.05416666666666667,
+     "width": 0.18906250000000002,
+     "height": 0.04166666666666667,
+     "certainty": "MEASURED",
+     "confidence_score": 0.8607601674999945,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       157,
+       117,
+       71
+      ],
+      "dominant_background_color_rgb": [
+       250,
+       227,
+       195
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.861. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\61a7e3ad92bf417e881bbeb405eb85a2.jpg",
+     "observations": [
+      {
+       "id": 360,
+       "text": "@northwind studio",
+       "timestamp": 15.85,
+       "x": 0.7828125,
+       "y": 0.05416666666666667,
+       "width": 0.18906250000000002,
+       "height": 0.04166666666666667,
+       "confidence_score": 0.8607601674999945,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.861. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\61a7e3ad92bf417e881bbeb405eb85a2.jpg"
+      },
+      {
+       "id": 361,
+       "text": "@northwind studio",
+       "timestamp": 15.85,
+       "x": 0.7828125,
+       "y": 0.05416666666666667,
+       "width": 0.18906250000000002,
+       "height": 0.04166666666666667,
+       "confidence_score": 0.78034085296521,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.780.",
+       "source_frame_asset_file_path": "uploads\\880\\61a7e3ad92bf417e881bbeb405eb85a2.jpg"
+      }
+     ]
+    },
+    {
+     "id": 362,
+     "text": "Share it with your team",
+     "start_time": 15.85,
+     "end_time": 15.85,
+     "x": 0.3078125,
+     "y": 0.8666666666666667,
+     "width": 0.38281250000000006,
+     "height": 0.07916666666666661,
+     "certainty": "MEASURED",
+     "confidence_score": 0.9107515520179537,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       93,
+       46,
+       32
+      ],
+      "dominant_background_color_rgb": [
+       240,
+       191,
+       174
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.911. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\61a7e3ad92bf417e881bbeb405eb85a2.jpg",
+     "observations": [
+      {
+       "id": 362,
+       "text": "Share it with your team",
+       "timestamp": 15.85,
+       "x": 0.3078125,
+       "y": 0.8666666666666667,
+       "width": 0.38281250000000006,
+       "height": 0.07916666666666661,
+       "confidence_score": 0.9107515520179537,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.911. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\61a7e3ad92bf417e881bbeb405eb85a2.jpg"
+      },
+      {
+       "id": 363,
+       "text": "Share it with your team",
+       "timestamp": 15.85,
+       "x": 0.3078125,
+       "y": 0.8666666666666667,
+       "width": 0.38281250000000006,
+       "height": 0.07916666666666661,
+       "confidence_score": 0.6079302517071956,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.608.",
+       "source_frame_asset_file_path": "uploads\\880\\61a7e3ad92bf417e881bbeb405eb85a2.jpg"
+      }
+     ]
+    }
+   ],
+   "visual_objects": [],
+   "persistent_visual_elements": [],
+   "same_frame_layout_pairs": [],
+   "layout_stability": [],
+   "global_motion_evidence": null,
+   "local_motion_evidence": null,
+   "local_motion_dynamics": null
+  },
+  {
+   "id": 1871,
+   "order": 2,
+   "start_time": 16.0,
+   "end_time": 24.0,
+   "certainty": "MEASURED",
+   "evidence_summary": "Detected via ffmpeg scene-difference filter (threshold=0.30, boundary score=0.9066).",
+   "produced_by_pass": "scene_cut_detection_v1",
+   "frames": [
+    {
+     "id": 323,
+     "order": 0,
+     "timestamp": 16.15,
+     "extraction_method": "shot_start",
+     "width": 1280,
+     "height": 720,
+     "measurements": {
+      "width": 1280,
+      "height": 720,
+      "luminance_mean": 63.85,
+      "is_black_frame": false,
+      "sharpness_score": 688.95
+     },
+     "certainty": "MEASURED",
+     "evidence_summary": "Representative frame extracted via ffmpeg at 16.150s (shot_start); luminance_mean=63.85, sharpness_score=688.95.",
+     "produced_by_pass": "representative_frame_extraction_v1",
+     "asset_file_path": "uploads\\880\\7de134e830144c30b6c4d158a033784a.jpg"
+    },
+    {
+     "id": 324,
+     "order": 1,
+     "timestamp": 20.0,
+     "extraction_method": "shot_midpoint",
+     "width": 1280,
+     "height": 720,
+     "measurements": {
+      "width": 1280,
+      "height": 720,
+      "luminance_mean": 65.06,
+      "is_black_frame": false,
+      "sharpness_score": 875.45
+     },
+     "certainty": "MEASURED",
+     "evidence_summary": "Representative frame extracted via ffmpeg at 20.000s (shot_midpoint); luminance_mean=65.06, sharpness_score=875.45.",
+     "produced_by_pass": "representative_frame_extraction_v1",
+     "asset_file_path": "uploads\\880\\3ab7d37b191045f398cffe2f78327c19.jpg"
+    },
+    {
+     "id": 325,
+     "order": 2,
+     "timestamp": 23.75,
+     "extraction_method": "shot_end",
+     "width": 1280,
+     "height": 720,
+     "measurements": {
+      "width": 1280,
+      "height": 720,
+      "luminance_mean": 63.85,
+      "is_black_frame": false,
+      "sharpness_score": 686.82
+     },
+     "certainty": "MEASURED",
+     "evidence_summary": "Representative frame extracted via ffmpeg at 23.750s (shot_end); luminance_mean=63.85, sharpness_score=686.82.",
+     "produced_by_pass": "representative_frame_extraction_v1",
+     "asset_file_path": "uploads\\880\\33dcd9ec7b3643e59885d76e79250e91.jpg"
+    }
+   ],
+   "text_elements": [
+    {
+     "id": 378,
+     "text": "@northwind studio",
+     "start_time": 16.15,
+     "end_time": 23.75,
+     "x": 0.78125,
+     "y": 0.8986111111111111,
+     "width": 0.19140625,
+     "height": 0.04999999999999993,
+     "certainty": "MEASURED",
+     "confidence_score": 0.6902158403535849,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       6,
+       33,
+       43
+      ],
+      "dominant_background_color_rgb": [
+       153,
+       172,
+       178
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.690. Canonical (highest-confidence) reading of an Occurrence Group with 14 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg",
+     "observations": [
+      {
+       "id": 387,
+       "text": "@northwind studio",
+       "timestamp": 16.15,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.47295657118629053,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.473.",
+       "source_frame_asset_file_path": "uploads\\880\\7de134e830144c30b6c4d158a033784a.jpg"
+      },
+      {
+       "id": 380,
+       "text": "@northwind studio",
+       "timestamp": 16.15,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.6632374268972712,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.663.",
+       "source_frame_asset_file_path": "uploads\\880\\7de134e830144c30b6c4d158a033784a.jpg"
+      },
+      {
+       "id": 378,
+       "text": "@northwind studio",
+       "timestamp": 17.333333333333332,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.6902158403535849,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.690. Canonical (highest-confidence) reading of an Occurrence Group with 14 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg"
+      },
+      {
+       "id": 385,
+       "text": "@northwind studio",
+       "timestamp": 17.333333333333332,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.4763974078490067,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.476.",
+       "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg"
+      },
+      {
+       "id": 379,
+       "text": "@northwind studio",
+       "timestamp": 18.666666666666668,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.6902158403535849,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.690.",
+       "source_frame_asset_file_path": "uploads\\880\\f2abb658e8bc46d9bdd6d0bf67ea9bf5.jpg"
+      },
+      {
+       "id": 386,
+       "text": "@northwind studio",
+       "timestamp": 18.666666666666668,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.4763974078490067,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.476.",
+       "source_frame_asset_file_path": "uploads\\880\\f2abb658e8bc46d9bdd6d0bf67ea9bf5.jpg"
+      },
+      {
+       "id": 383,
+       "text": "@northwind studio",
+       "timestamp": 20.0,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.640118707028382,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.640.",
+       "source_frame_asset_file_path": "uploads\\880\\3ab7d37b191045f398cffe2f78327c19.jpg"
+      },
+      {
+       "id": 389,
+       "text": "@northwind studio",
+       "timestamp": 20.0,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.46204418478295334,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.462.",
+       "source_frame_asset_file_path": "uploads\\880\\3ab7d37b191045f398cffe2f78327c19.jpg"
+      },
+      {
+       "id": 388,
+       "text": "@northwind studio",
+       "timestamp": 21.333333333333332,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.4722262667044965,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.472.",
+       "source_frame_asset_file_path": "uploads\\880\\9b8b50af49eb463ea62fac31fa695899.jpg"
+      },
+      {
+       "id": 382,
+       "text": "@northwind studio",
+       "timestamp": 21.333333333333332,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.6473400169311784,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.647.",
+       "source_frame_asset_file_path": "uploads\\880\\9b8b50af49eb463ea62fac31fa695899.jpg"
+      },
+      {
+       "id": 381,
+       "text": "@northwind studio",
+       "timestamp": 22.666666666666664,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.6591786137965132,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.659.",
+       "source_frame_asset_file_path": "uploads\\880\\f20e9db0e9824cb4a299d007fa5c38a6.jpg"
+      },
+      {
+       "id": 391,
+       "text": "@northwind studio",
+       "timestamp": 22.666666666666664,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.4367328984413366,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.437.",
+       "source_frame_asset_file_path": "uploads\\880\\f20e9db0e9824cb4a299d007fa5c38a6.jpg"
+      },
+      {
+       "id": 390,
+       "text": "@northwind studio",
+       "timestamp": 23.75,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.46204418478295334,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.462.",
+       "source_frame_asset_file_path": "uploads\\880\\33dcd9ec7b3643e59885d76e79250e91.jpg"
+      },
+      {
+       "id": 384,
+       "text": "@northwind studio",
+       "timestamp": 23.75,
+       "x": 0.78125,
+       "y": 0.8986111111111111,
+       "width": 0.19140625,
+       "height": 0.04999999999999993,
+       "confidence_score": 0.640118707028382,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.640.",
+       "source_frame_asset_file_path": "uploads\\880\\33dcd9ec7b3643e59885d76e79250e91.jpg"
+      }
+     ]
+    },
+    {
+     "id": 364,
+     "text": "50% OFF",
+     "start_time": 16.15,
+     "end_time": 23.75,
+     "x": 0.73359375,
+     "y": 0.3736111111111111,
+     "width": 0.20781249999999996,
+     "height": 0.0888888888888889,
+     "certainty": "MEASURED",
+     "confidence_score": 0.6452427515567745,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       15,
+       82,
+       89
+      ],
+      "dominant_background_color_rgb": [
+       189,
+       193,
+       89
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.645. Canonical (highest-confidence) reading of an Occurrence Group with 14 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg",
+     "observations": [
+      {
+       "id": 377,
+       "text": "50% OFF",
+       "timestamp": 16.15,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.5999242303099466,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.600.",
+       "source_frame_asset_file_path": "uploads\\880\\7de134e830144c30b6c4d158a033784a.jpg"
+      },
+      {
+       "id": 370,
+       "text": "५0% OFF",
+       "timestamp": 16.15,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6344292572498493,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.634.",
+       "source_frame_asset_file_path": "uploads\\880\\7de134e830144c30b6c4d158a033784a.jpg"
+      },
+      {
+       "id": 364,
+       "text": "50% OFF",
+       "timestamp": 17.333333333333332,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6452427515567745,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.645. Canonical (highest-confidence) reading of an Occurrence Group with 14 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg"
+      },
+      {
+       "id": 371,
+       "text": "५0% OFF",
+       "timestamp": 17.333333333333332,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6197372545265954,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.620.",
+       "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg"
+      },
+      {
+       "id": 365,
+       "text": "50% OFF",
+       "timestamp": 18.666666666666668,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6452427515567745,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.645.",
+       "source_frame_asset_file_path": "uploads\\880\\f2abb658e8bc46d9bdd6d0bf67ea9bf5.jpg"
+      },
+      {
+       "id": 372,
+       "text": "५0% OFF",
+       "timestamp": 18.666666666666668,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6197372545265954,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.620.",
+       "source_frame_asset_file_path": "uploads\\880\\f2abb658e8bc46d9bdd6d0bf67ea9bf5.jpg"
+      },
+      {
+       "id": 373,
+       "text": "५0% OFF",
+       "timestamp": 20.0,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6197372545265954,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.620.",
+       "source_frame_asset_file_path": "uploads\\880\\3ab7d37b191045f398cffe2f78327c19.jpg"
+      },
+      {
+       "id": 366,
+       "text": "50% OFF",
+       "timestamp": 20.0,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6452427515567745,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.645.",
+       "source_frame_asset_file_path": "uploads\\880\\3ab7d37b191045f398cffe2f78327c19.jpg"
+      },
+      {
+       "id": 367,
+       "text": "50% OFF",
+       "timestamp": 21.333333333333332,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6452427515567745,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.645.",
+       "source_frame_asset_file_path": "uploads\\880\\9b8b50af49eb463ea62fac31fa695899.jpg"
+      },
+      {
+       "id": 374,
+       "text": "५0% OFF",
+       "timestamp": 21.333333333333332,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6197372545265954,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.620.",
+       "source_frame_asset_file_path": "uploads\\880\\9b8b50af49eb463ea62fac31fa695899.jpg"
+      },
+      {
+       "id": 375,
+       "text": "५0% OFF",
+       "timestamp": 22.666666666666664,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6197372545265954,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.620.",
+       "source_frame_asset_file_path": "uploads\\880\\f20e9db0e9824cb4a299d007fa5c38a6.jpg"
+      },
+      {
+       "id": 368,
+       "text": "50% OFF",
+       "timestamp": 22.666666666666664,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6452427515567745,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.645.",
+       "source_frame_asset_file_path": "uploads\\880\\f20e9db0e9824cb4a299d007fa5c38a6.jpg"
+      },
+      {
+       "id": 369,
+       "text": "50% OFF",
+       "timestamp": 23.75,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6452427515567745,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.645.",
+       "source_frame_asset_file_path": "uploads\\880\\33dcd9ec7b3643e59885d76e79250e91.jpg"
+      },
+      {
+       "id": 376,
+       "text": "५0% OFF",
+       "timestamp": 23.75,
+       "x": 0.73359375,
+       "y": 0.3736111111111111,
+       "width": 0.20781249999999996,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.6197372545265954,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.620.",
+       "source_frame_asset_file_path": "uploads\\880\\33dcd9ec7b3643e59885d76e79250e91.jpg"
+      }
+     ]
+    },
+    {
+     "id": 392,
+     "text": "SALE",
+     "start_time": 17.333333333333332,
+     "end_time": 17.333333333333332,
+     "x": 0.00078125,
+     "y": 0.5625,
+     "width": 0.140625,
+     "height": 0.09166666666666667,
+     "certainty": "MEASURED",
+     "confidence_score": 0.898383091926654,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       14,
+       70,
+       81
+      ],
+      "dominant_background_color_rgb": [
+       228,
+       237,
+       239
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+hi) confidence=0.898. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg",
+     "observations": [
+      {
+       "id": 392,
+       "text": "SALE",
+       "timestamp": 17.333333333333332,
+       "x": 0.00078125,
+       "y": 0.5625,
+       "width": 0.140625,
+       "height": 0.09166666666666667,
+       "confidence_score": 0.898383091926654,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.898. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg"
+      },
+      {
+       "id": 393,
+       "text": "SALE",
+       "timestamp": 17.333333333333332,
+       "x": 0.00078125,
+       "y": 0.5625,
+       "width": 0.140625,
+       "height": 0.09166666666666667,
+       "confidence_score": 0.8884367942810059,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.888.",
+       "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg"
+      }
+     ]
+    },
+    {
+     "id": 394,
+     "text": "Third, the mobile app",
+     "start_time": 17.333333333333332,
+     "end_time": 18.666666666666668,
+     "x": 0.32265625,
+     "y": 0.8652777777777778,
+     "width": 0.35468750000000004,
+     "height": 0.08333333333333326,
+     "certainty": "MEASURED",
+     "confidence_score": 0.6945085462809114,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       3,
+       21,
+       28
+      ],
+      "dominant_background_color_rgb": [
+       143,
+       164,
+       171
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.695. Canonical (highest-confidence) reading of an Occurrence Group with 4 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg",
+     "observations": [
+      {
+       "id": 394,
+       "text": "Third, the mobile app",
+       "timestamp": 17.333333333333332,
+       "x": 0.32265625,
+       "y": 0.8652777777777778,
+       "width": 0.35468750000000004,
+       "height": 0.08333333333333326,
+       "confidence_score": 0.6945085462809114,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.695. Canonical (highest-confidence) reading of an Occurrence Group with 4 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg"
+      },
+      {
+       "id": 396,
+       "text": "Third, the mobile app",
+       "timestamp": 17.333333333333332,
+       "x": 0.32265625,
+       "y": 0.8652777777777778,
+       "width": 0.35468750000000004,
+       "height": 0.08333333333333326,
+       "confidence_score": 0.5596175269171605,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.560.",
+       "source_frame_asset_file_path": "uploads\\880\\c595bed71cdb4182bb68ebdedfd1dd77.jpg"
+      },
+      {
+       "id": 395,
+       "text": "Third, the mobile app",
+       "timestamp": 18.666666666666668,
+       "x": 0.32265625,
+       "y": 0.8652777777777778,
+       "width": 0.35468750000000004,
+       "height": 0.08333333333333326,
+       "confidence_score": 0.6825136349769398,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.683.",
+       "source_frame_asset_file_path": "uploads\\880\\f2abb658e8bc46d9bdd6d0bf67ea9bf5.jpg"
+      },
+      {
+       "id": 397,
+       "text": "Third, the mobile app",
+       "timestamp": 18.666666666666668,
+       "x": 0.32265625,
+       "y": 0.8652777777777778,
+       "width": 0.35468750000000004,
+       "height": 0.08333333333333326,
+       "confidence_score": 0.5567042639615539,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.557.",
+       "source_frame_asset_file_path": "uploads\\880\\f2abb658e8bc46d9bdd6d0bf67ea9bf5.jpg"
+      }
+     ]
+    },
+    {
+     "id": 398,
+     "text": "SALE",
+     "start_time": 18.666666666666668,
+     "end_time": 18.666666666666668,
+     "x": 0.23984375,
+     "y": 0.5652777777777778,
+     "width": 0.14062500000000003,
+     "height": 0.0888888888888889,
+     "certainty": "MEASURED",
+     "confidence_score": 0.9785990118980408,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       14,
+       70,
+       82
+      ],
+      "dominant_background_color_rgb": [
+       226,
+       237,
+       238
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.979. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\f2abb658e8bc46d9bdd6d0bf67ea9bf5.jpg",
+     "observations": [
+      {
+       "id": 398,
+       "text": "SALE",
+       "timestamp": 18.666666666666668,
+       "x": 0.23984375,
+       "y": 0.5652777777777778,
+       "width": 0.14062500000000003,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.9785990118980408,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.979. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\f2abb658e8bc46d9bdd6d0bf67ea9bf5.jpg"
+      },
+      {
+       "id": 399,
+       "text": "SALE",
+       "timestamp": 18.666666666666668,
+       "x": 0.23984375,
+       "y": 0.5652777777777778,
+       "width": 0.14062500000000003,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.5778672795176827,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.578.",
+       "source_frame_asset_file_path": "uploads\\880\\f2abb658e8bc46d9bdd6d0bf67ea9bf5.jpg"
+      }
+     ]
+    },
+    {
+     "id": 400,
+     "text": "SALE",
+     "start_time": 20.0,
+     "end_time": 20.0,
+     "x": 0.49765625,
+     "y": 0.5652777777777778,
+     "width": 0.13906249999999998,
+     "height": 0.0888888888888889,
+     "certainty": "MEASURED",
+     "confidence_score": 0.9751208267907951,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       13,
+       70,
+       81
+      ],
+      "dominant_background_color_rgb": [
+       231,
+       242,
+       244
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+hi) confidence=0.975. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\3ab7d37b191045f398cffe2f78327c19.jpg",
+     "observations": [
+      {
+       "id": 400,
+       "text": "SALE",
+       "timestamp": 20.0,
+       "x": 0.49765625,
+       "y": 0.5652777777777778,
+       "width": 0.13906249999999998,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.9751208267907951,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.975. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\3ab7d37b191045f398cffe2f78327c19.jpg"
+      },
+      {
+       "id": 401,
+       "text": "SAL٤",
+       "timestamp": 20.0,
+       "x": 0.49765625,
+       "y": 0.5652777777777778,
+       "width": 0.13906249999999998,
+       "height": 0.0888888888888889,
+       "confidence_score": 0.7770225405693054,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.777.",
+       "source_frame_asset_file_path": "uploads\\880\\3ab7d37b191045f398cffe2f78327c19.jpg"
+      }
+     ]
+    },
+    {
+     "id": 402,
+     "text": "Download it today",
+     "start_time": 20.0,
+     "end_time": 22.666666666666664,
+     "x": 0.34765625,
+     "y": 0.8597222222222223,
+     "width": 0.30781250000000004,
+     "height": 0.09305555555555545,
+     "certainty": "MEASURED",
+     "confidence_score": 0.8228575561562014,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       3,
+       21,
+       28
+      ],
+      "dominant_background_color_rgb": [
+       132,
+       155,
+       164
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.823. Canonical (highest-confidence) reading of an Occurrence Group with 6 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\9b8b50af49eb463ea62fac31fa695899.jpg",
+     "observations": [
+      {
+       "id": 404,
+       "text": "Download it today",
+       "timestamp": 20.0,
+       "x": 0.34765625,
+       "y": 0.8597222222222223,
+       "width": 0.30781250000000004,
+       "height": 0.09305555555555545,
+       "confidence_score": 0.7830363142352191,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.783.",
+       "source_frame_asset_file_path": "uploads\\880\\3ab7d37b191045f398cffe2f78327c19.jpg"
+      },
+      {
+       "id": 407,
+       "text": "Download it today",
+       "timestamp": 20.0,
+       "x": 0.34765625,
+       "y": 0.8597222222222223,
+       "width": 0.30781250000000004,
+       "height": 0.09305555555555545,
+       "confidence_score": 0.5535794290370918,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.554.",
+       "source_frame_asset_file_path": "uploads\\880\\3ab7d37b191045f398cffe2f78327c19.jpg"
+      },
+      {
+       "id": 402,
+       "text": "Download it today",
+       "timestamp": 21.333333333333332,
+       "x": 0.34765625,
+       "y": 0.8597222222222223,
+       "width": 0.30781250000000004,
+       "height": 0.09305555555555545,
+       "confidence_score": 0.8228575561562014,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.823. Canonical (highest-confidence) reading of an Occurrence Group with 6 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\9b8b50af49eb463ea62fac31fa695899.jpg"
+      },
+      {
+       "id": 405,
+       "text": "Download it today",
+       "timestamp": 21.333333333333332,
+       "x": 0.34765625,
+       "y": 0.8597222222222223,
+       "width": 0.30781250000000004,
+       "height": 0.09305555555555545,
+       "confidence_score": 0.7234135588946846,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.723.",
+       "source_frame_asset_file_path": "uploads\\880\\9b8b50af49eb463ea62fac31fa695899.jpg"
+      },
+      {
+       "id": 406,
+       "text": "Download it today",
+       "timestamp": 22.666666666666664,
+       "x": 0.34765625,
+       "y": 0.8597222222222223,
+       "width": 0.30781250000000004,
+       "height": 0.09305555555555545,
+       "confidence_score": 0.7198833657017054,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.720.",
+       "source_frame_asset_file_path": "uploads\\880\\f20e9db0e9824cb4a299d007fa5c38a6.jpg"
+      },
+      {
+       "id": 403,
+       "text": "Download it today",
+       "timestamp": 22.666666666666664,
+       "x": 0.34765625,
+       "y": 0.8597222222222223,
+       "width": 0.30781250000000004,
+       "height": 0.09305555555555545,
+       "confidence_score": 0.8213352190987627,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.821.",
+       "source_frame_asset_file_path": "uploads\\880\\f20e9db0e9824cb4a299d007fa5c38a6.jpg"
+      }
+     ]
+    },
+    {
+     "id": 408,
+     "text": "SAL٤",
+     "start_time": 21.333333333333332,
+     "end_time": 21.333333333333332,
+     "x": 0.73515625,
+     "y": 0.5597222222222222,
+     "width": 0.140625,
+     "height": 0.09444444444444444,
+     "certainty": "MEASURED",
+     "confidence_score": 0.891045868396759,
+     "category": null,
+     "style_details": {
+      "dominant_text_color_rgb": [
+       14,
+       70,
+       81
+      ],
+      "dominant_background_color_rgb": [
+       215,
+       227,
+       230
+      ]
+     },
+     "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.891. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+     "produced_by_pass": "ocr_text_detection_v1",
+     "source_frame_asset_file_path": "uploads\\880\\9b8b50af49eb463ea62fac31fa695899.jpg",
+     "observations": [
+      {
+       "id": 408,
+       "text": "SAL٤",
+       "timestamp": 21.333333333333332,
+       "x": 0.73515625,
+       "y": 0.5597222222222222,
+       "width": 0.140625,
+       "height": 0.09444444444444444,
+       "confidence_score": 0.891045868396759,
+       "evidence_summary": "EasyOCR (en+ar+ur) confidence=0.891. Canonical (highest-confidence) reading of an Occurrence Group with 2 raw observation(s).",
+       "source_frame_asset_file_path": "uploads\\880\\9b8b50af49eb463ea62fac31fa695899.jpg"
+      },
+      {
+       "id": 409,
+       "text": "SALE",
+       "timestamp": 21.333333333333332,
+       "x": 0.73515625,
+       "y": 0.5597222222222222,
+       "width": 0.140625,
+       "height": 0.09444444444444444,
+       "confidence_score": 0.5587143115010023,
+       "evidence_summary": "EasyOCR (en+hi) confidence=0.559.",
+       "source_frame_asset_file_path": "uploads\\880\\9b8b50af49eb463ea62fac31fa695899.jpg"
+      }
+     ]
+    }
+   ],
+   "visual_objects": [],
+   "persistent_visual_elements": [],
+   "same_frame_layout_pairs": [],
+   "layout_stability": [],
+   "global_motion_evidence": null,
+   "local_motion_evidence": null,
+   "local_motion_dynamics": null
+  }
+ ],
+ "recurring_elements": [
+  {
+   "id": 2533,
+   "member_text_element_ids": [
+    326,
+    348,
+    360,
+    378
+   ],
+   "start_time": 0.15,
+   "end_time": 23.75,
+   "certainty": "INFERRED",
+   "confidence_score": 1.0,
+   "reasoning": "Consistent recognized text across occurrence groups with no direct observation in the gap between them — visibility during that gap is not claimed.",
+   "evidence_summary": "Linked 4 occurrence groups via text similarity and bbox position/size consistency (see details.pairwise_evidence).",
+   "produced_by_pass": "recurring_text_linkage_v1"
+  },
+  {
+   "id": 2534,
+   "member_text_element_ids": [
+    392,
+    398,
+    400
+   ],
+   "start_time": 17.333333333333332,
+   "end_time": 20.0,
+   "certainty": "INFERRED",
+   "confidence_score": 1.0,
+   "reasoning": "Consistent recognized text across occurrence groups with no direct observation in the gap between them — visibility during that gap is not claimed.",
+   "evidence_summary": "Linked 3 occurrence groups via text similarity and bbox position/size consistency (see details.pairwise_evidence).",
+   "produced_by_pass": "recurring_text_linkage_v1"
+  }
+ ],
+ "speech_segments": [],
+ "audio_structure": null,
+ "transition_evidence": [],
+ "transition_similarity_evidence": []
+}

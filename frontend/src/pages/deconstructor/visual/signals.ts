@@ -12,8 +12,16 @@ export const spread = (xs: readonly number[]) => (xs.length ? Math.max(...xs) - 
 export const median = (xs: readonly number[]) => { const s = [...xs].sort((a, b) => a - b), m = Math.floor(s.length / 2); return s.length === 0 ? 0 : s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2 }
 export const mean = (xs: readonly number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
 
-/** A handle, address or code-like string: an @, a digit, an underscore, a web address, or a long run of capitals with no spaces. */
-export const looksLikeHandle = (s: string) => /[@_\d]|www\.|\.(com|net|org|tv|app)\b|^[A-Z]{8,}$/.test(s.trim())
+/**
+ * A handle, address or code-like string. An "@" attached to a word, or a web address, is enough. Digits and underscores only count inside ONE token (user_123, shop2024): a phrase with spaces that merely
+ * contains a number ("Spring Launch 2026", "50% OFF", "Call 555-1234") is ordinary text, not a handle. (Found on the second reference: the first version called those handles.)
+ */
+export function looksLikeHandle(s: string): boolean {
+  const t = s.trim()
+  if (/@\w/.test(t) || /www\./i.test(t) || /\b\w+\.(com|net|org|tv|app)\b/i.test(t)) return true
+  if (/\s/.test(t)) return false
+  return (/_/.test(t) && /[A-Za-z]/.test(t)) || (/[A-Za-z]/.test(t) && /\d/.test(t)) || /^[A-Z]{8,}$/.test(t)
+}
 /** A plain word or short phrase of letters, as a caption would be. */
 export const looksLikeWords = (s: string) => /^[\p{L}][\p{L}'’\- ]{1,60}$/u.test(s.trim()) && !/^[A-Z]{3,}$/.test(s.trim()) && !looksLikeHandle(s)
 

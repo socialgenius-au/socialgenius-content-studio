@@ -10,7 +10,9 @@ import type { BlueprintPlan } from '../../video-studio-v2/blueprint/blueprintPla
 import { STALE_ANALYSIS_MESSAGE } from '../textlayers/loadEvidence'
 import { errorMessage } from '../useDeconstructor'
 import { planElementReconstruction, STATUS_LABEL, type ElementReconstructionPlan, type GeneratedLayers, type ReconstructionStatus } from '../reconstruction'
-import { buildVisualElements } from './build'
+import { buildVisualElements, type BarEvidence } from './build'
+import type { ManualRegion } from '../imagelayers/candidates'
+import { manualRegionFromElement } from '../reconstruction'
 import { CLASS_LABEL, type ClassCorrections, type VisualClass, type VisualElement } from './contract'
 
 const defaultNow = () => new Date()
@@ -26,15 +28,25 @@ export interface VisualElementsReviewProps {
   /** The layers the other panels have approved so far, so the account reflects the real draft. */
   generated: GeneratedLayers
   onElementPlan: (plan: ElementReconstructionPlan | null) => void
+  /** Background bars as measured on the stills (from the background panel), so they appear here with their evidence. Absent = none shown. */
+  background?: readonly BarEvidence[]
+  /** Receives the image slots a person asked for from elements they classified as a logo or graphic. */
+  onSlotRegions?: (regions: ManualRegion[]) => void
+  /** Whether the image panel is on (the slots live there). */
+  imagePanelOn?: boolean
   getReference?: (id: number) => Promise<ReferenceVideo>
   now?: () => Date
 }
 
 type State = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; ref: ReferenceVideo }
 
-export function VisualElementsReview({ plan, generated, onElementPlan, getReference = defaultGetReference, now = defaultNow }: VisualElementsReviewProps) {
+const GRAPHICAL: readonly VisualClass[] = ['LOGO_MARK', 'ICON_GRAPHIC']
+const pctBox = (b: { x: number; y: number; w: number; h: number }) => `at ${Math.round(b.x * 100)}%, ${Math.round(b.y * 100)}% · ${Math.round(b.w * 100)}% × ${Math.round(b.h * 100)}% of the frame`
+
+export function VisualElementsReview({ plan, generated, onElementPlan, background, onSlotRegions, imagePanelOn, getReference = defaultGetReference, now = defaultNow }: VisualElementsReviewProps) {
   const [state, setState] = useState<State>({ kind: 'loading' })
   const [corrections, setCorrections] = useState<ClassCorrections>({})
+  const [slotFor, setSlotFor] = useState<ReadonlySet<string>>(new Set())
   const key = `${plan.referenceVideoId}:${plan.videoAnalysisId}`
   useEffect(() => {
     let cancelled = false
@@ -51,7 +63,14 @@ export function VisualElementsReview({ plan, generated, onElementPlan, getRefere
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
-  const elements = useMemo<VisualElement[]>(() => (state.kind === 'ready' ? buildVisualElements(state.ref, { videoAnalysisId: plan.videoAnalysisId, corrections }) : []), [state, plan.videoAnalysisId, corrections])
+  const elements = useMemo<VisualElement[]>(() => (state.kind === 'ready' ? buildVisualElements(state.ref, { videoAnalysisId: plan.videoAnalysisId, corrections, background }) : []), [state, plan.videoAnalysisId, corrections, background])
+  // image slots a person asked for: only from a class THEY set (logo or icon), prefilled with the analysis's own box; the image must be theirs
+  const regions = useMemo(() => elements.filter(e => e.classification.basis === 'user' && GRAPHICAL.includes(e.classification.class) && slotFor.has(e.id)).flatMap(e => {
+    const r = manualRegionFromElement(e)
+    return r ? [{ ...r, source: { elementId: e.id, classLabel: CLASS_LABEL[e.classification.class], summary: e.text ? e.text.best.slice(0, 40) : e.detectorLabel ?? e.id, evidence: e.classification.evidence.filter(x => x.kind !== 'user_correction').map(x => ({ kind: x.kind, id: x.id, certainty: x.certainty })) } }] : []
+  }), [elements, slotFor])
+  useEffect(() => { onSlotRegions?.(regions) }, [regions, onSlotRegions])
+  useEffect(() => () => onSlotRegions?.([]), [onSlotRegions])
   const account = useMemo(() => (elements.length ? planElementReconstruction(elements, generated, { referenceVideoId: plan.referenceVideoId, videoAnalysisId: plan.videoAnalysisId, createdAt: now().toISOString() }) : null), [elements, generated, plan.referenceVideoId, plan.videoAnalysisId, now])
   useEffect(() => { onElementPlan(account) }, [account, onElementPlan])
   useEffect(() => () => onElementPlan(null), [onElementPlan])
@@ -85,14 +104,22 @@ export function VisualElementsReview({ plan, generated, onElementPlan, getRefere
                     <strong>{CLASS_LABEL[c.class]}</strong>
                     <Badge variant="outline" data-testid="visual-confidence">{c.basis === 'user' ? 'Set by you' : `${c.confidence.level} confidence (${Math.round(c.confidence.score * 100)}%)`}</Badge>
                     {item && <Badge variant={STATUS_VARIANT[item.status]} data-testid="visual-status">{STATUS_LABEL[item.status]}</Badge>}
-                    <span className={sub}>{secs(e.first)}–{secs(e.last)} · {e.track.movement.kind.replace('_', ' ')} · {e.track.observations.length} sighting{e.track.observations.length === 1 ? '' : 's'}{e.track.linkage.crossesShotBoundary ? ' · across shots' : ''}</span>
+                    <span className={sub}>{pctBox(e.box)} · {secs(e.first)}–{secs(e.last)} · {e.track.movement.kind.replace('_', ' ')} · {e.track.observations.length} sighting{e.track.observations.length === 1 ? '' : 's'}{e.track.linkage.crossesShotBoundary ? ' · across shots' : ''}</span>
                     <label className={`${sub} ml-auto flex items-center gap-1`}>Class
-                      <select className="h-6 rounded border bg-background px-1 text-xs" value={c.class} data-testid="visual-class" onChange={ev => setCorrections(cs => ({ ...cs, [e.id]: { class: ev.target.value as VisualClass } }))}>
+                      <select className="h-6 rounded border bg-background px-1 text-xs" value={c.class} data-testid="visual-class" onChange={ev => { setCorrections(cs => ({ ...cs, [e.id]: { class: ev.target.value as VisualClass } })); setSlotFor(s => { const n = new Set(s); n.delete(e.id); return n }) }}>
                         {ALL_CLASSES.map(k => <option key={k} value={k}>{CLASS_LABEL[k]}</option>)}
                       </select>
                     </label>
                     {corrections[e.id] && <button type="button" className="rounded-md border px-2 py-0.5 text-xs hover:bg-muted" onClick={() => setCorrections(cs => { const { [e.id]: _drop, ...rest } = cs; return rest })} data-testid="visual-class-reset">Use the analysis’s class</button>}
                   </div>
+                  {e.classification.basis === 'user' && GRAPHICAL.includes(e.classification.class) && (
+                    <div className="rounded-md border bg-muted/40 px-2 py-1.5" data-testid="visual-slot-offer">
+                      <p>You classified this as {CLASS_LABEL[e.classification.class].toLowerCase()}. That is your statement: the analysis only saw {e.text ? 'its text' : 'a box'} here and cannot tell what the mark looks like, so an image slot needs <strong>your own image</strong>.</p>
+                      {!imagePanelOn ? <p className={sub} data-testid="visual-slot-needs-panel">Turn on the image panel (add <code>image-layers</code> to the m2 flags) to fill a slot.</p>
+                        : <button type="button" className="mt-1 rounded-md border px-2 py-0.5 text-xs hover:bg-muted" data-testid="visual-slot-toggle" onClick={() => setSlotFor(s => { const n = new Set(s); if (n.has(e.id)) n.delete(e.id); else n.add(e.id); return n })}>{slotFor.has(e.id) ? 'Remove the image slot' : 'Add an image slot here'}</button>}
+                      {slotFor.has(e.id) && imagePanelOn && <p className={sub} data-testid="visual-slot-added">Added in the images panel at this place. Choose your own image there.</p>}
+                    </div>
+                  )}
                   {e.text && <p>“{e.text.best.slice(0, 80)}”{e.text.readings.length > 1 ? <span className={sub}> ({e.text.readings.length} different readings)</span> : null}</p>}
                   {e.detectorLabel && <p className={sub}>Detector label “{e.detectorLabel}” (a box, not an outline)</p>}
                   <details>

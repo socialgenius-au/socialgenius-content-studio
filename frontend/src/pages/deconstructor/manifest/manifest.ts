@@ -9,10 +9,12 @@ import type { SpeechPlan } from '../transcript/materialize'
 import type { TextLayerPlan } from '../textlayers/materialize'
 import type { TransitionPlan } from '../transitions/materialize'
 import { KIND_LABEL as TRANSITION_LABEL } from '../transitions/contract'
+import { STATUS_LABEL, type ElementReconstructionPlan } from '../reconstruction/plan'
+import { CLASS_LABEL } from '../visual/contract'
 
-export type ManifestFamily = 'text' | 'picture' | 'plate' | 'transition' | 'subtitle' | 'stacking' | 'canvas'
-export const FAMILY_LABEL: Record<ManifestFamily, string> = { text: 'Text', picture: 'Pictures', plate: 'Background bars', transition: 'Transitions', subtitle: 'Subtitles', stacking: 'Stacking order', canvas: 'Canvas colour' }
-const FAMILY_ORDER: ManifestFamily[] = ['text', 'picture', 'plate', 'subtitle', 'transition', 'stacking', 'canvas']
+export type ManifestFamily = 'text' | 'picture' | 'plate' | 'transition' | 'subtitle' | 'stacking' | 'canvas' | 'element'
+export const FAMILY_LABEL: Record<ManifestFamily, string> = { text: 'Text', picture: 'Pictures', plate: 'Background bars', transition: 'Transitions', subtitle: 'Subtitles', stacking: 'Stacking order', canvas: 'Canvas colour', element: 'Found on screen: what became of it' }
+const FAMILY_ORDER: ManifestFamily[] = ['text', 'picture', 'plate', 'subtitle', 'transition', 'stacking', 'canvas', 'element']
 
 /** What every entry in the manifest leaves unclaimed, in plain words. Shown once; each entry's own `claims` object is all false. */
 export const NEVER_CLAIMED: readonly string[] = [
@@ -48,6 +50,8 @@ export interface ManifestInput {
   composition?: { plan: CompositionPlan | null; policy: OrderPolicy } | null
   /** The measured bar colour chosen as the editor's canvas background colour, if any. */
   canvasColour?: string | null
+  /** The account of what became of each visual element the analysis found (M5): rebuilt, approximated, your own content, needing your image, not included, or unsupported. */
+  elementPlan?: ElementReconstructionPlan | null
 }
 
 export interface ManifestSummary { family: ManifestFamily; label: string; total: number; byBucket: Record<Bucket, number> }
@@ -82,6 +86,10 @@ export function buildManifest(input: ManifestInput): Manifest {
   }
   if (input.composition && input.composition.plan && input.composition.plan.changes.length > 0) {
     entries.push(make('stacking', `composition:${input.composition.policy}`, `${POLICY_LABEL[input.composition.policy]}: order set on ${input.composition.plan.changes.length} layer${input.composition.plan.changes.length === 1 ? '' : 's'}`, null, null, 'inferred', null, { originalLayerStructureRecovered: false }))
+  }
+  for (const i of input.elementPlan?.items ?? []) {
+    const what = i.class ? `${CLASS_LABEL[i.class]}${i.elementId ? '' : ''}` : 'Blueprint placeholder'
+    entries.push(make('element', `el:${i.elementId ?? i.layers[0]?.id ?? 'placeholder'}`, `${what} — ${STATUS_LABEL[i.status].toLowerCase()}${i.layers.length ? ` (${i.layers.map(l => l.kind).join(', ')} layer)` : ''}`, i.first, i.last, i.classBasis === 'user' || i.status === 'user_supplied' ? 'manual' : 'inferred', null, { originalAssetRecovered: false, backgroundSeparated: false, exactStyleRecovered: false }))
   }
   if (input.canvasColour) entries.push(make('canvas', 'canvas-colour', `Canvas background colour ${input.canvasColour} (the canvas format is not changed)`, null, null, 'manual', null, { canvasFormatChanged: false, backgroundRecovered: false }))
   entries.sort((a, b) => (a.scene ?? 1e9) - (b.scene ?? 1e9) || (a.startTime ?? -1) - (b.startTime ?? -1) || FAMILY_ORDER.indexOf(a.family) - FAMILY_ORDER.indexOf(b.family) || a.id.localeCompare(b.id))

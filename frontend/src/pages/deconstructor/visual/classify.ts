@@ -27,7 +27,7 @@ const evidenceOf = (track: Track): EvidenceRef[] => {
 /** Subtitle lines: several short, distinct texts at about the same height in the lower part of the frame. Only unlinked tracks qualify (a text the analysis found recurring is not a one-off spoken line). */
 export function findSubtitleLines(tracks: readonly Track[]): Set<string> {
   const cand = tracks.filter(t => t.kind === 'text' && t.linkage.by !== 'recurring_element' && t.observations.length > 0
-    && cy(t.observations[0].box) >= 0.6 && (t.intervals[t.intervals.length - 1].end - t.intervals[0].start) <= 4 && !!t.observations[0].text?.trim())
+    && cy(t.observations[0].box) >= 0.6 && (t.intervals[t.intervals.length - 1].end - t.intervals[0].start) <= 4 && Array.from(t.observations[0].text?.trim() ?? '').length >= 3)
   const out = new Set<string>()
   const used = new Set<string>()
   for (const t of cand) {
@@ -49,6 +49,7 @@ export function classifyTextTrack(track: Track, ctx: TextContext): Classificatio
   const unknown = (why: string): Classification => ({ class: 'UNKNOWN', certainty: 'INFERRED', basis: 'rule', confidence: { level: 'low', score: 0 }, explanation: [why], evidence, alternatives: [] })
   if (texts.length === 0) return unknown('No readable text was recorded for it, so nothing can be said about what it is.')
   if (meanOcr !== null && meanOcr < 0.35) return unknown(`OCR was only ${Math.round(meanOcr * 100)}% sure of its reading, too unsure to classify.`)
+  if (texts.every(t => Array.from(t).length <= 2) && !texts.some(t => /^[@#]/.test(t)) && !texts.every(looksNumeric)) return unknown('Only one or two characters were read: a fragment, not enough to say what it is.')
 
   const boxes = obs.map(o => o.box)
   const start = track.intervals[0]?.start ?? obs[0].time, end = track.intervals[track.intervals.length - 1]?.end ?? obs[0].time
@@ -91,7 +92,7 @@ export function classifyTextTrack(track: Track, ctx: TextContext): Classificatio
     if (readings >= 2 && texts.length >= 3 && readings === texts.length) score.TEXT_CAPTION -= 0.1
   }
   if (!handle && !(words && !inSub) && !inSub) {
-    score.TEXT_OTHER = numeric ? 0.5 : 0.3
+    score.TEXT_OTHER = numeric ? 0.55 : 0.45                                                   // readable text of no further kind: certain that it IS text, so only the confidence (few sightings, OCR) stays low
     why.TEXT_OTHER.push(numeric ? 'Its text is only numbers or punctuation: a count, price or label rather than a caption or a handle.' : 'Its text does not look like a handle, a caption phrase or a subtitle line.')
     if (spanShare !== null && spanShare >= 0.6 && n >= 3 && spots <= 2) { score.TEXT_OTHER += 0.1; why.TEXT_OTHER.push('It stays for most of the video in fixed places, which is how a watermark or logo word behaves. That makes it worth checking, not a logo: nothing here looks at its appearance.') }
   }
