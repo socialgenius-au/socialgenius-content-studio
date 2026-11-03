@@ -106,6 +106,7 @@ describe('wiring in the editor (source check)', () => {
   const src = readFileSync(join(__dirname, '../components/CreateEditTab.tsx'), 'utf8').replace(/\r\n/g, '\n')
   it('picks the extras up when a draft is opened, writes them first (named keys win), and clears them for a new project', () => {
     expect(src).toContain('draftExtrasRef.current = pickDraftExtras(snap)')
+    expect(src).toContain('setDraftStatus(`Saved "${name}"${extrasNote(draftExtrasRef.current)}`)'); expect(src).toContain('setDraftStatus(`Opened "${full.name}"${extrasNote(draftExtrasRef.current)}`)')
     expect(src).toMatch(/buildProjectSnapshot = \(\): DraftProjectSnapshot => \(\{\n\s+\.\.\.draftExtrasForSave\(draftExtrasRef\.current, \{ textOverlays, mediaOverlays, shapes \}\),\n\s+videoClips,/)
     expect(src).toMatch(/draftExtrasRef\.current = emptyExtras\(\);\n\s+clearLiveProject\(\);/)
   })

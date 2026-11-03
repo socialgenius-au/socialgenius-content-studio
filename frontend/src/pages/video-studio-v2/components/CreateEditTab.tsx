@@ -4,7 +4,7 @@ import { clipFadeOpacity } from "../export/transitionFade";
 import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissolveWindow";
 import { previewBlurPx, validCanvasBackdrop } from "../export/canvasBackdrop";
 import { durationCorrection } from "../export/measuredDuration";
-import { draftExtrasForSave, emptyExtras, pickDraftExtras, type DraftExtras } from "../export/draftExtras";
+import { draftExtrasForSave, emptyExtras, extrasNote, pickDraftExtras, type DraftExtras } from "../export/draftExtras";
 import BehindFootageLayer from "../export/BehindFootageLayer";
 import { behindFootageRects } from "../export/behindFootagePreview";
 import { isBehindFootage } from "../export/footageGeometry";
@@ -674,7 +674,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         setDraftId((data as { id: number }).id);
       }
       setDraftName(name);
-      setDraftStatus(`Saved "${name}"`);
+      setDraftStatus(`Saved "${name}"${extrasNote(draftExtrasRef.current)}`);
       return true;
     } catch {
       setDraftStatus("Save failed — please try again.");
@@ -723,7 +723,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       applyDraftSnapshot(full.project_json);
       setDraftId(full.id);
       setDraftName(full.name);
-      setDraftStatus(`Opened "${full.name}"`);
+      setDraftStatus(`Opened "${full.name}"${extrasNote(draftExtrasRef.current)}`);
       setShowMyDrafts(false);
     } catch {
       setDraftsError("Could not open that draft — please try again.");
