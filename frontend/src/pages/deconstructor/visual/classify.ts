@@ -94,7 +94,7 @@ export function classifyTextTrack(track: Track, ctx: TextContext): Classificatio
   if (!handle && !(words && !inSub) && !inSub) {
     score.TEXT_OTHER = numeric ? 0.55 : 0.45                                                   // readable text of no further kind: certain that it IS text, so only the confidence (few sightings, OCR) stays low
     why.TEXT_OTHER.push(numeric ? 'Its text is only numbers or punctuation: a count, price or label rather than a caption or a handle.' : 'Its text does not look like a handle, a caption phrase or a subtitle line.')
-    if (spanShare !== null && spanShare >= 0.6 && n >= 3 && spots <= 2) { score.TEXT_OTHER += 0.1; why.TEXT_OTHER.push('It stays for most of the video in fixed places, which is how a watermark or logo word behaves. That makes it worth checking, not a logo: nothing here looks at its appearance.') }
+    if (spanShare !== null && spanShare >= 0.6 && n >= 3 && spots <= 2) { score.TEXT_OTHER += 0.1; why.TEXT_OTHER.push('It stays for most of the video in fixed places. Text that recurs is as often a repeated caption or call to action as anything else, so it is kept as plain text. That makes it worth checking, not a logo: nothing here looks at its appearance.') }
   }
 
   const ranked = (Object.entries(score) as [VisualClass, number][]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1])

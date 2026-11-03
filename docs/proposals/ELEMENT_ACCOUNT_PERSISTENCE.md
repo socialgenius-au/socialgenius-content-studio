@@ -42,7 +42,7 @@ What is NOT done: there is no visible in-editor banner for a preservation note, 
   P7/P7b after a linked layer is removed the saved account no longer claims it, and no element is invented or dropped;
   P8 after "Start a new project" the next saved draft carries none of the previous draft's records.
 - Control without the change: the account is dropped (3 of 3 checks confirm the problem).
-- Protected editor-flow scenario (`cdp_int_prot`, 28 checks): see the report for the final count; one run was cut short by machine memory exhaustion, not by a product failure.
+- Protected editor-flow regression (`cdp_int_prot`, 32 checks) on the patched build: **32 of 32**. Earlier attempts on the same build were cut short by machine memory exhaustion (a 420 s MP4 download timeout, and page loads slower than the scenario's 20 s wait); the passing run used the same build with longer page waits, and no product assertion ever failed.
 
 ## Alternatives considered (unchanged)
 Per-layer provenance only (no home for elements without a layer); a backend column or table (schema change, second source of truth); hiding the data in an existing round-tripped key (fragile); modelling the records as typed editor state (larger protected change, no benefit since the editor never uses them); re-deriving on reopen (impossible without the reference's evidence).
