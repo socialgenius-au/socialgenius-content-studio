@@ -70,13 +70,25 @@ jobs:
       - name: Build frontend and start preview
         run: |
           npm run build
-          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/studio-preview.log 2>&1 &
+          npx serve -s dist -l tcp://127.0.0.1:4173 > /tmp/studio-preview.log 2>&1 &
           for i in $(seq 1 40); do
-            if curl --fail --silent http://127.0.0.1:4173/login > /dev/null; then exit 0; fi
+            if curl --fail --silent http://127.0.0.1:4173/login > /dev/null; then break; fi
             sleep 1
           done
-          cat /tmp/studio-preview.log
-          exit 1
+          curl --fail --silent http://127.0.0.1:4173/login > /tmp/studio-index.html
+          node --input-type=module <<'EOF'
+          import { readFileSync } from 'node:fs';
+          const html = readFileSync('/tmp/studio-index.html','utf8');
+          const files = [...html.matchAll(/(?:src|href)="(\\/assets\\/[^"]+)"/g)].map(x=>x[1]);
+          if (!files.length) throw new Error('No built assets found in preview HTML');
+          for (const file of files) {
+            const response = await fetch('http://127.0.0.1:4173' + file);
+            if (!response.ok) throw new Error(file + ': HTTP ' + response.status);
+            const type = response.headers.get('content-type') || '';
+            if (type.includes('text/html')) throw new Error(file + ': HTML fallback instead of asset');
+            console.log('Asset OK', file, response.status, type);
+          }
+          EOF
       - name: Chromium smoke test for protected editor routes
         run: |
           node --input-type=module <<'EOF'
