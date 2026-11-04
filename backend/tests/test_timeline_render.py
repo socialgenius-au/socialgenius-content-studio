@@ -215,6 +215,23 @@ async def test_render_project_single_clip_with_text_and_audio(clips, custom_audi
     out = await ffmpeg_svc.render_project(project, USER_ID)
     assert _decode_error_count(str(out)) == 0
     assert await ffmpeg_svc._get_video_dimensions(str(out)) == (320, 180)
+    # Final MP4 acceptance: verify actual muxed container, streams, and timing
+    # rather than treating successful FFmpeg process exit as proof of usable output.
+    import json
+    import subprocess
+    assert Path(out).is_file() and Path(out).stat().st_size > 1024
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_format", "-show_streams",
+         "-of", "json", str(out)],
+        capture_output=True, text=True, check=True,
+    )
+    metadata = json.loads(probe.stdout)
+    streams = metadata["streams"]
+    assert "mp4" in metadata["format"]["format_name"]
+    assert any(s["codec_type"] == "video" for s in streams), "MP4 must contain video"
+    assert any(s["codec_type"] == "audio" for s in streams), "MP4 must contain audio"
+    assert float(metadata["format"]["duration"]) == pytest.approx(3.0, abs=0.25)
+    assert float(metadata["format"]["size"]) > 1024
 
     # text burned in during its window
     r, g, b = _frame_pixel(str(out), 0.8, 30, 30, tmp_path)
