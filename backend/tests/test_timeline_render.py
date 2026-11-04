@@ -311,6 +311,65 @@ async def test_reconstructed_multiscene_mp4_timeline_audio_and_overlays(clips, c
     assert _band_energy(freqs2, mag2, 550.0) > 10 * floor2
     assert _band_energy(freqs2, mag2, 220.0) < 10 * floor2
 
+
+async def test_reconstructed_timeline_json_roundtrip_exports_same_scene_order(clips, custom_audio, tmp_path):
+    """A persisted-style JSON timeline must remain renderable after reload.
+
+    This exercises the export contract after serialization, not the database
+    save/reopen API; database persistence has separate integration coverage.
+    Synthetic footage is used instead of any reference-video frames.
+    """
+    import json
+
+    timeline = {
+        "canvas_width": 320,
+        "canvas_height": 180,
+        "video_clips": [
+            {"path": clips[0], "trim_in": 0, "start_time": 0, "end_time": 3,
+             "speed": 1, "color_grade": "none", "brightness": 0, "contrast": 0,
+             "saturation": 0, "transition": "cut", "transition_duration": 0.5,
+             "has_separated_audio": True},
+            {"path": clips[1], "trim_in": 0, "start_time": 3, "end_time": 6,
+             "speed": 1, "color_grade": "none", "brightness": 0, "contrast": 0,
+             "saturation": 0, "transition": "cut", "transition_duration": 0.5,
+             "has_separated_audio": False},
+        ],
+        "text_overlays": [
+            {"text": "EDITABLE SCENE", "start_time": 0.2, "end_time": 1.5,
+             "x": 6.25, "y": 11.11, "font_size": 30, "color": "#FFFFFF"},
+        ],
+        "media_overlays": [],
+        "audio_tracks": [
+            {"path": custom_audio, "trim_in": 0, "start_time": 0,
+             "end_time": 3, "volume": 1.0},
+        ],
+    }
+
+    draft_path = tmp_path / "reconstructed_timeline.json"
+    draft_path.write_text(json.dumps(timeline), encoding="utf-8")
+    restored = json.loads(draft_path.read_text(encoding="utf-8"))
+    assert restored == timeline
+    assert len(restored["video_clips"]) == 2
+    assert restored["text_overlays"][0]["text"] == "EDITABLE SCENE"
+    assert restored["audio_tracks"][0]["start_time"] == 0
+
+    output = await ffmpeg_svc.render_project(restored, USER_ID)
+    assert _decode_error_count(str(output)) == 0
+    assert await ffmpeg_svc._get_duration(str(output)) == pytest.approx(6.0, abs=0.3)
+    assert await ffmpeg_svc._get_video_dimensions(str(output)) == (320, 180)
+
+    first = _frame_pixel(str(output), 2.2, 250, 130, tmp_path)
+    second = _frame_pixel(str(output), 4.2, 250, 130, tmp_path)
+    assert first[0] > first[1] * 1.5, f"restored first scene should be red: {first}"
+    assert second[1] > second[0] * 1.5, f"restored second scene should be green: {second}"
+
+    wav = _extract_audio_wav(str(output), tmp_path)
+    freqs1, mag1 = _spectrum(wav, 1.0, 2.0)
+    freqs2, mag2 = _spectrum(wav, 4.0, 5.0)
+    assert _band_energy(freqs1, mag1, 220.0) > 10 * max(float(np.median(mag1)), 1e-6)
+    assert _band_energy(freqs2, mag2, 550.0) > 10 * max(float(np.median(mag2)), 1e-6)
+
+
 def _content_column_range(path: str, t: float, tmp_path: Path, threshold: int = 15):
     """Grayscale-samples one frame and returns (min_col, max_col) of non-black pixels — used to
     detect pillarboxing (black bars) on the left/right of the frame."""
