@@ -205,7 +205,7 @@ async def test_render_project_single_clip_with_text_and_audio(clips, custom_audi
             "has_separated_audio": True,  # this clip's own 440Hz tone must NOT survive
         }],
         "text_overlays": [
-            {"text": "HELLO", "start": 0.2, "end": 1.5, "x": 20, "y": 20, "font_size": 30, "font_color": "white"},
+            {"text": "HELLO", "start_time": 0.2, "end_time": 1.5, "x": 6.25, "y": 11.11, "font_size": 30, "color": "#FFFFFF"},
         ],
         "media_overlays": [],
         "audio_tracks": [
