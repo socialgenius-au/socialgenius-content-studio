@@ -138,6 +138,9 @@ jobs:
               await context.route('**/auth/me', async request => {
                 await request.fulfill({status:200, contentType:'application/json', body:JSON.stringify({id:1,username:'ci-acceptance',email:'',role:'admin'})});
               });
+              await context.route('**/reference-videos/', async request => {
+                await request.fulfill({status:200, contentType:'application/json', body:'[]'});
+              });
               const page = await context.newPage();
               const errors = [];
               page.on('pageerror', error => errors.push(error.message));
