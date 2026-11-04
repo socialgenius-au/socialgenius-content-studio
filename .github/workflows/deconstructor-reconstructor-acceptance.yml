@@ -85,12 +85,20 @@ jobs:
           const page = await browser.newPage();
           const errors = [];
           page.on('pageerror', error => errors.push(error.message));
-          for (const route of ['/deconstructor', '/video-studio-v2']) {
-            await page.goto('http://127.0.0.1:4173' + route);
-            await page.waitForURL('**/login', {timeout:15000});
-            const body = await page.locator('body').innerText();
-            if (!body.trim()) throw new Error(route + ': blank login page');
-            console.log(route + ': unauthenticated route correctly redirects to login');
+          for (const route of ['/video-studio-v2', '/deconstructor']) {
+            const response = await page.goto('http://127.0.0.1:4173' + route, {waitUntil:'domcontentloaded'});
+            try {
+              await page.waitForURL(url => url.pathname === '/login', {timeout:15000});
+              const body = await page.locator('body').innerText();
+              if (!body.trim()) throw new Error(route + ': blank login page');
+              console.log(route + ': unauthenticated route correctly redirects to login');
+            } catch (error) {
+              console.error('FAILED ROUTE', route, 'HTTP', response?.status(), 'URL', page.url());
+              console.error('BODY', (await page.locator('body').innerText().catch(()=>'unavailable')).slice(0,2000));
+              console.error('JS ERRORS', errors);
+              await page.screenshot({path:'/tmp/browser-failure.png', fullPage:true});
+              throw error;
+            }
           }
           if (errors.length) throw new Error('Browser runtime errors: ' + errors.join(' | '));
           await browser.close();
@@ -100,4 +108,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: browser-preview-log
-          path: /tmp/studio-preview.log
+          path: |
+            /tmp/studio-preview.log
+            /tmp/browser-failure.png
