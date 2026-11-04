@@ -49,6 +49,31 @@ jobs:
         run: |
           python -m pytest -q tests/test_timeline_render.py tests/test_behind_footage.py
 
+  reference-anatomy-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify redacted real-reference anatomy structure without paid AI calls
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('frontend/src/pages/deconstructor/__fixtures__/va5368.c2-anatomy.redacted.json')
+          anatomy = json.loads(p.read_text())
+          video, sections, provenance = anatomy['video'], anatomy['sections'], anatomy['provenance']
+          assert video['duration'] > 0
+          assert video['section_count'] == len(sections) > 0
+          assert provenance['reference_video_id'] is not None
+          assert provenance['video_analysis_id'] is not None
+          assert provenance['fingerprint']
+          for index, section in enumerate(sections, 1):
+              assert section['number'] == index, (index, section['number'])
+              assert 0 <= section['start_time'] < section['end_time'] <= video['duration'] + 0.1
+              assert abs(section['duration'] - (section['end_time'] - section['start_time'])) < 0.2
+          print('Real-reference anatomy contract verified:', len(sections), 'sections,', video['duration'], 'seconds')
+          PY
+
   browser-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 25
