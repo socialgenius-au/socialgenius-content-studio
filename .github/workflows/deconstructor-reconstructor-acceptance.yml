@@ -84,7 +84,12 @@ jobs:
           const browser = await chromium.launch({headless:true});
           const page = await browser.newPage();
           const errors = [];
+          const failures = [];
+          const responses = [];
           page.on('pageerror', error => errors.push(error.message));
+          page.on('console', message => { if (message.type() === 'error') errors.push('console: ' + message.text()); });
+          page.on('requestfailed', request => failures.push(request.url() + ': ' + request.failure()?.errorText));
+          page.on('response', response => { if (response.status() >= 400) responses.push(response.status() + ' ' + response.url()); });
           for (const route of ['/video-studio-v2', '/deconstructor']) {
             const response = await page.goto('http://127.0.0.1:4173' + route, {waitUntil:'domcontentloaded'});
             try {
@@ -96,6 +101,12 @@ jobs:
               console.error('FAILED ROUTE', route, 'HTTP', response?.status(), 'URL', page.url());
               console.error('BODY', (await page.locator('body').innerText().catch(()=>'unavailable')).slice(0,2000));
               console.error('JS ERRORS', errors);
+              console.error('FAILED REQUESTS', failures);
+              console.error('HTTP ERRORS', responses);
+              console.error('DOCUMENT HTML', (await page.content()).slice(0,2500));
+              console.error('ROOT HTML', await page.locator('#root').innerHTML().catch(()=>'missing'));
+              console.error('SCRIPT RESOURCES', await page.locator('script[src]').evaluateAll(nodes => nodes.map(n=>n.src)));
+              console.error('RESOURCE ENTRIES', await page.evaluate(() => performance.getEntriesByType('resource').map(e=>e.name).slice(0,25)));
               await page.screenshot({path:'/tmp/browser-failure.png', fullPage:true});
               throw error;
             }
