@@ -245,6 +245,72 @@ async def test_render_project_single_clip_with_text_and_audio(clips, custom_audi
     assert _band_energy(freqs, mag, 440.0) < 10 * noise_floor, "clip's own audio should be muted once separated to A1"
 
 
+
+async def test_reconstructed_multiscene_mp4_timeline_audio_and_overlays(clips, custom_audio, tmp_path):
+    """Real two-scene reconstruction export: verify scene order, timed overlay,
+    separate replacement audio, source audio, and decodable MP4 duration.
+    Uses generated footage, never copies reference-video frames.
+    """
+    import json
+    import subprocess
+
+    project = {
+        "canvas_width": 320, "canvas_height": 180,
+        "video_clips": [
+            {"path": clips[0], "trim_in": 0, "start_time": 0, "end_time": 3,
+             "speed": 1, "color_grade": "none", "brightness": 0, "contrast": 0,
+             "saturation": 0, "transition": "cut", "transition_duration": 0.5,
+             "has_separated_audio": True},
+            {"path": clips[1], "trim_in": 0, "start_time": 3, "end_time": 6,
+             "speed": 1, "color_grade": "none", "brightness": 0, "contrast": 0,
+             "saturation": 0, "transition": "cut", "transition_duration": 0.5,
+             "has_separated_audio": False},
+        ],
+        "text_overlays": [
+            {"text": "SCENE ONE", "start_time": 0.2, "end_time": 1.5,
+             "x": 6.25, "y": 11.11, "font_size": 30, "color": "#FFFFFF"},
+        ],
+        "media_overlays": [],
+        "audio_tracks": [
+            {"path": custom_audio, "trim_in": 0, "start_time": 0,
+             "end_time": 3, "volume": 1.0},
+        ],
+    }
+    output = await ffmpeg_svc.render_project(project, USER_ID)
+    assert _decode_error_count(str(output)) == 0
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_format", "-show_streams",
+         "-of", "json", str(output)],
+        capture_output=True, text=True, check=True,
+    )
+    metadata = json.loads(probe.stdout)
+    assert float(metadata["format"]["duration"]) == pytest.approx(6.0, abs=0.3)
+    assert {"audio", "video"}.issubset(
+        {stream["codec_type"] for stream in metadata["streams"]}
+    )
+    assert await ffmpeg_svc._get_video_dimensions(str(output)) == (320, 180)
+
+    # Sample pixels away from text to verify source order and a clean cut.
+    first = _frame_pixel(str(output), 2.2, 250, 130, tmp_path)
+    second = _frame_pixel(str(output), 4.2, 250, 130, tmp_path)
+    assert first[0] > first[1] * 1.5, f"scene one should be red: {first}"
+    assert second[1] > second[0] * 1.5, f"scene two should be green: {second}"
+
+    # Overlay must affect pixels during its interval and disappear afterward.
+    during = _frame_pixel(str(output), 0.8, 30, 30, tmp_path)
+    after = _frame_pixel(str(output), 2.2, 30, 30, tmp_path)
+    assert during != after, "timed text overlay should alter the first scene"
+
+    wav = _extract_audio_wav(str(output), tmp_path)
+    freqs1, mag1 = _spectrum(wav, 1.0, 2.0)
+    floor1 = max(float(np.median(mag1)), 1e-6)
+    assert _band_energy(freqs1, mag1, 220.0) > 10 * floor1
+    assert _band_energy(freqs1, mag1, 440.0) < 10 * floor1
+    freqs2, mag2 = _spectrum(wav, 4.0, 5.0)
+    floor2 = max(float(np.median(mag2)), 1e-6)
+    assert _band_energy(freqs2, mag2, 550.0) > 10 * floor2
+    assert _band_energy(freqs2, mag2, 220.0) < 10 * floor2
+
 def _content_column_range(path: str, t: float, tmp_path: Path, threshold: int = 15):
     """Grayscale-samples one frame and returns (min_col, max_col) of non-black pixels — used to
     detect pillarboxing (black bars) on the left/right of the frame."""
