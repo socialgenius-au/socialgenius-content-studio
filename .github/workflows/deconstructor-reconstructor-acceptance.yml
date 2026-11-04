@@ -45,6 +45,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install pytest pytest-asyncio numpy
+      - name: Install FFprobe for MP4 container and stream verification
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          ffprobe -version
       - name: Actual FFmpeg MP4 and reconstruction regression
         run: |
           python -m pytest -q tests/test_timeline_render.py tests/test_behind_footage.py
