@@ -126,6 +126,32 @@ jobs:
           if (errors.length) throw new Error('Browser runtime errors: ' + errors.join(' | '));
           await browser.close();
           EOF
+      - name: Authenticated route smoke with isolated mock identity
+        run: |
+          node --input-type=module <<'EOF'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({headless:true});
+          try {
+            for (const route of ['/video-studio-v2', '/deconstructor']) {
+              const context = await browser.newContext();
+              await context.addInitScript(() => localStorage.setItem('token', 'ci-isolated-mock-token'));
+              await context.route('**/auth/me', async request => {
+                await request.fulfill({status:200, contentType:'application/json', body:JSON.stringify({id:1,username:'ci-acceptance',email:'',role:'admin'})});
+              });
+              const page = await context.newPage();
+              const errors = [];
+              page.on('pageerror', error => errors.push(error.message));
+              await page.goto('http://127.0.0.1:4173' + route);
+              await page.waitForTimeout(2000);
+              if (new URL(page.url()).pathname === '/login') throw new Error(route + ': mock-authenticated session redirected to login');
+              const content = (await page.locator('body').innerText()).trim();
+              if (!content || content === 'Loading…') throw new Error(route + ': authenticated page blank or stuck loading');
+              if (errors.length) throw new Error(route + ': ' + errors.join(' | '));
+              console.log('Authenticated route renders:', route, 'body chars:', content.length);
+              await context.close();
+            }
+          } finally { await browser.close(); }
+          EOF
       - name: Upload browser diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
