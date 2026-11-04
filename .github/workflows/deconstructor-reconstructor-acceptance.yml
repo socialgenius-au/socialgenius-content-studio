@@ -71,6 +71,45 @@ jobs:
             src/pages/video-studio-v2/blueprint/exportGuard.test.ts \
             src/pages/video-studio-v2/blueprint/exportGuard.wiring.test.ts
 
+  draft-persistence-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: socialgenius
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d socialgenius"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/socialgenius
+      SECRET_KEY: ci-only-draft-acceptance-key-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-asyncio httpx
+      - name: Real PostgreSQL save, reopen, resave and provenance acceptance
+        run: |
+          python -m pytest -q -rs tests/test_assembled_draft_compat.py tests/test_text_layers_draft_compat.py tests/test_image_layers_draft_compat.py
+
   reference-anatomy-contract:
     runs-on: ubuntu-latest
     timeout-minutes: 10
