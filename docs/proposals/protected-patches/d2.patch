@@ -1,0 +1,37 @@
+diff --git a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
+index 8b9fb69..baf8dc8 100644
+--- a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
++++ b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
+@@ -2025,14 +2025,25 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+   // this architecture has exactly one <video ref={videoRef}> showing "the current clip" at any
+   // moment (switched by source on cut), so that's a real second-video-element architecture
+   // change, not implemented here — see the report.
++  // D2: the same rule the exporter uses (timeline_plan.py): a clip's `transition` describes the JOIN with the next clip. Over a window of max(2, round(d*30)) frames the outgoing clip fades
++  // out over the first total//2 frames of the window (its own last frames) and the incoming clip fades in over the rest (its own first frames). No fade at the very start or end of the project.
+   const getClipTransitionOpacity = (clip: VideoClip, t: number) => {
+-    if (clip.transition !== "fade_black" || clip.transitionDuration <= 0) return 1;
+-    const d = clip.transitionDuration;
+-    const intoClip = t - clip.startTime;
+-    const beforeEnd = clip.endTime - t;
+-    if (intoClip < d) return Math.max(0, Math.min(1, intoClip / d));
+-    if (beforeEnd < d) return Math.max(0, Math.min(1, beforeEnd / d));
+-    return 1;
++    const i = videoClips.findIndex(c => c.id === clip.id);
++    const frames = (td: number) => Math.max(2, Math.round(td * 30));
++    let opacity = 1;
++    if (clip.transition === "fade_black" && clip.transitionDuration > 0 && i >= 0 && i < videoClips.length - 1) {
++      const outS = Math.floor(frames(clip.transitionDuration) / 2) / 30;
++      const beforeEnd = clip.endTime - t;
++      if (outS > 0 && beforeEnd < outS) opacity = Math.min(opacity, Math.max(0, beforeEnd / outS));
++    }
++    const prev = i > 0 ? videoClips[i - 1] : null;
++    if (prev && prev.transition === "fade_black" && prev.transitionDuration > 0) {
++      const total = frames(prev.transitionDuration);
++      const inS = (total - Math.floor(total / 2)) / 30;
++      const intoClip = t - clip.startTime;
++      if (intoClip < inS) opacity = Math.min(opacity, Math.max(0, intoClip / inS));
++    }
++    return opacity;
+   };
+ 
+   // Selection identification shown at the top of Properties, regardless of which kind of

@@ -1,14 +1,17 @@
 // M2.3a -- MEASURE one still. Pure: pixels in, numbers out. No network, no canvas, no randomness, no new library. The same pixels always give the same answer.
 // It finds flat bands along the four edges (bars), the colours of the outer border, and whether that border is plain, a smooth gradient or busy.
 import type { PixelImage } from '../textlayers/appearance'
-import { BAR_COLOUR_TOLERANCE, BAR_EDGE_STEP, MAX_BAR, MIN_BAR, RING, SIDES, UNIFORM_SHARE, UNIFORM_TOLERANCE, round3, type Side, type VarianceClass } from './contract'
+import { BAR_COLOUR_TOLERANCE, BAR_EDGE_STEP, GRADIENT_MIN_DRIFT, GRADIENT_STEP, GRADIENT_WANDER, MAX_BAR, MIN_BAR, MIN_GRADIENT, RING, SIDES, UNIFORM_SHARE, UNIFORM_TOLERANCE, round3, type Side, type VarianceClass } from './contract'
 
 export interface BarMeasure { side: Side; size: number; color: string; uniformity: number }          // size: share of that dimension, 0..1
+/** A smooth gradient along one edge: flat lines whose colour drifts steadily inwards. `halves`: the average colour of the half nearer the edge, then of the half nearer the picture. */
+export interface GradientMeasure { side: Side; size: number; halves: [string, string]; uniformity: number }
 export interface PaletteEntry { color: string; share: number }
 export interface FrameBackground {
   width: number
   height: number
   bars: BarMeasure[]
+  gradients?: GradientMeasure[]
   palette: PaletteEntry[]                       // the border's most common colours, most common first
   variance: VarianceClass
   /** The whole frame is one flat colour: there is no "bar", only a blank still. */
@@ -58,6 +61,27 @@ function scanBar(img: PixelImage, side: Side): { bar: BarMeasure | null; wholeFr
   const size = count / total
   if (size < MIN_BAR || size > MAX_BAR) return { bar: null, wholeFrame: false }
   return { bar: { side, size: round3(size), color: hex([rs / count, gs / count, bs / count]), uniformity: round3(shares / count) }, wholeFrame: false }
+}
+
+/** A smooth gradient along an edge (where no flat bar was found): lines that stay flat across their length while the colour drifts steadily inwards, until the lines stop being flat (the picture begins). */
+function scanGradient(img: PixelImage, side: Side): GradientMeasure | null {
+  const axis = side === 'top' || side === 'bottom' ? 'row' : 'col'
+  const total = axis === 'row' ? img.height : img.width
+  const at = (i: number) => lineAt(img, axis, side === 'top' || side === 'left' ? i : total - 1 - i)
+  const lines: Line[] = []
+  for (let i = 0; i < total; i++) {
+    const l = at(i)
+    if (l.share < UNIFORM_SHARE || (lines.length > 0 && dist(l.mean, lines[lines.length - 1].mean) > GRADIENT_STEP)) break
+    lines.push(l)
+  }
+  const count = lines.length
+  if (count >= total || count / total < MIN_GRADIENT || count / total > MAX_BAR) return null
+  const drift = dist(lines[0].mean, lines[count - 1].mean)
+  const path = lines.slice(1).reduce((n, l, i) => n + dist(l.mean, lines[i].mean), 0)
+  if (drift < GRADIENT_MIN_DRIFT || path > GRADIENT_WANDER * drift + 10) return null
+  const avg = (part: Line[]): RGB => [0, 1, 2].map(k => part.reduce((n, l) => n + l.mean[k], 0) / part.length) as RGB
+  const h = count >> 1
+  return { side, size: round3(count / total), halves: [hex(avg(lines.slice(0, h))), hex(avg(lines.slice(h)))], uniformity: round3(lines.reduce((n, l) => n + l.share, 0) / count) }
 }
 
 /** The border's most common colours (4 bits per channel), with each colour averaged over the pixels that fell in its bin. */
@@ -122,6 +146,7 @@ export function measureFrame(img: PixelImage): FrameBackground {
   }
   const { palette, lumStd } = borderPalette(img)
   const found = wholeFrame ? [] : bars
+  const gradients = wholeFrame ? [] : SIDES.filter(s => !bars.some(b => b.side === s)).flatMap(s => { const g = scanGradient(img, s); return g ? [g] : [] })
   // Where flat bars were measured the background IS those flat bands (a letterboxed frame's picture at its sides says nothing about it); otherwise judge the border.
-  return { width: img.width, height: img.height, bars: found, palette, variance: found.length > 0 ? 'solid' : classify(img, palette, lumStd), uniformFrame: wholeFrame }
+  return { width: img.width, height: img.height, bars: found, palette, variance: found.length > 0 ? 'solid' : gradients.length > 0 ? 'gradient' : classify(img, palette, lumStd), uniformFrame: wholeFrame, gradients }
 }

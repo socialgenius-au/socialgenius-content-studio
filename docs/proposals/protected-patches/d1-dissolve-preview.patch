@@ -1,0 +1,72 @@
+diff --git a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
+index de5ddd6..62519a9 100644
+--- a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
++++ b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
+@@ -1,6 +1,7 @@
+ 
+ import { validCanvasBackground } from "../export/canvasBackground";
+ import { clipFadeOpacity } from "../export/transitionFade";
++import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissolveWindow";
+ import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+ import { useStudio } from "../../../contexts/StudioContext";
+ import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
+@@ -736,6 +737,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+   // its own sync effects below, which follow the exact same reactive pattern Audio already uses
+   // (react to timeline.currentTime/playing, never drive them; only V1's own clock does that).
+   const insertVideoRef = useRef<HTMLVideoElement>(null);
++  // D1: the extra, muted <video> that shows the OTHER clip of a dissolve while the timeline is inside the blend window (see the D1 block below).
++  const blendVideoRef = useRef<HTMLVideoElement>(null);
+   const audioRef = useRef<HTMLAudioElement>(null);
+   // Step 5 follow-up (Overlay audio): multiple video-backed Overlays could exist at once (even
+   // if only one is in its active timeline window at a time), so this is a live id→element map
+@@ -1244,6 +1247,32 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+     else vid.pause();
+   }, [timeline.playing]);
+ 
++  // ---- D1 (dissolve preview): during a dissolve's blend window -- the same window the exporter builds (export/dissolveWindow.ts, a port of timeline_plan.py) -- a second muted <video> shows the
++  // OTHER clip of the join on top of the active one: before the join the incoming clip's real pre-roll at opacity alpha, after the join the outgoing clip's real post-roll at 1 - alpha, which is the
++  // same blend with no change of stacking at the join. It is purely reactive to timeline.currentTime / playing, exactly like the V2 insert and A1 audio effects above: it never drives the master
++  // clock, never reads the active clip's element, and mounts only while a dissolve is within a second of starting, so a project without a dissolve renders and plays exactly as before. Audio is
++  // untouched (the active clip's own sound plays as before; the exporter's audio crossfade is not previewed). Whip pan and zoom punch are not previewed. ----
++  const blendWindows = useMemo(() => planBlendWindows(videoClips), [videoClips]);
++  const blendRaw = hasRealSrc ? blendPreviewAt(blendWindows, timeline.currentTime) : null;
++  const blendPreview = blendRaw && activeVideoClip?.id === (blendRaw.phase === "before" ? blendRaw.window.outId : blendRaw.window.inId) ? blendRaw : null;
++  const blendOtherClip = blendPreview ? videoClips.find(c => c.id === blendPreview.otherId && !!c.url) ?? null : null;
++  const blendInside = !!blendPreview?.inside;
++  useEffect(() => {
++    const vid = blendVideoRef.current;
++    if (!vid || !blendPreview || !blendOtherClip) return;
++    const target = sourceTimeAt(blendOtherClip, blendInside ? timeline.currentTime : blendPreview.startS);
++    const apply = () => {
++      if (Math.abs(vid.currentTime - target) > (timeline.playing && blendInside ? 0.3 : 0.02)) vid.currentTime = target;
++      vid.playbackRate = blendOtherClip.speed || 1;
++      if (timeline.playing && blendInside) vid.play().catch(() => {});
++      else vid.pause();
++    };
++    if (vid.readyState >= 1) apply();
++    else vid.addEventListener("loadedmetadata", apply, { once: true });
++    return () => vid.removeEventListener("loadedmetadata", apply);
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [timeline.currentTime, timeline.playing, blendOtherClip?.id, blendInside]);
++
+   // ---- Instruction 9: real audio playback, following the SAME offset/seek/play-pause pattern
+   // as the video sync effects above — but purely reactive to timeline.currentTime/playing,
+   // never driving them. This is what keeps Audio's timing genuinely independent of Video: it
+@@ -5702,6 +5731,17 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+                       : {}),
+                     cursor: repositionClipId === activeVideoClip!.id ? "move" : undefined,
+                   }} />
++                {blendPreview && blendOtherClip && (
++                  <video ref={blendVideoRef} key={blendOtherClip.id} src={blendOtherClip.url} className="real-video-el" data-testid="dissolve-blend" muted playsInline preload="auto" draggable={false}
++                    style={{
++                      position: "absolute", inset: 0, pointerEvents: "none",
++                      filter: getMediaFilter(blendOtherClip),
++                      opacity: blendPreview.opacity,
++                      ...(blendOtherClip.fitMode === "fill"
++                        ? { objectFit: "cover", objectPosition: `${blendOtherClip.cropOffsetX ?? 50}% ${blendOtherClip.cropOffsetY ?? 50}%` }
++                        : {}),
++                    }} />
++                )}
+                 {repositionClipId === activeVideoClip!.id && (
+                   <div className="crop-reposition-hint" onClick={e => e.stopPropagation()}>
+                     Drag the video to choose what's cropped

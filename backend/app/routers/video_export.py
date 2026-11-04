@@ -163,6 +163,7 @@ async def export_project(
             "border_width": sh.border_width,
             "border_radius": sh.border_radius,
             "full_width": sh.full_width,
+            "behind_footage": sh.behind_footage,
         })
 
     # Phase 7 (deferred item F — Lower Third export parity). show_logo is carried through for
@@ -238,6 +239,9 @@ async def export_project(
         "subtitles": subtitles,
         "subtitle_style": subtitle_style,
         "audio_tracks": audio_tracks,
+        "canvas_background": body.canvas_background,
+        "transition_edge_policy": body.transition_edge_policy,
+        "canvas_backdrop": body.canvas_backdrop,
     }
 
     try:

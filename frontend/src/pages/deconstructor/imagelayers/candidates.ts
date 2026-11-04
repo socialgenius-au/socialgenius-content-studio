@@ -2,26 +2,32 @@
 // A candidate is a SLOT (where something stood, on which frame, at which instant), never an image: what fills it is chosen at review. Nothing here edits the
 // evidence, and nothing is included by default that is the reference's own footage (people) or that the detector itself is unsure of.
 import { MIN_REGION, type CandidateOrigin, type ImageFlag, type Rect } from './contract'
-import type { DetectionEvidence, FrameEvidence, ImageEvidence } from './evidence'
+import type { DetectionEvidence, FrameEvidence, ImageEvidence, RecurringMarkEvidence } from './evidence'
 import { clampRegion, isValidRegion } from './geometry'
 import { estimateFrameTiming, isTimingUncertain, type FrameTiming } from './timing'
+import { MIN_VISIBLE_SECONDS } from './contract'
 
 export const LOW_CONFIDENCE = 0.5
 
 /** A region a person drew on a frame. It is not evidence (nothing detected it); it is the person's own statement of where an image stood. */
-export interface ManualRegion { id: string; frameId: number; region: Rect }
+/** Where a slot came from when it was made from a visual element a person classified (M4/M5): which element, the class THEY set, and the analysis evidence it was seen with. Never evidence of what the mark looks like. */
+export interface ElementSource { elementId: string; classLabel: string; summary: string; evidence: { kind: string; id: number | string; certainty: string }[] }
+export interface ManualRegion { id: string; frameId: number; region: Rect; source?: ElementSource }
 
 export interface ImageCandidate {
   id: string
   origin: CandidateOrigin
   label: string                                    // "person (detector label)" or "Region you marked"
-  evidence: { kind: 'visual_object'; id: number }[]   // empty for a drawn region
+  evidence: ({ kind: 'visual_object'; id: number } | { kind: 'recurring_element'; id: number })[]   // empty for a drawn region
   frame: FrameEvidence
   region: Rect                                     // the suggestion: the detector's box, or the region as drawn
   sourceConfidence: number | null                  // the detector's own score; null for a drawn region
   timing: FrameTiming
   flags: ImageFlag[]
   defaultInclude: boolean
+  /** Set when the slot was made from an element the person classified as a logo or graphic: only their own image may fill it (no crop of the reference is offered). */
+  source?: ElementSource
+  userAssetRequired?: boolean
 }
 
 export const isPerson = (d: Pick<DetectionEvidence, 'label' | 'category'>) => d.category === 'person' || d.label.toLowerCase() === 'person'
@@ -38,6 +44,20 @@ const candidateFlags = (origin: CandidateOrigin, label: string, person: boolean,
   return flags
 }
 
+/** A slot from a recurring mark the analysis INFERRED from repeated text. Never included by default; the span is the outer bounds of its sightings, not a claim that it was visible in between. */
+function recurringCandidate(r: RecurringMarkEvidence, frameById: ReadonlyMap<number, FrameEvidence>, evidence: ImageEvidence): ImageCandidate {
+  const frame = frameById.get(r.frameId)!
+  const base = estimateFrameTiming(frame, evidence.frames)
+  const timing: FrameTiming = { ...base, start: r.first, end: Math.max(r.last, r.first + MIN_VISIBLE_SECONDS), startUncertainty: 0, endUncertainty: 0, shotStart: Math.min(base.shotStart, r.first), shotEnd: Math.max(base.shotEnd, r.last) }
+  const flags: ImageFlag[] = [
+    { code: 'recurring_inferred', severity: 'info', message: `Inferred, not detected: the same text (“${r.text.slice(0, 24)}”) was linked across ${r.members} sightings in about the same place${r.confidence !== null ? ` (${Math.round(r.confidence * 100)}% sure)` : ''}. It may be a watermark or logo, but nothing says what it looks like.` },
+    { code: 'span_outer_bounds', severity: 'warning', message: 'The span runs from the first to the last sighting. Whether it was visible in between is not known.' },
+    { code: 'box_only', severity: 'info', message: 'Only the box around the recognised text is known. The mark itself is not outlined or separated from its background.' },
+  ]
+  if (!isValidRegion(r.box)) flags.push({ code: 'region_too_small', severity: 'warning', message: `The region is smaller than ${Math.round(MIN_REGION * 100)}% of the frame, too small to hold an image.` })
+  return { id: `rec:${r.id}`, origin: 'inferred_region', label: 'Recurring mark (inferred from repeated text)', evidence: [{ kind: 'recurring_element', id: r.id }], frame, region: r.box, sourceConfidence: r.confidence, timing, flags, defaultInclude: false }
+}
+
 export function buildImageCandidates(evidence: ImageEvidence, manual: readonly ManualRegion[] = []): ImageCandidate[] {
   const frameById = new Map(evidence.frames.map(f => [f.id, f] as const))
   const out: ImageCandidate[] = []
@@ -52,14 +72,16 @@ export function buildImageCandidates(evidence: ImageEvidence, manual: readonly M
       defaultInclude: !person && !(d.confidence !== null && d.confidence < LOW_CONFIDENCE),
     })
   }
+  for (const r of evidence.recurring ?? []) { if (frameById.has(r.frameId)) out.push(recurringCandidate(r, frameById, evidence)) }
   for (const m of manual) {
     const frame = frameById.get(m.frameId)
     if (!frame) continue
     const region = clampRegion(m.region)
     const timing = estimateFrameTiming(frame, evidence.frames)
     out.push({
-      id: m.id, origin: 'user_region', label: 'Region you marked', evidence: [], frame, region, sourceConfidence: null, timing,
-      flags: candidateFlags('user_region', 'region', false, null, region, timing, frame), defaultInclude: true,
+      id: m.id, origin: 'user_region', label: m.source ? `Image slot from an element you classified as ${m.source.classLabel.toLowerCase()}` : 'Region you marked', evidence: [], frame, region, sourceConfidence: null, timing,
+      flags: [...(m.source ? [{ code: 'from_classified_element' as const, severity: 'info' as const, message: `You classified “${m.source.summary}” as ${m.source.classLabel.toLowerCase()}. The analysis only saw its text or box here; nothing in it says what the mark looks like, so only your own image can fill this slot.` }] : []), ...candidateFlags('user_region', 'region', false, null, region, timing, frame)],
+      defaultInclude: true, ...(m.source ? { source: m.source, userAssetRequired: true } : {}),
     })
   }
   return out.sort((a, b) => a.frame.timestamp - b.frame.timestamp || (a.origin === b.origin ? a.id.localeCompare(b.id) : a.origin === 'detected_region' ? -1 : 1))

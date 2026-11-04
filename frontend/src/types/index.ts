@@ -319,6 +319,9 @@ export interface TransitionEvidenceSummary {
   luminance: { values: number[]; first_value: number; last_value: number; min: number; max: number; signed_total_change: number }
   frame_difference: { values: number[]; median: number; max: number; argmax_index: number }
   black_frame_flags: boolean[]
+  /** Per-pair motion measurements the analysis stored (optional: older responses do not carry them). */
+  affine?: { pairs: { estimation_success: boolean; translation_x?: number | null; translation_y?: number | null; scale?: number | null; ransac_inlier_ratio?: number | null }[] } | null
+  phase_correlation?: { pairs: { dx: number; dy: number; response: number; phase_quality_issue?: string | null }[] } | null
   certainty: string
 }
 
@@ -558,9 +561,9 @@ export interface ImageReconstructionProvenance {
   referenceVideoId: number
   videoAnalysisId: number
   engineVersion: string
-  /** Where the SLOT came from: a detector's bounding box, or a region the person drew on a reference frame. */
-  origin: 'detected_region' | 'user_region'
-  evidence: { kind: 'visual_object'; id: number }[]
+  /** Where the SLOT came from: a detector's bounding box (measured), a region the person drew on a reference frame (set by you), or a mark the analysis INFERRED from repeated on-screen text (a possible watermark or logo; never a detection). */
+  origin: 'detected_region' | 'user_region' | 'inferred_region'
+  evidence: ({ kind: 'visual_object'; id: number } | { kind: 'recurring_element'; id: number })[]
   /** The reference frame the region sits on, and when it was taken (a single sampled instant, not a duration). */
   frame: { id: number | null; path: string | null; timestamp: number; width: number | null; height: number | null }
   /** The region exactly as it stood when approved: normalised 0..1 on that frame, top-left origin. */
@@ -628,6 +631,8 @@ export interface BackgroundReconstructionProvenance {
   engineVersion: string
   sceneNumber: number
   side: 'top' | 'bottom' | 'left' | 'right'
+  /** Set when this plate is one of two flat steps standing in for a smooth gradient: the half at the edge ('outer') or the half nearer the picture ('inner'). */
+  gradientPart?: 'outer' | 'inner'
   /** What was measured on the stills: how many of the scene's frames were read, how many showed this bar, and how uniform it was. */
   evidence: { framesMeasured: number; framesSeen: number; uniformity: number; size: number; frameIds: number[] }
   properties: Record<'color' | 'region' | 'startTime' | 'endTime', { basis: 'measured' | 'inferred' | 'default' | 'user'; confidence?: 'high' | 'medium' | 'low'; note?: string }>

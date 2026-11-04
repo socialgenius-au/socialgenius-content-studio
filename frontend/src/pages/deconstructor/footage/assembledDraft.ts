@@ -13,7 +13,8 @@ import { mergeTextLayers, type TextLayerPlan } from '../textlayers'
 import { mergeImageLayers, type ImageLayerPlan } from '../imagelayers'
 import { mergeTransitions, type TransitionPlan } from '../transitions'
 import { mergeSpeech, type SpeechPlan } from '../transcript'
-import { applyComposition, mergeBackground, type BackgroundPlan, type OrderPolicy } from '../background'
+import { applyComposition, mergeBackground, withCanvasColour, type BackgroundPlan, type OrderPolicy } from '../background'
+import { mergeElementReconstruction, type ElementReconstructionPlan } from '../reconstruction'
 
 export interface SaveDeps {
   createDraft: (body: { name: string; project_json: unknown }) => Promise<{ data: { id: number } }>
@@ -47,6 +48,10 @@ export interface SaveInput {
   backgroundPlan?: BackgroundPlan | null
   /** M2.3c (optional): the stacking policy applied, last, to the layers the Reconstructor generated. Absent or 'as_generated' = nothing is reordered. */
   compositionPolicy?: OrderPolicy | null
+  /** Optional: a measured bar colour the person chose as the editor's canvas background colour. Absent = the draft carries no canvas colour and no canvas format. */
+  canvasColour?: string | null
+  /** M5 (optional): the account of what became of each visual element, written as one extra record. Absent = exactly the draft saved without it. */
+  elementPlan?: ElementReconstructionPlan | null
 }
 
 export type SaveResult =
@@ -67,7 +72,7 @@ export async function saveAssembledDraft(input: SaveInput, overrides: Partial<Sa
   }
   if (assembled.snapshot.videoClips.length === 0) return { ok: false, reason: 'blocked', message: 'Assign footage to at least one scene first.' }
 
-  const body = { name: assembled.name, project_json: applyComposition(mergeBackground(mergeSpeech(mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan), input.speechPlan), input.backgroundPlan), input.compositionPolicy) }          // each returns the snapshot itself when there is nothing to add
+  const body = { name: assembled.name, project_json: withCanvasColour(mergeElementReconstruction(applyComposition(mergeBackground(mergeSpeech(mergeTransitions(mergeImageLayers(mergeTextLayers(assembled.snapshot, input.textLayers), input.imageLayers), input.transitionPlan), input.speechPlan), input.backgroundPlan), input.compositionPolicy), input.elementPlan), input.canvasColour) }          // each returns the snapshot itself when there is nothing to add
   try {
     let draftId: number
     if (input.existingDraftId != null) {

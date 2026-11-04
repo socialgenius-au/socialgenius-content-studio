@@ -46,10 +46,11 @@ describe('candidates', () => {
     const theirs = candidatesFor(CAST, 'unknown_third_party')
     expect(theirs.every(c => !c.defaultInclude)).toBe(true); expect(theirs.every(c => c.flags.some(f => f.code === 'third_party_words'))).toBe(true)
   })
-  it('flags short and long lines, always says it is a machine transcript, and flags an Arabic-script line as one the exporter cannot lay out', () => {
+  it('flags short and long lines, always says it is a machine transcript, and notes an Arabic-script line as drawn in Naskh (information, not a warning)', () => {
     expect(by(16).flags.map(f => f.code)).toContain('very_short'); expect(by(17).flags.map(f => f.code)).toContain('very_long')
     expect(owned.every(c => c.flags.some(f => f.code === 'machine_transcript'))).toBe(true)
-    expect(by(18).script).toBe('arabic'); expect(by(18).flags.find(f => f.code === 'script_unsupported')!.message).toMatch(/Arabic script.*exporter cannot lay it out correctly/)
+    expect(by(18).script).toBe('arabic'); expect(by(18).flags.some(f => f.code === 'script_unsupported')).toBe(false)
+    expect(by(18).flags.find(f => f.code === 'script_naskh')).toMatchObject({ severity: 'info' }); expect(by(18).flags.find(f => f.code === 'script_naskh')!.message).toMatch(/Arabic script.*Noto Naskh Arabic.*not have the Nastaliq style/)
     expect(by(11).script).toBeNull()
   })
   it('does not change the evidence', () => {
@@ -112,10 +113,11 @@ describe('plan: native subtitles, a script by scene, provenance', () => {
     expect(p.items.find(i => i.candidateId === 'sp:19')).toMatchObject({ status: 'outside_timeline' }); expect(p.subtitles.some(s => s.id.endsWith(':sp:19'))).toBe(false)
     expect(p.subtitles.find(s => s.id.endsWith(':sp:17'))).toMatchObject({ startTime: 13, endTime: 21.5 })
   })
-  it('says why each excluded line was left out, and counts the lines the exporter cannot draw', () => {
+  it('says why each excluded line was left out, and counts the Arabic-script lines (drawn in Naskh) apart from the lines the exporter cannot draw', () => {
     const p = planSpeech(cands, {}, ctx({ timeMap: makeTimeMap(42.6, 42.6) }))
     expect(p.items.find(i => i.candidateId === 'sp:13')!.message).toMatch(/rated this segment poorly/); expect(p.items.find(i => i.candidateId === 'sp:15')!.message).toMatch(/might not be speech/)
-    expect(p.record.counts).toMatchObject({ transcribed: 9, included: 6, unsupportedScript: 1 })
+    expect(p.record.counts).toMatchObject({ transcribed: 9, included: 6, unsupportedScript: 0, arabicScript: 1 })
+    expect(p.items.find(i => i.candidateId === 'sp:18')!.message).toBe('Will be added as an editable subtitle. The exporter draws Arabic script in Noto Naskh Arabic.')
     const third = planSpeech(candidatesFor(CAST, 'unknown_third_party'), {}, ctx())
     expect(third.subtitles).toEqual([]); expect(third.items.every(i => i.status === 'excluded_default')).toBe(true); expect(third.items[0].message).toMatch(/someone else’s words/)
   })
@@ -126,10 +128,15 @@ describe('plan: native subtitles, a script by scene, provenance', () => {
     expect(again.subtitles).toEqual([]); expect(again.items.filter(i => i.status === 'duplicate')).toHaveLength(6)
     expect(subtitleId(5368, { id: 'sp:11' })).toBe('rs:5368:sp:11')
   })
-  it('judges the exporter’s script problem on the wording the person kept: rewording an Arabic line into Latin clears it', () => {
+  it('judges the exporter’s script problem on the wording the person kept: rewording an Arabic line into Latin clears it, and a Hebrew line is still a warning', () => {
     const p = planSpeech(cands, { 'sp:18': { text: 'My own English line' } }, ctx({ timeMap: makeTimeMap(42.6, 42.6) }))
-    expect(p.record.counts.unsupportedScript).toBe(0); expect(p.items.find(i => i.candidateId === 'sp:18')!.message).toBe('Will be added as an editable subtitle.')
-    expect(planSpeech(cands, {}, ctx({ timeMap: makeTimeMap(42.6, 42.6) })).record.counts.unsupportedScript).toBe(1)
+    expect(p.record.counts).toMatchObject({ unsupportedScript: 0, arabicScript: 0 }); expect(p.items.find(i => i.candidateId === 'sp:18')!.message).toBe('Will be added as an editable subtitle.')
+    expect(planSpeech(cands, {}, ctx({ timeMap: makeTimeMap(42.6, 42.6) })).record.counts.arabicScript).toBe(1)
+    const hebrew = candidatesFor([...CAST, { id: 20, start: 25, end: 27, text: 'שלום לכולם' }], 'owned')
+    const h = planSpeech(hebrew, {}, ctx({ timeMap: makeTimeMap(42.6, 42.6) }))
+    expect(h.record.counts).toMatchObject({ unsupportedScript: 1, arabicScript: 1 }); expect(h.items.find(i => i.candidateId === 'sp:20')!.message).toMatch(/cannot lay out this script correctly/)
+    expect(hebrew.find(c => c.id === 'sp:20')!.flags.some(f => f.code === 'script_unsupported' && f.severity === 'warning')).toBe(true)
+    expect(unsupportedScript('مرحبا שלום')).toBe('hebrew')                                  // a script the exporter cannot draw wins over Arabic in mixed text
   })
   it('the signature changes when what a save would write changes', () => {
     const a = planSpeech(cands, {}, ctx()), b = planSpeech(cands, { 'sp:11': { text: 'Different' } }, ctx())

@@ -1,4 +1,14 @@
 
+import { validCanvasBackground } from "../export/canvasBackground";
+import { clipFadeOpacity } from "../export/transitionFade";
+import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissolveWindow";
+import { previewBlurPx, validCanvasBackdrop } from "../export/canvasBackdrop";
+import { durationCorrection } from "../export/measuredDuration";
+import { draftExtrasForSave, emptyExtras, extrasNote, pickDraftExtras, type DraftExtras } from "../export/draftExtras";
+import BehindFootageLayer from "../export/BehindFootageLayer";
+import { behindFootageRects } from "../export/behindFootagePreview";
+import { isBehindFootage } from "../export/footageGeometry";
+import { useVideoSizes } from "../export/useVideoSizes";
 import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { useStudio } from "../../../contexts/StudioContext";
 import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
@@ -149,6 +159,8 @@ const PLATFORM_SAFE_RIGHT_PCT = 8;
 // state, both places would read from it together.
 interface DraftProjectSnapshot {
   videoClips: VideoClip[];
+  // Reconstructor canvas colour: written only when the person chose a measured bar colour; applied as the background colour of the CURRENT canvas format, never as a format.
+  canvasBackground?: string;
   // Phase 1 (V2 Inserts/B-roll) — Requirement 7: V2 clips must survive Save/Refresh/Reopen.
   additionalVideoClips: VideoClip[];
   textOverlays: TextOverlay[];
@@ -563,7 +575,11 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [draftsError, setDraftsError] = useState<string | null>(null);
 
+  // Records the draft carries that this editor does not model (the Reconstructor's `*Reconstruction` records and its draft-level table): picked up when a draft is opened and written back on save, so a save from the editor no
+  // longer drops them. Named keys below always win; nothing here edits a layer (see export/draftExtras.ts).
+  const draftExtrasRef = useRef<DraftExtras>(emptyExtras());
   const buildProjectSnapshot = (): DraftProjectSnapshot => ({
+    ...draftExtrasForSave(draftExtrasRef.current, { textOverlays, mediaOverlays, shapes }),
     videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, subtitles, subtitleStyle, mediaAssets,
     canvasFormat, timeline, canvasItemPositions,
     clientIdentity: PROJECT_CLIENT_IDENTITY,
@@ -592,6 +608,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   };
 
   const applyDraftSnapshot = (snap: DraftProjectSnapshot) => {
+    draftExtrasRef.current = pickDraftExtras(snap);
     clearLiveProject();
     (snap.videoClips ?? []).forEach(c => rawAddVideoClip(c));
     (snap.additionalVideoClips ?? []).forEach(c => rawAddAdditionalVideoClip(c));
@@ -607,6 +624,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     const existingAssetIds = new Set(mediaAssets.map(a => a.id));
     (snap.mediaAssets ?? []).forEach(a => { if (!existingAssetIds.has(a.id)) addMediaAsset(a); });
     if (snap.canvasFormat) setCanvasFormat(snap.canvasFormat);
+    const reconstructorColour = validCanvasBackground(snap.canvasBackground);
+    if (reconstructorColour) setCanvasFormat({ ...(snap.canvasFormat ?? canvasFormat), background: reconstructorColour });
     if (snap.timeline) setTimeline(snap.timeline);
     Object.entries(snap.canvasItemPositions ?? {}).forEach(([id, pos]) => setCanvasItemPosition(id, pos));
     setBlueprintPlan(isBlueprintPlan(snap.blueprintPlan) ? snap.blueprintPlan : null);
@@ -619,6 +638,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // modified by this action.
   const handleNewDraft = () => {
     if (!window.confirm("Start a new project? This clears the current editor (any Saved Draft is not affected — you can reopen it from My Drafts).")) return;
+    draftExtrasRef.current = emptyExtras();
     clearLiveProject();
     setBlueprintPlan(null);
     setDraftId(null);
@@ -654,7 +674,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         setDraftId((data as { id: number }).id);
       }
       setDraftName(name);
-      setDraftStatus(`Saved "${name}"`);
+      setDraftStatus(`Saved "${name}"${extrasNote(draftExtrasRef.current)}`);
       return true;
     } catch {
       setDraftStatus("Save failed — please try again.");
@@ -703,7 +723,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       applyDraftSnapshot(full.project_json);
       setDraftId(full.id);
       setDraftName(full.name);
-      setDraftStatus(`Opened "${full.name}"`);
+      setDraftStatus(`Opened "${full.name}"${extrasNote(draftExtrasRef.current)}`);
       setShowMyDrafts(false);
     } catch {
       setDraftsError("Could not open that draft — please try again.");
@@ -734,6 +754,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // its own sync effects below, which follow the exact same reactive pattern Audio already uses
   // (react to timeline.currentTime/playing, never drive them; only V1's own clock does that).
   const insertVideoRef = useRef<HTMLVideoElement>(null);
+  // D1: the extra, muted <video> that shows the OTHER clip of a dissolve while the timeline is inside the blend window (see the D1 block below).
+  const blendVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   // Step 5 follow-up (Overlay audio): multiple video-backed Overlays could exist at once (even
   // if only one is in its active timeline window at a time), so this is a live id→element map
@@ -1032,7 +1054,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     const label = `${CANVAS_PLATFORMS.find(p => p.key === platformKey)?.label ?? platformKey} - ${placement.label}`;
     const next: CanvasFormatState = {
       platformKey, placementKey: placement.key, label,
-      ratio: placement.ratio, width: placement.width, height: placement.height,
+      ratio: placement.ratio, width: placement.width, height: placement.height, background: canvasFormat.background, backdrop: canvasFormat.backdrop,
     };
     setCanvasFormat(next);
     addCanvasVersion(next);
@@ -1049,7 +1071,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setCustomW(w); setCustomH(h);
     const next: CanvasFormatState = {
       platformKey: "website", placementKey: "custom", label: "Website / General - Custom Size",
-      ratio: "CUSTOM", width: w, height: h,
+      ratio: "CUSTOM", width: w, height: h, background: canvasFormat.background, backdrop: canvasFormat.backdrop,
     };
     setCanvasFormat(next);
     addCanvasVersion(next);
@@ -1241,6 +1263,76 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (timeline.playing) vid.play().catch(() => {});
     else vid.pause();
   }, [timeline.playing]);
+
+  // ---- D1 (dissolve preview): during a dissolve's blend window -- the same window the exporter builds (export/dissolveWindow.ts, a port of timeline_plan.py) -- a second muted <video> shows the
+  // OTHER clip of the join on top of the active one: before the join the incoming clip's real pre-roll at opacity alpha, after the join the outgoing clip's real post-roll at 1 - alpha, which is the
+  // same blend with no change of stacking at the join. It is purely reactive to timeline.currentTime / playing, exactly like the V2 insert and A1 audio effects above: it never drives the master
+  // clock, never reads the active clip's element, and mounts only while a dissolve is within a second of starting, so a project without a dissolve renders and plays exactly as before. Audio is
+  // untouched (the active clip's own sound plays as before; the exporter's audio crossfade is not previewed). Whip pan and zoom punch are not previewed. ----
+  // ---- C3 (blurred backdrop): when the canvas backdrop is "blur" and the active clip is letterboxed (Fit), a muted copy of that same clip sits BEHIND it, covering the canvas and blurred, so the bars show the
+  // video's own light and colour -- the picture the exporter builds with ffmpeg (backend blurred_fit_filter). Same reactive pattern as the D1 block: it follows timeline.currentTime / playing and never drives them. ----
+  const backdropClip = hasRealSrc && validCanvasBackdrop(canvasFormat.backdrop) && activeVideoClip && activeVideoClip.fitMode !== "fill" ? activeVideoClip : null;
+  const backdropVideoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const vid = backdropVideoRef.current;
+    if (!vid || !backdropClip) return;
+    const target = sourceTimeAt(backdropClip, timeline.currentTime);
+    const apply = () => {
+      if (Math.abs(vid.currentTime - target) > (timeline.playing ? 0.3 : 0.05)) vid.currentTime = target;
+      vid.playbackRate = backdropClip.speed || 1;
+      if (timeline.playing) vid.play().catch(() => {});
+      else vid.pause();
+    };
+    if (vid.readyState >= 1) apply();
+    else vid.addEventListener("loadedmetadata", apply, { once: true });
+    return () => vid.removeEventListener("loadedmetadata", apply);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeline.currentTime, timeline.playing, backdropClip?.id]);
+  const blendWindows = useMemo(() => planBlendWindows(videoClips), [videoClips]);
+  const behindSizes = useVideoSizes(videoClips.map(c => c.url), shapes.some(isBehindFootage));          // only loads anything while a shape is marked "behind footage"
+  const blendRaw = hasRealSrc ? blendPreviewAt(blendWindows, timeline.currentTime) : null;
+  const blendPreview = blendRaw && activeVideoClip?.id === (blendRaw.phase === "before" ? blendRaw.window.outId : blendRaw.window.inId) ? blendRaw : null;
+  const blendOtherClip = blendPreview ? videoClips.find(c => c.id === blendPreview.otherId && !!c.url) ?? null : null;
+  const blendInside = !!blendPreview?.inside;
+  useEffect(() => {
+    const vid = blendVideoRef.current;
+    if (!vid || !blendPreview || !blendOtherClip) return;
+    const target = sourceTimeAt(blendOtherClip, blendInside ? timeline.currentTime : blendPreview.startS);
+    const apply = () => {
+      if (Math.abs(vid.currentTime - target) > (timeline.playing && blendInside ? 0.3 : 0.02)) vid.currentTime = target;
+      vid.playbackRate = blendOtherClip.speed || 1;
+      if (timeline.playing && blendInside) vid.play().catch(() => {});
+      else vid.pause();
+    };
+    if (vid.readyState >= 1) apply();
+    else vid.addEventListener("loadedmetadata", apply, { once: true });
+    return () => vid.removeEventListener("loadedmetadata", apply);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeline.currentTime, timeline.playing, blendOtherClip?.id, blendInside]);
+
+  // ---- Real source duration: a clip's recorded `duration` (the length of its source file) can be wrong -- the editor records a 10 s fallback when the metadata does not load in time, and a draft can carry a stale
+  // value -- and the dissolve window and speed changes read it. When a clip's own <video> reports valid metadata, a differing duration is corrected (export/measuredDuration.ts: never zero, NaN, Infinity or a
+  // fallback; trimOut moves with it so the clip's span and the timeline do not change). It only reads the element's metadata: no seeking, no playback, no master clock. ----
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid || !activeVideoClip) return;
+    const clip = activeVideoClip;
+    const onMeta = () => { const fix = durationCorrection(clip, vid.duration); if (fix) rawUpdateVideoClip(clip.id, fix); };
+    if (vid.readyState >= 1) onMeta();
+    vid.addEventListener("loadedmetadata", onMeta);
+    return () => vid.removeEventListener("loadedmetadata", onMeta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeClipId, hasRealSrc]);
+  useEffect(() => {
+    const vid = blendVideoRef.current;
+    const clip = blendOtherClip;
+    if (!vid || !clip) return;
+    const onMeta = () => { const fix = durationCorrection(clip, vid.duration); if (fix) rawUpdateVideoClip(clip.id, fix); };
+    if (vid.readyState >= 1) onMeta();
+    vid.addEventListener("loadedmetadata", onMeta);
+    return () => vid.removeEventListener("loadedmetadata", onMeta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blendOtherClip?.id]);
 
   // ---- Instruction 9: real audio playback, following the SAME offset/seek/play-pause pattern
   // as the video sync effects above — but purely reactive to timeline.currentTime/playing,
@@ -2025,15 +2117,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // this architecture has exactly one <video ref={videoRef}> showing "the current clip" at any
   // moment (switched by source on cut), so that's a real second-video-element architecture
   // change, not implemented here — see the report.
-  const getClipTransitionOpacity = (clip: VideoClip, t: number) => {
-    if (clip.transition !== "fade_black" || clip.transitionDuration <= 0) return 1;
-    const d = clip.transitionDuration;
-    const intoClip = t - clip.startTime;
-    const beforeEnd = clip.endTime - t;
-    if (intoClip < d) return Math.max(0, Math.min(1, intoClip / d));
-    if (beforeEnd < d) return Math.max(0, Math.min(1, beforeEnd / d));
-    return 1;
-  };
+  // D2: the fade is at the JOIN, as the exporter does it (see export/transitionFade.ts): the outgoing clip's own last frames and the incoming clip's own first frames.
+  const getClipTransitionOpacity = (clip: VideoClip, t: number) => clipFadeOpacity(videoClips, clip, t);
 
   // Selection identification shown at the top of Properties, regardless of which kind of
   // element is selected — satisfies "recognise what type was selected" without building any
@@ -3192,6 +3277,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     .map(sh => {
       return {
         order: sh.order ?? 0,
+        behind: isBehindFootage(sh),
         node: (
     <div
       key={sh.id}
@@ -3252,9 +3338,16 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // front) — plain DOM paint order, no z-index needed. Ties (both default to 0, e.g. before any
   // reorder has ever happened) keep Array.sort's stable ordering, which preserves the exact
   // pre-existing "all Overlays behind all Text" look until the user actually reorders something.
-  const visualLayers = [...overlayEntries, ...textEntries, ...lowerThirdEntries, ...shapeEntries, ...subtitleEntries]
+  const visualLayers = [...overlayEntries, ...textEntries, ...lowerThirdEntries, ...shapeEntries.filter(e => !e.behind), ...subtitleEntries]
     .sort((a, b) => a.order - b.order)
     .map(e => e.node);
+
+  // Option C: shapes marked "behind footage" are drawn in their own layer just above the V1 picture (below V2 inserts and every other layer), clipped away from the footage so they show only outside it.
+  const behindLayer = shapeEntries.some(e => e.behind) ? (
+    <BehindFootageLayer rects={hasRealSrc ? behindFootageRects(videoClips, behindSizes, blendWindows, rawW, rawH, timeline.currentTime) : []} canvasW={rawW} canvasH={rawH}>
+      {shapeEntries.filter(e => e.behind).sort((a, b) => a.order - b.order).map(e => e.node)}
+    </BehindFootageLayer>
+  ) : null;
 
   // Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping) — the visual guide overlay
   // itself: pure display, pointer-events:none throughout so it can never intercept a click or
@@ -4951,12 +5044,17 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 existing 'fade_black' enum value and fades to/from the preview's own black
                 background at this clip's own start/end, via getClipTransitionOpacity above. */}
             <label className="stack-field"><span>Transition</span>
-              <select value={selectedClip.transition === "fade_black" ? "fade_black" : "cut"}
+              {/* D3: a stored value this selector has no option for (dissolve, whip pan, zoom punch — set from a reference) is shown as itself instead of as "None". Opening or
+                  focusing the selector changes nothing; only an explicit pick does. Export is unchanged: it reads the stored value. */}
+              <select value={selectedClip.transition === "fade_black" || selectedClip.transition === "cut" ? (selectedClip.transition === "fade_black" ? "fade_black" : "cut") : selectedClip.transition}
                 onChange={e => updateVideoClip(selectedClip.id, { transition: e.target.value as VideoClip["transition"] })}>
                 <option value="cut">None</option><option value="fade_black">Fade</option>
+                {selectedClip.transition !== "cut" && selectedClip.transition !== "fade_black" && (
+                  <option value={selectedClip.transition}>{{ dissolve: "Dissolve", whip_pan: "Whip pan", zoom_punch: "Zoom punch" }[selectedClip.transition]} (exported, not previewed)</option>
+                )}
               </select>
             </label>
-            {selectedClip.transition === "fade_black" && (
+            {selectedClip.transition !== "cut" && (
               <label className="stack-field"><span>Transition Duration</span>
                 <select value={String(selectedClip.transitionDuration)} onChange={e => updateVideoClip(selectedClip.id, { transitionDuration: Number(e.target.value) })}>
                   {[0.25, 0.5, 1].map(d => <option key={d} value={d}>{d}s</option>)}
@@ -5148,6 +5246,11 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               <input type="checkbox" checked={selectedShape.fullWidth ?? false}
                 onChange={e => updateShape(selectedShape.id, { fullWidth: e.target.checked })} />
               <span>Full width (banner)</span>
+            </label>
+            <label className="stack-field" style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: "row" }} title="Visible only where the footage is not (the bars of a Fit clip, gaps); never covers the picture">
+              <input type="checkbox" data-testid="shape-behind-footage" checked={isBehindFootage(selectedShape)}
+                onChange={e => updateShape(selectedShape.id, { behindFootage: e.target.checked } as Partial<Shape>)} />
+              <span>Behind footage</span>
             </label>
             <h4>Transform</h4>
             <div className="row">
@@ -5540,7 +5643,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             key={`${v.platformKey}|${v.placementKey}`}
             type="button"
             className={v.platformKey === canvasFormat.platformKey && v.placementKey === canvasFormat.placementKey ? "active" : ""}
-            onClick={() => setCanvasFormat(v)}
+            onClick={() => setCanvasFormat({ ...v, background: canvasFormat.background, backdrop: canvasFormat.backdrop })}
             title={`${v.width}×${v.height}`}
           >
             {v.label} ({v.ratio})
@@ -5563,6 +5666,16 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             <button type="button">✋</button>
             <button className="active" type="button">⌁</button>
             <span className="zoom-readout" title="Actual scale of the canvas as displayed">{Math.round((canvasBox.w / rawW) * 100)}%</span>
+            <label className="canvas-bg-control" title="Colour behind a letterboxed video (Fit) and in timeline gaps">
+              <input type="color" data-testid="canvas-background" value={validCanvasBackground(canvasFormat.background) ?? "#000000"} onChange={e => setCanvasFormat({ ...canvasFormat, background: e.target.value })} />
+              <button type="button" disabled={!canvasFormat.background} onClick={() => setCanvasFormat({ ...canvasFormat, background: undefined })}>Reset to black</button>
+            </label>
+            <label className="canvas-bg-control" title="What fills the bars of a letterboxed (Fit) video: the colour, or a blurred copy of the video itself. Blur makes exports take longer. The preview shows the active clip's backdrop only: during a dissolve the other clip's backdrop is not drawn (the MP4 has it).">
+              <select data-testid="canvas-backdrop" value={canvasFormat.backdrop ?? "color"} onChange={e => setCanvasFormat({ ...canvasFormat, backdrop: validCanvasBackdrop(e.target.value) })}>
+                <option value="color">Bars: colour</option>
+                <option value="blur">Bars: blurred video</option>
+              </select>
+            </label>
             {/* STEP 7 (Platform Canvas / Full-Screen Video Acceptance): was a fully dead
                 placeholder button (no onClick at all) — the same "decorative control" pattern
                 already found and fixed for the preview mute speaker and Undo/Redo before this
@@ -5661,10 +5774,17 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               <div
                 ref={videoPreviewBoxRef}
                 className={`video-preview real canvas-selectable ${selectedClip?.id === activeVideoClip!.id ? "canvas-el-selected" : ""}`}
-                style={{ width: canvasBox.w, height: canvasBox.h }}
+                style={{ width: canvasBox.w, height: canvasBox.h, ...(validCanvasBackground(canvasFormat.background) ? { background: validCanvasBackground(canvasFormat.background) } : {}) }}
                 onClick={e => { e.stopPropagation(); setSelectedElement({ type: "clip", lane: "video", id: activeVideoClip!.id }); }}
                 title={`${activeVideoClip!.name || "Video"} — click to select`}
               >
+                {backdropClip && (
+                  <video ref={backdropVideoRef} key={backdropClip.id} src={backdropClip.url} className="real-video-el" data-testid="canvas-backdrop-video" muted playsInline preload="auto" draggable={false}
+                    style={{
+                      position: "absolute", inset: 0, pointerEvents: "none", objectFit: "cover", transform: "scale(1.12)",
+                      filter: `${getMediaFilter(backdropClip) ?? ""} blur(${previewBlurPx(canvasBox.w, canvasFormat.width)}px)`.trim(),
+                    }} />
+                )}
                 <video ref={videoRef} src={activeVideoClip!.url} className="real-video-el" playsInline
                   // Manual test defect (Crop & Reposition drag not working in real Chrome):
                   // <video> (like <img>) is natively draggable in Chrome by default — a real,
@@ -5684,6 +5804,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                   draggable={false}
                   onMouseDown={beginCropDrag(activeVideoClip!)}
                   style={{
+                    ...(backdropClip ? { position: "relative" as const } : {}),
                     filter: getMediaFilter(activeVideoClip!),
                     opacity: getClipTransitionOpacity(activeVideoClip!, timeline.currentTime),
                     // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): 'fit' (undefined/
@@ -5698,12 +5819,24 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                       : {}),
                     cursor: repositionClipId === activeVideoClip!.id ? "move" : undefined,
                   }} />
+                {blendPreview && blendOtherClip && (
+                  <video ref={blendVideoRef} key={blendOtherClip.id} src={blendOtherClip.url} className="real-video-el" data-testid="dissolve-blend" muted playsInline preload="auto" draggable={false}
+                    style={{
+                      position: "absolute", inset: 0, pointerEvents: "none",
+                      filter: getMediaFilter(blendOtherClip),
+                      opacity: blendPreview.opacity,
+                      ...(blendOtherClip.fitMode === "fill"
+                        ? { objectFit: "cover", objectPosition: `${blendOtherClip.cropOffsetX ?? 50}% ${blendOtherClip.cropOffsetY ?? 50}%` }
+                        : {}),
+                    }} />
+                )}
                 {repositionClipId === activeVideoClip!.id && (
                   <div className="crop-reposition-hint" onClick={e => e.stopPropagation()}>
                     Drag the video to choose what's cropped
                     <button type="button" onClick={() => setRepositionClipId(null)}>Done</button>
                   </div>
                 )}
+                {behindLayer}
                 {insertLayer}
                 {visualLayers}
                 {guideOverlay}
@@ -5751,6 +5884,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 >
                   {activeVideoClip ? activeVideoClip.name : "VISIT OUR SHOWROOM TODAY"}
                 </div>
+                {behindLayer}
                 {insertLayer}
                 {visualLayers}
                 {guideOverlay}
