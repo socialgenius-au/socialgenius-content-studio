@@ -268,7 +268,13 @@ jobs:
             for (const route of ['/deconstructor', '/video-studio-v2', '/deconstructor']) {
               const response = await page.goto(origin + route, {waitUntil: 'domcontentloaded'});
               if (response?.status() !== 200) throw new Error(route + ': HTTP ' + response?.status());
-              await page.waitForFunction(() => document.body.innerText.trim().length > 50);
+              if (route === '/deconstructor') {
+                await page.getByText('Reconstruct from a reference', {exact: true}).waitFor({state: 'visible', timeout: 15000});
+                await page.getByText('1. Reference', {exact: true}).waitFor({state: 'visible', timeout: 15000});
+                await page.getByText('6. Create', {exact: true}).waitFor({state: 'visible', timeout: 15000});
+              } else {
+                await page.waitForFunction(() => document.body.innerText.includes('Video Studio'), {timeout: 15000});
+              }
               if (new URL(page.url()).pathname !== route) {
                 throw new Error(route + ': unexpected redirect to ' + page.url());
               }
