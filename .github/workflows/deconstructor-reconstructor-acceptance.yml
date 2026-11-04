@@ -246,6 +246,52 @@ jobs:
             }
           } finally { await browser.close(); }
           EOF
+      - name: Milestone 18 authenticated Deconstructor to Video Studio browser navigation
+        run: |
+          node --input-type=module <<'EOF'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({headless: true});
+          const context = await browser.newContext();
+          const page = await context.newPage();
+          const runtimeErrors = [];
+          page.on('pageerror', error => runtimeErrors.push(error.message));
+          try {
+            await context.addInitScript(() => localStorage.setItem('token', 'ci-isolated-mock-token'));
+            await context.route('**/auth/me', route => route.fulfill({
+              status: 200, contentType: 'application/json',
+              body: JSON.stringify({id: 1, username: 'ci-acceptance', email: '', role: 'admin'})
+            }));
+            await context.route('**/reference-videos/**', route => route.fulfill({
+              status: 200, contentType: 'application/json', body: '[]'
+            }));
+            const origin = 'http://127.0.0.1:4173';
+            for (const route of ['/deconstructor', '/video-studio-v2', '/deconstructor']) {
+              const response = await page.goto(origin + route, {waitUntil: 'domcontentloaded'});
+              if (response?.status() !== 200) throw new Error(route + ': HTTP ' + response?.status());
+              await page.waitForFunction(() => document.body.innerText.trim().length > 50);
+              if (new URL(page.url()).pathname !== route) {
+                throw new Error(route + ': unexpected redirect to ' + page.url());
+              }
+              const body = await page.locator('body').innerText();
+              if (route === '/deconstructor') {
+                for (const stage of ['Reference', 'Anatomy', 'Mechanisms', 'Blueprint', 'Create']) {
+                  if (!body.includes(stage)) throw new Error('Missing Deconstructor stage: ' + stage);
+                }
+              } else {
+                if (!body.includes('Video Studio')) throw new Error('Video Studio heading missing');
+              }
+              if (runtimeErrors.length) throw new Error(route + ': ' + runtimeErrors.join(' | '));
+              console.log('M18 browser navigation passed:', route, body.length, 'characters');
+            }
+          } catch (error) {
+            await page.screenshot({path: '/tmp/browser-failure.png', fullPage: true}).catch(() => {});
+            console.error('M18 browser failure URL:', page.url());
+            console.error('M18 browser failure body:', (await page.locator('body').innerText().catch(() => '')).slice(0, 2500));
+            throw error;
+          } finally {
+            await browser.close();
+          }
+          EOF
       - name: Upload browser diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
