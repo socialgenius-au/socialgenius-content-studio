@@ -1,15 +1,23 @@
 // C6 -- the "Blueprint scenes" panel inside the EXISTING Video Studio V2 shell: shows the scenes the active draft was created from
 // (one per blueprint section), their instructions (never final copy), mechanisms and traceability. Read-only; renders nothing when the
 // project did not come from a blueprint.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useBlueprintPlan } from './blueprintPlanStore'
 import type { BlueprintPlan } from './blueprintPlan'
+import './blueprintCanvas.css'
 
 const fmt = (n: number) => `${Math.round(n * 10) / 10}s`
 const btn: React.CSSProperties = { background: 'transparent', border: 0, cursor: 'pointer', color: 'inherit', textAlign: 'left', padding: 0 }
 
 export default function BlueprintPlanPanel() {
   const plan = useBlueprintPlan()
+  const active = !!plan
+  // While a blueprint draft is open the editor's built-in ABC Tiles demo canvas is hidden (blueprintCanvas.css); the attribute is removed again as soon as another kind of project is opened.
+  useEffect(() => {
+    if (!active) return
+    document.documentElement.setAttribute('data-sg-blueprint-draft', '')
+    return () => document.documentElement.removeAttribute('data-sg-blueprint-draft')
+  }, [active])
   return plan ? <BlueprintPlanView plan={plan} /> : null
 }
 
