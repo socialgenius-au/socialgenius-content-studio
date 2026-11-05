@@ -4,7 +4,7 @@ Why this exists: on the deconstructor-acceptance environment `POST /auth/login` 
 (see the commit message) showed the server signs and verifies consistently, so a bare JWTError means the credential that ARRIVED is not the token that was issued. These tests pin down:
   * the whole login -> authenticated request flow through the real app (real routes, real Postgres, real rate limiter), for freshly issued tokens;
   * that invalid, expired, tampered, wrongly signed and MALFORMED credentials (quoted, doubled `Bearer`, `undefined`) are all refused, never accepted;
-  * that a rejection is logged with the exception class and the credential's STRUCTURE only: never the token, a claim, the signing key or the password.
+  * that a rejection is logged with the exception class only: never the token, a claim, the signing key or the password.
 The HTTP tests need a database on this machine (they create and delete their own `jwt_*` users); the unit tests always run.
 """
 import asyncio
@@ -21,7 +21,7 @@ from app.config import settings
 from app.database import engine
 from app.limiter import limiter
 from app.main import app
-from app.services.auth import create_token, decode_token, describe_credential, hash_password
+from app.services.auth import create_token, decode_token, hash_password
 
 PW = "correct-horse-battery"
 LOCAL_DB = any(h in settings.DATABASE_URL for h in ("@127.0.0.1", "@localhost", "@[::1]"))
@@ -39,39 +39,6 @@ def test_a_valid_token_decodes_and_carries_its_claims():
     assert claims and claims["sub"] == "7" and claims["username"] == "someone" and claims["tv"] == 3
 
 
-def test_description_names_the_malformation_and_never_contains_the_credential():
-    t = create_token(1, "u", "editor", 0)
-    cases = {
-        t: ["jwt_shaped", "alg=HS256"],
-        f'"{t}"': ["wrapped_in_quotes"],
-        f"'{t}'": ["wrapped_in_quotes"],
-        f"Bearer {t}": ["repeated_bearer_prefix"],
-        f" {t}\n": ["outer_whitespace"],
-        "undefined": ["placeholder_text"],
-        "null": ["placeholder_text"],
-        t[:40]: [],
-    }
-    for credential, expected in cases.items():
-        text = describe_credential(credential)
-        for flag in expected:
-            assert flag in text, (flag, text)
-        assert f"length={len(credential)}" in text
-        for piece in (t[:16], t.split(".")[1][:12], t.split(".")[2][:12]):
-            assert piece not in text, "the description must never contain any part of the credential"
-    assert describe_credential(None) == "no credential"
-    assert "wrapped_in_quotes" not in describe_credential(t) and "placeholder_text" not in describe_credential(t)
-
-
-def test_unknown_header_algorithms_are_reported_as_other_not_echoed():
-    forged_header = jwt.get_unverified_header(create_token(1, "u", "editor", 0))
-    assert forged_header["alg"] == "HS256"
-    import base64, json
-    seg = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b"=").decode()
-    odd = f"{seg({'alg': 'SECRET-LOOKING-ALG', 'typ': 'JWT'})}.{seg({'sub': '1'})}.{seg('sig')}"
-    text = describe_credential(odd)
-    assert "alg=other" in text and "SECRET-LOOKING-ALG" not in text
-
-
 @pytest.mark.parametrize("make", [
     lambda: "not-a-token",
     lambda: "",
@@ -85,15 +52,15 @@ def test_everything_that_is_not_a_genuine_token_is_refused(make):
     assert decode_token(make()) is None
 
 
-def test_a_rejection_logs_class_and_structure_but_never_secrets(caplog):
+def test_a_rejection_logs_the_class_but_never_secrets(caplog):
     t = create_token(1, "u", "editor", 0)
     with caplog.at_level(logging.WARNING, logger="app.services.auth"):
         assert decode_token(f'"{t}"') is None
         expired = jwt.encode({"sub": "1", "exp": datetime.now(timezone.utc) - timedelta(minutes=5)}, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
         assert decode_token(expired) is None
     text = "\n".join(r.getMessage() for r in caplog.records)
-    assert "JWT verification rejected token: JWTError" in text and "wrapped_in_quotes" in text          # a malformed credential is told apart ...
-    assert "ExpiredSignatureError" in text                                                              # ... from an expired one
+    assert "JWT verification rejected token: JWTError" in text                                           # a malformed credential ...
+    assert "ExpiredSignatureError" in text                                                              # ... is told apart from an expired one
     for secret in (settings.SECRET_KEY, t, t.split(".")[1], t.split(".")[2], expired.split(".")[1]):
         assert secret not in text
 
@@ -183,13 +150,13 @@ def test_a_doubled_bearer_prefix_and_a_missing_header_are_refused(client):
 
 
 @needs_local_db
-def test_a_rejected_request_logs_why_without_leaking_anything(client, caplog):
+def test_a_rejected_request_logs_the_class_without_leaking_anything(client, caplog):
     u = make_user()
     real = login(client, u)
     with caplog.at_level(logging.WARNING):
         assert client.get("/auth/me", headers=bearer(f'"{real}"')).status_code == 401
     text = "\n".join(r.getMessage() for r in caplog.records)
-    assert "JWT verification rejected token: JWTError" in text and "wrapped_in_quotes" in text
+    assert "JWT verification rejected token: JWTError" in text
     for secret in (real, real.split(".")[1], real.split(".")[2], settings.SECRET_KEY, u["password"]):
         assert secret not in text
 
