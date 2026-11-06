@@ -168,6 +168,13 @@ async def health():
     return {"status": "ok", "service": "SocialGenius Content Studio", "version": "4.0.0"}
 
 
+@app.get("/health/storage", tags=["health"])
+async def health_storage():
+    """Whether uploaded media survives a redeploy: booleans and free space only, no paths or names."""
+    from app.services.media_storage import storage_status
+    return storage_status()
+
+
 @app.get("/health/live", tags=["health"])
 async def health_live():
     """Liveness probe — returns 200 as long as the process is up."""

@@ -116,6 +116,7 @@ from app.services import (
     speech_analysis_svc, transition_evidence_svc, transition_similarity_evidence_svc,
     visual_composition_svc, visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
+from app.services.media_storage import asset_file_present, missing_file_message
 from app.services.content_anatomy_svc import ContentAnatomyError, ContentAnatomyNotReady, get_content_anatomy
 from app.services.mechanism_reasoner import MechanismInputError, MechanismReasoningError
 from app.services.transferable_mechanism_svc import (
@@ -895,6 +896,8 @@ async def analyze_reference_video(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
 
     try:
+        if not asset_file_present(asset.file_path):
+            raise ffmpeg_svc.TechnicalProbeError(missing_file_message(asset.original_filename))
         details = await ffmpeg_svc.probe_technical_metadata(asset.file_path, file_size_bytes=asset.file_size)
     except ffmpeg_svc.TechnicalProbeError as exc:
         await db.execute(

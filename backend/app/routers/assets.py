@@ -14,6 +14,7 @@ from app.deps import current_user
 from app.models.asset import Asset
 from app.models.user import User
 from app.schemas.asset import AssetResponse
+from app.services.media_storage import asset_file_present
 
 router = APIRouter()
 
@@ -32,6 +33,20 @@ async def list_assets(
         q = q.where(Asset.job_id == job_id)
     result = await db.execute(q.order_by(Asset.created_at.desc()))
     return result.scalars().all()
+
+
+@router.get("/integrity")
+async def media_integrity(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Read-only: which of YOUR assets have a database record but no file on disk. Nothing is deleted, replaced or recreated; the person re-uploads."""
+    rows = (await db.execute(select(Asset).where(Asset.user_id == user.id).order_by(Asset.created_at.desc()))).scalars().all()
+    missing = [
+        {"id": a.id, "original_filename": a.original_filename, "file_type": a.file_type, "created_at": a.created_at}
+        for a in rows if not asset_file_present(a.file_path)
+    ]
+    return {"total": len(rows), "available": len(rows) - len(missing), "missing_count": len(missing), "missing": missing}
 
 
 @router.get("/{asset_id}/download")
