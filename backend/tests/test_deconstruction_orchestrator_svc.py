@@ -36,6 +36,7 @@ AI_STAGES = {"scene_story_beats", "hook_classification", "retention_devices"}
 def ai_on(monkeypatch):
     for name in AI_SETTINGS:
         monkeypatch.setattr(settings, name, "anthropic")
+    monkeypatch.setattr(settings, "AI_SPEND_ENABLED", True)       # providers set AND the spend switch on: the AI stages run (the runners here are fakes; no request is made)
 
 
 @pytest.fixture
@@ -599,3 +600,22 @@ async def test_default_retention_runner_reports_zero_devices_as_a_normal_summary
                         AsyncMock(return_value={"candidates_examined": 8, "devices": []}))
     ctx = SimpleNamespace(db=object(), user=object(), reference_video_id=1, video_analysis_id=2)
     assert await default_runners()["retention_devices"](ctx) == {"candidates_examined": 8, "accepted_devices": 0}
+
+
+async def test_ai_stages_are_skipped_not_failed_while_the_spend_switch_is_off(monkeypatch):
+    """Providers configured but AI_SPEND_ENABLED=false (the default): every AI stage is reported as skipped with that reason, no runner is called and nothing fails."""
+    for name in AI_SETTINGS:
+        monkeypatch.setattr(settings, name, "anthropic")
+    monkeypatch.setattr(settings, "AI_SPEND_ENABLED", False)
+    async with _TestSessionLocal() as db:
+        user = await _existing_test_user(db)
+        rv_id, asset_id, _ = await make_reference(db, user)
+        try:
+            calls = []
+            report = await run_deconstruction(db, user, rv_id, runners=fake_runners(calls))
+            by_key = {s["key"]: s for s in report["stages"]}
+            ai_keys = [s.key for s in orch.STAGES if s.ai_settings]
+            assert ai_keys and all(by_key[k]["status"] == "skipped" and "switched off" in by_key[k]["reason"] for k in ai_keys)
+            assert not any(k in calls for k in ai_keys)
+        finally:
+            await cleanup(db, asset_id, rv_id)

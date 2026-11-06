@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import type { User, TokenResponse } from '../types'
-import { authApi } from '../api/client'
+import { authApi, mediaApi } from '../api/client'
+import { keepMediaTokenFresh, stopMediaAccess } from '../api/mediaAccess'
 
 interface AuthState {
   user: User | null
@@ -20,7 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (token) {
       authApi
         .me()
-        .then((r) => setUser(r.data as User))
+        .then(async (r) => { await keepMediaTokenFresh(mediaApi.token); setUser(r.data as User) })   // the media link is ready before the first screen that shows media
         .catch((err) => {
           // Only clear a token that the server actually rejected (401 — genuinely invalid or
           // expired). A network/connectivity error (backend unreachable, timed out, 5xx) is not
@@ -40,11 +41,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = await authApi.login(username, password)
     const res = data as TokenResponse
     localStorage.setItem('token', res.access_token)
+    await keepMediaTokenFresh(mediaApi.token)
     setUser({ id: res.user_id, username: res.username, email: '', role: res.role })
   }
 
   const logout = () => {
     localStorage.removeItem('token')
+    stopMediaAccess()
     setUser(null)
   }
 

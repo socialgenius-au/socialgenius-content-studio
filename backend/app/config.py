@@ -125,6 +125,18 @@ class Settings(BaseSettings):
     BLUEPRINT_REASONER_PROVIDER: str = ""
     BLUEPRINT_REASONER_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
 
+    # ── AI cost controls (app/services/ai_metering.py) ───────────────────────────────────────
+    # EVERY Anthropic request goes through one metered path. AI_SPEND_ENABLED is OFF by default: with it off no request is ever sent, whatever else is configured.
+    # The caps are ESTIMATED-spend ceilings enforced on the server before each call (reserve first, settle with real usage after).
+    AI_SPEND_ENABLED: bool = False
+    AI_PER_REFERENCE_BUDGET_USD: float = 1.0       # max estimated spend per reference video
+    AI_PHASE_BUDGET_USD: float = 20.0              # max estimated spend for this acceptance phase (all references and unscoped calls)
+    AI_PHASE_ID: str = "acceptance-m6"             # change to start a new phase budget
+    AI_RETRY_MAX: int = 2                          # our own bounded retries on transient errors (the SDK's hidden retries are switched off); every attempt is accounted
+
+    # ── Signed media access (app/services/media_access.py) ───────────────────────────────────
+    MEDIA_TOKEN_TTL_SECONDS: int = 3600            # lifetime of a media token (the browser refreshes it before it expires)
+
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 500
 

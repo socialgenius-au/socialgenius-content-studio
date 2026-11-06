@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Sun, Moon, Monitor, ShieldCheck, GitBranch, KeyRound } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
+import { AiSpendCard } from '@/components/common/AiSpendCard'
 import { LoadingState } from '@/components/common/LoadingState'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -77,6 +78,8 @@ export default function SettingsPage() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Role</span><Badge variant="outline">{user?.role}</Badge></div>
               </CardContent>
             </Card>
+
+            {user?.role === 'admin' && <AiSpendCard />}
 
             <Card>
               <CardHeader>

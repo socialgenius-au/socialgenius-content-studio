@@ -18,8 +18,9 @@ from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.limiter import limiter
 from app.schema_patches import apply_additive_schema_patches
+from app.services.media_access import MediaAuthMiddleware
 from app.startup_security import CORS_ENV_VAR, build_allowed_origins, check_secret_key, plan_seed_users
-from app.routers import auth, auth_recovery, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos
+from app.routers import auth, auth_recovery, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos, ai_usage, media
 
 # Import all models so Base.metadata is fully populated before create_all
 from app.models import (  # noqa: F401
@@ -35,6 +36,7 @@ from app.models import (  # noqa: F401
     # reasoning as every prior additive Stage above. See speech_segment.py's own docstring for
     # why this is separate from the existing (untouched) Transcript model.
     SpeechSegment,
+    AiCallLedger,
 )
 
 # ── Sentry ────────────────────────────────────────────────────────────────────
@@ -125,6 +127,7 @@ class UnhandledExceptionMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(UnhandledExceptionMiddleware)
+app.add_middleware(MediaAuthMiddleware)      # /uploads/* needs a valid media token; added before CORS so CORS headers still reach its 401/403 answers
 
 app.add_middleware(
     CORSMiddleware,
@@ -154,6 +157,8 @@ app.include_router(pixabay.router,    prefix="/pixabay",    tags=["pixabay"])
 app.include_router(brands.router,     prefix="/brands",     tags=["brands"])
 app.include_router(generate.router,   prefix="/generate",   tags=["generate"])
 app.include_router(assets.router,     prefix="/assets",     tags=["assets"])
+app.include_router(ai_usage.router,   prefix="/ai",         tags=["ai-usage"])
+app.include_router(media.router,      prefix="/media",      tags=["media"])
 app.include_router(templates.router,  prefix="/templates",  tags=["templates"])
 app.include_router(video_studio_drafts.router, prefix="/video-studio-drafts", tags=["video-studio-drafts"])
 app.include_router(video_export.router, prefix="/video-export", tags=["video-export"])

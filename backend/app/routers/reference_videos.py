@@ -117,6 +117,7 @@ from app.services import (
     visual_composition_svc, visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
 from app.services.media_storage import asset_file_present, missing_file_message
+from app.services.ai_metering import ai_scope
 from app.services.content_anatomy_svc import ContentAnatomyError, ContentAnatomyNotReady, get_content_anatomy
 from app.services.mechanism_reasoner import MechanismInputError, MechanismReasoningError
 from app.services.transferable_mechanism_svc import (
@@ -3696,10 +3697,11 @@ async def derive_reference_video_mechanisms(
     409 fingerprint mismatch; 502 no/failed/invalid reasoner (nothing persisted). `mechanisms: []` is a valid,
     successful result."""
     try:
-        return await derive_and_persist_mechanisms(
-            db, user, reference_video_id, video_analysis_id=video_analysis_id,
-            expected_fingerprint=anatomy_fingerprint, force=force,
-        )
+        with ai_scope(reference_video_id=reference_video_id, user_id=user.id, reasoner="mechanism", force=force):
+            return await derive_and_persist_mechanisms(
+                db, user, reference_video_id, video_analysis_id=video_analysis_id,
+                expected_fingerprint=anatomy_fingerprint, force=force,
+            )
     except OrchestrationError as exc:
         raise _orchestration_http_error(exc)
     except (ContentAnatomyError, MechanismInputError) as exc:
@@ -3765,11 +3767,12 @@ async def derive_reference_video_blueprint(
     mechanisms; 409 C3 never run or stale against the current anatomy, or a pinned fingerprint / mechanism attempt that no longer
     matches; 502 no/failed/invalid reasoner (nothing persisted)."""
     try:
-        return await derive_and_persist_blueprint(
-            db, user, reference_video_id, request.intent, video_analysis_id=request.video_analysis_id,
-            expected_anatomy_fingerprint=request.anatomy_fingerprint, expected_mechanism_attempt_id=request.mechanism_attempt_id,
-            force=request.force,
-        )
+        with ai_scope(reference_video_id=reference_video_id, user_id=user.id, reasoner="blueprint", force=request.force):
+            return await derive_and_persist_blueprint(
+                db, user, reference_video_id, request.intent, video_analysis_id=request.video_analysis_id,
+                expected_anatomy_fingerprint=request.anatomy_fingerprint, expected_mechanism_attempt_id=request.mechanism_attempt_id,
+                force=request.force,
+            )
     except OrchestrationError as exc:
         raise _orchestration_http_error(exc)
     except (ContentAnatomyError, BlueprintInputError) as exc:
