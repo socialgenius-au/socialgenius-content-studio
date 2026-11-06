@@ -245,7 +245,8 @@ def _classify_failure(exc: BaseException) -> tuple[bool, bool, str]:
     return False, False, type(exc).__name__
 
 
-async def metered_create(inner, kwargs: dict):
+async def metered_create(get_inner, kwargs: dict):
+    """`get_inner` returns the real client; it is only called after the kill switch, price table and key checks, so a misconfigured or switched-off system refuses (and records the refusal) first."""
     scope = current_scope()
     model = kwargs.get("model") or ""
     max_tokens = int(kwargs.get("max_tokens") or 0)
@@ -266,6 +267,11 @@ async def metered_create(inner, kwargs: dict):
     if max_tokens <= 0:
         raise AiCostControlError("no_max_tokens", "A request without max_tokens has no cost ceiling, so it was refused.")
     est_in_usd, ceiling = ceiling_usd(price, est_tokens, max_tokens)
+    try:
+        inner = get_inner()
+    except AiCostControlError as exc:
+        await _record_refusal("refused_not_configured", scope, model, rhash, 1, est_tokens, max_tokens, str(exc))
+        raise
 
     attempt = 0
     while True:
@@ -314,7 +320,7 @@ class _Messages:
         self._owner = owner
 
     async def create(self, **kwargs):
-        return await metered_create(self._owner.inner(), kwargs)
+        return await metered_create(self._owner.inner, kwargs)
 
 
 class MeteredClient:

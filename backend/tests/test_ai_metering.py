@@ -155,6 +155,15 @@ async def test_no_key_and_no_client_sends_nothing(env, monkeypatch):
     with pytest.raises(m.AiCostControlError) as e:
         await m.MeteredClient().messages.create(**req())
     assert e.value.code == "not_configured"
+    assert [r.status for r in await rows(env.phase)] == ["refused_not_configured"]          # refused AND recorded
+
+
+async def test_the_kill_switch_is_checked_before_the_key(env, monkeypatch):
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr(settings, "AI_SPEND_ENABLED", False)
+    with pytest.raises(m.AiCostControlError) as e:
+        await m.MeteredClient().messages.create(**req())
+    assert e.value.code == "disabled"
 
 
 async def test_unknown_model_is_refused_before_anything_is_sent(env):
