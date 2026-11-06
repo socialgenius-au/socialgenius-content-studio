@@ -378,8 +378,18 @@ async def get_orchestration_status(db: AsyncSession, user: User, reference_video
     ps = va.pass_status or {}
     return {
         "reference_video_id": reference_video_id, "video_analysis_id": va.id,
-        "orchestration": ps.get(ORCHESTRATION_KEY), "stages": compute_stage_statuses(ps),
+        "orchestration": _orchestration_view(ps.get(ORCHESTRATION_KEY)), "stages": compute_stage_statuses(ps),
     }
+
+
+def _orchestration_view(state: dict | None) -> dict | None:
+    """The stored run record as readers see it. A run still marked `running` after ORCHESTRATION_STALE_SECONDS is a crashed one (the same rule that lets a new run take over); readers
+    are told with `stale: true`, decided HERE on the server's clock (never on a browser's), so a page can stop spinning and offer a retry. Nothing is written."""
+    if not state:
+        return state
+    if state.get("status") == "running" and _is_stale(state.get("started_at")):
+        return {**state, "stale": True}
+    return state
 
 
 # ── the run ─────────────────────────────────────────────────────────────────────────────────

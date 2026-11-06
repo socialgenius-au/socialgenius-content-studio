@@ -45,10 +45,13 @@ function Disclosure({ label, children }: { label: string; children: React.ReactN
 }
 
 // ── 1. Reference ─────────────────────────────────────────────────────────────────────────────
+const STEP_WORD: Record<string, string> = { complete: 'done', already_complete: 'already done', running: 'running', skipped: 'skipped', failed: 'failed', blocked: 'blocked', not_run: 'not run yet' }
+const STEP_MARK: Record<string, string> = { complete: '✓', already_complete: '✓', running: '…', skipped: '⏭', failed: '✗', blocked: '⛔', not_run: '○' }
+
 export function ReferenceStage(p: {
   references: Loadable<ReferenceVideo[]>; selectedId: number | null; onSelect: (id: number) => void
   progress: DeconProgress; busy: string | null; anatomyAvailable: boolean
-  onDeconstruct: () => void; onAdd: (f: File) => void; onRetry: () => void
+  onDeconstruct: () => void; onRefresh?: () => void; onAdd: (f: File) => void; onRetry: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const cards = (p.references.data ?? []).map(referenceCard)
@@ -107,6 +110,26 @@ export function ReferenceStage(p: {
               <Progress value={p.progress.percent} />
               <div className={sub}>{p.progress.done} of {p.progress.total || '…'} steps done{p.progress.current ? ` · ${p.progress.current}` : ''}</div>
             </div>
+          )}
+          {p.progress.state === 'interrupted' && (
+            <Notice tone="warn">{p.progress.headline}.</Notice>
+          )}
+          {p.progress.steps.length > 0 && p.progress.state !== 'not_started' && (
+            <details data-testid="deconstruct-steps" open={p.progress.state !== 'done'}>
+              <summary className={`${sub} cursor-pointer`}>
+                Steps: {p.progress.done} of {p.progress.total} finished{p.progress.skipped > 0 ? `, ${p.progress.skipped} skipped (needs an AI provider that is not set up here)` : ''}
+              </summary>
+              <ul className="mt-1 space-y-0.5 text-sm">
+                {p.progress.steps.map(st => (
+                  <li key={st.key} data-testid={`deconstruct-step-${st.key}`} data-status={st.status}>
+                    <span aria-hidden>{STEP_MARK[st.status] ?? '·'}</span> {st.label} — <strong>{STEP_WORD[st.status] ?? st.status}</strong>{st.note ? <span className={sub}> · {st.note}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {(p.progress.state === 'running' || p.progress.state === 'interrupted') && p.onRefresh && (
+            <button type="button" className="text-sm underline" onClick={p.onRefresh} data-testid="deconstruct-refresh">Refresh status</button>
           )}
           {p.progress.failures.length > 0 && (
             <Notice tone="warn">

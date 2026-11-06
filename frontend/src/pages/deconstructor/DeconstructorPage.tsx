@@ -156,7 +156,7 @@ export default function DeconstructorPage() {
           {step === 'reference' && (
             <ReferenceStage
               references={d.references} selectedId={routeId} onSelect={select} progress={d.progress} busy={d.busy} anatomyAvailable={anatomyAvailable}
-              onDeconstruct={onDeconstruct} onRetry={() => window.location.reload()}
+              onDeconstruct={onDeconstruct} onRefresh={() => void d.refreshStatus()} onRetry={() => window.location.reload()}
               onAdd={async f => { const id = await d.addReference(f); if (id != null) select(id) }}
             />
           )}

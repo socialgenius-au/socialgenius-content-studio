@@ -69,30 +69,44 @@ export function referenceCard(v: ReferenceVideo): ReferenceCard {
 
 // ── deconstruction progress (C1) ─────────────────────────────────────────────────────────────
 
+export interface DeconStep { key: string; label: string; status: string; note: string | null }
+
 export interface DeconProgress {
-  state: 'not_started' | 'running' | 'done' | 'failed'
+  state: 'not_started' | 'running' | 'done' | 'failed' | 'interrupted'
   done: number
   total: number
   percent: number
   current: string | null
   failures: { label: string; error: string }[]
   headline: string
+  /** Every step with its real status: complete / already_complete / running / skipped / failed / blocked / not_run, with the reason or error when there is one. */
+  steps: DeconStep[]
+  /** Steps the server skipped on purpose (an AI provider that is not set up here): a normal outcome, never a failure. */
+  skipped: number
 }
 
 const DONE_STATES = new Set(['complete', 'already_complete', 'skipped'])
-
 export function summarizeDeconStatus(s: DeconStatus | null | undefined): DeconProgress {
-  if (!s) return { state: 'not_started', done: 0, total: 0, percent: 0, current: null, failures: [], headline: 'Not deconstructed yet' }
+  if (!s) return { state: 'not_started', done: 0, total: 0, percent: 0, current: null, failures: [], headline: 'Not deconstructed yet', steps: [], skipped: 0 }
   const total = s.stages.length
   const done = s.stages.filter(x => DONE_STATES.has(x.status)).length
   const failures = s.stages.filter(x => x.status === 'failed').map(x => ({ label: friendlyStageLabel(x.label), error: x.error ?? 'Unknown problem' }))
   const orch = s.orchestration?.status
-  const running = orch === 'running' || s.stages.some(x => x.status === 'running')
-  const cur = s.stages.find(x => x.status === 'running')
+  // The SERVER says when a claimed run has gone stale (it never reported back, e.g. the server restarted mid-run): such a run is not "running" any more, even if a step still carries its old running marker; otherwise the page would spin for ever and the Deconstruct button would stay disabled.
+  const interrupted = orch === 'interrupted' || (orch === 'running' && s.orchestration?.stale === true)
+  const stageRunning = s.stages.some(x => x.status === 'running')
+  const running = !interrupted && (orch === 'running' || (stageRunning && (orch === undefined || orch === null)))
+  const cur = running ? s.stages.find(x => x.status === 'running') : undefined
   const percent = total ? Math.round((done / total) * 100) : 0
-  const state: DeconProgress['state'] = running ? 'running' : failures.length ? 'failed' : done > 0 ? 'done' : 'not_started'
-  const headline = { running: 'Deconstructing…', failed: 'Deconstruction finished with problems', done: 'Deconstruction complete', not_started: 'Not deconstructed yet' }[state]
-  return { state, done, total, percent, current: cur ? friendlyStageLabel(cur.label) : null, failures, headline }
+  const state: DeconProgress['state'] = running ? 'running' : interrupted ? 'interrupted' : failures.length ? 'failed' : done > 0 ? 'done' : 'not_started'
+  const skipped = s.stages.filter(x => x.status === 'skipped').length
+  const headline = {
+    running: 'Deconstructing…', failed: 'Deconstruction finished with problems', not_started: 'Not deconstructed yet',
+    interrupted: 'The last run stopped before it finished — press Deconstruct to continue; finished steps are kept',
+    done: skipped > 0 ? `Deconstruction complete (${skipped} AI ${skipped === 1 ? 'step' : 'steps'} skipped — no AI provider is set up here)` : 'Deconstruction complete',
+  }[state]
+  const steps: DeconStep[] = s.stages.map(x => ({ key: x.key, label: friendlyStageLabel(x.label), status: x.status, note: x.status === 'failed' ? (x.error ?? 'Unknown problem') : (x.reason ?? null) }))
+  return { state, done, total, percent, current: cur ? friendlyStageLabel(cur.label) : null, failures, headline, steps, skipped }
 }
 
 // ── anatomy (C2) ─────────────────────────────────────────────────────────────────────────────
