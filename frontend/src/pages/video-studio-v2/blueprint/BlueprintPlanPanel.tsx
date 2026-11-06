@@ -2,7 +2,10 @@
 // (one per blueprint section), their instructions (never final copy), mechanisms and traceability. Read-only; renders nothing when the
 // project did not come from a blueprint.
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useStudio } from '../../../contexts/StudioContext'
 import { useBlueprintPlan } from './blueprintPlanStore'
+import { computeReadiness, type Readiness } from './readiness'
 import type { BlueprintPlan } from './blueprintPlan'
 import './blueprintCanvas.css'
 
@@ -18,10 +21,20 @@ export default function BlueprintPlanPanel() {
     document.documentElement.setAttribute('data-sg-blueprint-draft', '')
     return () => document.documentElement.removeAttribute('data-sg-blueprint-draft')
   }, [active])
-  return plan ? <BlueprintPlanView plan={plan} /> : null
+  return plan ? <LivePlanView plan={plan} /> : null
 }
 
-export function BlueprintPlanView({ plan }: { plan: BlueprintPlan }) {
+/** The plan view fed with the project's live clips, text and audio, so it always says what is still missing. */
+function LivePlanView({ plan }: { plan: BlueprintPlan }) {
+  const { videoClips, textOverlays, audioTracks } = useStudio()
+  const navigate = useNavigate()
+  const readiness = computeReadiness(plan.scenes, videoClips, textOverlays, audioTracks)
+  return <BlueprintPlanView plan={plan} readiness={readiness} onAssignFootage={() => navigate(`/deconstructor/${plan.referenceVideoId}`)} />
+}
+
+const chip = (ok: boolean): React.CSSProperties => ({ fontSize: 11, padding: '1px 7px', borderRadius: 999, border: '1px solid', borderColor: ok ? 'rgba(16,185,129,.5)' : 'rgba(245,158,11,.6)', background: ok ? 'rgba(16,185,129,.12)' : 'rgba(245,158,11,.12)' })
+
+export function BlueprintPlanView({ plan, readiness, onAssignFootage }: { plan: BlueprintPlan; readiness?: Readiness | null; onAssignFootage?: () => void }) {
   const [open, setOpen] = useState(true)
   const [detail, setDetail] = useState<number | null>(null)
 
@@ -34,6 +47,17 @@ export function BlueprintPlanView({ plan }: { plan: BlueprintPlan }) {
         <span><strong>Blueprint draft</strong> · {plan.scenes.length} scenes · {fmt(plan.totalSeconds)}{plan.platform ? ` · ${plan.platform}` : ''}</span>
         <span aria-hidden>{open ? '▾' : '▸'}</span>
       </button>
+      {readiness && (
+        <div data-testid="blueprint-readiness" style={{ padding: '0 12px 8px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={chip(readiness.scenesWithFootage === plan.scenes.length)}>Footage: {readiness.scenesWithFootage} of {plan.scenes.length} scenes</span>
+          <span style={chip(readiness.placeholdersLeft === 0)}>{readiness.placeholdersLeft === 0 ? 'No placeholder text left' : `${readiness.placeholdersLeft} placeholder text${readiness.placeholdersLeft === 1 ? '' : 's'} to replace`}</span>
+          <strong style={{ fontSize: 12 }} data-testid="blueprint-export-status">{readiness.ready ? 'Ready to export' : 'Not ready to export yet'}</strong>
+          {!readiness.ready && readiness.blocker && <span data-testid="blueprint-blocker" style={{ fontSize: 12, flexBasis: '100%', opacity: 0.85 }}>{readiness.blocker}</span>}
+          {onAssignFootage && readiness.scenesWithFootage < plan.scenes.length && (
+            <button type="button" onClick={onAssignFootage} data-testid="blueprint-assign-footage" style={{ ...btn, textDecoration: 'underline', fontSize: 12 }}>Assign footage to scenes (Reconstruct)</button>
+          )}
+        </div>
+      )}
       {open && (
         <div style={{ padding: '0 12px 10px', maxHeight: 260, overflowY: 'auto' }}>
           <p style={{ margin: '0 0 8px', opacity: 0.8 }}>
@@ -47,6 +71,17 @@ export function BlueprintPlanView({ plan }: { plan: BlueprintPlan }) {
                   <span style={{ opacity: 0.7 }}>{sc.structuralRole.replace(/_/g, ' ')} · {fmt(sc.startTime)}–{fmt(sc.endTime)}</span>
                   {sc.mechanisms.length > 0 && <span style={{ opacity: 0.7 }}>· {sc.mechanisms.map(m => m.id).join(', ')}</span>}
                   {sc.cta && <span style={{ fontWeight: 600 }}>· CTA</span>}
+                  {readiness && (() => {
+                    const r = readiness.scenes.find(x => x.sceneNumber === sc.sceneNumber)
+                    if (!r) return null
+                    return (
+                      <span data-testid={`blueprint-scene-${sc.sceneNumber}-status`} style={{ display: 'inline-flex', gap: 6, marginLeft: 'auto' }}>
+                        <span style={chip(r.footage === 'full')}>{r.footage === 'full' ? 'Footage ✓' : r.footage === 'partial' ? `Footage ${r.footageSeconds}s of ${fmt(sc.duration)}` : 'No footage'}</span>
+                        <span style={chip(r.placeholdersLeft === 0)}>{r.placeholdersLeft === 0 ? 'Text ✓' : 'Text: placeholder'}</span>
+                        {sc.speech && <span style={{ ...chip(true), borderColor: 'rgba(128,128,128,.4)', background: 'transparent', opacity: r.hasVoice ? 1 : 0.7 }} title="Voice-over is optional: it never blocks the export">{r.hasVoice ? 'Voice ✓' : 'Voice: optional, none yet'}</span>}
+                      </span>
+                    )
+                  })()}
                 </button>
                 <div style={{ marginTop: 2 }}>{sc.contentInstruction}</div>
                 {detail === sc.sceneNumber && (

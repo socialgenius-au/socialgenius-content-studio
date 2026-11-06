@@ -1,11 +1,12 @@
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { reviewCriteria } from "../data/videoStudioMock";
 import { useStudio } from "../../../contexts/StudioContext";
 import { fitCanvasBox } from "../data/canvasFormats";
 import { findActiveClip } from "../../../components/studio/videoPreviewUtils";
 import { videoExportApi } from "../../../api/client";
 import { checkReconstructionExport } from "../blueprint/exportGuard";
+import { useBlueprintPlan } from "../blueprint/blueprintPlanStore";
 import { buildExportTextOverlays } from "../export/textOverlayExport";
 import { validCanvasBackground } from "../export/canvasBackground";
 import { validCanvasBackdrop } from "../export/canvasBackdrop";
@@ -55,6 +56,14 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
   // Opt-in (default: the exporter's existing behaviour). Applies to the next export only; it is not saved in the draft.
   const [edgePolicy, setEdgePolicy] = useState<"shorten" | "hold_incoming">("shorten");
   const [exportError, setExportError] = useState<string | null>(null);
+  const blueprintPlan = useBlueprintPlan();                                  // null unless this project came from a blueprint
+  const [exportSeconds, setExportSeconds] = useState(0);
+  useEffect(() => {
+    if (exportState !== "exporting") return;
+    setExportSeconds(0);
+    const t = window.setInterval(() => setExportSeconds(n => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [exportState]);
 
   const handleExportVideo = async () => {
     const clipsWithoutAsset = videoClips.filter(c => c.assetId == null);
@@ -75,7 +84,7 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
     }
     // M1 (Reconstructor): a reconstruction project must not export placeholder wording, and its clips must not leave gaps the exporter would silently collapse.
     // Projects that did not come from a blueprint are never affected (the check returns ok before looking at them).
-    const blocked = checkReconstructionExport(textOverlays, videoClips);
+    const blocked = checkReconstructionExport(textOverlays, videoClips, blueprintPlan?.scenes ?? []);
     if (!blocked.ok) {
       setExportState("error");
       setExportError(blocked.message);
@@ -245,6 +254,12 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
       </div>
 
       {status && <div className="inline-status">{status}</div>}
+      {exportState === "exporting" && (
+        <div className="inline-status" role="status" data-testid="export-progress">
+          Rendering your video… {Math.floor(exportSeconds / 60)}:{String(exportSeconds % 60).padStart(2, "0")} elapsed.
+          {" "}It is built on the server and the download starts by itself when it is ready — keep this page open. Long or high-resolution videos can take several minutes.
+        </div>
+      )}
       {exportState === "error" && exportError && (
         <div className="inline-status error">{exportError}</div>
       )}
@@ -267,7 +282,7 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
             onClick={() => void handleExportVideo()}
             disabled={exportState === "exporting"}
           >
-            {exportState === "exporting" ? "Exporting…" : "Export Video ↓"}
+            {exportState === "exporting" ? `Exporting… ${Math.floor(exportSeconds / 60)}:${String(exportSeconds % 60).padStart(2, "0")}` : "Export Video ↓"}
           </button>
           <button className="secondary" type="button" onClick={() => flash("Draft saved.")}>Save as Draft</button>
         </div>

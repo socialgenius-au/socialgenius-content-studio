@@ -12,7 +12,7 @@ describe('ReviewTab export wiring', () => {
   })
   it('runs the guard on the live overlays and clips, after the existing checks and before the exporting state, the request body and the network call', () => {
     const at = (needle: string) => handler.indexOf(needle)
-    const guard = at('checkReconstructionExport(textOverlays, videoClips)')
+    const guard = at('checkReconstructionExport(textOverlays, videoClips, blueprintPlan?.scenes ?? [])')
     expect(guard).toBeGreaterThan(-1)
     expect(guard).toBeGreaterThan(at('clipsWithoutAsset.length > 0'))               // existing checks keep their precedence
     expect(guard).toBeLessThan(at('setExportState("exporting")'))
