@@ -5,6 +5,7 @@ import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissol
 import { previewBlurPx, validCanvasBackdrop } from "../export/canvasBackdrop";
 import { durationCorrection } from "../export/measuredDuration";
 import { draftExtrasForSave, emptyExtras, extrasNote, pickDraftExtras, type DraftExtras } from "../export/draftExtras";
+import { EDITOR_DEFAULT_CANVAS_FORMAT, EDITOR_DEFAULT_SUBTITLE_STYLE } from "../blueprint/projectDefaults";
 import BehindFootageLayer from "../export/BehindFootageLayer";
 import { behindFootageRects } from "../export/behindFootagePreview";
 import { isBehindFootage } from "../export/footageGeometry";
@@ -267,7 +268,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     // alongside this phase) — same "raw + history-wrapped" pattern as every other lane.
     subtitles, addSubtitle: rawAddSubtitle, updateSubtitle: rawUpdateSubtitle, removeSubtitle: rawRemoveSubtitle,
     subtitleStyle, setSubtitleStyle,
-    mediaAssets, addMediaAsset, removeMediaAsset, uploadAsset,
+    mediaAssets, addMediaAsset, removeMediaAsset, uploadAsset, resetCanvasItemPositions,
     timeline, setTimeline,
     selectedElement, setSelectedElement,
     chatMessages, chatLoading, sendChatMessage,
@@ -618,15 +619,19 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     (snap.lowerThirds ?? []).forEach(l => rawAddLowerThird(l));
     (snap.shapes ?? []).forEach(s => rawAddShape(s));
     (snap.subtitles ?? []).forEach(s => rawAddSubtitle(s));
-    if (snap.subtitleStyle) setSubtitleStyle(snap.subtitleStyle);
+    // A draft that carries no subtitle style / canvas format (Reconstructor and blueprint drafts) starts from the editor's own, never from the project that happened to be open before it.
+    setSubtitleStyle(snap.subtitleStyle ?? { ...EDITOR_DEFAULT_SUBTITLE_STYLE });
     // mediaAssets only has an additive action (no bulk replace) — skip any id already present
     // rather than duplicate entries already in the Media panel.
+    const wantedAssetIds = new Set((snap.mediaAssets ?? []).map(a => a.id));
+    mediaAssets.forEach(a => { if (!wantedAssetIds.has(a.id)) removeMediaAsset(a.id); });          // the previous project's media library does not follow into this one
     const existingAssetIds = new Set(mediaAssets.map(a => a.id));
     (snap.mediaAssets ?? []).forEach(a => { if (!existingAssetIds.has(a.id)) addMediaAsset(a); });
-    if (snap.canvasFormat) setCanvasFormat(snap.canvasFormat);
+    setCanvasFormat(snap.canvasFormat ?? { ...EDITOR_DEFAULT_CANVAS_FORMAT });
     const reconstructorColour = validCanvasBackground(snap.canvasBackground);
-    if (reconstructorColour) setCanvasFormat({ ...(snap.canvasFormat ?? canvasFormat), background: reconstructorColour });
+    if (reconstructorColour) setCanvasFormat({ ...(snap.canvasFormat ?? EDITOR_DEFAULT_CANVAS_FORMAT), background: reconstructorColour });
     if (snap.timeline) setTimeline(snap.timeline);
+    resetCanvasItemPositions();
     Object.entries(snap.canvasItemPositions ?? {}).forEach(([id, pos]) => setCanvasItemPosition(id, pos));
     setBlueprintPlan(isBlueprintPlan(snap.blueprintPlan) ? snap.blueprintPlan : null);
   };
