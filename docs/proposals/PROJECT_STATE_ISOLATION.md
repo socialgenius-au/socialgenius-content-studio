@@ -1,35 +1,52 @@
-# Blueprint-to-editor state: investigation, what is fixed, and one protected patch awaiting approval
+# Project-state isolation — decision package (protected files: NOT modified on any shared branch)
 
-Reported during the hosted browser test of reference 5127: the seven-scene, 30-second blueprint opens in Video Studio and its first placeholder is editable, but the canvas still shows the ABC Tiles design (headline, icons, showroom call to action). Question: is the hand-off retaining unrelated editor state, templates, background elements or branding?
+Status: awaiting approval. Verified only on a local scratch branch (`scratch/state-isolation-on-c12093c`, commit 8029cbb, based on the accepted checkpoint `c12093c`). Nothing protected has been changed on `work/deconstructor-reconstructor-next`, `main` or the deployed acceptance environment.
 
-## Findings (real browser, the deployed commit's code, an existing project opened first)
-Scenario: an existing project X (1:1 canvas, green background, 77 px magenta subtitle style, one library asset, one dragged canvas item, one footage clip, one shape) is opened; reference 5127 is then handed over with "Use blueprint"; X is reopened; the reconstruction is reopened and saved.
+## The defect (five failing real-browser checks: D2b-1, D2b-2, D2b-3, D2b-4, D3)
+Opening a saved draft inside an editor session that already has another project open leaves that project's **canvas format + background, subtitle style, media list and dragged canvas positions** in place whenever the opened draft does not itself carry them (Reconstructor and blueprint drafts carry none, by design). The next save then writes the leaked values into the new draft. Saved drafts are never altered by the switch itself (verified byte-identical).
 
-| # | Finding | Cause | Status |
-|---|---|---|---|
-| 1 | The new reconstruction shows the **ABC Tiles demo canvas** (logo, headline, badge, icons, CTA). | Not inherited data. When no footage clip is at the playhead the editor draws a **hard-coded prototype mock** (`ph-logo`, `ph-headline`, `ph-badge`, `ph-icons`, `ph-cta` in `CreateEditTab.tsx`, the `hasRealSrc` false branch). A blueprint draft has placeholders but no footage yet, so it always lands on it. | **Fixed** in this commit, outside protected files. |
-| 2 | The hand-off itself is clean. Arriving from the Deconstructor, the reconstruction has 0 clips, 8 text placeholders (7 scenes, 30 s), no shapes, an empty library, default canvas and subtitle style, no positions. The existing draft X is byte-identical before and after. | n/a | Verified, no change needed. |
-| 3 | **Switching drafts inside one editor session** (My Drafts, Open) leaks the previous project's **canvas format and background, subtitle style, media library and dragged canvas positions** into a draft that does not define them (blueprint and Reconstructor drafts define none of these), and the next save **writes the leaked values into that draft**. Saved drafts are never altered by the switch itself (X stayed identical). | `applyDraftSnapshot` (protected) only SETS what a snapshot contains: canvas format and subtitle style only `if (snap.x)`, media assets only ADDED, positions only SET. The note on `clearLiveProject` assumes every draft carries them; drafts made by the Reconstructor do not (and must not: a test pins "never a canvas format", and the assembled-draft fixture is shared with the backend). | **Proposed patch below (protected file: needs your approval).** |
+## Exact change (`docs/proposals/protected-patches/project-state-isolation.patch`, 2 files, +13 / −5 lines)
+Applies cleanly to `c12093c` (`git apply --check` passes).
 
-## Fixed now (non-protected, committed)
-- `blueprint/BlueprintPlanPanel.tsx` (the shell's blueprint panel) sets `data-sg-blueprint-draft` on `<html>` only while a blueprint plan is active and clears it afterwards; `blueprint/blueprintCanvas.css` then hides **only** those five demo elements, only inside the no-footage preview. Footage, text layers, shapes and every other project are untouched; a project that is not a blueprint draft behaves exactly as before.
-- `blueprint/projectDefaults.ts`: the editor's own starting canvas format and subtitle style, mirrored with a test that fails if `StudioContext` ever changes them (StudioContext is protected, so it cannot export them).
-- Snapshot contracts are deliberately **unchanged**.
+### 1. `frontend/src/contexts/StudioContext.tsx` (protected) — one new action
+| Where | Change | Why |
+|---|---|---|
+| `StudioState` interface | `+ resetCanvasItemPositions: () => void` | There is no way to forget dragged positions today (`setCanvasItemPosition` only adds/overwrites one id). |
+| `StudioProvider` | `+ const resetCanvasItemPositions = useCallback(() => setCanvasItemPositions({}), [])` | Empties only the `canvasItemPositions` map. |
+| provider value | `+ resetCanvasItemPositions` | Exposes it. |
+No existing action, state or default changes.
 
-## The protected patch (exact diff: `docs/proposals/protected-patches/project-state-isolation.patch`; verified on `scratch/clean-project-state`)
-Opening a draft starts from a clean project state. `CreateEditTab.tsx` `applyDraftSnapshot` + `StudioContext.tsx` (+5 and 1 changed, one new reset action):
-1. subtitle style: `setSubtitleStyle(snap.subtitleStyle ?? default)` (was: only if present);
-2. canvas format: `setCanvasFormat(snap.canvasFormat ?? default)`, and the Reconstructor canvas colour is applied on that default rather than on the previous project's format;
-3. media library: assets not in the snapshot are removed (`removeMediaAsset`, already provided);
-4. canvas positions: `resetCanvasItemPositions()` (new 1-line action in the context) before the snapshot's positions are set.
+### 2. `frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx` (protected) — `applyDraftSnapshot` only
+`applyDraftSnapshot` has **one caller**: `handleOpenDraft` (My Drafts → Open). Changes inside it:
+| Line (before → after) | Why |
+|---|---|
+| `if (snap.subtitleStyle) setSubtitleStyle(snap.subtitleStyle)` → `setSubtitleStyle(snap.subtitleStyle ?? {…EDITOR_DEFAULT_SUBTITLE_STYLE})` | A draft without a style must not inherit the previous project's. |
+| new: drop media-list entries whose id is not in the snapshot (`removeMediaAsset`), then add the snapshot's | The list is the previous project's media; the snapshot's list replaces it. |
+| `if (snap.canvasFormat) setCanvasFormat(snap.canvasFormat)` → `setCanvasFormat(snap.canvasFormat ?? {…EDITOR_DEFAULT_CANVAS_FORMAT})` | Same, for the canvas. |
+| Reconstructor colour: `{…(snap.canvasFormat ?? canvasFormat), background}` → `{…(snap.canvasFormat ?? EDITOR_DEFAULT_CANVAS_FORMAT), background}` | The colour must be applied on the draft's own/default format, not the previous project's. |
+| new: `resetCanvasItemPositions()` immediately before the snapshot's positions are set | Previous drags must not survive. |
+| new import of `EDITOR_DEFAULT_CANVAS_FORMAT` / `EDITOR_DEFAULT_SUBTITLE_STYLE` from `../blueprint/projectDefaults` | Non-protected module that mirrors StudioContext's own defaults; `projectDefaults.test.ts` fails if they ever drift. |
 
-Impact: a draft that carries these settings opens exactly as before. Only a draft that omits them changes, and only toward the editor's defaults instead of the previous project's values. "New project" (`handleNewDraft`) is untouched and still keeps the current canvas format on purpose. No playback, timeline, layer, export or save logic changes.
+**Not changed:** `clearLiveProject`, `handleNewDraft` ("+ New" still keeps the current canvas format on purpose), `buildProjectSnapshot` / the saved-draft shape, the page-refresh recovery path (`VideoStudioV2.tsx`), playback/master clock, timeline, layers, export, Review tab, backend.
 
-## Evidence
-- Before (deployed commit, real browser): the in-session switch left the previous project's canvas, background, subtitle style, library asset and position in the reopened reconstruction and in its next save (4 settings checks + the save check failed).
-- With the in-boundary fix only: demo canvas hidden after the hand-off and on reopen; the 4 settings checks still fail (they need the patch).
-- With the patch on the scratch branch: all behavioural checks pass (hand-off clean, X byte-identical, switch back to X shows only X, reopened reconstruction clean, save contains only its own content).
-- Regression on the patched build: see the report (persistence, Reconstructor flow, protected editor flow).
+## How existing projects and saved drafts stay protected
+- A draft that carries these settings (every draft saved from the editor writes `canvasFormat`, `subtitleStyle`, `mediaAssets`, `canvasItemPositions`) opens exactly as before: the same values are set, from the draft.
+- Saved drafts are read-only inputs here; nothing in the patch writes to the database or to a draft. Browser check D4/C1: draft X byte-identical before and after.
+- Only a draft that **omits** a setting changes behaviour, and only toward the editor's starting defaults instead of the other project's values. One disclosed edge: a very old draft saved before canvas format existed would now open at the default 9:16 Instagram Reel/Story canvas rather than at whatever canvas happened to be active.
+- `removeMediaAsset` filters the editor's in-memory list only (`setMediaAssets(p => p.filter(...))`). It deletes nothing on the server, so the Asset Library is unaffected. Visible effect: files uploaded in this session but not part of the opened draft disappear from the editor's Media panel (they remain in the Asset Library).
+
+## Does it reset only project-specific state, leaving preferences alone?
+Yes. Reset: canvas format/background, subtitle style, the editor media list, dragged canvas positions: all saved *inside* the draft, so they are project settings, not preferences. Untouched: the logged-in user, client/campaign identity, chat history, selected rail tool/panels, zoom, templates, upload progress, undo history handling (already cleared by `clearLiveProject`), `canvasVersions` (not stored in drafts; out of scope), and the "+ New" behaviour.
+
+## Targeted regression tests
+- New `projectStateIsolation.wiring.test.ts` (non-protected; copy at `docs/proposals/protected-patches/projectStateIsolation.wiring.test.ts.txt`): pins each changed line, the order (media drop before add; reset before set), the single caller, and that `clearLiveProject`, `handleNewDraft` and `removeMediaAsset` are unchanged. Negative control: **6 of 11 assertions fail on the unpatched `c12093c`**, all 11 pass with the patch.
+- Existing `projectDefaults.test.ts` (defaults cannot drift), `footageIO.test.ts` and the assembled-draft fixture (snapshots still never carry a canvas format).
+- Real browser (CDP): the contamination scenario covers the exact five failures. Unpatched `c12093c`: 19 pass / 5 fail. Patched: **24 pass / 0 fail**.
+- Full frontend suite on the patched scratch branch: 1,227 passed, 25 skipped; `tsc --noEmit` clean.
+- Planned after approval and before closing M4/M5: persistence, Reconstructor flow and protected editor-flow browser scenarios, then the hosted workflow test.
+
+## Rollback
+One commit touching two files. `git revert <sha>` on the branch restores the previous behaviour exactly; no data migration exists to undo (no saved-draft or schema change), so reverting loses nothing. To roll back on acceptance: revert, push, and Railway redeploys the previous behaviour.
 
 ## Decision requested
-Approve the patch for the development branch (acceptance only) or tell me what to change. Nothing protected has been modified on any shared branch.
+Approve this exact patch (2 files, +13/−5) plus the new wiring test for `work/deconstructor-reconstructor-next` (acceptance only). On approval I will apply it as one commit, run the targeted tests plus one regression pass, and redeploy acceptance.
