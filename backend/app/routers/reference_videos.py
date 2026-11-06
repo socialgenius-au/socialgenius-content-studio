@@ -118,6 +118,8 @@ from app.services import (
 )
 from app.services.media_storage import asset_file_present, missing_file_message
 from app.services.ai_metering import ai_scope
+from app.services.creative_read_svc import get_creative_read, run_creative_read
+from app.services.creative_reader import CreativeReadError, CreativeReadInputError
 from app.services.content_anatomy_svc import ContentAnatomyError, ContentAnatomyNotReady, get_content_anatomy
 from app.services.mechanism_reasoner import MechanismInputError, MechanismReasoningError
 from app.services.transferable_mechanism_svc import (
@@ -3710,6 +3712,45 @@ async def derive_reference_video_mechanisms(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except MechanismReasoningError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+# =====================================================================================
+# Creative Read: the AI looks at selected keyframes next to the measured evidence (speech, on-screen text, timing).
+# Opt-in twice (CREATIVE_READ_REASONER_PROVIDER and AI_SPEND_ENABLED) and metered like every paid request.
+# =====================================================================================
+
+@router.post("/{reference_video_id}/creative-read")
+async def run_reference_video_creative_read(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Runs (or returns the stored) Creative Read. 404 unknown/foreign video; 422 nothing to look at (no shots, or no keyframe can be read from the server; nothing is sent);
+    502 no/failed/invalid reasoner or a spending limit (nothing persisted). An unchanged re-run returns the stored result with `reused: true` and makes no paid call unless `force=true`."""
+    try:
+        return await run_creative_read(db, user, reference_video_id, video_analysis_id=video_analysis_id, force=force)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except CreativeReadInputError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except CreativeReadError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.get("/{reference_video_id}/creative-read")
+async def get_reference_video_creative_read(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The stored Creative Read (status `not_run` when there is none). Pure read, no AI call."""
+    try:
+        return await get_creative_read(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
 
 
 @router.get("/{reference_video_id}/mechanisms", response_model=MechanismSetResponse)

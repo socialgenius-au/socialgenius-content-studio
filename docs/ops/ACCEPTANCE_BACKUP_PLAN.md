@@ -1,5 +1,12 @@
 # Acceptance environment — backup and recovery plan (PLAN ONLY: nothing has been enabled, nothing paid has been added)
 
+## Update 2026-11-06 — availability and charges CHECKED (read-only)
+- This project is on Railway's **Hobby** plan (workspace plan `HOBBY`, project `subscriptionType: hobby`). Railway's own plan-limits record for this project says `volumes.maxBackupsCount: 0` and `maxBackupsUsagePercent: 0`: **built-in volume backups are not available on this plan.** No backup schedule or backup exists on any volume in the project (checked through Railway's API for all four volumes).
+- Railway's community answers state that volume backups need the **Pro** plan ($20 per month per seat; I did not find an official page that lists backups against plans, so confirm on the Pricing page before buying). The incremental backup storage itself is billed at the volume rate ($0.15 per GB-month, i.e. cents at our size), so the real cost of Tier 1 is **the plan upgrade (about $20/month), not the backups**. Not worth it for an acceptance environment; **nothing was changed or purchased.**
+- Recommended instead, at no cost: **Tier 0 — a copy on your own computer**, taken on request or on a weekly Windows scheduled task: a Postgres dump plus the uploads folder (about 170 MB today) pulled through the Railway CLI. I have not run it, because it would copy account data to your machine and needs your approval. Restore is the same steps in reverse (restore the dump, copy the folder back, run the integrity report).
+- Tier 2 (a bucket you own) stays as below, optional.
+
+
 Scope: Railway project `ayub-test-contentstudio`, environment `deconstructor-acceptance`. Two things must be recoverable together: the **uploads volume** (`pleasing-presence-volume`, mounted at `/app/uploads`: uploaded videos, keyframes, thumbnails, footage) and the **Postgres volume** (`postgres-volume-iKKA`: accounts, assets, references, analyses, drafts, AI ledger). A database row without its file, or a file without its row, is an inconsistent restore, so both are backed up on the same schedule and restored to the same point in time.
 
 Current size (2026-11-06): uploads volume ≈ 6 MB used of 5,000 MB; Postgres volume ≈ 158 MB used of 5,000 MB.
