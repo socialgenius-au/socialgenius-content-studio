@@ -369,10 +369,10 @@
 @media (min-width:1001px) {
   .editor-shell {
     grid-template-columns:220px minmax(360px,1fr) 270px;
-    grid-template-rows:700px auto auto auto auto;
+    grid-template-rows:minmax(0,auto) auto auto auto auto;
   }
   .editor-shell > .asset-panel { grid-column:1; grid-row:1; min-width:0; }
-  .editor-shell > .preview-area { grid-column:2; grid-row:1; min-width:0; }
+  .editor-shell > .preview-area { grid-column:2; grid-row:1; min-width:0; min-height:480px; }
   .editor-shell > .properties-panel { grid-column:3; grid-row:1; min-width:0; border-right:0; }
   .editor-shell > .timeline { grid-column:1/-1; grid-row:2; min-width:0; }
   .editor-shell > .ai-tools-panel {
