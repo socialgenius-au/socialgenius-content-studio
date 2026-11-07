@@ -655,7 +655,7 @@ def test_the_system_prompt_states_the_non_negotiables():
         assert phrase in SYSTEM_PROMPT
     for t in ("hook_curiosity", "cta_next_step", "audio_attention"):
         assert t in SYSTEM_PROMPT
-    assert MECHANISM_PROMPT_VERSION == "v2"
+    assert MECHANISM_PROMPT_VERSION == "v3"
 
 
 # ── router: provider disabled / provider-independent validation ──────────────────────────────
@@ -793,7 +793,7 @@ async def test_a_normal_valid_response_yields_a_decision_and_multiple_text_block
     payload = json.dumps({"mechanisms": [_payload_mech()], "overall_limitations": []})
     half = len(payload) // 2
     out, _ = await _derive_with(monkeypatch, _message([SimpleNamespace(type="thinking", thinking="t", signature="s"), _text(payload[:half]), _text(payload[half:])]))
-    assert len(out.mechanisms) == 1 and out.reasoning_contract_version == "v2"
+    assert len(out.mechanisms) == 1 and out.reasoning_contract_version == "v3"
 
 
 def test_diagnostics_are_metadata_only_no_payload_no_secrets(monkeypatch):
@@ -819,7 +819,7 @@ async def _router_with_client(monkeypatch, text_out, a=None):
 
 async def test_a_valid_provider_response_flows_through_the_real_router_validation(monkeypatch):
     res, client = await _router_with_client(monkeypatch, json.dumps({"mechanisms": [_payload_mech()], "overall_limitations": []}))
-    assert client.messages.create.await_count == 1 and len(res.decision.mechanisms) == 1 and res.reasoning_contract_version == "v2"
+    assert client.messages.create.await_count == 1 and len(res.decision.mechanisms) == 1 and res.reasoning_contract_version == "v3"
 
 
 @pytest.mark.parametrize("override, match", [

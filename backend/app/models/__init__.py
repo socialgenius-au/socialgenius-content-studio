@@ -22,9 +22,10 @@ from app.models.shot_frame import ShotFrame
 # Stage 7 (Audio / Speech / Transcript), Phase A — evidence-storage foundation only; see
 # speech_segment.py's own docstring for why this is separate from the existing Transcript model.
 from app.models.speech_segment import SpeechSegment
+from app.models.ai_call_ledger import AiCallLedger
 
 __all__ = [
     "User", "Brand", "Job", "Asset", "Transcript", "Template", "VideoStudioDraft",
     "ReferenceVideo", "VideoAnalysis", "Scene", "Shot", "TextElement", "VisualObject",
-    "AnalysisAnnotation", "StrategicInsight", "ShotFrame", "SpeechSegment",
+    "AnalysisAnnotation", "StrategicInsight", "ShotFrame", "SpeechSegment", "AiCallLedger",
 ]

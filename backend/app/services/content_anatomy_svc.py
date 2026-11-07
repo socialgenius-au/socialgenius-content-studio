@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.services.deconstruction_aggregate_svc import build_full_deconstruction
 
+from app.services.creative_reconcile import attach_creative_layer, attach_transcript_alternatives
 ANATOMY_VERSION = "c2-v1"
 TRANSCRIPT_EXCERPT_MAX_CHARS = 400
 REASONING_EXCERPT_CHARS = 160
@@ -194,8 +195,10 @@ def _choose_skeleton(agg: dict, duration: float, stage_status: dict) -> tuple[li
 
 # ── the pure builder ────────────────────────────────────────────────────────────────────────
 
-def build_content_anatomy(aggregate: dict) -> dict:
-    """Pure: `deconstruction/full` dict (evidence may be the pydantic model) -> Content Anatomy dict."""
+def build_content_anatomy(aggregate: dict, creative: dict | None = None, transcript: dict | None = None) -> dict:
+    """Pure: `deconstruction/full` dict (evidence may be the pydantic model) -> Content Anatomy dict.
+    `creative` (optional) is the stored Creative Read; when it is present and current the anatomy gains a creative layer and a reconciliation of unequal-authority readings
+    (app.services.creative_reconcile). Without it the output is exactly what it always was."""
     if not isinstance(aggregate, dict):
         raise ContentAnatomyInputError("aggregate must be a dict (the deconstruction/full payload)")
     agg = aggregate
@@ -372,6 +375,11 @@ def build_content_anatomy(aggregate: dict) -> dict:
             "certainty": "MEASURED",
         })
 
+    transcript_block = attach_transcript_alternatives(sections, transcript)
+    creative_layer = None
+    if creative and creative.get("status") == "current":
+        creative_layer = attach_creative_layer(sections, shots, creative, speech=speech, texts=texts, hook_classification=_d(hook.get("classification")))
+
     # ---- video-level ------------------------------------------------------------------------
     durations = [x["end_time"] - x["start_time"] for x in shots]
     profile_row = _d(editing.get("profile"))
@@ -443,6 +451,12 @@ def build_content_anatomy(aggregate: dict) -> dict:
         "interpretive": {"narrative_role": None, "messaging_role": None, "emotional_function": None, "cta_role": None, "status": "unsupported_in_v1"},
     }
 
+    if transcript_block:
+        video["transcript"] = transcript_block
+    if creative_layer:
+        video["creative"] = creative_layer["creative"]
+        video["reconciliation"] = creative_layer["reconciliation"]
+
     # ---- gaps -------------------------------------------------------------------------------
     gaps: list[dict] = []
 
@@ -454,6 +468,8 @@ def build_content_anatomy(aggregate: dict) -> dict:
     gap("messaging_role", "unsupported_in_v1", "no upstream analysis produces messaging roles")
     gap("emotional_function", "unsupported_in_v1", "no upstream analysis produces emotional or psychological function")
     gap("cta_role", "unsupported_in_v1", "no upstream analysis produces CTA roles (CTA analysis does not exist yet)")
+    if creative_layer:
+        gap("audience_effects", "not_measurable", "there is no viewer data: every reading describes apparent design only, never what an audience did or will do")
     if legacy_devices:
         gap("retention_devices", "legacy_data",
             f"{len(legacy_devices)} retention_device row(s) predate the acceptance gate and carry no acceptance decision; "
@@ -511,4 +527,10 @@ async def get_content_anatomy(db: AsyncSession, user: User, reference_video_id: 
     OrchestrationNotFound (unknown/foreign video or analysis), ContentAnatomyNotReady, or
     ContentAnatomyInputError."""
     aggregate = await build_full_deconstruction(db, user, reference_video_id, video_analysis_id=video_analysis_id)
-    return build_content_anatomy(aggregate)
+    from app.services.creative_read_svc import load_creative_view     # local import: the creative service imports the aggregate, not this module
+    creative = await load_creative_view(db, aggregate["video_analysis"]["id"])
+    from app.services.transcript_alt_svc import build_alternatives_view, load_alternative_rows        # local import: it imports the aggregate, not this module
+    ev = aggregate["evidence"].model_dump(mode="json") if hasattr(aggregate["evidence"], "model_dump") else aggregate["evidence"]
+    rows = await load_alternative_rows(db, aggregate["video_analysis"]["id"])
+    transcript = build_alternatives_view(list(ev.get("speech_segments") or []), rows) if rows else None
+    return build_content_anatomy(aggregate, creative if creative.get("status") == "current" else None, transcript)

@@ -25,7 +25,7 @@ from app.services.blueprint_reasoner.contract import BlueprintReasoningError, MA
 from app.services.mechanism_reasoner.language_guard import tokenize
 
 __all__ = [
-    "SOURCE_COPY_LIMIT", "META_STOPWORDS", "GuardContext", "build_guard_context", "blocked_source_terms", "check_text",
+    "SOURCE_COPY_LIMIT", "META_STOPWORDS", "GENERIC_DESCRIPTIVE_WORDS", "GuardContext", "build_guard_context", "blocked_source_terms", "check_text",
     "reject_final_copy", "reject_prohibited_elements", "reject_blocked_terms", "reject_directive_source_terms", "reject_performance",
     "reject_source_copy",
 ]
@@ -53,6 +53,16 @@ opening closing claim claims statement subject matter topic theme themes brand n
 format formats delivery presentation moment moments part parts section sections piece pieces thing things way ways
 """.split())
 
+# GENERIC DESCRIPTIVE VOCABULARY (M6 correction, reference 5131). The blocklist is built from the words C3 used to DESCRIBE what must not be copied ("Specific jar branding and packaging text shown in the
+# opening", "Specific appearance, dress, and setting of the closing presenter"). Describing words are not the thing described: 'product', 'setting', 'shown', 'signal', 'presenter' appear in nearly every plan,
+# and blocking them made a blueprint impossible to write (two paid replies were refused for 'setting' and 'product'). These words describe ROLE, PRESENTATION or EVIDENCE QUALITY, never a subject, name or story.
+# They are matched by stem. NOT here, so still blocked: subject nouns and objects (ginger, garlic, paste, jar, steam, cooking, packaging, dress), brand names, handles, and recognised-text artefacts
+# (waites, realing, sloving ...) -- anything that identifies WHAT this particular reference was about or said.
+GENERIC_DESCRIPTIVE_WORDS = frozenset("""
+accompanying accompanied appearance appearances appearing branding category categories context contexts display displayed displaying garbled
+image images imagery presenter presenters product products setting settings shown showing signal signals signalling unverified verified visible visibly
+""".split())
+
 _STOP_SHORT = frozenset({"a", "an", "the", "and", "or", "of", "to", "in", "on", "at", "by", "for", "is", "it", "as", "be"})
 
 
@@ -66,6 +76,9 @@ def _stem(t: str) -> str:
     if len(t) > 3 and t.endswith("s") and not t.endswith("ss"):
         t = t[:-1]
     return t
+
+
+_GENERIC_STEMS = frozenset(_stem(w) for w in GENERIC_DESCRIPTIVE_WORDS)
 
 
 def reject_performance(field_name: str, text: str | None) -> None:
@@ -119,7 +132,7 @@ def blocked_source_terms(mechanisms: list[dict], anatomy: dict, intent_token_set
             if e.get("kind") in ("timing_specific", "other"):
                 continue
             for t in tokenize(e.get("description") or ""):
-                if len(t) >= 4 and t.isalpha() and t not in META_STOPWORDS and t not in _STOP_SHORT:
+                if len(t) >= 4 and t.isalpha() and t not in META_STOPWORDS and t not in _STOP_SHORT and _stem(t) not in _GENERIC_STEMS:
                     terms.add(t)
     for section in anatomy.get("sections") or []:
         for item in (section.get("on_screen_text") or []):

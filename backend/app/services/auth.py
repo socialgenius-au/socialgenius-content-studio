@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 from jose import jwt, JWTError
@@ -5,6 +6,7 @@ from passlib.context import CryptContext
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -28,6 +30,12 @@ def create_token(user_id: int, username: str, role: str, token_version: int = 0)
 
 def decode_token(token: str) -> dict | None:
     try:
-        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    except JWTError:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("typ") == "media":
+            return None          # a media-link token is never an API login (it travels in URLs)
+        return payload
+    except JWTError as exc:
+        # Log only the exception class: never log the token, claims, key or message.
+        # This distinguishes expired, signature and claims errors in acceptance logs.
+        logger.warning("JWT verification rejected token: %s", type(exc).__name__)
         return None

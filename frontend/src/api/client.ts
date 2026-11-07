@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { uploadUrlPath } from './uploadPaths'
+import { withMediaToken } from './mediaAccess'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? '',
@@ -100,6 +101,16 @@ export const generateApi = {
   prompt: (body: Record<string, unknown>) => api.post('/generate/prompt', body),
 }
 
+// Short-lived media token for /uploads links (the file routes are no longer public).
+export const mediaApi = {
+  token: () => api.post('/media/token').then(r => r.data as { token: string; expires_in: number }),
+}
+
+// Admin-only, read-only AI spending and usage.
+export const aiUsageApi = {
+  usage: () => api.get('/ai/usage').then(r => r.data),
+}
+
 export const assetsApi = {
   list:     (params?: { file_type?: string; job_id?: number }) => api.get('/assets/', { params }),
   download: (id: number)                  => api.get(`/assets/${id}/download`, { responseType: 'blob' }),
@@ -112,7 +123,7 @@ export const assetsApi = {
   // forward slashes first so the "uploads/" strip matches on every platform; otherwise on
   // Windows it never matches and the URL doubles up into "/uploads/uploads\1\x.mp4".
   // The absolute layout the Railway preview stores ("/data/uploads/1/x.mp4") is mapped to the same route too; any other path yields '' (see uploadPaths.ts).
-  previewUrl: (filePath: string)           => { const p = uploadUrlPath(filePath); return p === null ? '' : `${import.meta.env.VITE_API_URL ?? ''}/uploads/${p}` },
+  previewUrl: (filePath: string)           => { const p = uploadUrlPath(filePath); return p === null ? '' : withMediaToken(`${import.meta.env.VITE_API_URL ?? ''}/uploads/${p}`) },   // media links are short-lived signed links (see mediaAccess.ts)
 }
 
 // Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Takes an asset_id already
@@ -153,6 +164,10 @@ export const deconstructorApi = {
   deriveMechanisms:  (id: number, anatomyFingerprint?: string | null) =>
     api.post(`/reference-videos/${id}/mechanisms`, null, { params: anatomyFingerprint ? { anatomy_fingerprint: anatomyFingerprint } : {} }),
   blueprint:         (id: number)                 => api.get(`/reference-videos/${id}/reconstruction-blueprint`),
+  // PAID (needs AI spending switched on server-side and is capped per reference): an AI looks at selected keyframes. An unchanged re-run is answered from the stored result at no cost.
+  readFrames:        (id: number)                 => api.post(`/reference-videos/${id}/creative-read`, null, { timeout: 300000 }),
+  // FREE (local Whisper, no AI provider): a better-tuned second reading of the speech, stored beside the original.
+  rereadSpeech:      (id: number)                 => api.post(`/reference-videos/${id}/transcript-alternatives`, null, { params: { model: 'small' }, timeout: 600000 }),
   buildBlueprint:    (id: number, body: Record<string, unknown>) => api.post(`/reference-videos/${id}/reconstruction-blueprint`, body),
 }
 

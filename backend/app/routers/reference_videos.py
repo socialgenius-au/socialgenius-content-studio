@@ -116,6 +116,11 @@ from app.services import (
     speech_analysis_svc, transition_evidence_svc, transition_similarity_evidence_svc,
     visual_composition_svc, visual_geometry_svc, visual_motion_svc, visual_object_svc, visual_persistence_svc,
 )
+from app.services.media_storage import asset_file_present, missing_file_message
+from app.services.ai_metering import ai_scope
+from app.services.creative_read_svc import get_creative_read, run_creative_read
+from app.services.transcript_alt_svc import TranscriptAltError, get_transcript_alternatives, run_transcript_alternative
+from app.services.creative_reader import CreativeReadError, CreativeReadInputError
 from app.services.content_anatomy_svc import ContentAnatomyError, ContentAnatomyNotReady, get_content_anatomy
 from app.services.mechanism_reasoner import MechanismInputError, MechanismReasoningError
 from app.services.transferable_mechanism_svc import (
@@ -895,6 +900,8 @@ async def analyze_reference_video(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Analysis is already in progress for this reference video")
 
     try:
+        if not asset_file_present(asset.file_path):
+            raise ffmpeg_svc.TechnicalProbeError(missing_file_message(asset.original_filename))
         details = await ffmpeg_svc.probe_technical_metadata(asset.file_path, file_size_bytes=asset.file_size)
     except ffmpeg_svc.TechnicalProbeError as exc:
         await db.execute(
@@ -3693,10 +3700,11 @@ async def derive_reference_video_mechanisms(
     409 fingerprint mismatch; 502 no/failed/invalid reasoner (nothing persisted). `mechanisms: []` is a valid,
     successful result."""
     try:
-        return await derive_and_persist_mechanisms(
-            db, user, reference_video_id, video_analysis_id=video_analysis_id,
-            expected_fingerprint=anatomy_fingerprint, force=force,
-        )
+        with ai_scope(reference_video_id=reference_video_id, user_id=user.id, reasoner="mechanism", force=force):
+            return await derive_and_persist_mechanisms(
+                db, user, reference_video_id, video_analysis_id=video_analysis_id,
+                expected_fingerprint=anatomy_fingerprint, force=force,
+            )
     except OrchestrationError as exc:
         raise _orchestration_http_error(exc)
     except (ContentAnatomyError, MechanismInputError) as exc:
@@ -3705,6 +3713,79 @@ async def derive_reference_video_mechanisms(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except MechanismReasoningError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+# =====================================================================================
+# Creative Read: the AI looks at selected keyframes next to the measured evidence (speech, on-screen text, timing).
+# Opt-in twice (CREATIVE_READ_REASONER_PROVIDER and AI_SPEND_ENABLED) and metered like every paid request.
+# =====================================================================================
+
+@router.post("/{reference_video_id}/creative-read")
+async def run_reference_video_creative_read(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Runs (or returns the stored) Creative Read. 404 unknown/foreign video; 422 nothing to look at (no shots, or no keyframe can be read from the server; nothing is sent);
+    502 no/failed/invalid reasoner or a spending limit (nothing persisted). An unchanged re-run returns the stored result with `reused: true` and makes no paid call unless `force=true`."""
+    try:
+        return await run_creative_read(db, user, reference_video_id, video_analysis_id=video_analysis_id, force=force)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except CreativeReadInputError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    except CreativeReadError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+
+@router.get("/{reference_video_id}/creative-read")
+async def get_reference_video_creative_read(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The stored Creative Read (status `not_run` when there is none). Pure read, no AI call."""
+    try:
+        return await get_creative_read(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+@router.post("/{reference_video_id}/transcript-alternatives")
+async def run_reference_video_transcript_alternative(
+    reference_video_id: int,
+    model: str = "small",
+    language: str | None = None,
+    video_analysis_id: int | None = None,
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Re-reads the audio with a better local Whisper model (default `small`; optional language hint) and stores the result BESIDE the original transcript, never over it. FREE local compute: no AI provider
+    and no paid service is called. Every alternative is an unverified machine transcript (`quotable: false`). The same model and hint already stored is returned as is unless `force=true`."""
+    try:
+        return await run_transcript_alternative(db, user, reference_video_id, model=model, language=language, video_analysis_id=video_analysis_id, force=force)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except TranscriptAltError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.get("/{reference_video_id}/transcript-alternatives")
+async def get_reference_video_transcript_alternatives(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The original transcript's quality and every stored alternative reading, with provenance, agreement and the preferred one. Pure read."""
+    try:
+        return await get_transcript_alternatives(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
 
 
 @router.get("/{reference_video_id}/mechanisms", response_model=MechanismSetResponse)
@@ -3762,11 +3843,12 @@ async def derive_reference_video_blueprint(
     mechanisms; 409 C3 never run or stale against the current anatomy, or a pinned fingerprint / mechanism attempt that no longer
     matches; 502 no/failed/invalid reasoner (nothing persisted)."""
     try:
-        return await derive_and_persist_blueprint(
-            db, user, reference_video_id, request.intent, video_analysis_id=request.video_analysis_id,
-            expected_anatomy_fingerprint=request.anatomy_fingerprint, expected_mechanism_attempt_id=request.mechanism_attempt_id,
-            force=request.force,
-        )
+        with ai_scope(reference_video_id=reference_video_id, user_id=user.id, reasoner="blueprint", force=request.force):
+            return await derive_and_persist_blueprint(
+                db, user, reference_video_id, request.intent, video_analysis_id=request.video_analysis_id,
+                expected_anatomy_fingerprint=request.anatomy_fingerprint, expected_mechanism_attempt_id=request.mechanism_attempt_id,
+                force=request.force,
+            )
     except OrchestrationError as exc:
         raise _orchestration_http_error(exc)
     except (ContentAnatomyError, BlueprintInputError) as exc:

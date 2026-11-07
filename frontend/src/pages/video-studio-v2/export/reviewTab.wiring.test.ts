@@ -13,8 +13,8 @@ describe('ReviewTab export request', () => {
     expect(src).not.toContain('font_size: t.fontSize, color: t.color, order: t.order ?? 0')
   })
   it('keeps the M1 guards ahead of the request: placeholders and gaps are still checked before anything is sent', () => {
-    expect(idx('checkReconstructionExport(textOverlays, videoClips)')).toBeGreaterThan(0)
-    expect(idx('checkReconstructionExport(textOverlays, videoClips)')).toBeLessThan(idx('setExportState("exporting")'))
+    expect(idx('checkReconstructionExport(textOverlays, videoClips, blueprintPlan?.scenes ?? [])')).toBeGreaterThan(0)
+    expect(idx('checkReconstructionExport(textOverlays, videoClips, blueprintPlan?.scenes ?? [])')).toBeLessThan(idx('setExportState("exporting")'))
     expect(idx('setExportState("exporting")')).toBeLessThan(idx('buildExportTextOverlays(textOverlays)'))
     expect(idx('buildExportTextOverlays(textOverlays)')).toBeLessThan(idx('videoExportApi.exportProject(body)'))
   })

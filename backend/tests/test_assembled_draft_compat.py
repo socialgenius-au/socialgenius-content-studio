@@ -168,6 +168,55 @@ def test_the_timeline_is_gapless_scene_by_scene_and_matches_the_plan(fx):
     assert snap["timeline"]["duration"] == 30 == scenes[-1]["endTime"]
 
 
+
+def test_postgres_reopened_and_edited_reconstruction_remains_export_compatible(client, fx):
+    """Milestone 17: one authenticated journey through PostgreSQL, edit, reopen and export schema.
+
+    Actual MP4 rendering is independently covered by the real-FFmpeg acceptance
+    job; this test does not claim to prove browser editing or asset-backed export.
+    """
+    user = make_user()
+    original = copy.deepcopy(fx["snapshot"])
+    created = client.post(
+        "/video-studio-drafts/",
+        json={"name": fx["name"], "project_json": original},
+        headers=user["headers"],
+    )
+    assert created.status_code == 201, created.text
+    draft_id = created.json()["id"]
+
+    reopened = client.get(f"/video-studio-drafts/{draft_id}", headers=user["headers"])
+    assert reopened.status_code == 200, reopened.text
+    saved = reopened.json()["project_json"]
+    assert saved == original
+    assert saved["assembly"]["summary"]["plannedSeconds"] == 30
+
+    edited = copy.deepcopy(saved)
+    edited["textOverlays"][0]["text"] = "Approved opening message"
+    updated = client.put(
+        f"/video-studio-drafts/{draft_id}",
+        json={"name": "Approved reconstructed draft", "project_json": edited},
+        headers=user["headers"],
+    )
+    assert updated.status_code == 200, updated.text
+
+    reopened_again = client.get(f"/video-studio-drafts/{draft_id}", headers=user["headers"])
+    assert reopened_again.status_code == 200, reopened_again.text
+    restored = reopened_again.json()["project_json"]
+    assert restored == edited
+    assert restored["assembly"] == original["assembly"]
+    assert restored["textOverlays"][0]["text"] == "Approved opening message"
+
+    request = ExportProjectRequest(**_export_body(restored))
+    assert len(request.video_clips) == len(original["videoClips"]) == 7
+    assert len(request.text_overlays) == len(original["textOverlays"]) == 8
+    assert request.text_overlays[0].text == "Approved opening message"
+    assert [(c.start_time, c.end_time) for c in request.video_clips] == [
+        (c["startTime"], c["endTime"]) for c in original["videoClips"]
+    ]
+    assert restored["timeline"]["duration"] == 30
+
+
 def test_provenance_labels_survive_storage(client, fx):
     user = make_user()
     draft_id = client.post("/video-studio-drafts/", json={"name": fx["name"], "project_json": fx["snapshot"]}, headers=user["headers"]).json()["id"]

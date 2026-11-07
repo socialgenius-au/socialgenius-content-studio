@@ -69,30 +69,44 @@ export function referenceCard(v: ReferenceVideo): ReferenceCard {
 
 // ── deconstruction progress (C1) ─────────────────────────────────────────────────────────────
 
+export interface DeconStep { key: string; label: string; status: string; note: string | null }
+
 export interface DeconProgress {
-  state: 'not_started' | 'running' | 'done' | 'failed'
+  state: 'not_started' | 'running' | 'done' | 'failed' | 'interrupted'
   done: number
   total: number
   percent: number
   current: string | null
   failures: { label: string; error: string }[]
   headline: string
+  /** Every step with its real status: complete / already_complete / running / skipped / failed / blocked / not_run, with the reason or error when there is one. */
+  steps: DeconStep[]
+  /** Steps the server skipped on purpose (an AI provider that is not set up here): a normal outcome, never a failure. */
+  skipped: number
 }
 
 const DONE_STATES = new Set(['complete', 'already_complete', 'skipped'])
-
 export function summarizeDeconStatus(s: DeconStatus | null | undefined): DeconProgress {
-  if (!s) return { state: 'not_started', done: 0, total: 0, percent: 0, current: null, failures: [], headline: 'Not deconstructed yet' }
+  if (!s) return { state: 'not_started', done: 0, total: 0, percent: 0, current: null, failures: [], headline: 'Not deconstructed yet', steps: [], skipped: 0 }
   const total = s.stages.length
   const done = s.stages.filter(x => DONE_STATES.has(x.status)).length
   const failures = s.stages.filter(x => x.status === 'failed').map(x => ({ label: friendlyStageLabel(x.label), error: x.error ?? 'Unknown problem' }))
   const orch = s.orchestration?.status
-  const running = orch === 'running' || s.stages.some(x => x.status === 'running')
-  const cur = s.stages.find(x => x.status === 'running')
+  // The SERVER says when a claimed run has gone stale (it never reported back, e.g. the server restarted mid-run): such a run is not "running" any more, even if a step still carries its old running marker; otherwise the page would spin for ever and the Deconstruct button would stay disabled.
+  const interrupted = orch === 'interrupted' || (orch === 'running' && s.orchestration?.stale === true)
+  const stageRunning = s.stages.some(x => x.status === 'running')
+  const running = !interrupted && (orch === 'running' || (stageRunning && (orch === undefined || orch === null)))
+  const cur = running ? s.stages.find(x => x.status === 'running') : undefined
   const percent = total ? Math.round((done / total) * 100) : 0
-  const state: DeconProgress['state'] = running ? 'running' : failures.length ? 'failed' : done > 0 ? 'done' : 'not_started'
-  const headline = { running: 'Deconstructing…', failed: 'Deconstruction finished with problems', done: 'Deconstruction complete', not_started: 'Not deconstructed yet' }[state]
-  return { state, done, total, percent, current: cur ? friendlyStageLabel(cur.label) : null, failures, headline }
+  const state: DeconProgress['state'] = running ? 'running' : interrupted ? 'interrupted' : failures.length ? 'failed' : done > 0 ? 'done' : 'not_started'
+  const skipped = s.stages.filter(x => x.status === 'skipped').length
+  const headline = {
+    running: 'Deconstructing…', failed: 'Deconstruction finished with problems', not_started: 'Not deconstructed yet',
+    interrupted: 'The last run stopped before it finished — press Deconstruct to continue; finished steps are kept',
+    done: skipped > 0 ? `Deconstruction complete (${skipped} AI ${skipped === 1 ? 'step' : 'steps'} skipped — no AI provider is set up here)` : 'Deconstruction complete',
+  }[state]
+  const steps: DeconStep[] = s.stages.map(x => ({ key: x.key, label: friendlyStageLabel(x.label), status: x.status, note: x.status === 'failed' ? (x.error ?? 'Unknown problem') : (x.reason ?? null) }))
+  return { state, done, total, percent, current: cur ? friendlyStageLabel(cur.label) : null, failures, headline, steps, skipped }
 }
 
 // ── anatomy (C2) ─────────────────────────────────────────────────────────────────────────────
@@ -110,6 +124,10 @@ export interface AnatomyCard {
   pacing: string
   retention: string
   evidenceNotes: string[]
+  /** What an AI saw in this section's frames, worded as an inference. Empty until the visual reading has been added. */
+  seen: string[]
+  /** A second machine reading of the speech (unverified, never a quotation) or null. */
+  speechReading: string | null
 }
 
 function roleFor(s: AnatomySection): string {
@@ -140,6 +158,11 @@ export function anatomyCard(s: AnatomySection): AnatomyCard {
       ? dev.map(d => `${d.device_type ?? 'device'}${d.probable_attention_function ? ` — ${d.probable_attention_function}` : ''}${d.confidence ? ` (${d.confidence})` : ''}`).join('; ')
       : s.rejected_candidates.length ? `No retention device confirmed (${s.rejected_candidates.length} ${s.rejected_candidates.length === 1 ? 'candidate' : 'candidates'} examined and rejected)` : 'No retention device confirmed',
     evidenceNotes: s.features.map(f => titleCase(f)),
+    seen: s.creative ? [
+      ...s.creative.shot_reads.map(r => `Shot ${r.shot_order + 1}: ${[r.focal_subject, r.framing].filter(Boolean).join(' — ')}`),
+      ...s.creative.findings.map(f => `${f.statement ?? ''}${f.confidence ? ` (${f.confidence} confidence)` : ''}`),
+    ].filter(x => x.trim() && !x.endsWith(': ')) : [],
+    speechReading: s.speech_reading?.text ? `${s.speech_reading.text} — a second machine reading (${s.speech_reading.model ?? 'local model'}); unverified, not a quotation` : null,
   }
 }
 
@@ -151,6 +174,28 @@ export interface AnatomyOverview {
   pacing: string
   retention: string
   gaps: string[]
+  /** Plain statements of what is observed, inferred or unverified; empty when no extra reading has been added. */
+  readingNotes: string[]
+  hasVisualReading: boolean
+  hasSpeechReading: boolean
+}
+
+export function readingNotes(v: Anatomy['video']): string[] {
+  const out: string[] = []
+  if (v.creative) {
+    out.push(`An AI looked at ${v.creative.frames_shown} frames: ${v.creative.summary ?? 'see the sections below'} This is an inference from the pictures, not a measurement.`)
+    for (const l of v.creative.limitations) out.push(`Limitation: ${l}`)
+  }
+  for (const i of v.reconciliation?.items ?? []) if (i.status !== 'established') out.push(`${titleCase(i.topic)} (${i.status.replace(/_/g, ' ')}): ${i.note}`)
+  const t = v.transcript
+  if (t && t.alternatives.length) {
+    const pref = t.alternatives.find(a => a.run_id === t.preferred_run_id)
+    out.push(pref
+      ? `Speech: the first transcription looks unreliable (${t.original.quality.reasons.join('; ') || 'low confidence'}), so a second local reading (${pref.model}) is shown beside it. Both are machine output; neither is a verified quotation.`
+      : 'Speech: a second local reading exists but is not clearly better than the first; both are unverified machine output.')
+  } else if (v.reconciliation && v.reconciliation.unverified_speech_ids.length) out.push('Speech: the transcript is unverified machine output and is not treated as a quotation.')
+  if (v.reconciliation) out.push(`Audience effects: ${v.reconciliation.audience_effects}`)
+  return out
 }
 
 export function anatomyOverview(a: Anatomy): AnatomyOverview {
@@ -166,6 +211,7 @@ export function anatomyOverview(a: Anatomy): AnatomyOverview {
       ? `No retention devices were confirmed (${r.examined_count} examined) — the analysis does not assume any.`
       : `${r.accepted_count} retention ${r.accepted_count === 1 ? 'device' : 'devices'} confirmed`,
     gaps: dedupe(a.gaps.map(g => g.reason)),
+    readingNotes: readingNotes(v), hasVisualReading: !!v.creative, hasSpeechReading: !!(v.transcript && v.transcript.alternatives.length),
   }
 }
 

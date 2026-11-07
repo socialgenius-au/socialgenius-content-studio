@@ -45,10 +45,13 @@ function Disclosure({ label, children }: { label: string; children: React.ReactN
 }
 
 // ── 1. Reference ─────────────────────────────────────────────────────────────────────────────
+const STEP_WORD: Record<string, string> = { complete: 'done', already_complete: 'already done', running: 'running', skipped: 'skipped', failed: 'failed', blocked: 'blocked', not_run: 'not run yet' }
+const STEP_MARK: Record<string, string> = { complete: '✓', already_complete: '✓', running: '…', skipped: '⏭', failed: '✗', blocked: '⛔', not_run: '○' }
+
 export function ReferenceStage(p: {
   references: Loadable<ReferenceVideo[]>; selectedId: number | null; onSelect: (id: number) => void
   progress: DeconProgress; busy: string | null; anatomyAvailable: boolean
-  onDeconstruct: () => void; onAdd: (f: File) => void; onRetry: () => void
+  onDeconstruct: () => void; onRefresh?: () => void; onAdd: (f: File) => void; onRetry: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const cards = (p.references.data ?? []).map(referenceCard)
@@ -108,6 +111,26 @@ export function ReferenceStage(p: {
               <div className={sub}>{p.progress.done} of {p.progress.total || '…'} steps done{p.progress.current ? ` · ${p.progress.current}` : ''}</div>
             </div>
           )}
+          {p.progress.state === 'interrupted' && (
+            <Notice tone="warn">{p.progress.headline}.</Notice>
+          )}
+          {p.progress.steps.length > 0 && p.progress.state !== 'not_started' && (
+            <details data-testid="deconstruct-steps" open={p.progress.state !== 'done'}>
+              <summary className={`${sub} cursor-pointer`}>
+                Steps: {p.progress.done} of {p.progress.total} finished{p.progress.skipped > 0 ? `, ${p.progress.skipped} skipped (needs an AI provider that is not set up here)` : ''}
+              </summary>
+              <ul className="mt-1 space-y-0.5 text-sm">
+                {p.progress.steps.map(st => (
+                  <li key={st.key} data-testid={`deconstruct-step-${st.key}`} data-status={st.status}>
+                    <span aria-hidden>{STEP_MARK[st.status] ?? '·'}</span> {st.label} — <strong>{STEP_WORD[st.status] ?? st.status}</strong>{st.note ? <span className={sub}> · {st.note}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {(p.progress.state === 'running' || p.progress.state === 'interrupted') && p.onRefresh && (
+            <button type="button" className="text-sm underline" onClick={p.onRefresh} data-testid="deconstruct-refresh">Refresh status</button>
+          )}
           {p.progress.failures.length > 0 && (
             <Notice tone="warn">
               Some steps did not finish:
@@ -122,7 +145,7 @@ export function ReferenceStage(p: {
 }
 
 // ── 2. Anatomy ───────────────────────────────────────────────────────────────────────────────
-export function AnatomyStage({ anatomy }: { anatomy: Loadable<Anatomy> }) {
+export function AnatomyStage({ anatomy, busy = null, onReadFrames, onRereadSpeech }: { anatomy: Loadable<Anatomy>; busy?: string | null; onReadFrames?: () => void; onRereadSpeech?: () => void }) {
   if (anatomy.loading) return <LoadingState rows={4} />
   if (anatomy.error) return <ErrorState title="Could not load the content anatomy" description={anatomy.error} />
   if (!anatomyReady(anatomy.data)) return <EmptyState icon={Film} title="Not deconstructed yet" description="Deconstruct the reference video first — its structure will appear here." />
@@ -139,6 +162,30 @@ export function AnatomyStage({ anatomy }: { anatomy: Loadable<Anatomy> }) {
         {ov.structuralSummary && <div>{ov.structuralSummary}</div>}
         <div className={sub}>{ov.retention}</div>
       </div>
+      {(onReadFrames || onRereadSpeech) && (
+        <div className={`${box} space-y-2 text-sm`} data-testid="anatomy-readings">
+          <div className="font-medium">Deeper reading of this reference</div>
+          <div className="flex flex-wrap gap-2">
+            {onRereadSpeech && (
+              <Button variant="outline" size="sm" disabled={busy !== null} onClick={onRereadSpeech} data-testid="reread-speech-button">
+                {busy === 'speech' ? <Loader2 className="animate-spin" /> : <Sparkles />} {ov.hasSpeechReading ? 'Re-read speech again' : 'Re-read speech (free)'}
+              </Button>
+            )}
+            {onReadFrames && (
+              <Button variant="outline" size="sm" disabled={busy !== null} onClick={onReadFrames} data-testid="read-frames-button">
+                {busy === 'frames' ? <Loader2 className="animate-spin" /> : <Sparkles />} {ov.hasVisualReading ? 'Refresh AI visual reading' : 'Add AI visual reading'}
+              </Button>
+            )}
+          </div>
+          <div className={sub}>The speech re-read runs on this server at no cost. The visual reading sends selected frames to an AI provider (capped per reference) and may incur usage cost; an unchanged re-run is answered from the stored result.</div>
+        </div>
+      )}
+      {ov.readingNotes.length > 0 && (
+        <div className={`${box} space-y-1 text-sm`} data-testid="anatomy-reading-notes">
+          <div className="font-medium">How far to trust what is shown</div>
+          <ul className="ml-4 list-disc text-xs text-muted-foreground">{ov.readingNotes.map(n => <li key={n}>{n}</li>)}</ul>
+        </div>
+      )}
       <ol className="space-y-3">
         {a.sections.map(s => {
           const c = anatomyCard(s)
@@ -151,6 +198,8 @@ export function AnatomyStage({ anatomy }: { anatomy: Loadable<Anatomy> }) {
               <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm">{c.whatHappens.map(w => <li key={w}>{w}</li>)}</ul>
               <dl className="mt-3 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-[max-content_1fr]">
                 {c.transcript && (<><dt className="font-medium">Transcript</dt><dd className="text-muted-foreground">{c.transcript}</dd></>)}
+                {c.speechReading && (<><dt className="font-medium">Second reading</dt><dd className="text-muted-foreground">{c.speechReading}</dd></>)}
+                {c.seen.length > 0 && (<><dt className="font-medium">Seen by AI (inferred)</dt><dd className="text-muted-foreground">{c.seen.join(' · ')}</dd></>)}
                 <dt className="font-medium">Visual</dt><dd className="text-muted-foreground">{c.visual}</dd>
                 {c.onScreenText.length > 0 && (<><dt className="font-medium">On-screen text</dt><dd className="text-muted-foreground">{c.onScreenText.join(' · ')}</dd></>)}
                 <dt className="font-medium">Audio</dt><dd className="text-muted-foreground">{c.audio}</dd>

@@ -60,6 +60,7 @@ from app.config import settings
 from app.models.reference_video import ReferenceVideo
 from app.models.user import User
 from app.models.video_analysis import VideoAnalysis
+from app.services.ai_metering import ai_scope
 
 ORCHESTRATION_STALE_SECONDS = 1800
 ORCHESTRATION_KEY = "c1_orchestration"
@@ -378,8 +379,18 @@ async def get_orchestration_status(db: AsyncSession, user: User, reference_video
     ps = va.pass_status or {}
     return {
         "reference_video_id": reference_video_id, "video_analysis_id": va.id,
-        "orchestration": ps.get(ORCHESTRATION_KEY), "stages": compute_stage_statuses(ps),
+        "orchestration": _orchestration_view(ps.get(ORCHESTRATION_KEY)), "stages": compute_stage_statuses(ps),
     }
+
+
+def _orchestration_view(state: dict | None) -> dict | None:
+    """The stored run record as readers see it. A run still marked `running` after ORCHESTRATION_STALE_SECONDS is a crashed one (the same rule that lets a new run take over); readers
+    are told with `stale: true`, decided HERE on the server's clock (never on a browser's), so a page can stop spinning and offer a retry. Nothing is written."""
+    if not state:
+        return state
+    if state.get("status") == "running" and _is_stale(state.get("started_at")):
+        return {**state, "stale": True}
+    return state
 
 
 # ── the run ─────────────────────────────────────────────────────────────────────────────────
@@ -488,9 +499,12 @@ async def _run_stage(spec: StageSpec, ctx: RunContext, results: dict[str, dict],
     unconfigured = [name for name in spec.ai_settings if not getattr(settings, name, "")]
     if unconfigured:
         return outcome(SKIPPED, reason=f"AI reasoner not configured ({', '.join(unconfigured)} is empty)")
+    if spec.ai_settings and not settings.AI_SPEND_ENABLED:
+        return outcome(SKIPPED, reason="AI spending is switched off (AI_SPEND_ENABLED is false)")
 
     try:
-        summary = await runners[spec.key](ctx)
+        with ai_scope(reference_video_id=ctx.reference_video_id, video_analysis_id=ctx.video_analysis_id, user_id=ctx.user_id, reasoner=spec.key, force=bool(force_ai and spec.ai_settings)):
+            summary = await runners[spec.key](ctx)
     except Exception as exc:  # noqa: BLE001 -- a stage failure is reported, never allowed to abort the run
         await ctx.db.rollback()
         await _unexpire_user(ctx.db, ctx.user_id)  # the next stage's handler reads ctx.user.id

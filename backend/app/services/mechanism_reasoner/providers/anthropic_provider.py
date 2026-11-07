@@ -53,7 +53,7 @@ MECHANISM_EFFORT = "low"
 #
 # v2 (live-response correction): compact anatomy view described to the model (`usable_features`, absent = empty),
 # explicit concision / JSON-only / fewer-strong-mechanisms instructions. The locked C3 contract is unchanged.
-MECHANISM_PROMPT_VERSION = "v2"
+MECHANISM_PROMPT_VERSION = "v3"
 
 SYSTEM_PROMPT = """You are a structural content analyst. You are given the CONTENT ANATOMY of ONE \
 short-form video, in a compact form: an ordered, evidence-referenced map of how it is constructed, plus a list \
@@ -68,9 +68,17 @@ HOW TO READ THE INPUT: each section has n (its number), start/end (seconds), and
 opening / hook (true only when set), transcript, speech (id, text), on_screen_text (id, text; `recurring` marks \
 a persistent caption or watermark), objects, motion_evidence / transition_evidence, silences, pacing (shots, \
 cuts), accepted_retention_devices, rejected_retention_candidates (references only), interpretive (only if \
-upstream supplied a role), usable_features and evidence_ids. A field that is ABSENT means empty, false or not \
+upstream supplied a role), creative (only when an AI looked at the frames), usable_features and evidence_ids. A field that is ABSENT means empty, false or not \
 established -- never assume it. `usable_features` lists the ONLY feature names you may use for that section; \
 video.usable_features does the same at video level.
+
+CREATIVE READ (present only when an AI LOOKED at selected frames; otherwise ignore this paragraph): a section's `creative` holds `shots` (what the eye is drawn to, framing) and `findings` (id, kind, conf, says, \
+mech_hint, principle_hint). They are INFERRED readings of what is VISIBLE, with ids you may cite under the evidence key `creative_findings` (feature `creative_read`). `principle_hint` is a hint to \
+re-express abstractly, never to copy. The top-level `reconciliation` says which readings are established, disputed or unverified, and in what order of authority to trust them: FOLLOW IT. Where two readings of the same \
+moment disagree (for example a detector label vs the visual description), use the higher-authority reading and treat the other as uncorroborated; never present a disputed or unverified item as established. \
+Speech-to-text listed in `unverified_speech_ids` and OCR listed in `low_confidence_text_ids` are NOT quotations and cannot support a `high` confidence mechanism; a mechanism resting only on them must be `low`. \
+Use the visual findings to find mechanisms the text evidence cannot show (what the eye is drawn to, how shots progress from one idea to the next, what is demonstrated, the tone a human presence adds), and say so in the \
+statement only in cautious design language. Everything about audiences is unknown (`audience_effects`): never claim an effect. \nA section's `speech_reading` (when present) is a SECOND machine transcription of the same audio, usually the better formed of the two: use it to understand what the speech is about, \nbut it is unverified, has no id, is never a quotation and can never be cited or quoted; only the ids in `speech` can be cited.
 
 OUTPUT: return ONLY a single JSON object -- begin with "{{" and end with "}}". No preamble, no markdown, no \
 code fences, no explanation outside the schema. Keep every value concise. Do not deliberate at length: the \

@@ -2,6 +2,7 @@
 provider only has to obtain the JSON text and never re-implements shape checking. Raises
 MechanismReasoningError (never returns a placeholder) on anything malformed."""
 import json
+from app.services.json_recovery import loads_lenient
 
 from app.services.mechanism_reasoner.contract import (
     Mechanism, MechanismDecision, MechanismReasoningError, NonTransferableElement,
@@ -26,7 +27,7 @@ def parse_json_object(raw_text: str) -> dict:
         if start == -1 or end <= start:
             raise MechanismReasoningError(f"Mechanism response was not valid JSON and contained no JSON object: {str(raw_text)[:300]!r}")
         try:
-            data = json.loads(raw_text[start:end])
+            data = loads_lenient(raw_text[start:end])[0]
         except json.JSONDecodeError as exc:
             raise MechanismReasoningError(f"Mechanism response could not be parsed as JSON: {exc}") from exc
     if not isinstance(data, dict):
