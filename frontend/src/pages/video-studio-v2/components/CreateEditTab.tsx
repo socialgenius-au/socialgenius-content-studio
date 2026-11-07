@@ -5797,8 +5797,6 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
 
         <aside className="properties-panel">{propertiesPanelBody}</aside>
 
-        <aside className="ai-tools-panel">{aiToolsPanelBody}</aside>
-
         {focusMode && drawer === "media" && (
           <div className="focus-drawer left">
             <div className="focus-drawer-head"><b>Media</b><button type="button" onClick={() => setDrawer(null)}>×</button></div>
@@ -5936,6 +5934,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             ))}
           </TrackRow>
         </section>
+
+        <aside className="ai-tools-panel">{aiToolsPanelBody}</aside>
 
         <div className="ai-assistant">
           <b>✦ AI Assistant</b>
