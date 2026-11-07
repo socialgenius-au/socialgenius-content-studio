@@ -184,6 +184,23 @@ async def test_the_bad_reply_is_never_served_from_the_cache_afterwards(env):
 
 
 @pytestmark_db
+async def test_an_old_stored_reply_that_is_rejected_is_invalidated_and_retried_fresh_once(env):
+    """The reference-5131 situation: a bad reply was stored as 'succeeded' BEFORE the safeguards existed. Served back from the ledger it is rejected again; it must be marked invalid and ONE fresh request made."""
+    ai = Fake([msg("{bad json from before the fix"), msg('{"ok": true}')])
+    c = m.MeteredClient(ai)
+    with m.ai_scope(reference_video_id=env.ref):
+        with pytest.raises(Rejected):
+            await m.run_reasoner_call(reasoner(c), retry_once=False)
+    async with _Session() as s:                                                              # put it back the way the old code left it: stored as a success
+        await s.execute(text("UPDATE ai_call_ledger SET status='succeeded', error=NULL WHERE phase_id=:p AND status='invalid_output'"), {"p": env.phase})
+        await s.commit()
+    with m.ai_scope(reference_video_id=env.ref):
+        out = await m.run_reasoner_call(reasoner(c))                                         # served from the ledger -> rejected -> invalidated -> one fresh paid request
+    assert out == {"ok": True} and ai.calls == 2
+    assert [r.status for r in await rows(env.phase)] == ["invalid_output", "cache_hit", "succeeded"]
+
+
+@pytestmark_db
 async def test_two_rejections_stop_at_two_requests_and_both_stay_in_the_ledger(env):
     ai = Fake([msg("{bad"), msg("{still bad")])
     c = m.MeteredClient(ai)

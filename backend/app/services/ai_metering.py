@@ -186,7 +186,7 @@ async def _record_refusal(status: str, scope: AiScope, model: str, rhash: str, a
 
 
 async def _reserve(scope: AiScope, model: str, rhash: str, attempt: int, est_tokens: int, est_in_usd: float, ceiling: float, max_tokens: int):
-    """Returns ('reserved', row_id) | ('cache', response_json) | ('refused', (status, message))."""
+    """Returns ('reserved', row_id) | ('cache', (response_json, row_id)) | ('refused', (status, message))."""
     now = datetime.now(timezone.utc)
     cut = now - timedelta(seconds=RESERVED_TTL_SECONDS)
     phase = settings.AI_PHASE_ID
@@ -203,7 +203,7 @@ async def _reserve(scope: AiScope, model: str, rhash: str, attempt: int, est_tok
                 if prior is not None:
                     s.add(AiCallLedger(phase_id=phase, user_id=scope.user_id, reference_video_id=scope.reference_video_id, video_analysis_id=scope.video_analysis_id, reasoner=scope.reasoner,
                                        model=model, request_hash=rhash, attempt_no=attempt, status="cache_hit", est_input_tokens=est_tokens, max_output_tokens=max_tokens, settled_at=now))
-                    return "cache", prior.response_json
+                    return "cache", (prior.response_json, prior.id)
             inflight = (await s.execute(same.where(AiCallLedger.status == "reserved", AiCallLedger.created_at >= cut).limit(1))).scalars().first()
             if inflight is not None:
                 return "refused", ("duplicate_in_flight", "An identical AI request for this reference is already in progress. Wait for it to finish instead of sending it twice.")
@@ -287,7 +287,9 @@ async def metered_create(get_inner, kwargs: dict):
             logger.error("AI ledger unavailable (%s); request blocked", type(exc).__name__)
             raise AiCostControlError("ledger_unavailable", "The AI cost ledger is unavailable, so the request was blocked. Nothing was sent.") from exc
         if kind == "cache":
-            return anthropic.types.Message.model_validate_json(payload)
+            cached_json, cached_id = payload
+            _last_success.set(cached_id)         # a stored reply the caller then REJECTS can be marked invalid_output and retried fresh, like a new one
+            return anthropic.types.Message.model_validate_json(cached_json)
         if kind == "refused":
             status, msg = payload
             await _record_refusal(status, scope, model, rhash, attempt, est_tokens, max_tokens, msg)
