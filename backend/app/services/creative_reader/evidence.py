@@ -33,13 +33,15 @@ def select_frames(frames: list[dict], max_frames: int) -> list[dict]:
         mid = fs[len(fs) // 2]
         chosen.append(mid)
         left[so] = [f for f in fs if f["id"] != mid["id"]]
-    # extra frames: the hook shot first (up to two more), then round-robin
+    # extra frames: the hook shot first (up to two more), then round-robin over the shots until the limit is reached or no frame is left
     order = [shot_orders[0]] * 2 + shot_orders
-    for so in order:
-        if len(chosen) >= max_frames:
-            break
-        if left.get(so):
-            chosen.append(left[so].pop(0))
+    while len(chosen) < max_frames and any(left.values()):
+        for so in order:
+            if len(chosen) >= max_frames:
+                break
+            if left.get(so):
+                chosen.append(left[so].pop(0))
+        order = shot_orders
     if len(chosen) > max_frames:                                   # more shots than frames allowed: keep an even spread across time
         step = len(chosen) / max_frames
         chosen = [sorted(chosen, key=lambda f: f["timestamp"])[int(i * step)] for i in range(max_frames)]

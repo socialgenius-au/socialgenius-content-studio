@@ -25,7 +25,7 @@ export function useDeconstructor(referenceVideoId: number | null) {
   const [anatomy, setAnatomy] = useState<Loadable<Anatomy>>(idle())
   const [mechanisms, setMechanisms] = useState<Loadable<MechanismSet>>(idle())
   const [blueprint, setBlueprint] = useState<Loadable<BlueprintResponse>>(idle())
-  const [busy, setBusy] = useState<null | 'deconstruct' | 'mechanisms' | 'blueprint' | 'upload'>(null)
+  const [busy, setBusy] = useState<null | 'deconstruct' | 'mechanisms' | 'blueprint' | 'upload' | 'frames' | 'speech'>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const followRef = useRef<((id: number, startedByClick: boolean) => void) | null>(null)   // set below; lets load() resume following a run that is already in progress
   const seq = useRef(0)   // guards against a slow response for a previously selected reference overwriting the current one
@@ -122,6 +122,29 @@ export function useDeconstructor(referenceVideoId: number | null) {
     await Promise.all([load(referenceVideoId), loadReferences()])
   }, [referenceVideoId, load, loadReferences])
 
+  /** After a new reading is added the anatomy changed, so re-read it and the (possibly now stale) mechanisms from the server. */
+  const reloadAfterReading = useCallback(async (id: number) => {
+    const [an, me] = await Promise.allSettled([deconstructorApi.anatomy(id), deconstructorApi.mechanisms(id)])
+    if (an.status === 'fulfilled') setAnatomy({ data: an.value.data as Anatomy, loading: false, error: null, missing: false })
+    if (me.status === 'fulfilled') setMechanisms({ data: me.value.data as MechanismSet, loading: false, error: null, missing: false })
+  }, [])
+
+  // PAID: an AI looks at selected keyframes. Only ever called after the page has confirmed with the user.
+  const readFrames = useCallback(async () => {
+    if (referenceVideoId == null) return
+    setBusy('frames'); setActionError(null)
+    try { await deconstructorApi.readFrames(referenceVideoId); await reloadAfterReading(referenceVideoId) }
+    catch (e) { setActionError(errorMessage(e, 'Could not add the visual reading.')) } finally { setBusy(null) }
+  }, [referenceVideoId, reloadAfterReading])
+
+  // FREE: local speech model, no AI provider.
+  const rereadSpeech = useCallback(async () => {
+    if (referenceVideoId == null) return
+    setBusy('speech'); setActionError(null)
+    try { await deconstructorApi.rereadSpeech(referenceVideoId); await reloadAfterReading(referenceVideoId) }
+    catch (e) { setActionError(errorMessage(e, 'Could not re-read the speech.')) } finally { setBusy(null) }
+  }, [referenceVideoId, reloadAfterReading])
+
   const deriveMechanisms = useCallback(async () => {
     if (referenceVideoId == null) return
     setBusy('mechanisms'); setActionError(null)
@@ -167,5 +190,5 @@ export function useDeconstructor(referenceVideoId: number | null) {
   }, [loadReferences])
 
   const progress = summarizeDeconStatus(status)
-  return { references, status, progress, anatomy, mechanisms, blueprint, busy, actionError, setActionError, deconstruct, deriveMechanisms, buildBlueprint, addReference, refreshStatus, reload: () => (referenceVideoId != null ? load(referenceVideoId) : Promise.resolve()) }
+  return { references, status, progress, anatomy, mechanisms, blueprint, busy, actionError, setActionError, deconstruct, deriveMechanisms, readFrames, rereadSpeech, buildBlueprint, addReference, refreshStatus, reload: () => (referenceVideoId != null ? load(referenceVideoId) : Promise.resolve()) }
 }

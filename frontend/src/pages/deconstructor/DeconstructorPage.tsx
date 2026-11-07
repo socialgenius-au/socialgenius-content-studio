@@ -40,6 +40,7 @@ const STEPS: { id: Step; label: string; caption: string }[] = [
 
 const AI_CONFIRM = {
   deconstruct: 'Deconstruct this reference video?\n\nThis runs the analysis pipeline. Where an AI provider is configured, some steps use AI and may incur usage cost. Steps already completed are skipped.',
+  frames: 'Add an AI visual reading?\n\nThis sends up to 11 selected frames of this reference, plus its measured speech, text and timing, to an AI provider. It is capped at the per-reference spending limit (about five cents has been typical) and works only while AI spending is switched on for this environment. An unchanged re-run uses the stored result at no cost.',
   mechanisms: 'Derive mechanisms with AI?\n\nThis sends the reference video’s analysed structure to an AI provider and may incur usage cost.',
   blueprint: 'Build a NEW reconstruction blueprint with AI?\n\nThis sends your new-content details and the learned mechanisms to an AI provider and may incur usage cost. The existing blueprint (if any) is kept in history.',
 }
@@ -95,6 +96,7 @@ export default function DeconstructorPage() {
   const select = (id: number) => { setUseMessage(null); navigate(`/deconstructor/${id}`) }
 
   const onDeconstruct = () => { if (window.confirm(AI_CONFIRM.deconstruct)) void d.deconstruct() }
+  const onReadFrames = () => { if (window.confirm(AI_CONFIRM.frames)) void d.readFrames() }
   const onDerive = () => { if (window.confirm(AI_CONFIRM.mechanisms)) void d.deriveMechanisms() }
 
   const onBuild = async () => {
@@ -160,7 +162,7 @@ export default function DeconstructorPage() {
               onAdd={async f => { const id = await d.addReference(f); if (id != null) select(id) }}
             />
           )}
-          {step === 'anatomy' && <AnatomyStage anatomy={d.anatomy} />}
+          {step === 'anatomy' && <AnatomyStage anatomy={d.anatomy} busy={d.busy} onReadFrames={onReadFrames} onRereadSpeech={() => void d.rereadSpeech()} />}
           {step === 'mechanisms' && <MechanismsStage mechanisms={d.mechanisms} anatomyAvailable={anatomyAvailable} busy={d.busy} onDerive={onDerive} />}
           {step === 'intent' && (
             <IntentStage

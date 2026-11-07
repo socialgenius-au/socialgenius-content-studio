@@ -15,6 +15,7 @@ app.services.story_beat_reasoner.reason_about_story_beat_boundary(candidate_bund
 provider (if any) actually answers is resolved by router.py from configuration alone.
 """
 import json
+from app.services.json_recovery import loads_lenient
 
 import anthropic
 
@@ -202,7 +203,7 @@ def _parse_response_json(raw_text: str) -> dict:
     if start == -1 or end <= start:
         raise StoryBeatReasoningError(f"Anthropic response was not valid JSON and contained no JSON object: {raw_text!r}")
     try:
-        return json.loads(raw_text[start:end])
+        return loads_lenient(raw_text[start:end])[0]      # deterministic repair of quotes/commas; still contract-validated by the caller
     except json.JSONDecodeError as exc:
         raise StoryBeatReasoningError(f"Anthropic response could not be parsed as JSON: {exc}") from exc
 

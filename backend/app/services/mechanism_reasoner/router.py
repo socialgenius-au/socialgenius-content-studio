@@ -7,6 +7,7 @@ No persistence happens here or anywhere in this package -- only an in-memory Mec
 Durable storage is app.services.transferable_mechanism_svc's own, separate job.
 """
 from app.config import settings
+from app.services.ai_metering import run_reasoner_call
 
 from .anatomy_input import build_reasoner_input, validate_anatomy_input
 from .contract import MechanismReasoningError, MechanismResult
@@ -48,7 +49,7 @@ async def derive_mechanisms(anatomy: dict) -> MechanismResult:
             f"Mechanism reasoner '{provider_name}' is registered but not configured (missing its required secret or setting)."
         )
 
-    decision = await provider.derive_mechanisms(build_reasoner_input(anatomy), model=settings.MECHANISM_REASONER_MODEL)
+    decision = await run_reasoner_call(lambda: provider.derive_mechanisms(build_reasoner_input(anatomy), model=settings.MECHANISM_REASONER_MODEL))
     validate_decision(decision, anatomy)
     return MechanismResult(
         decision=decision, provider=provider.name, model=settings.MECHANISM_REASONER_MODEL,

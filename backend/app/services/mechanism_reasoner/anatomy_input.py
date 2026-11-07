@@ -109,6 +109,8 @@ def section_features(section: dict) -> set[str]:
         present.add("hook_window")
     if _l(section.get("retention_devices")):
         present.add("accepted_retention_device")
+    if _d(section.get("creative")).get("findings") or _d(section.get("creative")).get("shot_reads"):
+        present.add("creative_read")
     return present
 
 
@@ -136,6 +138,11 @@ def source_texts(anatomy: dict) -> list[str]:
             texts.append(str(section["transcript_excerpt"]))
         texts += [str(s.get("text")) for s in _l(section.get("speech")) if _d(s).get("text")]
         texts += [str(t.get("text")) for t in _l(section.get("on_screen_text")) if _d(t).get("text")]
+        if _d(section.get("speech_reading")).get("text"):
+            texts.append(str(section["speech_reading"]["text"]))
+        creative = _d(section.get("creative"))          # what the AI said it SAW is source-specific too: a principle must not repeat it
+        texts += [str(r.get(k)) for r in _l(creative.get("shot_reads")) for k in ("focal_subject", "framing") if _d(r).get(k)]
+        texts += [str(f.get("statement")) for f in _l(creative.get("findings")) if _d(f).get("statement")]
     return texts
 
 
@@ -196,9 +203,30 @@ def _compact_section(section: dict) -> dict:
     interp = {k: v for k, v in _d(section.get("interpretive")).items() if k != "status" and v}
     if interp:
         out["interpretive"] = interp
+    reading = _d(section.get("speech_reading"))
+    if reading.get("text"):          # a second machine reading of the speech: understanding aid only, never citable, never quotable
+        out["speech_reading"] = {"text": reading["text"], "model": reading.get("model"), "unverified": True}
+    creative = _d(section.get("creative"))
+    if creative:                      # what an AI saw in this section's frames (INFERRED, ai_vision); ids are citable under evidence key `creative_findings`
+        out["creative"] = {"shots": [{k: v for k, v in r.items() if v or k == "shot_order"} for r in _l(creative.get("shot_reads"))],
+                          "findings": [{"id": f.get("id"), "kind": f.get("kind"), "conf": f.get("confidence"), "says": f.get("statement"), "mech_hint": f.get("mechanism_hint"), "principle_hint": f.get("candidate_principle"),
+                                         "start": _t(f.get("start")), "end": _t(f.get("end"))} for f in _l(creative.get("findings"))]}
     out["usable_features"] = sorted(section_features(section))  # exactly the vocabulary the validator checks
     out["evidence_ids"] = {k: v for k, v in _d(section.get("evidence_ids")).items() if v}
     return out
+
+
+def _creative_video_view(video: dict) -> dict:
+    """Video-level creative summary and the reconciliation of unequal-authority readings; empty (adds no key) when the anatomy has no creative layer."""
+    c, r = _d(video.get("creative")), _d(video.get("reconciliation"))
+    t = _d(video.get("transcript"))
+    tview = {"transcript_note": {"original_quality": _d(t.get("original")).get("quality"), "preferred_model": next((a.get("model") for a in _l(t.get("alternatives")) if a.get("run_id") == t.get("preferred_run_id")), None),
+                               "policy": "speech_reading is a second machine reading of the same audio: unverified, never a quotation, not citable"}} if t.get("alternatives") else {}
+    if not c and not r:
+        return tview
+    return {**tview, "creative_read": {"summary": c.get("summary"), "limitations": c.get("limitations"), "basis": c.get("basis"), "certainty": c.get("certainty"), "frames_shown": c.get("frames_shown")},
+            "reconciliation": {"authority_order": r.get("authority_order"), "items": [{k: v for k, v in i.items() if k in ("topic", "status", "sections", "note", "authority")} for i in _l(r.get("items"))],
+                              "unverified_speech_ids": r.get("unverified_speech_ids"), "low_confidence_text_ids": r.get("low_confidence_text_ids"), "audience_effects": r.get("audience_effects")}}
 
 
 def build_reasoner_input(anatomy: dict) -> dict:
@@ -233,6 +261,7 @@ def build_reasoner_input(anatomy: dict) -> dict:
             "interpretive": {k: v for k, v in _d(video.get("interpretive")).items() if k != "status" and v} or None,
         },
         "sections": [_compact_section(s) for s in _l(anatomy.get("sections")) if isinstance(s, dict) and isinstance(s.get("number"), int)],
+        **_creative_video_view(video),
         "gaps": [{"field": g.get("field"), "kind": g.get("kind"), "reason": g.get("reason"),
                   **({"section": g["section_number"]} if g.get("section_number") is not None else {})}
                  for g in _l(anatomy.get("gaps")) if isinstance(g, dict)],

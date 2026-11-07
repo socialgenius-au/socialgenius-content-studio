@@ -124,6 +124,10 @@ export interface AnatomyCard {
   pacing: string
   retention: string
   evidenceNotes: string[]
+  /** What an AI saw in this section's frames, worded as an inference. Empty until the visual reading has been added. */
+  seen: string[]
+  /** A second machine reading of the speech (unverified, never a quotation) or null. */
+  speechReading: string | null
 }
 
 function roleFor(s: AnatomySection): string {
@@ -154,6 +158,11 @@ export function anatomyCard(s: AnatomySection): AnatomyCard {
       ? dev.map(d => `${d.device_type ?? 'device'}${d.probable_attention_function ? ` — ${d.probable_attention_function}` : ''}${d.confidence ? ` (${d.confidence})` : ''}`).join('; ')
       : s.rejected_candidates.length ? `No retention device confirmed (${s.rejected_candidates.length} ${s.rejected_candidates.length === 1 ? 'candidate' : 'candidates'} examined and rejected)` : 'No retention device confirmed',
     evidenceNotes: s.features.map(f => titleCase(f)),
+    seen: s.creative ? [
+      ...s.creative.shot_reads.map(r => `Shot ${r.shot_order + 1}: ${[r.focal_subject, r.framing].filter(Boolean).join(' — ')}`),
+      ...s.creative.findings.map(f => `${f.statement ?? ''}${f.confidence ? ` (${f.confidence} confidence)` : ''}`),
+    ].filter(x => x.trim() && !x.endsWith(': ')) : [],
+    speechReading: s.speech_reading?.text ? `${s.speech_reading.text} — a second machine reading (${s.speech_reading.model ?? 'local model'}); unverified, not a quotation` : null,
   }
 }
 
@@ -165,6 +174,28 @@ export interface AnatomyOverview {
   pacing: string
   retention: string
   gaps: string[]
+  /** Plain statements of what is observed, inferred or unverified; empty when no extra reading has been added. */
+  readingNotes: string[]
+  hasVisualReading: boolean
+  hasSpeechReading: boolean
+}
+
+export function readingNotes(v: Anatomy['video']): string[] {
+  const out: string[] = []
+  if (v.creative) {
+    out.push(`An AI looked at ${v.creative.frames_shown} frames: ${v.creative.summary ?? 'see the sections below'} This is an inference from the pictures, not a measurement.`)
+    for (const l of v.creative.limitations) out.push(`Limitation: ${l}`)
+  }
+  for (const i of v.reconciliation?.items ?? []) if (i.status !== 'established') out.push(`${titleCase(i.topic)} (${i.status.replace(/_/g, ' ')}): ${i.note}`)
+  const t = v.transcript
+  if (t && t.alternatives.length) {
+    const pref = t.alternatives.find(a => a.run_id === t.preferred_run_id)
+    out.push(pref
+      ? `Speech: the first transcription looks unreliable (${t.original.quality.reasons.join('; ') || 'low confidence'}), so a second local reading (${pref.model}) is shown beside it. Both are machine output; neither is a verified quotation.`
+      : 'Speech: a second local reading exists but is not clearly better than the first; both are unverified machine output.')
+  } else if (v.reconciliation && v.reconciliation.unverified_speech_ids.length) out.push('Speech: the transcript is unverified machine output and is not treated as a quotation.')
+  if (v.reconciliation) out.push(`Audience effects: ${v.reconciliation.audience_effects}`)
+  return out
 }
 
 export function anatomyOverview(a: Anatomy): AnatomyOverview {
@@ -180,6 +211,7 @@ export function anatomyOverview(a: Anatomy): AnatomyOverview {
       ? `No retention devices were confirmed (${r.examined_count} examined) — the analysis does not assume any.`
       : `${r.accepted_count} retention ${r.accepted_count === 1 ? 'device' : 'devices'} confirmed`,
     gaps: dedupe(a.gaps.map(g => g.reason)),
+    readingNotes: readingNotes(v), hasVisualReading: !!v.creative, hasSpeechReading: !!(v.transcript && v.transcript.alternatives.length),
   }
 }
 

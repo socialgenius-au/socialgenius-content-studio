@@ -50,6 +50,11 @@ export interface AnatomySection {
   pacing: { shot_count: number; cut_count: number }
   retention_devices: AnatomyDevice[]
   rejected_candidates: AnatomyRejected[]
+  /** Present only after "Add AI visual reading": what an AI saw in this section's frames (INFERRED, never measured). */
+  creative?: { basis: string; certainty: string; shot_reads: { shot_order: number; focal_subject: string | null; framing: string | null; notes: string | null }[];
+    findings: { id: number; kind: string | null; confidence: string | null; statement: string | null; mechanism_hint: string | null; candidate_principle: string | null }[] } | null
+  /** Present only after "Re-read speech": a second machine reading of this section's speech (unverified, not a quotation). */
+  speech_reading?: { text: string; model: string | null; quotable: boolean; status: string } | null
   interpretive: { narrative_role: string | null; messaging_role: string | null; emotional_function: string | null; cta_role: string | null }
   features: string[]
 }
@@ -66,6 +71,10 @@ export interface Anatomy {
     pacing_profile: { shot_count: number; cut_count: number; average_shot_duration_seconds: number | null; cuts_per_minute: number | null }
     structural_pattern: { summary: string }
     retention: { analysis_status: string; accepted_count: number; examined_count: number }
+    creative?: { summary: string | null; limitations: string[]; certainty: string; finding_count: number; model: string | null; frames_shown: number } | null
+    reconciliation?: { items: { id: string; topic: string; status: string; note: string; sections: number[] }[]; audience_effects: string; unverified_speech_ids: number[]; low_confidence_text_ids: number[] } | null
+    transcript?: { original: { model: string | null; quality: { plausible: boolean; reasons: string[]; mean_avg_logprob: number | null } }; preferred_run_id: string | null; policy: string
+      alternatives: { run_id: string; model: string; status: string; quotable: boolean; quality: { plausible: boolean; reasons: string[]; mean_avg_logprob: number | null }; agreement_with_original: { value: number | null; comparable: boolean; reason: string | null } }[] } | null
   }
   section_source: { selected: string | null }
   sections: AnatomySection[]

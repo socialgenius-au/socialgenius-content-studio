@@ -136,6 +136,8 @@ class AnatomySection(BaseModel):
     features: list[str] = []          # compact structural map: hook_window|speech|on_screen_text|silence|cut|accepted_retention_device
     evidence_ids: dict[str, list[int]] = {}
     certainty: str = "MEASURED"       # time-partition / overlap arithmetic over persisted evidence
+    speech_reading: dict | None = None    # present only when a second local transcription exists: the preferred alternative reading of this section's speech (machine output, unverified, not quotable)
+    creative: dict | None = None      # present only when a Creative Read exists: what an AI saw in this section's frames (INFERRED, basis ai_vision)
 
 
 class VideoAnatomy(BaseModel):
@@ -148,6 +150,9 @@ class VideoAnatomy(BaseModel):
     progression: list[dict]
     retention: dict
     interpretive: InterpretiveFields
+    transcript: dict | None = None        # present only when an alternative transcript exists: original vs alternatives with provenance, quality, agreement
+    creative: dict | None = None          # present only with a Creative Read: summary, limitations, provenance
+    reconciliation: dict | None = None    # present only with a Creative Read: which readings are established / disputed / unverified, and in what order of authority to trust them
 
 
 class AnatomyProvenance(BaseModel):

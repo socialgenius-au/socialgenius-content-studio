@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 import re
 
+from app.services.json_recovery import loads_lenient
+
 from app.services.creative_reader.contract import (
     CreativeReadError, CreativeReadResult, EVIDENCE_TYPES, FINDING_KINDS, Finding, MECHANISM_VOCABULARY, ShotRead, VALID_CONFIDENCE, CREATIVE_READ_PROMPT_VERSION,
 )
@@ -33,7 +35,7 @@ def parse_json_object(raw: str) -> dict:
     if start < 0:
         raise CreativeReadError("The AI response contained no JSON object.")
     try:
-        data, _ = json.JSONDecoder().raw_decode(text[start:])
+        data, _ = loads_lenient(text[start:text.rfind('}') + 1])
     except json.JSONDecodeError as exc:
         raise CreativeReadError(f"The AI response was not valid JSON ({exc.msg}).") from exc
     if not isinstance(data, dict):

@@ -22,6 +22,7 @@ returns a StoryBeatResult in memory. Durable storage remains an explicitly defer
 semantic_boundary_reasoning_store_svc, arrived a full separate phase after its router did).
 """
 from app.config import settings
+from app.services.ai_metering import run_reasoner_call
 
 from .contract import StoryBeatReasoningError, StoryBeatResult
 from .providers.anthropic_provider import AnthropicStoryBeatReasoner
@@ -72,7 +73,7 @@ async def reason_about_story_beat_boundary(evidence_bundle: dict) -> StoryBeatRe
         )
 
     candidate_timestamp = evidence_bundle["candidate_timestamp"]
-    decision = await provider.reason_about_story_beat_boundary(evidence_bundle, model=settings.STORY_BEAT_REASONER_MODEL)
+    decision = await run_reasoner_call(lambda: provider.reason_about_story_beat_boundary(evidence_bundle, model=settings.STORY_BEAT_REASONER_MODEL))
     return StoryBeatResult(
         decision=decision,
         provider=provider.name,

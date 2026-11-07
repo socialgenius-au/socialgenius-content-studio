@@ -41,6 +41,12 @@ async def _load(db: AsyncSession, va_id: int) -> tuple[AnalysisAnnotation | None
     return summary, [r for r in rows if r.category == FINDING_CATEGORY]
 
 
+async def load_creative_view(db: AsyncSession, va_id: int) -> dict:
+    """The stored Creative Read of one exact analysis (status `not_run` when there is none). Pure read."""
+    summary, findings = await _load(db, va_id)
+    return _view(summary, findings, reused=False)
+
+
 async def get_creative_read(db: AsyncSession, user: User, reference_video_id: int, *, video_analysis_id: int | None = None) -> dict:
     agg = await build_full_deconstruction(db, user, reference_video_id, video_analysis_id=video_analysis_id)
     summary, findings = await _load(db, agg["video_analysis"]["id"])

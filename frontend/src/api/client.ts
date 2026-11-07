@@ -164,6 +164,10 @@ export const deconstructorApi = {
   deriveMechanisms:  (id: number, anatomyFingerprint?: string | null) =>
     api.post(`/reference-videos/${id}/mechanisms`, null, { params: anatomyFingerprint ? { anatomy_fingerprint: anatomyFingerprint } : {} }),
   blueprint:         (id: number)                 => api.get(`/reference-videos/${id}/reconstruction-blueprint`),
+  // PAID (needs AI spending switched on server-side and is capped per reference): an AI looks at selected keyframes. An unchanged re-run is answered from the stored result at no cost.
+  readFrames:        (id: number)                 => api.post(`/reference-videos/${id}/creative-read`, null, { timeout: 300000 }),
+  // FREE (local Whisper, no AI provider): a better-tuned second reading of the speech, stored beside the original.
+  rereadSpeech:      (id: number)                 => api.post(`/reference-videos/${id}/transcript-alternatives`, null, { params: { model: 'small' }, timeout: 600000 }),
   buildBlueprint:    (id: number, body: Record<string, unknown>) => api.post(`/reference-videos/${id}/reconstruction-blueprint`, body),
 }
 

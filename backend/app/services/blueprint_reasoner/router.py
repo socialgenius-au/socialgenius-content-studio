@@ -5,6 +5,7 @@ can bypass the safeguards. Same registry pattern and honest-unconfigured default
 No persistence happens here -- only an in-memory BlueprintResult is returned (see app.services.reconstruction_blueprint_svc).
 """
 from app.config import settings
+from app.services.ai_metering import run_reasoner_call
 
 from .contract import BlueprintReasoningError, BlueprintResult
 from .provider_input import build_reasoner_input
@@ -39,7 +40,7 @@ async def derive_blueprint(ctx: BlueprintContext) -> BlueprintResult:
         raise BlueprintReasoningError(
             f"Blueprint reasoner '{provider_name}' is registered but not configured (missing its required secret or setting).")
 
-    decision = await provider.derive_blueprint(build_reasoner_input(ctx), model=settings.BLUEPRINT_REASONER_MODEL)
+    decision = await run_reasoner_call(lambda: provider.derive_blueprint(build_reasoner_input(ctx), model=settings.BLUEPRINT_REASONER_MODEL))
     validate_decision(decision, ctx)
     return BlueprintResult(
         decision=decision, provider=provider.name, model=settings.BLUEPRINT_REASONER_MODEL,

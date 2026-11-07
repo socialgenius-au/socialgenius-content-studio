@@ -119,6 +119,7 @@ from app.services import (
 from app.services.media_storage import asset_file_present, missing_file_message
 from app.services.ai_metering import ai_scope
 from app.services.creative_read_svc import get_creative_read, run_creative_read
+from app.services.transcript_alt_svc import TranscriptAltError, get_transcript_alternatives, run_transcript_alternative
 from app.services.creative_reader import CreativeReadError, CreativeReadInputError
 from app.services.content_anatomy_svc import ContentAnatomyError, ContentAnatomyNotReady, get_content_anatomy
 from app.services.mechanism_reasoner import MechanismInputError, MechanismReasoningError
@@ -3749,6 +3750,40 @@ async def get_reference_video_creative_read(
     """The stored Creative Read (status `not_run` when there is none). Pure read, no AI call."""
     try:
         return await get_creative_read(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+
+
+@router.post("/{reference_video_id}/transcript-alternatives")
+async def run_reference_video_transcript_alternative(
+    reference_video_id: int,
+    model: str = "small",
+    language: str | None = None,
+    video_analysis_id: int | None = None,
+    force: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Re-reads the audio with a better local Whisper model (default `small`; optional language hint) and stores the result BESIDE the original transcript, never over it. FREE local compute: no AI provider
+    and no paid service is called. Every alternative is an unverified machine transcript (`quotable: false`). The same model and hint already stored is returned as is unless `force=true`."""
+    try:
+        return await run_transcript_alternative(db, user, reference_video_id, model=model, language=language, video_analysis_id=video_analysis_id, force=force)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except TranscriptAltError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+@router.get("/{reference_video_id}/transcript-alternatives")
+async def get_reference_video_transcript_alternatives(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The original transcript's quality and every stored alternative reading, with provenance, agreement and the preferred one. Pure read."""
+    try:
+        return await get_transcript_alternatives(db, user, reference_video_id, video_analysis_id=video_analysis_id)
     except OrchestrationError as exc:
         raise _orchestration_http_error(exc)
 

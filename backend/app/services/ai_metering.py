@@ -158,6 +158,9 @@ def current_scope() -> AiScope:
     return _scope.get()
 
 
+_last_success: contextvars.ContextVar[int | None] = contextvars.ContextVar("ai_last_success", default=None)
+
+
 # ── ledger operations ─────────────────────────────────────────────────────────────────────
 
 session_factory = AsyncSessionLocal      # tests substitute a NullPool factory
@@ -167,7 +170,7 @@ def _spent_sql(with_ref: bool) -> str:
     return ("SELECT COALESCE(SUM(CASE "
             " WHEN status = 'reserved' AND created_at >= :cut THEN reserved_usd "
             " WHEN status = 'reserved' THEN est_input_usd "
-            " WHEN status IN ('succeeded', 'failed') THEN cost_usd ELSE 0 END), 0) FROM ai_call_ledger WHERE phase_id = :phase"
+            " WHEN status IN ('succeeded', 'failed', 'invalid_output') THEN cost_usd ELSE 0 END), 0) FROM ai_call_ledger WHERE phase_id = :phase"
             + (" AND reference_video_id = :ref" if with_ref else ""))
 
 
@@ -312,6 +315,7 @@ async def metered_create(get_inner, kwargs: dict):
         except Exception:                # noqa: BLE001
             body = None
         await _settle(row_id, status="succeeded", cost=cost, usage=usage, response_json=body)
+        _last_success.set(row_id)
         return message
 
 
@@ -347,15 +351,15 @@ async def usage_summary(limit: int = 50) -> dict:
     phase = settings.AI_PHASE_ID
     cut = datetime.now(timezone.utc) - timedelta(seconds=RESERVED_TTL_SECONDS)
     cost_expr = ("CASE WHEN status = 'reserved' AND created_at >= :cut THEN reserved_usd WHEN status = 'reserved' THEN est_input_usd "
-                 "WHEN status IN ('succeeded','failed') THEN cost_usd ELSE 0 END")
+                 "WHEN status IN ('succeeded','failed','invalid_output') THEN cost_usd ELSE 0 END")
     async with session_factory() as s:
-        tot = (await s.execute(text(f"SELECT COALESCE(SUM({cost_expr}),0) spent, COUNT(*) FILTER (WHERE status IN ('succeeded','failed','reserved')) calls, "
+        tot = (await s.execute(text(f"SELECT COALESCE(SUM({cost_expr}),0) spent, COUNT(*) FILTER (WHERE status IN ('succeeded','failed','reserved','invalid_output')) calls, "
                                     "COUNT(*) FILTER (WHERE status LIKE 'refused%') refused, COUNT(*) FILTER (WHERE status = 'cache_hit') cache_hits, "
-                                    "COUNT(*) FILTER (WHERE status = 'failed') failed, COUNT(*) FILTER (WHERE status = 'reserved') in_flight "
+                                    "COUNT(*) FILTER (WHERE status = 'failed') failed, COUNT(*) FILTER (WHERE status = 'reserved') in_flight, COUNT(*) FILTER (WHERE status = 'invalid_output') invalid "
                                     "FROM ai_call_ledger WHERE phase_id = :p"), {"p": phase, "cut": cut})).mappings().one()
-        by_ref = (await s.execute(text(f"SELECT reference_video_id, SUM({cost_expr}) spent, COUNT(*) FILTER (WHERE status IN ('succeeded','failed','reserved')) calls "
+        by_ref = (await s.execute(text(f"SELECT reference_video_id, SUM({cost_expr}) spent, COUNT(*) FILTER (WHERE status IN ('succeeded','failed','reserved','invalid_output')) calls "
                                        "FROM ai_call_ledger WHERE phase_id = :p GROUP BY reference_video_id ORDER BY spent DESC LIMIT 25"), {"p": phase, "cut": cut})).mappings().all()
-        by_reasoner = (await s.execute(text(f"SELECT reasoner, model, SUM({cost_expr}) spent, COUNT(*) FILTER (WHERE status IN ('succeeded','failed','reserved')) calls, "
+        by_reasoner = (await s.execute(text(f"SELECT reasoner, model, SUM({cost_expr}) spent, COUNT(*) FILTER (WHERE status IN ('succeeded','failed','reserved','invalid_output')) calls, "
                                             "COALESCE(SUM(input_tokens),0) input_tokens, COALESCE(SUM(output_tokens),0) output_tokens "
                                             "FROM ai_call_ledger WHERE phase_id = :p GROUP BY reasoner, model ORDER BY spent DESC"), {"p": phase, "cut": cut})).mappings().all()
         recent = (await s.execute(select(AiCallLedger).where(AiCallLedger.phase_id == phase).order_by(AiCallLedger.id.desc()).limit(limit))).scalars().all()
@@ -364,10 +368,65 @@ async def usage_summary(limit: int = 50) -> dict:
         "enabled": settings.AI_SPEND_ENABLED, "key_configured": bool(settings.ANTHROPIC_API_KEY), "price_table_version": PRICE_TABLE_VERSION, "phase_id": phase,
         "caps": {"per_reference_usd": settings.AI_PER_REFERENCE_BUDGET_USD, "phase_usd": settings.AI_PHASE_BUDGET_USD},
         "phase": {"spent_usd": round(spent, 4), "remaining_usd": round(max(0.0, settings.AI_PHASE_BUDGET_USD - spent), 4), "calls": tot["calls"], "failed": tot["failed"],
-                  "refused": tot["refused"], "cache_hits": tot["cache_hits"], "in_flight": tot["in_flight"]},
+                  "refused": tot["refused"], "cache_hits": tot["cache_hits"], "in_flight": tot["in_flight"], "invalid_replies": tot["invalid"]},
         "by_reference": [{"reference_video_id": r["reference_video_id"], "spent_usd": round(float(r["spent"] or 0), 4), "calls": r["calls"],
                           "remaining_usd": None if r["reference_video_id"] is None else round(max(0.0, settings.AI_PER_REFERENCE_BUDGET_USD - float(r["spent"] or 0)), 4)} for r in by_ref],
         "by_reasoner": [{"reasoner": r["reasoner"], "model": r["model"], "spent_usd": round(float(r["spent"] or 0), 4), "calls": r["calls"], "input_tokens": int(r["input_tokens"]), "output_tokens": int(r["output_tokens"])} for r in by_reasoner],
         "recent": [{"id": r.id, "at": r.created_at, "reasoner": r.reasoner, "reference_video_id": r.reference_video_id, "model": r.model, "attempt": r.attempt_no, "status": r.status,
                     "forced": r.forced, "input_tokens": r.input_tokens, "output_tokens": r.output_tokens, "cost_usd": round(r.cost_usd, 5), "reserved_usd": round(r.reserved_usd, 5), "error": r.error} for r in recent],
     }
+
+
+# ── a paid reply that the reasoner then REJECTS (unparseable, or it breaks the contract) ──────────────────────────────
+
+async def invalidate_last_success(reason: str) -> bool:
+    """Marks the most recent successful reply of THIS task as `invalid_output`. It stays in the ledger (its cost is still counted, its text is kept) but is never served as a duplicate answer.
+    Returns True if a reply was marked. A call that never reached the AI, or already failed, has nothing to mark."""
+    row_id = _last_success.get()
+    if row_id is None:
+        return False
+    try:
+        async with session_factory() as s:
+            res = await s.execute(text("UPDATE ai_call_ledger SET status = 'invalid_output', error = :r WHERE id = :i AND status = 'succeeded'"), {"i": row_id, "r": reason[:200]})
+            await s.commit()
+            _last_success.set(None)
+            return bool(res.rowcount)
+    except Exception:                    # noqa: BLE001 -- best effort; the request itself already failed
+        logger.warning("Could not mark an invalid AI reply in the ledger")
+        return False
+
+
+async def note_last_success(note: str) -> None:
+    """Records a harmless note (for example 'repaired: escaped 2 quotation marks') on the most recent successful reply."""
+    row_id = _last_success.get()
+    if row_id is None:
+        return
+    try:
+        async with session_factory() as s:
+            await s.execute(text("UPDATE ai_call_ledger SET error = :r WHERE id = :i AND status = 'succeeded'"), {"i": row_id, "r": note[:200]})
+            await s.commit()
+    except Exception:                    # noqa: BLE001
+        pass
+
+
+async def run_reasoner_call(fn, *, retry_once: bool = True):
+    """Runs one reasoner provider call (`fn()` returns the awaitable). If the AI answered (and was paid) but the reasoner then REJECTED the reply, that reply is marked invalid (kept, counted, never reused)
+    and, ONCE, the call is repeated as a forced fresh request (counted and capped like any other). A second rejection, or any other failure (an API error, a budget refusal, a kill switch), is raised as is:
+    never a third try. Nothing is silently discarded: both replies stay in the ledger."""
+    _last_success.set(None)
+    try:
+        return await fn()
+    except AiCostControlError:
+        raise
+    except Exception as first:           # noqa: BLE001
+        marked = await invalidate_last_success(f"rejected: {type(first).__name__}: {first}")
+        if not (marked and retry_once):
+            raise
+        logger.info("AI reply rejected (%s); one fresh request follows", type(first).__name__)
+        with ai_scope(force=True):
+            _last_success.set(None)
+            try:
+                return await fn()
+            except Exception as second:  # noqa: BLE001
+                await invalidate_last_success(f"rejected again: {type(second).__name__}: {second}")
+                raise
