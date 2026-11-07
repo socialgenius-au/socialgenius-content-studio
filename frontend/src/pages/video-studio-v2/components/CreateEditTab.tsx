@@ -5554,6 +5554,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       </div>
 
       <div className={`editor-shell ${focusMode ? "focus-mode" : ""}`} ref={editorShellRef}>
+        <aside className="ai-tools-panel">{aiToolsPanelBody}</aside>
+
         <aside className="asset-panel">{assetPanelBody}</aside>
 
         <section className="preview-area">
@@ -5934,8 +5936,6 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             ))}
           </TrackRow>
         </section>
-
-        <aside className="ai-tools-panel">{aiToolsPanelBody}</aside>
 
         <div className="ai-assistant">
           <b>✦ AI Assistant</b>
