@@ -222,6 +222,7 @@ class BlueprintSetProvenance(BaseModel):
     llm_calls: int = 0                            # provider calls made BY THIS REQUEST (0 for a read or a reused result)
     persisted: bool = True
     effective_since: str | None = None
+    recovery: dict | None = None                  # present only when the blueprint was recovered from an already-paid ledger reply: source row, hash, every normalisation, checks re-run
 
 
 class BlueprintResponse(BaseModel):

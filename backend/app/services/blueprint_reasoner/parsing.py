@@ -16,6 +16,14 @@ _SECTION_REQUIRED = {
     "speech_direction", "pacing_direction", "mandatory_points_assigned", "confidence",
 }
 _SECTION_OPTIONAL = {"transition_direction", "cta_direction", "limitations"}
+def _section_list(value):
+    """A lone section number (`4`) is read as `[4]`: unambiguous and lossless, and the model does this occasionally (reference 5131's paid blueprint reply was refused for exactly this). Anything else that is not a list
+    (a string, a bool, a nested list) is passed through unchanged so the contract still refuses it."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return [value]
+    return value or []
+
+
 _CHOICE_KEYS = {"mechanism_id", "decision", "reason_category", "reason", "applied_in_sections", "application_rationale"}
 _REL_KEYS = {"relationship", "anatomy_section_numbers"}
 
@@ -79,7 +87,7 @@ def decision_from_payload(data: dict, *, reasoning_contract_version: str | None 
         try:
             choices.append(MechanismChoice(
                 mechanism_id=raw.get("mechanism_id"), decision=raw.get("decision"), reason=raw.get("reason"),
-                reason_category=raw.get("reason_category"), applied_in_sections=raw.get("applied_in_sections") or [],
+                reason_category=raw.get("reason_category"), applied_in_sections=_section_list(raw.get("applied_in_sections")),
                 application_rationale=raw.get("application_rationale")))
         except ValueError as exc:
             raise BlueprintReasoningError(f"mechanism_dispositions[{i}] failed contract validation: {exc}") from exc

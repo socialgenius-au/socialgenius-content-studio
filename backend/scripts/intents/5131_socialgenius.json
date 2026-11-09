@@ -1,0 +1,24 @@
+{
+ "product_service_or_topic": "SocialGenius Content Studio, a tool that helps small businesses turn a reference video's structure into their own short, editable social video",
+ "target_audience": "small-business owners who post on social media but have little time or video experience",
+ "objective": "make the audience curious enough to try the tool for their next post",
+ "business_or_brand": "SocialGenius",
+ "desired_cta": "Try it for your next post",
+ "tone_style_constraints": [
+  "warm",
+  "practical",
+  "confident but not boastful"
+ ],
+ "duration_platform_constraints": {
+  "platform": "Instagram Reels",
+  "target_duration_seconds": 12
+ },
+ "mandatory_points": [
+  "show that the video stays editable after it is built"
+ ],
+ "prohibited_claims_or_elements": [
+  "performance or sales guarantees",
+  "price claims",
+  "claims about what viewers will do"
+ ]
+}
