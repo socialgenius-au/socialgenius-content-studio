@@ -1,0 +1,508 @@
+{
+ "status": "current",
+ "reused": false,
+ "reference_video_id": 5131,
+ "video_analysis_id": 5372,
+ "input_pin": {
+  "anatomy_fingerprint": "4ddebcb6926f1a9737cc72f10295b03a5eba7f35dc730b2cc3aa69791c442aaa",
+  "current_anatomy_fingerprint": "4ddebcb6926f1a9737cc72f10295b03a5eba7f35dc730b2cc3aa69791c442aaa",
+  "mechanism_attempt_id": 15953,
+  "current_mechanism_attempt_id": 15953,
+  "intent_hash": "74b230fbe322ef528d407e5068bf01a06c8be7c15fe397525e8aa936b05181a9"
+ },
+ "blueprint": {
+  "blueprint_id": "bp-debda2bcd6e997aa",
+  "blueprint_version": "c4-v1",
+  "intent": {
+   "product_service_or_topic": "SocialGenius Content Studio, a tool that helps small businesses turn a reference video's structure into their own short, editable social video",
+   "target_audience": "small-business owners who post on social media but have little time or video experience",
+   "objective": "make the audience curious enough to try the tool for their next post",
+   "business_or_brand": "SocialGenius",
+   "desired_cta": "Try it for your next post",
+   "tone_style_constraints": [
+    "warm",
+    "practical",
+    "confident but not boastful"
+   ],
+   "duration_platform_constraints": {
+    "platform": "Instagram Reels",
+    "target_duration_seconds": 12.0,
+    "notes": null
+   },
+   "mandatory_points": [
+    "show that the video stays editable after it is built"
+   ],
+   "prohibited_claims_or_elements": [
+    "performance or sales guarantees",
+    "price claims",
+    "claims about what viewers will do"
+   ]
+  },
+  "intent_summary": "Topic: SocialGenius Content Studio, a tool that helps small businesses turn a reference video's structure into their own short, editable social video. Audience: small-business owners who post on social media but have little time or video experience. Objective: make the audience curious enough to try the tool for their next post. Business: SocialGenius. Format: Instagram Reels, 12s.",
+  "structural_approach": "Four short beats on Instagram Reels: open on the tool itself with a hint of imminent use, show a quick before/after demonstration proving the output stays editable, then close on a warm human-facing moment that invites trying it on the next post.",
+  "target": {
+   "platform": "Instagram Reels",
+   "target_duration_seconds": 12.0,
+   "planned_total_seconds": 12
+  },
+  "mechanisms_used": [
+   "M01",
+   "M02",
+   "M03"
+  ],
+  "mechanisms_not_used": [],
+  "mechanism_dispositions": [
+   {
+    "mechanism_id": "M01",
+    "mechanism_type": "hook_curiosity",
+    "decision": "USED",
+    "reason_category": null,
+    "reason": null,
+    "applied_in_sections": [
+     1
+    ],
+    "authoritative_sections": [
+     1
+    ],
+    "application_rationale": "Section 1 opens on a clean, centered shot of the app interface with a small gesture (finger about to tap) suggesting imminent use, rather than narration or action first.",
+    "transferable_principle": "Open on a clean, centered shot of the product itself with a small human gesture suggesting imminent use, rather than starting with action or narration."
+   },
+   {
+    "mechanism_id": "M02",
+    "mechanism_type": "demonstration",
+    "decision": "USED",
+    "reason_category": null,
+    "reason": null,
+    "applied_in_sections": [
+     2,
+     3
+    ],
+    "authoritative_sections": [
+     2,
+     3
+    ],
+    "application_rationale": "Sections 2-3 hold the same draft video constant and sequence a close-up of its raw structure then a shot of it rebuilt and still editable, implying quality and payoff before a spokesperson appears.",
+    "transferable_principle": "Sequence close-up shots of material texture followed by a shot of the product in use with sensory cues (steam, light) to imply quality and payoff before introducing a spokesperson."
+   },
+   {
+    "mechanism_id": "M03",
+    "mechanism_type": "emotional_progression",
+    "decision": "USED",
+    "reason_category": null,
+    "reason": null,
+    "applied_in_sections": [
+     4
+    ],
+    "authoritative_sections": [
+     4
+    ],
+    "application_rationale": "Section 4 closes with a warm human presence facing camera to shift from screen-focused demonstration to a personal, trust-oriented tone carrying the call to action.",
+    "transferable_principle": "Close a product-focused sequence with a warm human presence facing the camera to transition from object-centered demonstration to a personal, trust-oriented tone."
+   }
+  ],
+  "constraints": {
+   "tone_style": [
+    "warm",
+    "practical",
+    "confident but not boastful"
+   ],
+   "duration_platform": {
+    "platform": "Instagram Reels",
+    "target_duration_seconds": 12.0,
+    "notes": null
+   },
+   "prohibited_claims_or_elements": [
+    "performance or sales guarantees",
+    "price claims",
+    "claims about what viewers will do"
+   ],
+   "do_not_reproduce": [
+    {
+     "mechanism_id": "M01",
+     "kind": "brand_or_name",
+     "description": "Specific jar branding and packaging text shown in the opening shot."
+    },
+    {
+     "mechanism_id": "M01",
+     "kind": "audio_specific",
+     "description": "Garbled, unverified spoken claim accompanying the opening."
+    },
+    {
+     "mechanism_id": "M02",
+     "kind": "subject_matter",
+     "description": "Ginger-garlic paste as the specific product category and cooking context."
+    },
+    {
+     "mechanism_id": "M02",
+     "kind": "visual_specific",
+     "description": "Specific steam and pan imagery used to signal cooking."
+    },
+    {
+     "mechanism_id": "M03",
+     "kind": "visual_specific",
+     "description": "Specific appearance, dress, and setting of the closing presenter."
+    },
+    {
+     "mechanism_id": "M03",
+     "kind": "audio_specific",
+     "description": "Unverified closing speech content."
+    }
+   ],
+   "copy_policy": "Instructions only. This blueprint contains no final hook lines, captions, scripts, headlines, CTA wording or voiceover copy; those are produced downstream from these instructions.",
+   "performance_policy": "Structural design logic is transferred; no performance, engagement, retention or conversion outcome is claimed or implied."
+  },
+  "sections": [
+   {
+    "section_number": 1,
+    "section_purpose": "Establish the product as the visual subject and create curiosity about what it will do.",
+    "structural_role": "opening",
+    "target_duration_seconds": 2.0,
+    "mechanisms_applied": [
+     "M01"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      1
+     ]
+    },
+    "content_instruction": "Show the app open on a phone screen, centered, with a hand poised to tap a button that will start building a video from a reference clip.",
+    "required_information": [
+     "to be supplied: actual app interface visuals"
+    ],
+    "visual_direction": "Static or near-static framing, clean background, screen as sole focal point.",
+    "text_direction": "Minimal or no on-screen text yet, reserve for later beats.",
+    "speech_direction": "None or a single short line hinting something is about to be built.",
+    "pacing_direction": "One shot, no cuts, slow enough to register the product clearly.",
+    "transition_direction": "Hard cut into the demonstration beat.",
+    "cta_direction": null,
+    "mandatory_points_assigned": [],
+    "prohibited_elements": [
+     "performance or sales guarantees",
+     "price claims",
+     "claims about what viewers will do"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      1
+     ],
+     "mechanism_ids": [
+      "M01"
+     ]
+    },
+    "confidence": "medium",
+    "limitations": [
+     "Exact interface appearance not supplied."
+    ]
+   },
+   {
+    "section_number": 2,
+    "section_purpose": "Show the raw material: a reference video's structure being analyzed by the tool.",
+    "structural_role": "demonstration",
+    "target_duration_seconds": 3.0,
+    "mechanisms_applied": [
+     "M02"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      2
+     ]
+    },
+    "content_instruction": "Close-up on the screen as the tool breaks a sample reference video into its structural beats, visualized as simple timeline blocks.",
+    "required_information": [
+     "to be supplied: UI treatment for structure breakdown"
+    ],
+    "visual_direction": "Close, textured shot of the timeline/blocks animating into view.",
+    "text_direction": "Short on-screen label naming the step, e.g. structure identified (instructional cue only, not final copy).",
+    "speech_direction": "Brief explanatory line describing what is happening on screen.",
+    "pacing_direction": "One shot, single cut in from prior section, quick motion.",
+    "transition_direction": "Cut to the rebuilt output shot.",
+    "cta_direction": null,
+    "mandatory_points_assigned": [],
+    "prohibited_elements": [
+     "performance or sales guarantees",
+     "price claims",
+     "claims about what viewers will do"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      2
+     ],
+     "mechanism_ids": [
+      "M02"
+     ]
+    },
+    "confidence": "medium",
+    "limitations": [
+     "Specific analysis visuals not supplied."
+    ]
+   },
+   {
+    "section_number": 3,
+    "section_purpose": "Show the payoff: the same structure turned into the business's own finished draft, and prove it remains editable.",
+    "structural_role": "demonstration",
+    "target_duration_seconds": 3.0,
+    "mechanisms_applied": [
+     "M02"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      3
+     ]
+    },
+    "content_instruction": "Show the finished short video draft inside the editor, then a finger adjusting a clip, caption, or timing to demonstrate it can still be changed after generation.",
+    "required_information": [
+     "to be supplied: actual editing controls available post-generation"
+    ],
+    "visual_direction": "Same screen context as section 2 for continuity, now showing an edit action in progress.",
+    "text_direction": "On-screen label confirming the draft can be edited after it is built.",
+    "speech_direction": "One line stating the draft is ready and still adjustable.",
+    "pacing_direction": "One shot, single cut in, slightly faster than section 2 to signal progress.",
+    "transition_direction": "Cut to the closing human presence.",
+    "cta_direction": null,
+    "mandatory_points_assigned": [
+     "MP01"
+    ],
+    "prohibited_elements": [
+     "performance or sales guarantees",
+     "price claims",
+     "claims about what viewers will do"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      3
+     ],
+     "mechanism_ids": [
+      "M02"
+     ]
+    },
+    "confidence": "high",
+    "limitations": []
+   },
+   {
+    "section_number": 4,
+    "section_purpose": "Shift to a personal tone and prompt the viewer to try the tool on their next post.",
+    "structural_role": "call_to_action",
+    "target_duration_seconds": 4.0,
+    "mechanisms_applied": [
+     "M03"
+    ],
+    "source_anatomy_relationship": {
+     "relationship": "adapts_reference_structure",
+     "anatomy_section_numbers": [
+      4
+     ]
+    },
+    "content_instruction": "Cut to a warm, direct-to-camera moment of a small-business owner or founder figure speaking briefly and inviting the viewer to use the tool for their own next post.",
+    "required_information": [
+     "to be supplied: who appears on camera (founder, customer, or brand representative)"
+    ],
+    "visual_direction": "Medium close-up, natural setting, friendly expression, eye contact with camera.",
+    "text_direction": "Short closing on-screen prompt reinforcing the spoken invitation, confident but not boastful tone.",
+    "speech_direction": "Warm, brief direct address inviting trial, avoiding any guarantee or performance claim.",
+    "pacing_direction": "One shot, single cut in, settles into a steady pace for the close.",
+    "transition_direction": null,
+    "cta_direction": "Invite the viewer to try the tool for their next social post, phrased as a low-pressure personal invitation rather than a hard sell, with no price or outcome promises.",
+    "mandatory_points_assigned": [],
+    "prohibited_elements": [
+     "performance or sales guarantees",
+     "price claims",
+     "claims about what viewers will do"
+    ],
+    "evidence_refs": {
+     "anatomy_section_numbers": [
+      4
+     ],
+     "mechanism_ids": [
+      "M03"
+     ]
+    },
+    "confidence": "medium",
+    "limitations": [
+     "No specifics supplied about who the on-camera presenter is."
+    ]
+   }
+  ],
+  "mandatory_point_accounting": [
+   {
+    "id": "MP01",
+    "text": "show that the video stays editable after it is built",
+    "status": "ASSIGNED",
+    "section_numbers": [
+     3
+    ],
+    "reason": null
+   }
+  ],
+  "gaps": [
+   {
+    "field": "reference:narrative_role",
+    "kind": "reference_gap",
+    "reason": "Scene.narrative_role is not populated by any upstream stage (that classification pass is deferred)"
+   },
+   {
+    "field": "reference:messaging_role",
+    "kind": "reference_gap",
+    "reason": "no upstream analysis produces messaging roles"
+   },
+   {
+    "field": "reference:emotional_function",
+    "kind": "reference_gap",
+    "reason": "no upstream analysis produces emotional or psychological function"
+   },
+   {
+    "field": "reference:cta_role",
+    "kind": "reference_gap",
+    "reason": "no upstream analysis produces CTA roles (CTA analysis does not exist yet)"
+   },
+   {
+    "field": "reference:audience_effects",
+    "kind": "reference_gap",
+    "reason": "there is no viewer data: every reading describes apparent design only, never what an audience did or will do"
+   },
+   {
+    "field": "reference:story_beats",
+    "kind": "reference_gap",
+    "reason": "only a single whole-video Story Beat exists (no accepted boundary), which carries no partition information"
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "No accepted retention devices are present in the anatomy (retention analysis status: examined_none_accepted); none were assumed."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "Sections were built from shots, not Story Beats, so section boundaries are structural rather than semantic."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "The anatomy carries no narrative, messaging, emotional or CTA roles (unknown, not absent); mechanisms resting on them are lower-confidence inferences."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "All spoken content across sections is unverified machine transcription and cannot support high-confidence claims."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "Much on-screen text has low OCR confidence or appears to be generation artefacts."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "Narrative, messaging, emotional and CTA roles are not established by upstream analysis."
+   },
+   {
+    "field": "reference:mechanisms",
+    "kind": "reference_limitation",
+    "reason": "No viewer or performance data exists; all mechanisms describe apparent structure only."
+   },
+   {
+    "field": "blueprint",
+    "kind": "provider_limitation",
+    "reason": "Reference audio and narrative intent were unverifiable, so pacing cues rely on visual structure only."
+   },
+   {
+    "field": "blueprint",
+    "kind": "provider_limitation",
+    "reason": "Exact app UI and on-camera presenter details were not supplied and are flagged as required_information."
+   },
+   {
+    "field": "all_mechanisms_used",
+    "kind": "quality_note",
+    "reason": "all 3 mechanisms were marked USED -- the reasoner did not exercise NOT_USED; check that each is genuinely applied rather than mechanically transferred."
+   }
+  ],
+  "limitations": [
+   "Reference audio and narrative intent were unverifiable, so pacing cues rely on visual structure only.",
+   "Exact app UI and on-camera presenter details were not supplied and are flagged as required_information."
+  ],
+  "provenance": {
+   "reference_video_id": 5131,
+   "video_analysis_id": 5372,
+   "anatomy_fingerprint": "4ddebcb6926f1a9737cc72f10295b03a5eba7f35dc730b2cc3aa69791c442aaa",
+   "anatomy_version": "c2-v1",
+   "mechanism_attempt_id": 15953,
+   "mechanism_provider": "anthropic",
+   "mechanism_model": "claude-sonnet-5",
+   "mechanism_prompt_version": "v3",
+   "taxonomy_version": "v1",
+   "intent_hash": "74b230fbe322ef528d407e5068bf01a06c8be7c15fe397525e8aa936b05181a9",
+   "provider": "anthropic",
+   "model": "claude-sonnet-5",
+   "prompt_version": "v4",
+   "blueprint_version": "c4-v1",
+   "certainty": "INFERRED",
+   "source_mechanism_count": 3,
+   "ignored_null_fields": [],
+   "response_meta": null,
+   "mechanism_mapping_authority": "section.mechanisms_applied",
+   "recovery": {
+    "source": "ai_call_ledger",
+    "ledger_id": 36,
+    "ledger_status_at_recovery": "invalid_output",
+    "request_hash": "4f326d0e46d8d5eab379817930813fe53de69bd6ecde45672a1faac5bd79dab8",
+    "raw_reply_sha256": "8cba31fb909ef3a37ec14f033849a932d8a7a2a14537b6e67e6d805f7b90cd29",
+    "raw_reply_chars": 6257,
+    "normalisations": [
+     {
+      "mechanism_id": "M03",
+      "field": "applied_in_sections",
+      "original": 4,
+      "normalised": [
+       4
+      ],
+      "rule": "a lone section number is read as a one-item list"
+     }
+    ],
+    "checks_rerun": "validate_decision (all C4 guards) + strict section-number range",
+    "recovery_version": "rec-v1",
+    "new_provider_calls": 0,
+    "ledger_modified": false,
+    "recovered_at": "2026-11-09T01:05:02.647205+00:00"
+   },
+   "reasoning_attempt_id": 15958
+  }
+ },
+ "provenance": {
+  "reasoning_attempt_id": 15958,
+  "provider": "anthropic",
+  "model": "claude-sonnet-5",
+  "prompt_version": "v4",
+  "blueprint_version": "c4-v1",
+  "taxonomy_version": "v1",
+  "certainty": "INFERRED",
+  "llm_calls": 0,
+  "persisted": true,
+  "effective_since": "2026-11-09T01:05:02.720204+00:00",
+  "recovery": {
+   "source": "ai_call_ledger",
+   "ledger_id": 36,
+   "ledger_status_at_recovery": "invalid_output",
+   "request_hash": "4f326d0e46d8d5eab379817930813fe53de69bd6ecde45672a1faac5bd79dab8",
+   "raw_reply_sha256": "8cba31fb909ef3a37ec14f033849a932d8a7a2a14537b6e67e6d805f7b90cd29",
+   "raw_reply_chars": 6257,
+   "normalisations": [
+    {
+     "mechanism_id": "M03",
+     "field": "applied_in_sections",
+     "original": 4,
+     "normalised": [
+      4
+     ],
+     "rule": "a lone section number is read as a one-item list"
+    }
+   ],
+   "checks_rerun": "validate_decision (all C4 guards) + strict section-number range",
+   "recovery_version": "rec-v1",
+   "new_provider_calls": 0,
+   "ledger_modified": false,
+   "recovered_at": "2026-11-09T01:05:02.647205+00:00"
+  }
+ }
+}
