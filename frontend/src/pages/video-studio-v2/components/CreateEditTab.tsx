@@ -26,6 +26,8 @@ import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/St
 import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, Shape, SubtitleSegment, SubtitleStyle, ReferenceVideo } from "../../../types";
 // C6 (Blueprint -> Video Studio V2): the active blueprint plan travels with every saved draft and is restored when one is opened.
 import { getBlueprintPlan, setBlueprintPlan } from "../blueprint/blueprintPlanStore";
+import { defaultDraftNameFor, identityForSave, isStoredIdentity, resolveProjectIdentity } from "../identity/projectIdentity";
+import { getProjectContext, setProjectContext } from "../identity/projectContextStore";
 import { isBlueprintPlan, type BlueprintPlan } from "../blueprint/blueprintPlan";
 import { consumeOpenDraftHint } from "../blueprint/openDraftHint";
 import {
@@ -52,13 +54,8 @@ const DRAGGABLE_CANVAS_ITEM_IDS = new Set(["ph-headline", "ph-badge"]);
 // the only requirement, not a specific value.
 const MIN_CLIP_DURATION = 0.2;
 
-// STEP 7.9's own client/project identity label, extracted to a shared constant so buildProjectSnapshot
-// (below) and the AI Prompt Generator's project context (Task 3) reference the exact same value
-// instead of two copies that could drift. This project has no real, structured Brand Kit record
-// wired into Video Studio V2 yet (Brief/Intelligence tabs are local, unpersisted mock state, and
-// no `Brand` row exists for this client) — this is the one genuine, already-established piece of
-// "who this project is for" identity this editor has, not a fabricated stand-in for a real Brand Kit.
-const PROJECT_CLIENT_IDENTITY = { client: "ABC Tiles", campaign: "Builders Footfall Campaign" };
+// Project identity is no longer a constant: it comes from the project itself (identity/projectIdentity.ts) -- the open draft, else the blueprint it was built from, else a neutral fallback.
+const currentIdentityInput = () => ({ plan: getBlueprintPlan(), stored: getProjectContext().storedIdentity });
 
 // Step 5 follow-up (Defect 2): the one shared canvas-resize floor — a Text/Overlay element can
 // never be resized down to (near) zero, same "keep a sensible minimum" principle as
@@ -583,7 +580,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     ...draftExtrasForSave(draftExtrasRef.current, { textOverlays, mediaOverlays, shapes }),
     videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, subtitles, subtitleStyle, mediaAssets,
     canvasFormat, timeline, canvasItemPositions,
-    clientIdentity: PROJECT_CLIENT_IDENTITY,
+    clientIdentity: identityForSave({ ...currentIdentityInput(), draftName }),
     blueprintPlan: getBlueprintPlan(),
   });
 
@@ -649,12 +646,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setDraftId(null);
     setDraftName("");
     setDraftStatus(null);
+    setProjectContext(null);
   };
 
-  const defaultDraftName = () => {
-    const d = new Date();
-    return `ABC Tiles — Builders Footfall Campaign (${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`;
-  };
+  const defaultDraftName = () => defaultDraftNameFor(resolveProjectIdentity(currentIdentityInput()));
 
   const openSaveDraft = () => {
     setSaveNameInput(draftName || defaultDraftName());
@@ -672,13 +667,16 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setDraftStatus(null);
     try {
       const project_json = buildProjectSnapshot();
+      let savedId = draftId;
       if (draftId != null) {
         await videoStudioDraftsApi.update(draftId, { name, project_json });
       } else {
         const { data } = await videoStudioDraftsApi.create({ name, project_json });
-        setDraftId((data as { id: number }).id);
+        savedId = (data as { id: number }).id;
+        setDraftId(savedId);
       }
       setDraftName(name);
+      setProjectContext({ draftId: savedId, draftName: name, storedIdentity: project_json.clientIdentity });
       setDraftStatus(`Saved "${name}"${extrasNote(draftExtrasRef.current)}`);
       return true;
     } catch {
@@ -728,6 +726,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       applyDraftSnapshot(full.project_json);
       setDraftId(full.id);
       setDraftName(full.name);
+      setProjectContext({ draftId: full.id, draftName: full.name, storedIdentity: isStoredIdentity(full.project_json?.clientIdentity) ? full.project_json.clientIdentity : null });
       setDraftStatus(`Opened "${full.name}"${extrasNote(draftExtrasRef.current)}`);
       setShowMyDrafts(false);
     } catch {
@@ -5488,12 +5487,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // nothing is invented. Deliberately excludes a Brand Kit lookup: no `Brand` row exists for
   // this client in this environment (confirmed by inspection), and Video Studio V2 has no
   // brand_id anywhere in its own data model to look one up by, so sending one would mean
-  // guessing which brand this project belongs to — PROJECT_CLIENT_IDENTITY's plain client/
+  // guessing which brand this project belongs to — the project identity's plain client/
   // campaign label is the one real "who this is for" fact this editor actually has.
   const buildAiPromptContext = () => {
+    const identity = resolveProjectIdentity(currentIdentityInput());
     const ctx: Record<string, unknown> = {
-      client: PROJECT_CLIENT_IDENTITY.client,
-      campaign: PROJECT_CLIENT_IDENTITY.campaign,
+      // a project with no identity sends none (never a placeholder or a demo client)
+      ...(identity.source === "neutral" ? {} : { client: identity.client, campaign: identity.campaign }),
       platform_format: canvasFormat.label,
       aspect_ratio: canvasFormat.ratio,
       canvas_width: canvasFormat.width,

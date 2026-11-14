@@ -190,6 +190,13 @@ export const videoStudioDraftsApi = {
   delete: (id: number)                                          => api.delete(`/video-studio-drafts/${id}`),
 }
 
+// Learn stage: the person's decisions about the recommendations made for a saved draft, and the lessons they accepted on other videos. No analytics are stored here.
+export const learningApi = {
+  forDraft: (draftId: number) => api.get(`/learning/drafts/${draftId}`),
+  setStatus: (draftId: number, key: string, body: Record<string, unknown>) => api.put(`/learning/drafts/${draftId}/recommendations/${encodeURIComponent(key)}`, body),
+  accepted: (excludeDraftId?: number) => api.get('/learning/accepted', { params: excludeDraftId != null ? { exclude_draft_id: excludeDraftId } : {} }),
+}
+
 // STEP 7.15F: real Video Studio V2 export/render — POSTs the current project (see
 // ReviewTab.tsx's buildExportRequest) and gets the actual rendered MP4 back as a blob, the
 // exact same responseType: 'blob' pattern assetsApi.download/zip already use for real

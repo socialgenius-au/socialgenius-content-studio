@@ -1,123 +1,80 @@
+import { useEffect, useMemo, useState } from "react";
+import { useStudio } from "../../../contexts/StudioContext";
+import { learningApi } from "../../../api/client";
+import { useBlueprintPlan } from "../blueprint/blueprintPlanStore";
+import { useProjectContext } from "../identity/projectContextStore";
+import { resolveProjectIdentity } from "../identity/projectIdentity";
+import { aiStructure, assessProject } from "../learn/assessment";
+import { buildRecommendations, type Recommendation } from "../learn/recommendations";
+import { parseVerifiedPerformance } from "../learn/performance";
+import LearnView, { type Decision, type Lesson, type SavedDecision } from "../learn/LearnView";
 
-import React, { useState } from "react";
+// The Learn stage used to be a hard-coded demonstration dashboard (invented reach/engagement figures, a fake trend chart, canned insights about "ABC Tiles" and a button that did nothing).
+// It now shows only what exists: no audience figures (none are measured yet), clearly separated AI / rule-based assessments of THIS project, and grounded recommendations whose status can be recorded
+// against the saved draft. See ../learn/*.
 
-// Matches the approved composite reference: single-project performance dashboard (Reach /
-// Engagement / Shares / Watch Time, a trend chart, Top Insights, What to Try Next) — not the
-// older multi-video analytics table this file previously implemented. See the completion
-// report: the reference PNG "06-learn-reference.png" (a publish/export screen) conflicts with
-// both this design and the written spec; this build follows the written spec + the composite
-// image the user confirmed, treating the PNG as superseded for this stage.
-
-const METRICS = [
-  { label: "Reach", value: "28.4K", delta: "+24%", series: "reach" as const },
-  { label: "Engagement", value: "4.2K", delta: "+18%", series: "engagement" as const },
-  { label: "Shares", value: "1.3K", delta: "+32%", series: "shares" as const },
-  { label: "Watch Time", value: "12.6K", delta: "+20%", series: "watchTime" as const },
-];
-
-const DATES = ["14 Aug", "15 Aug", "16 Aug", "17 Aug", "18 Aug", "19 Aug", "20 Aug"];
-// Normalized (0-1) sample points per series — enough to draw a believable trend line without
-// claiming precision no real analytics pipeline has produced yet.
-const SERIES: Record<string, number[]> = {
-  reach: [0.35, 0.42, 0.4, 0.55, 0.5, 0.68, 0.74],
-  engagement: [0.3, 0.33, 0.45, 0.4, 0.52, 0.58, 0.6],
-  watchTime: [0.25, 0.3, 0.28, 0.38, 0.45, 0.5, 0.62],
-};
-const SERIES_COLOR: Record<string, string> = {
-  reach: "var(--v-accent)",
-  engagement: "var(--v-blue)",
-  watchTime: "var(--v-purple)",
-};
-
-const TOP_INSIGHTS = [
-  "Strong interest in ‘Stock Availability’ message.",
-  "CTA ‘Visit our showroom today’ performed best.",
-  "Most viewers dropped off after 10 seconds.",
-  "Mobile retention could be improved.",
-];
-
-const WHAT_TO_TRY = [
-  "Try a shorter 10-second version.",
-  "Add testimonial in opening.",
-  "Test new hook options.",
-];
-
-function TrendChart() {
-  const w = 560, h = 160, pad = 8;
-  const toPoints = (vals: number[]) => vals
-    .map((v, i) => {
-      const x = pad + (i / (vals.length - 1)) * (w - pad * 2);
-      const y = h - pad - v * (h - pad * 2);
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="trend-chart" preserveAspectRatio="none">
-      {[0.25, 0.5, 0.75].map(g => (
-        <line key={g} x1={pad} x2={w - pad} y1={h - pad - g * (h - pad * 2)} y2={h - pad - g * (h - pad * 2)} className="trend-grid" />
-      ))}
-      {(["reach", "engagement", "watchTime"] as const).map(key => (
-        <polyline key={key} points={toPoints(SERIES[key])} fill="none" stroke={SERIES_COLOR[key]} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-      ))}
-    </svg>
-  );
-}
+interface ApiRecord { rec_key: string; status: Decision; note: string | null }
+interface ApiLesson { id: number; text: string; basis: string; draft_name: string; evidence: string[]; caveat: string | null; note: string | null; updated_at: string }
 
 export default function LearnTab({ onBack }: { onBack?: () => void; onNext?: () => void }) {
-  const [createClicked, setCreateClicked] = useState(false);
+  const studio = useStudio();
+  const plan = useBlueprintPlan();
+  const ctx = useProjectContext();
+  const identity = resolveProjectIdentity({ plan, stored: ctx.storedIdentity });
+  const [decisions, setDecisions] = useState<Record<string, SavedDecision>>({});
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const assessment = useMemo(() => assessProject({
+    canvas: { width: studio.canvasFormat.width, height: studio.canvasFormat.height },
+    clips: studio.videoClips.map(c => ({ startTime: c.startTime, endTime: c.endTime, assetId: c.assetId ?? null, muted: c.muted })),
+    texts: studio.textOverlays.map(t => ({ text: t.text, startTime: t.startTime, endTime: t.endTime, fontSize: t.fontSize, color: t.color, bgColor: t.bgColor, bgOpacity: t.bgOpacity })),
+    audioTrackCount: studio.audioTracks.length,
+    plan,
+  }), [studio.canvasFormat.width, studio.canvasFormat.height, studio.videoClips, studio.textOverlays, studio.audioTracks.length, plan]);
+  const recommendations = useMemo(() => buildRecommendations(assessment), [assessment]);
+
+  useEffect(() => {
+    let live = true;
+    setDecisions({}); setError(null);
+    if (ctx.draftId == null) { setLessons([]); return () => { live = false; }; }
+    learningApi.forDraft(ctx.draftId)
+      .then(r => { if (live) setDecisions(Object.fromEntries((r.data as ApiRecord[]).map(x => [x.rec_key, { status: x.status, note: x.note }]))); })
+      .catch(() => { if (live) setError("Could not load your earlier decisions for this video."); });
+    learningApi.accepted(ctx.draftId)
+      .then(r => { if (live) setLessons((r.data as ApiLesson[]).map(l => ({ id: l.id, text: l.text, basis: l.basis, draftName: l.draft_name, evidence: l.evidence, caveat: l.caveat, note: l.note, updatedAt: l.updated_at }))); })
+      .catch(() => { if (live) setLessons([]); });
+    return () => { live = false; };
+  }, [ctx.draftId]);
+
+  const onDecide = async (rec: Recommendation, status: Decision, note: string) => {
+    if (ctx.draftId == null) return;
+    setBusyKey(rec.key); setError(null);
+    try {
+      await learningApi.setStatus(ctx.draftId, rec.key, { status, note: note.trim() || null, text: rec.text, basis: rec.basis, evidence: rec.evidence, caveat: rec.caveat, rule_version: rec.ruleVersion });
+      setDecisions(d => ({ ...d, [rec.key]: { status, note: note.trim() || null } }));
+    } catch {
+      setError("Could not save that decision — please try again.");
+    } finally {
+      setBusyKey(null);
+    }
+  };
 
   return (
-    <div className="stage-page learn-page-v2">
-      <h2>Your video performance and learnings.</h2>
-
-      <div className="metric-row">
-        {METRICS.map(m => (
-          <div className="card metric-card-v2" key={m.label}>
-            <span>{m.label}</span>
-            <b>{m.value}</b>
-            <em style={{ color: SERIES_COLOR[m.series] ?? "var(--v-accent)" }}>{m.delta}</em>
-          </div>
-        ))}
-      </div>
-
-      <section className="card trend-card">
-        <div className="trend-head">
-          <h3>Performance Over Time</h3>
-          <div className="trend-legend">
-            <span><i style={{ background: SERIES_COLOR.reach }} />Reach</span>
-            <span><i style={{ background: SERIES_COLOR.engagement }} />Engagement</span>
-            <span><i style={{ background: SERIES_COLOR.watchTime }} />Watch Time</span>
-          </div>
-        </div>
-        <TrendChart />
-        <div className="trend-axis">{DATES.map(d => <span key={d}>{d}</span>)}</div>
-      </section>
-
-      <div className="learn-lower-grid">
-        <section className="card">
-          <h3>Top Insights</h3>
-          <ul className="check-list">{TOP_INSIGHTS.map(i => <li key={i}>{i}</li>)}</ul>
-        </section>
-        <section className="card">
-          <h3>What to Try Next</h3>
-          <ul className="check-list">{WHAT_TO_TRY.map(i => <li key={i}>{i}</li>)}</ul>
-        </section>
-      </div>
-
-      <section className="card ai-learn-banner">
-        <div>
-          <strong>✦ AI Learn Mode</strong>
-          <span>Capture what works · Improve with every video</span>
-        </div>
-        <button className="primary" type="button" onClick={() => setCreateClicked(true)}>
-          {createClicked ? "✓ Starting new video…" : "Create New Video →"}
-        </button>
-      </section>
-
-      <div className="stage-footer">
-        <button className="secondary" onClick={onBack} type="button">← Back: Review</button>
-      </div>
-    </div>
+    <LearnView
+      identity={identity}
+      performance={parseVerifiedPerformance(null)}   // no analytics source is connected, so this is always "not available" today
+      assessment={assessment}
+      ai={aiStructure(plan)}
+      recommendations={recommendations}
+      decisions={decisions}
+      canRecord={ctx.draftId != null}
+      busyKey={busyKey}
+      error={error}
+      lessons={lessons}
+      onDecide={onDecide}
+      onBack={onBack}
+    />
   );
 }
