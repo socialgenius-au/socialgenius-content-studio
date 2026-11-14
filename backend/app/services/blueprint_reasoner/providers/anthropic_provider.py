@@ -128,6 +128,27 @@ SYSTEM_PROMPT = (_TEMPLATE
                  .replace("<<MAX_FIELD_CHARS>>", str(MAX_FIELD_CHARS)))
 
 
+LESSON_ADDENDUM = """LEARNING GUIDANCE (this input contains `learning_guidance`). These are lessons the person chose to keep from THEIR OWN earlier \
+videos. They are guidance for design decisions, NOT verified performance improvements: never say or imply that a lesson increases \
+reach, engagement, retention or conversions. Each lesson has a `kind` (measured production observation, rule of thumb, untested \
+hypothesis ...) and a `confidence`: weigh it accordingly -- a hypothesis or low-confidence lesson is a suggestion, not a rule. For EVERY \
+lesson (use its exact lesson_id) decide whether it fits THIS brief. If it fits, mark it APPLIED, name the NEW section numbers it shapes in \
+applied_in_sections (those sections' own instructions must actually reflect it), and say in how_or_why, in one or two sentences (at most \
+400 characters), HOW it is applied. If it conflicts with the brief (see `conflicts_with_this_brief`, the objective, the mandatory points or \
+the prohibited elements) or does not suit it, mark it NOT_APPLIED with applied_in_sections [] and say WHY in how_or_why. Never apply a \
+lesson that conflicts with the brief; never ignore a lesson silently. Lessons may shape the opening, scene structure, on-screen text and \
+reading time, visuals, pacing and the call to action, but they never override the mechanisms' defining structure or the brief. Do not name \
+the earlier video.
+OUTPUT ADDITION (this overrides "no others" above for this one field): add ONE more top-level field \
+"lesson_dispositions":[{"lesson_id":<id>,"decision":"APPLIED" or "NOT_APPLIED","applied_in_sections":[<new section numbers>] or [],\
+"how_or_why":"<...>"}] with exactly one entry per lesson in `learning_guidance`."""
+
+
+def system_prompt_for(reasoner_input: dict) -> str:
+    """The base prompt, unchanged, unless the person brought lessons (then the learning addendum is appended)."""
+    return SYSTEM_PROMPT + "\n\n" + LESSON_ADDENDUM if reasoner_input.get("learning_guidance") else SYSTEM_PROMPT
+
+
 def serialize_input(reasoner_input: dict) -> str:
     return json.dumps(reasoner_input, ensure_ascii=False, separators=(",", ":"), default=str)
 
@@ -187,7 +208,7 @@ class AnthropicBlueprintReasoner(BlueprintReasonerProvider):
                 "set it in backend/.env.")
         try:
             message = await get_client().messages.create(
-                model=model, max_tokens=MAX_RESPONSE_TOKENS, system=SYSTEM_PROMPT, output_config={"effort": BLUEPRINT_EFFORT},
+                model=model, max_tokens=MAX_RESPONSE_TOKENS, system=system_prompt_for(reasoner_input), output_config={"effort": BLUEPRINT_EFFORT},
                 messages=[{"role": "user", "content": build_user_prompt(reasoner_input)}],
             )
         except anthropic.AnthropicError as exc:

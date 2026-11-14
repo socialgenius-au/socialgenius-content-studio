@@ -30,7 +30,7 @@ __all__ = [
     "BLUEPRINT_VERSION", "STRUCTURAL_ROLES", "RELATIONSHIPS", "NOT_USED_REASONS", "MAX_SECTIONS", "MAX_FIELD_CHARS",
     "MAX_LIST_ITEMS", "DURATION_TOLERANCE", "RATIONALE_MIN_CHARS", "RATIONALE_MAX_CHARS", "schema_requires_rationale",
     "VALID_CONFIDENCE_LEVELS", "BlueprintReasoningError",
-    "MechanismChoice", "SectionPlan", "UnassignedPoint", "BlueprintDecision", "BlueprintResult",
+    "MechanismChoice", "SectionPlan", "UnassignedPoint", "LessonChoice", "BlueprintDecision", "BlueprintResult",
 ]
 
 BLUEPRINT_VERSION = "c4-v1"
@@ -191,6 +191,29 @@ class UnassignedPoint:
 
 
 @dataclass
+class LessonChoice:
+    """What the planner did with ONE lesson the person chose to bring from an earlier video: APPLIED (in named sections, and how) or NOT_APPLIED (and why, e.g. a conflict with the brief). Never silent."""
+    lesson_id: int
+    decision: str                       # APPLIED | NOT_APPLIED
+    how_or_why: str
+    applied_in_sections: list[int] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.lesson_id, bool) or not isinstance(self.lesson_id, int):
+            raise ValueError("lesson_id must be an integer.")
+        if self.decision not in ("APPLIED", "NOT_APPLIED"):
+            raise ValueError(f"lesson {self.lesson_id}: decision must be 'APPLIED' or 'NOT_APPLIED', got {self.decision!r}.")
+        if not isinstance(self.how_or_why, str) or not (8 <= len(self.how_or_why.strip()) <= 400):
+            raise ValueError(f"lesson {self.lesson_id}: how_or_why must be 8-400 characters saying how it is applied, or why it is not.")
+        if not isinstance(self.applied_in_sections, list) or not all(isinstance(n, int) and not isinstance(n, bool) for n in self.applied_in_sections):
+            raise ValueError(f"lesson {self.lesson_id}: applied_in_sections must be a list of integers.")
+        if self.decision == "APPLIED" and not self.applied_in_sections:
+            raise ValueError(f"lesson {self.lesson_id}: an APPLIED lesson must name the sections it shapes.")
+        if self.decision == "NOT_APPLIED" and self.applied_in_sections:
+            raise ValueError(f"lesson {self.lesson_id}: a NOT_APPLIED lesson cannot name sections.")
+
+
+@dataclass
 class BlueprintDecision:
     structural_approach: str
     mechanism_choices: list[MechanismChoice]
@@ -199,6 +222,7 @@ class BlueprintDecision:
     limitations: list[str] = field(default_factory=list)
     reasoning_contract_version: str | None = None
     ignored_null_fields: list[str] = field(default_factory=list)   # unknown keys whose value was null (dropped by the parser)
+    lesson_choices: list[LessonChoice] = field(default_factory=list)   # one per lesson the person brought along (empty when none)
     response_meta: dict | None = None    # non-sensitive metadata about the response that produced this decision (stop_reason, token counts, and for a
                                          # replay of a saved response its sha256) -- recorded on the blueprint's provenance
 

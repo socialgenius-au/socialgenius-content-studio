@@ -3847,7 +3847,7 @@ async def derive_reference_video_blueprint(
             return await derive_and_persist_blueprint(
                 db, user, reference_video_id, request.intent, video_analysis_id=request.video_analysis_id,
                 expected_anatomy_fingerprint=request.anatomy_fingerprint, expected_mechanism_attempt_id=request.mechanism_attempt_id,
-                force=request.force,
+                force=request.force, lesson_ids=request.lesson_ids,
             )
     except OrchestrationError as exc:
         raise _orchestration_http_error(exc)

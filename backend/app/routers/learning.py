@@ -100,6 +100,29 @@ async def set_recommendation_status(draft_id: int, rec_key: str, body: Recommend
     return row
 
 
+class BriefIn(BaseModel):
+    """The new video's brief, as far as it is filled in. Every field is optional: lessons are ranked on whatever is known."""
+    product: str | None = Field(default=None, max_length=300)
+    audience: str | None = Field(default=None, max_length=300)
+    objective: str | None = Field(default=None, max_length=300)
+    platform: str | None = Field(default=None, max_length=80)
+    duration_seconds: float | None = Field(default=None, ge=0, le=600)
+    cta: bool = False
+    tone: list[str] = Field(default_factory=list, max_length=20)
+    mandatory: list[str] = Field(default_factory=list, max_length=20)
+    prohibited: list[str] = Field(default_factory=list, max_length=20)
+
+
+@router.post("/relevant")
+async def relevant_lessons(body: BriefIn, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    """The person's ACCEPTED lessons ranked for this brief, each with its classification, confidence, source and why it is (or is not) relevant, including any conflict with the brief. Read-only; never another
+    user's lessons; nothing is applied until the person selects lessons for a blueprint."""
+    from app.services.learning_guidance import LESSONS_POLICY, RELEVANT_AT, rank_lessons
+    brief = {"product": body.product, "audience": body.audience, "objective": body.objective, "platform": body.platform, "duration": body.duration_seconds, "cta": body.cta,
+             "tone": body.tone, "mandatory": body.mandatory, "prohibited": body.prohibited}
+    return {"lessons": await rank_lessons(db, user, brief), "relevant_at": RELEVANT_AT, "notice": LESSONS_POLICY}
+
+
 @router.get("/accepted", response_model=list[LearningRecordOut])
 async def accepted_lessons(exclude_draft_id: int | None = None, limit: int = 20, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     """Recommendations this person ACCEPTED on their other videos: the reusable lessons. Newest first."""

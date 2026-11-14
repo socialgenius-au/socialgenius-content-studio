@@ -37,7 +37,7 @@ def build_reasoner_input(ctx: BlueprintContext) -> dict:
         sections.append(item)
     intent = dict(ctx.intent)
     intent["mandatory_points"] = [{"id": k, "text": v} for k, v in ctx.mandatory_points.items()]
-    return {
+    out = {
         "new_content_intent": intent,
         "reference_skeleton": {
             "duration": _t(video.get("duration")), "section_count": video.get("section_count"), "sections": sections,
@@ -60,3 +60,8 @@ def build_reasoner_input(ctx: BlueprintContext) -> dict:
             "mandatory_point_ids": list(ctx.mandatory_points),
         },
     }
+    if ctx.lessons:          # only when the person chose lessons: a request without lessons is byte-for-byte what it always was
+        from app.services.learning_guidance import provider_guidance
+        out["learning_guidance"] = provider_guidance(ctx.lessons)
+        out["valid"]["lesson_ids"] = [l["lesson_id"] for l in ctx.lessons]
+    return out

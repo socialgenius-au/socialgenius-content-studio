@@ -23,7 +23,7 @@ final creative copy, prohibited elements).
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.services.blueprint_reasoner.contract import (
     BLUEPRINT_VERSION, DURATION_TOLERANCE, BlueprintDecision, BlueprintReasoningError,
@@ -69,13 +69,14 @@ class BlueprintContext:
     intent: dict                    # canonical NewContentIntent
     mandatory_points: dict[str, str]
     guard: GuardContext
+    lessons: list[dict] = field(default_factory=list)   # lessons the person chose to bring from earlier videos (services/learning_guidance.lesson_view); empty = none
 
 
-def build_context(anatomy: dict, mechanisms: list[dict], canonical_intent: dict) -> BlueprintContext:
+def build_context(anatomy: dict, mechanisms: list[dict], canonical_intent: dict, lessons: list[dict] | None = None) -> BlueprintContext:
     tokens = intent_tokens(canonical_intent)
     return BlueprintContext(
         anatomy=anatomy, mechanisms=mechanisms, intent=canonical_intent, mandatory_points=mandatory_point_ids(canonical_intent),
-        guard=build_guard_context(anatomy, mechanisms, canonical_intent, tokens, source_texts(anatomy)),
+        guard=build_guard_context(anatomy, mechanisms, canonical_intent, tokens, source_texts(anatomy)), lessons=list(lessons or []),
     )
 
 
@@ -187,6 +188,28 @@ def _validate_text(decision: BlueprintDecision, ctx: BlueprintContext) -> None:
             check_text(f"{p}.limitations[{i}]", text, g, instruction=False)
 
 
+def _validate_lessons(decision: BlueprintDecision, ctx: BlueprintContext) -> None:
+    """Every lesson the person brought must be accounted for exactly once: APPLIED in real sections, or NOT_APPLIED with a reason. A lesson that conflicts with the brief can never be APPLIED."""
+    expected = sorted(l["lesson_id"] for l in ctx.lessons)
+    got = [c.lesson_id for c in decision.lesson_choices]
+    if not expected:
+        if got:
+            _fail("lesson_dispositions were returned but no lessons were supplied.")
+        return
+    if sorted(got) != expected:
+        _fail(f"every supplied lesson needs exactly one lesson_dispositions entry (expected lesson ids {expected}, got {sorted(got)}).")
+    sections = {s.section_number for s in decision.sections}
+    by_id = {l["lesson_id"]: l for l in ctx.lessons}
+    for c in decision.lesson_choices:
+        conflicts = (by_id[c.lesson_id].get("relevance") or {}).get("conflicts") or []
+        if c.decision == "APPLIED":
+            if not set(c.applied_in_sections) <= sections:
+                _fail(f"lesson {c.lesson_id} names sections {sorted(set(c.applied_in_sections) - sections)} that the blueprint does not have.")
+            if conflicts:
+                _fail(f"lesson {c.lesson_id} conflicts with this brief ({conflicts[0]}) so it cannot be APPLIED; mark it NOT_APPLIED and explain why.")
+        check_text(f"lesson {c.lesson_id}.how_or_why", c.how_or_why, ctx.guard, instruction=False)
+
+
 def validate_decision(decision: BlueprintDecision, ctx: BlueprintContext) -> None:
     """Raises BlueprintReasoningError for any violation; returns None when the decision is safe to persist."""
     _validate_mechanisms(decision, ctx)
@@ -194,6 +217,7 @@ def validate_decision(decision: BlueprintDecision, ctx: BlueprintContext) -> Non
     _validate_mandatory_points(decision, ctx)
     _validate_cta(decision, ctx)
     _validate_text(decision, ctx)
+    _validate_lessons(decision, ctx)
 
 
 def _content_words(section) -> set[str]:
@@ -259,6 +283,8 @@ def quality_findings(decision: BlueprintDecision, ctx: BlueprintContext) -> list
 def blueprint_id_for(pins: dict) -> str:
     """Stable identifier: identical anatomy + mechanism result + intent + provider/model/prompt -> identical id."""
     key = {k: pins.get(k) for k in ("anatomy_fingerprint", "mechanism_attempt_id", "intent_hash", "provider", "model", "prompt_version")}
+    if pins.get("lessons_digest"):
+        key["lessons_digest"] = pins["lessons_digest"]          # only when lessons were used, so every blueprint made without lessons keeps its id
     return "bp-" + hashlib.sha256(json.dumps(key, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
 
@@ -289,9 +315,11 @@ def finalize_blueprint(decision: BlueprintDecision, ctx: BlueprintContext, pins:
     } for mp_id, text in ctx.mandatory_points.items()]
 
     prohibited = list(intent.get("prohibited_claims_or_elements") or [])
+    lesson_choice = {c.lesson_id: c for c in decision.lesson_choices}
     sections = []
     for s in decision.sections:
         sections.append({
+            "lessons_applied": sorted(i for i, c in lesson_choice.items() if c.decision == "APPLIED" and s.section_number in c.applied_in_sections),
             "section_number": s.section_number, "section_purpose": s.section_purpose, "structural_role": s.structural_role,
             "target_duration_seconds": s.target_duration_seconds, "mechanisms_applied": list(s.mechanisms_applied),
             "source_anatomy_relationship": {"relationship": s.relationship, "anatomy_section_numbers": sorted(s.anatomy_section_numbers)},
@@ -321,6 +349,15 @@ def finalize_blueprint(decision: BlueprintDecision, ctx: BlueprintContext, pins:
             seen.add(key)
             unique_gaps.append(g)
 
+    lessons_out = []
+    for l in ctx.lessons:
+        c = lesson_choice.get(l["lesson_id"])
+        lessons_out.append({
+            "lesson_id": l["lesson_id"], "text": l["text"], "classification": l["classification"], "classification_label": l["classification_label"], "qualifiers": l["qualifier_labels"],
+            "confidence": l["confidence"], "source": l["source"], "evidence": l["evidence"], "caveat": l["caveat"], "user_note": l["user_note"], "relevance": l.get("relevance"),
+            "decision": c.decision if c else None, "applied_in_sections": sorted(c.applied_in_sections) if c else [], "how_or_why": c.how_or_why if c else None, "notice": l["notice"],
+        })
+
     dpc = intent.get("duration_platform_constraints") or {}
     planned = round(sum(s.target_duration_seconds for s in decision.sections), 3)
     return {
@@ -338,7 +375,7 @@ def finalize_blueprint(decision: BlueprintDecision, ctx: BlueprintContext, pins:
                                  for m in ctx.mechanisms for e in (m.get("non_transferable_elements") or [])],
             "copy_policy": COPY_POLICY, "performance_policy": PERFORMANCE_POLICY,
         },
-        "sections": sections, "mandatory_point_accounting": accounting, "gaps": unique_gaps,
+        "sections": sections, "mandatory_point_accounting": accounting, "gaps": unique_gaps, "lessons": lessons_out,
         "limitations": list(decision.limitations),
         "provenance": {**pins, "blueprint_version": BLUEPRINT_VERSION, "certainty": "INFERRED", "source_mechanism_count": len(mech),
                        "ignored_null_fields": list(decision.ignored_null_fields), "response_meta": decision.response_meta,

@@ -317,6 +317,24 @@ export interface BlueprintSectionCard {
   requiredInformation: string[]
   confidence: string
   limitations: string[]
+  /** lessons from earlier videos this section applies (by id and wording) */
+  lessons: { id: number; text: string }[]
+}
+
+export interface BlueprintLessonCard {
+  id: number; text: string; applied: boolean; sectionsText: string; howOrWhy: string; classification: string; qualifiers: string[]; confidence: string
+  sourceDraft: string; acceptedAt: string | null; evidence: string[]; caveat: string | null; conflicts: string[]; notice: string
+}
+
+/** What the blueprint did with each lesson the person brought: applied (where, how) or not applied (why), with the lesson's own source, classification and confidence. */
+export function blueprintLessonCards(bp: Blueprint): BlueprintLessonCard[] {
+  return (bp.lessons ?? []).map(l => ({
+    id: l.lesson_id, text: l.text, applied: l.decision === 'APPLIED', sectionsText: l.applied_in_sections.length === 1 ? `scene ${l.applied_in_sections[0]}` : `scenes ${l.applied_in_sections.join(', ')}`,
+    howOrWhy: l.how_or_why ?? 'No explanation was recorded.', classification: l.classification_label, qualifiers: l.qualifiers,
+    confidence: l.confidence.level === 'unknown' ? 'confidence not recorded' : `confidence ${l.confidence.level} (from the rule, not measured)`,
+    sourceDraft: l.source.draft_name, acceptedAt: l.source.accepted_at ? l.source.accepted_at.slice(0, 10) : null, evidence: l.evidence, caveat: l.caveat,
+    conflicts: l.relevance?.conflicts ?? [], notice: l.notice,
+  }))
 }
 
 export function blueprintSectionCards(bp: Blueprint): BlueprintSectionCard[] {
@@ -332,6 +350,7 @@ export function blueprintSectionCards(bp: Blueprint): BlueprintSectionCard[] {
     mandatoryPoints: s.mandatory_points_assigned.map(id => ({ id, text: mp.get(id) ?? id })),
     mechanisms: s.mechanisms_applied.map(id => ({ id, label: `${id} · ${mechanismTypeLabel(bp.mechanism_dispositions.find(d => d.mechanism_id === id)?.mechanism_type ?? 'other')}` })),
     requiredInformation: s.required_information, confidence: confidenceLabel(s.confidence), limitations: s.limitations,
+    lessons: (s.lessons_applied ?? []).map(id => ({ id, text: (bp.lessons ?? []).find(l => l.lesson_id === id)?.text ?? `Lesson ${id}` })),
   }))
 }
 

@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import type { Assessment, AiSceneStructure } from './assessment'
 import { INSUFFICIENT, type Recommendation } from './recommendations'
+import type { PlanLesson } from '../blueprint/blueprintPlan'
 import { PERFORMANCE_NOT_AVAILABLE, type VerifiedPerformance } from './performance'
 import './learn.css'
 
@@ -23,6 +24,8 @@ export interface LearnViewProps {
   busyKey: string | null
   error: string | null
   lessons: Lesson[]
+  /** lessons from earlier videos this video's blueprint was built with, and what it did with them */
+  broughtLessons?: PlanLesson[]
   onDecide: (rec: Recommendation, status: Decision, note: string) => void
   onBack?: () => void
 }
@@ -58,6 +61,21 @@ export default function LearnView(p: LearnViewProps) {
     <div className="stage-page learn-page-v2 learn-trust">
       <h2>What this video tells us — and what it doesn’t yet.</h2>
       <p className="learn-project">Project: <strong>{p.identity.client}</strong> — {p.identity.campaign}</p>
+
+      {p.broughtLessons && p.broughtLessons.length > 0 && (
+        <section className="card learn-section" data-testid="learn-brought-lessons">
+          <h3>Lessons this video was built with</h3>
+          <p className="learn-muted">Your own accepted recommendations from earlier videos, used as guidance. They are not verified performance improvements.</p>
+          <ul className="learn-recs">{p.broughtLessons.map(l => (
+            <li key={l.id} className="learn-rec">
+              <span className={`learn-tag ${l.decision === 'APPLIED' ? 'tag-measured' : 'tag-hypo'}`}>{l.decision === 'APPLIED' ? `Applied in scene${l.sections.length === 1 ? '' : 's'} ${l.sections.join(', ')}` : 'Not applied'}</span>
+              <p className="learn-rec-text">{l.text}</p>
+              <p className="learn-caveat">{l.howOrWhy}</p>
+              <p className="learn-caveat">{l.classification}{l.qualifiers.length ? ` · ${l.qualifiers.join(', ')}` : ''} · confidence {l.confidence} · from “{l.sourceDraftName}”</p>
+            </li>
+          ))}</ul>
+        </section>
+      )}
 
       <section className="card learn-section" data-testid="learn-performance">
         <h3>A. Verified performance</h3>

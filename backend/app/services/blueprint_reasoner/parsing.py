@@ -4,12 +4,12 @@ import json
 from app.services.json_recovery import loads_lenient
 
 from app.services.blueprint_reasoner.contract import (
-    BlueprintDecision, BlueprintReasoningError, MechanismChoice, SectionPlan, UnassignedPoint, schema_requires_rationale,
+    BlueprintDecision, BlueprintReasoningError, LessonChoice, MechanismChoice, SectionPlan, UnassignedPoint, schema_requires_rationale,
 )
 
 __all__ = ["parse_json_object", "decision_from_payload"]
 
-_TOP = {"structural_approach", "mechanism_dispositions", "sections", "unassigned_mandatory_points", "limitations"}
+_TOP = {"structural_approach", "mechanism_dispositions", "sections", "unassigned_mandatory_points", "limitations", "lesson_dispositions"}
 _SECTION_REQUIRED = {
     "section_number", "section_purpose", "structural_role", "target_duration_seconds", "mechanisms_applied",
     "source_anatomy_relationship", "content_instruction", "required_information", "visual_direction", "text_direction",
@@ -126,10 +126,22 @@ def decision_from_payload(data: dict, *, reasoning_contract_version: str | None 
         except ValueError as exc:
             raise BlueprintReasoningError(f"unassigned_mandatory_points[{i}] failed contract validation: {exc}") from exc
 
+    raw_lessons = data.get("lesson_dispositions")
+    if raw_lessons is not None and not isinstance(raw_lessons, list):
+        raise BlueprintReasoningError("`lesson_dispositions` must be a list.")
+    lesson_choices = []
+    for i, raw in enumerate(raw_lessons or [], 1):
+        raw = _clean_unknown(_obj(raw, f"lesson_dispositions[{i}]"), {"lesson_id", "decision", "applied_in_sections", "how_or_why"}, f"lesson_dispositions[{i}]", ignored)
+        try:
+            lesson_choices.append(LessonChoice(lesson_id=raw.get("lesson_id"), decision=raw.get("decision"), how_or_why=raw.get("how_or_why"),
+                                               applied_in_sections=_section_list(raw.get("applied_in_sections"))))
+        except ValueError as exc:
+            raise BlueprintReasoningError(f"lesson_dispositions[{i}] failed contract validation: {exc}") from exc
+
     try:
         return BlueprintDecision(
             structural_approach=data["structural_approach"], mechanism_choices=choices, sections=sections,
-            unassigned_mandatory_points=unassigned, limitations=data.get("limitations") or [],
+            unassigned_mandatory_points=unassigned, limitations=data.get("limitations") or [], lesson_choices=lesson_choices,
             reasoning_contract_version=reasoning_contract_version, ignored_null_fields=ignored)
     except ValueError as exc:
         raise BlueprintReasoningError(f"Blueprint response failed contract validation: {exc}") from exc

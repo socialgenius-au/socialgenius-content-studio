@@ -28,6 +28,12 @@ export interface SceneTrace {
 
 export interface PlanMechanism { id: string; type: string; principle: string }
 
+/** A lesson from an earlier video that this blueprint was built with, and what it did with it. Guidance, never a verified performance result. */
+export interface PlanLesson {
+  id: number; text: string; decision: 'APPLIED' | 'NOT_APPLIED' | null; sections: number[]; howOrWhy: string | null
+  classification: string; qualifiers: string[]; confidence: string; sourceDraftName: string; sourceBlueprintId: string | null
+}
+
 export interface PlanScene {
   sceneNumber: number          // == blueprint section_number
   order: number                // 0-based position in the plan
@@ -49,6 +55,8 @@ export interface PlanScene {
   anatomySections: number[]
   confidence: string
   limitations: string[]
+  /** lessons from earlier videos applied to THIS scene (absent when none) */
+  lessons?: PlanLesson[]
   trace: SceneTrace
 }
 
@@ -68,6 +76,8 @@ export interface BlueprintPlan {
   totalSeconds: number
   mechanismsUsed: string[]     // derived from the scenes (the authoritative mapping)
   createdAt: string
+  /** every lesson the person brought (applied or not), absent when none */
+  lessons?: PlanLesson[]
   scenes: PlanScene[]
 }
 
@@ -97,8 +107,16 @@ function mechanismLabel(bp: Blueprint, id: string): PlanMechanism {
   return { id, type: d?.mechanism_type ?? 'unknown', principle: d?.transferable_principle ?? '' }
 }
 
+function planLessons(bp: Blueprint): PlanLesson[] {
+  return (bp.lessons ?? []).map(l => ({
+    id: l.lesson_id, text: l.text, decision: l.decision, sections: [...l.applied_in_sections], howOrWhy: l.how_or_why, classification: l.classification_label, qualifiers: [...l.qualifiers],
+    confidence: l.confidence.level === 'unknown' ? 'not recorded' : l.confidence.level, sourceDraftName: l.source.draft_name, sourceBlueprintId: l.source.blueprint_id,
+  }))
+}
+
 function buildScene(bp: Blueprint, s: BlueprintSection, order: number, start: number, resp: BlueprintResponse): PlanScene {
   const mpText = new Map(bp.mandatory_point_accounting.map(a => [a.id, a.text]))
+  const lessonsHere = planLessons(bp).filter(l => (s.lessons_applied ?? []).includes(l.id))
   return {
     sceneNumber: s.section_number, order, startTime: round(start), endTime: round(start + s.target_duration_seconds), duration: s.target_duration_seconds,
     purpose: s.section_purpose, structuralRole: s.structural_role, contentInstruction: s.content_instruction,
@@ -109,6 +127,7 @@ function buildScene(bp: Blueprint, s: BlueprintSection, order: number, start: nu
     mechanisms: s.mechanisms_applied.map(id => mechanismLabel(bp, id)),     // <- section.mechanisms_applied ONLY
     anatomySections: [...s.source_anatomy_relationship.anatomy_section_numbers],
     confidence: s.confidence, limitations: [...s.limitations],
+    ...(lessonsHere.length ? { lessons: lessonsHere } : {}),
     trace: {
       blueprintId: bp.blueprint_id, sectionNumber: s.section_number, referenceVideoId: resp.reference_video_id, videoAnalysisId: resp.video_analysis_id,
       c3AttemptId: resp.input_pin.mechanism_attempt_id, blueprintAttemptId: resp.provenance?.reasoning_attempt_id ?? null,
@@ -138,7 +157,7 @@ export function buildBlueprintPlan(resp: BlueprintResponse, now: Date = new Date
     c3AttemptId: resp.input_pin.mechanism_attempt_id, blueprintAttemptId: resp.provenance?.reasoning_attempt_id ?? null,
     anatomyFingerprint: resp.input_pin.anatomy_fingerprint, intentHash: resp.input_pin.intent_hash,
     intentSummary: bp.intent_summary, structuralApproach: bp.structural_approach, platform: bp.target.platform,
-    totalSeconds: round(cursor), mechanismsUsed: used, createdAt: now.toISOString(), scenes,
+    totalSeconds: round(cursor), mechanismsUsed: used, createdAt: now.toISOString(), ...(bp.lessons?.length ? { lessons: planLessons(bp) } : {}), scenes,
   }
 }
 

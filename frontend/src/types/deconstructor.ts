@@ -158,6 +158,27 @@ export interface BlueprintSection {
   evidence_refs: { anatomy_section_numbers: number[]; mechanism_ids: string[] }
   confidence: ConfidenceLevel
   limitations: string[]
+  /** ids of the lessons (from earlier videos) this section applies; absent/empty when none */
+  lessons_applied?: number[]
+}
+
+/** A lesson the person brought from an earlier video, with its ORIGINAL provenance and what this blueprint did with it. Guidance, never a verified performance finding. */
+export interface BlueprintLesson {
+  lesson_id: number
+  text: string
+  classification: string
+  classification_label: string
+  qualifiers: string[]
+  confidence: { level: string; source: string }
+  source: { draft_id: number | null; draft_name: string; blueprint_id: string | null; reference_video_id: number | null; platform: string | null; accepted_at: string | null }
+  evidence: string[]
+  caveat: string | null
+  user_note: string | null
+  relevance: { score: number; relevant: boolean; reasons: string[]; conflicts: string[] } | null
+  decision: 'APPLIED' | 'NOT_APPLIED' | null
+  applied_in_sections: number[]
+  how_or_why: string | null
+  notice: string
 }
 
 export interface BlueprintGap { field: string; kind: string; reason: string }
@@ -183,6 +204,7 @@ export interface Blueprint {
   sections: BlueprintSection[]
   mandatory_point_accounting: { id: string; text: string; status: 'ASSIGNED' | 'UNASSIGNED'; section_numbers: number[]; reason: string | null }[]
   gaps: BlueprintGap[]
+  lessons?: BlueprintLesson[]
   limitations: string[]
   provenance: Record<string, unknown>
 }

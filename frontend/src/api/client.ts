@@ -194,6 +194,8 @@ export const videoStudioDraftsApi = {
 export const learningApi = {
   forDraft: (draftId: number) => api.get(`/learning/drafts/${draftId}`),
   setStatus: (draftId: number, key: string, body: Record<string, unknown>) => api.put(`/learning/drafts/${draftId}/recommendations/${encodeURIComponent(key)}`, body),
+  // The person's accepted lessons ranked for a NEW brief (read-only; nothing is applied until they are selected for a blueprint).
+  relevant: (brief: object) => api.post('/learning/relevant', brief),
   accepted: (excludeDraftId?: number) => api.get('/learning/accepted', { params: excludeDraftId != null ? { exclude_draft_id: excludeDraftId } : {} }),
 }
 

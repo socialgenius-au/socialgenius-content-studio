@@ -110,6 +110,7 @@ class BlueprintRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     intent: NewContentIntentIn
+    lesson_ids: list[int] = Field(default_factory=list, max_length=8)   # accepted lessons (learning_records ids) the person chose to bring; loaded server-side, never trusted from the client
     video_analysis_id: int | None = None
     anatomy_fingerprint: str | None = None        # pin: 409 if the current anatomy differs
     mechanism_attempt_id: int | None = None       # pin: 409 if the effective C3 result is a different attempt
@@ -163,6 +164,7 @@ class BlueprintSection(BaseModel):
     cta_direction: str | None = None
     mandatory_points_assigned: list[str]
     prohibited_elements: list[str]                # deterministic: the caller's prohibited claims/elements
+    lessons_applied: list[int] = []               # ids of the lessons (from earlier videos) this section applies; empty when none
     evidence_refs: BlueprintEvidenceRefs
     confidence: str
     limitations: list[str] = []
@@ -185,6 +187,25 @@ class BlueprintConstraints(BaseModel):
     performance_policy: str
 
 
+class BlueprintLesson(BaseModel):
+    """A lesson the person brought from an earlier video, with its ORIGINAL provenance kept and what this blueprint did with it. Never a verified performance finding."""
+    lesson_id: int
+    text: str
+    classification: str                           # measured_production_observation | rule_of_thumb | ai_inferred_suggestion | untested_hypothesis | verified_audience_finding
+    classification_label: str
+    qualifiers: list[str] = []
+    confidence: dict
+    source: dict                                  # {draft_id, draft_name, blueprint_id, reference_video_id, platform, accepted_at}
+    evidence: list[str] = []
+    caveat: str | None = None
+    user_note: str | None = None
+    relevance: dict | None = None                 # {score, relevant, reasons, conflicts} for THIS brief
+    decision: str | None = None                   # APPLIED | NOT_APPLIED
+    applied_in_sections: list[int] = []
+    how_or_why: str | None = None
+    notice: str = ""
+
+
 class Blueprint(BaseModel):
     blueprint_id: str
     blueprint_version: str
@@ -199,6 +220,7 @@ class Blueprint(BaseModel):
     sections: list[BlueprintSection]
     mandatory_point_accounting: list[MandatoryPointAccounting]
     gaps: list[BlueprintGap]
+    lessons: list[BlueprintLesson] = []           # empty unless the person brought lessons from earlier videos
     limitations: list[str]
     provenance: dict
 

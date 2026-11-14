@@ -73,6 +73,7 @@ export default function LearnTab({ onBack }: { onBack?: () => void; onNext?: () 
       busyKey={busyKey}
       error={error}
       lessons={lessons}
+      broughtLessons={plan?.lessons}
       onDecide={onDecide}
       onBack={onBack}
     />

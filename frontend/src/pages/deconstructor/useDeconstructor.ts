@@ -156,12 +156,12 @@ export function useDeconstructor(referenceVideoId: number | null) {
     } finally { setBusy(null) }
   }, [referenceVideoId, anatomy.data])
 
-  const buildBlueprint = useCallback(async (intent: NewContentIntent): Promise<BlueprintResponse | null> => {
+  const buildBlueprint = useCallback(async (intent: NewContentIntent, lessonIds: number[] = []): Promise<BlueprintResponse | null> => {
     if (referenceVideoId == null) return null
     setBusy('blueprint'); setActionError(null)
     try {
       const { data } = await deconstructorApi.buildBlueprint(referenceVideoId, {
-        intent, video_analysis_id: mechanisms.data?.video_analysis_id ?? null,
+        intent, ...(lessonIds.length ? { lesson_ids: lessonIds } : {}), video_analysis_id: mechanisms.data?.video_analysis_id ?? null,
         anatomy_fingerprint: anatomy.data?.provenance.fingerprint ?? null, mechanism_attempt_id: mechanisms.data?.provenance?.reasoning_attempt_id ?? null,
       })
       const r = data as BlueprintResponse
