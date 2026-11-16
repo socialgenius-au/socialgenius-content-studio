@@ -5618,6 +5618,45 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setSelectedElement({ type: "text", id: overlay.id });
   };
 
+  const [imagePromptOpen, setImagePromptOpen] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState("");
+  const [imageStatus, setImageStatus] = useState("");
+  const requestGeneratedImage = async () => {
+    if (!imagePrompt.trim() || imageBusy) return;
+    setImageBusy(true);
+    setImageError("");
+    setImageStatus("");
+    try {
+      const response = await generateApi.image(imagePrompt.trim());
+      const url = URL.createObjectURL(response.data as Blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "socialgenius-generated-image.png";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setImageStatus("Generated PNG downloaded. Upload it to your media library to use it in the video.");
+    } catch (error) {
+      const response = (error as { response?: { data?: unknown } })?.response;
+      const blob = response?.data;
+      if (blob instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await blob.text()) as { detail?: string };
+          setImageError(parsed.detail || "Image generation failed.");
+        } catch {
+          setImageError("Image generation failed. No image was saved.");
+        }
+      } else {
+        setImageError("Image generation failed. No image was saved.");
+      }
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
   const aiToolsPanelBody = (
     <>
       <h3>✦ AI Tools</h3>
@@ -5635,9 +5674,24 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
           <b>{title}</b><small>{description}</small>
         </button>
       ))}
-      <button type="button" disabled title="Image generation is not yet connected to an image provider">
-        <b>AI Image Generator</b><small>Not available yet</small>
+      <button type="button" aria-expanded={imagePromptOpen} onClick={() => setImagePromptOpen(open => !open)}>
+        <b>AI Image Generator</b><small>Generate a PNG when paid AI is authorised</small>
       </button>
+      {imagePromptOpen && (
+        <section aria-label="AI image generator">
+          <label htmlFor="ai-image-prompt">Describe the image</label>
+          <textarea id="ai-image-prompt" rows={3} maxLength={4000} value={imagePrompt}
+            onChange={event => setImagePrompt(event.target.value)}
+            placeholder="Subject, composition, style, colours and intended audience" />
+          <p>One 1024×1024 PNG per request. Requires an image provider and explicit AI spending authorisation. No automatic charges or changes to your draft.</p>
+          <button type="button" disabled={!imagePrompt.trim() || imageBusy}
+            onClick={() => void requestGeneratedImage()}>
+            {imageBusy ? "Generating…" : "Generate Image — Download PNG"}
+          </button>
+          {imageError && <p role="alert">{imageError}</p>}
+          {imageStatus && <p role="status">{imageStatus}</p>}
+        </section>
+      )}
       {activeCreativeTask && (
         <CreativeToolsPanel key={activeCreativeTask} initialTask={activeCreativeTask}
           context={buildAiPromptContext()} onUseText={useCreativeTextInEditor} />
