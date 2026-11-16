@@ -100,6 +100,7 @@ export const generateApi = {
   // Video Studio V2 AI Tools — AI Prompt Generator (first of six AI Tools cards).
   prompt: (body: Record<string, unknown>) => api.post('/generate/prompt', body),
   // Provider-neutral creative generation. No call bypasses the backend spending kill switch.
+  image: (prompt: string) => api.post("/generate/image", { prompt }, { responseType: "blob" }),
   creativeTool: (body: {
     task: 'hook_generation' | 'script_generation' | 'caption_generation' | 'thumbnail_ideas'
     instruction: string
