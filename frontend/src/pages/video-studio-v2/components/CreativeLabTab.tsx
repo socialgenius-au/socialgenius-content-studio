@@ -2,6 +2,20 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useBlueprintPlan } from "../blueprint/blueprintPlanStore";
 
+/** Derive new-business guidance only from this blueprint's planned scenes.
+ * The stored mechanism principle describes the SOURCE reference and may include
+ * food, people or product details that must not be treated as target instructions.
+ * Never rewrite or delete source provenance.
+ */
+function adaptedMechanism(type: string, scenes: { structuralRole: string; purpose: string; mechanisms: { id: string }[] }[], id: string): string {
+  const target = scenes.filter(s => s.mechanisms.some(m => m.id === id));
+  if (!target.length) return "No target-scene application recorded.";
+  const roles = target.map(s => s.structuralRole.replace(/_/g, " "));
+  const goals = target.map(s => s.purpose).filter(Boolean);
+  const label = type.replace(/_/g, " ");
+  return `Adapt ${label} to the new video's own subject in ${roles.join(", ")}. Planned purpose: ${goals.join(" Then ")}. Use the new business's own visuals, wording, examples and evidence; do not copy the reference's objects, sensory cues or setting.`;
+}
+
 /** Creative directions from the active blueprint, never canned hook scores. */
 export default function CreativeLabTab({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
   const plan = useBlueprintPlan();
@@ -44,7 +58,7 @@ export default function CreativeLabTab({ onNext, onBack }: { onNext?: () => void
         </section>
         <section className="card">
           <h3>Transferable mechanisms</h3>
-          {mechanisms.length ? <ul>{mechanisms.map(m => <li key={m.id}><strong>{m.id}: {m.type.replace(/_/g, " ")}</strong> — {m.principle || "No principle recorded"}</li>)}</ul> : <p>No mechanism mapping available for this blueprint.</p>}
+          {mechanisms.length ? <ul>{mechanisms.map(m => <li key={m.id}><strong>{m.id}: {m.type.replace(/_/g, " ")}</strong><p><strong>Adapted for this project:</strong> {adaptedMechanism(m.type, plan.scenes, m.id)}</p><details><summary>Original reference principle (not instructions for this project)</summary><p>{m.principle || "No reference principle recorded."}</p></details></li>)}</ul> : <p>No mechanism mapping available for this blueprint.</p>}
           <p>Mechanism principles are creative guidance, not proof of higher retention or conversion.</p>
         </section>
       </div>
