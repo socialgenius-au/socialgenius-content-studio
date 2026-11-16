@@ -3,6 +3,7 @@ import json
 
 from app.config import settings
 from app.services import ai as ai_service
+from app.services.ai import AIProviderError
 from app.services.creative_adaptation import creative_context
 from app.services.claude import get_client
 
@@ -44,7 +45,7 @@ async def generate_content(
     )
 
     if not settings.AI_SPEND_ENABLED:
-        raise RuntimeError("AI spending is switched off (AI_SPEND_ENABLED=false). Nothing was sent.")
+        raise AIProviderError("AI spending is switched off (AI_SPEND_ENABLED=false). Nothing was sent.")
     message = await get_client().messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=1024,
@@ -127,7 +128,7 @@ async def chat_reply(prompt: str, brand_context: dict | None, context: dict) -> 
     ctx_block = f"\nCurrent editor context: {json.dumps(context)}" if context else ""
 
     if not settings.AI_SPEND_ENABLED:
-        raise RuntimeError("AI spending is switched off (AI_SPEND_ENABLED=false). Nothing was sent.")
+        raise AIProviderError("AI spending is switched off (AI_SPEND_ENABLED=false). Nothing was sent.")
     message = await get_client().messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=1024,
