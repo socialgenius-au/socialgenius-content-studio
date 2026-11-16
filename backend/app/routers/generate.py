@@ -194,6 +194,8 @@ async def generate_creative_tool(
         result = await generate_svc.generate_creative_tool(
             body.task, body.instruction, brand_context, body.context
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except AIProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return CreativeToolResponse(
