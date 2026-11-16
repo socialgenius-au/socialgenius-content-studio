@@ -44,9 +44,9 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
   const recommendations = buildRecommendations(assessment);
   // Group only identical scene-specific recommendations; preserve distinct advice and caveats.
   const groupedRecommendations = recommendations.reduce<Array<{ key: string; basis: string; text: string; caveat: string; scenes: number[] }>>((groups, recommendation) => {
-    const match = recommendation.text.match(/\\bscene\\s+(\\d+)\\b/i);
+    const match = recommendation.text.match(/\bscene\s+(\d+)\b/i);
     const scene = match ? Number(match[1]) : null;
-    const normalized = scene == null ? recommendation.text : recommendation.text.replace(/\\bscene\\s+\\d+\\b/gi, "the affected scene");
+    const normalized = scene == null ? recommendation.text : recommendation.text.replace(/\bscene\s+\d+\b/gi, "the affected scene");
     const group = scene == null ? undefined : groups.find(item => item.text === normalized && item.basis === recommendation.basis && item.caveat === recommendation.caveat);
     if (group && scene != null) {
       if (!group.scenes.includes(scene)) group.scenes.push(scene);
