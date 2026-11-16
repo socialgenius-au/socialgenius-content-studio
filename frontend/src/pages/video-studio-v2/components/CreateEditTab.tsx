@@ -5596,7 +5596,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // chooses "Use in editor"; insert one editable title at the current playhead.
   // Long scripts remain in the editable tool output rather than being dumped
   // wholesale over the video preview.
-  const useCreativeTextInEditor = (content: string, task: CreativeTask) => {
+  const useCreativeTextInEditor = (content: string, _task: CreativeTask) => {
     const firstLine = content.split(/\\r?\\n/).map(line => line.trim())
       .find(line => line.length > 0 && !/^[-*#]+$/.test(line));
     if (!firstLine) return;
