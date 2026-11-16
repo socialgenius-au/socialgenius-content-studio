@@ -47,3 +47,55 @@ def enhance_image(image_bytes: bytes, *, contrast: float = 1.10,
     output = BytesIO()
     result.save(output, format="PNG", optimize=True)
     return output.getvalue()
+
+
+def remove_flat_background(image_bytes: bytes, *, tolerance: int = 24) -> bytes:
+    """Remove a near-uniform corner-connected background; NOT semantic AI segmentation.
+
+    Flood-fill starts at the four corners. Only pixels connected to a corner
+    and close in RGB to that corner's colour are made transparent. Complex
+    scenes, gradients, and similarly coloured subjects require manual review.
+    """
+    from collections import deque
+
+    if not image_bytes or len(image_bytes) > MAX_INPUT_BYTES:
+        raise ImageProcessingError("Image is empty or exceeds 20 MB")
+    if not 0 <= tolerance <= 80:
+        raise ImageProcessingError("Tolerance must be between 0 and 80")
+    try:
+        with Image.open(BytesIO(image_bytes)) as source:
+            if source.width * source.height > MAX_IMAGE_PIXELS:
+                raise ImageProcessingError("Image exceeds 24 megapixels")
+            image = ImageOps.exif_transpose(source).convert("RGBA")
+            image.load()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        if isinstance(exc, ImageProcessingError):
+            raise
+        raise ImageProcessingError("Unsupported or damaged image") from exc
+    width, height = image.size
+    pixels = image.load()
+    corners = [(0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)]
+    seeds = [(x, y, pixels[x, y][:3]) for x, y in corners]
+    seen = bytearray(width * height)
+    queue = deque(seeds)
+    while queue:
+        x, y, target = queue.popleft()
+        offset = y * width + x
+        if seen[offset]:
+            continue
+        seen[offset] = 1
+        rgba = pixels[x, y]
+        if max(abs(rgba[i] - target[i]) for i in range(3)) > tolerance:
+            continue
+        pixels[x, y] = (rgba[0], rgba[1], rgba[2], 0)
+        if x > 0:
+            queue.append((x - 1, y, target))
+        if x + 1 < width:
+            queue.append((x + 1, y, target))
+        if y > 0:
+            queue.append((x, y - 1, target))
+        if y + 1 < height:
+            queue.append((x, y + 1, target))
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=True)
+    return output.getvalue()
