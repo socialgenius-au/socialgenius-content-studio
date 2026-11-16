@@ -5617,14 +5617,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
           context={buildAiPromptContext()} />
       )}
       <h3>Quick Actions</h3>
-      <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
-        title="Removes only a near-uniform background connected to the image corners; not AI subject segmentation"
-        onClick={() => void processImageAsset("background")}>
-        Remove Flat Background — Download PNG
-      </button>
-      <p className="empty-hint">Background removal works on plain, near-uniform backgrounds only. Complex scenes need manual review.</p>
       <label className="stack-field">
-        <span>Image to enhance</span>
+        <span>Image to process</span>
         <select value={enhanceAssetId ?? ""} disabled={enhanceBusy}
           onChange={event => {
             setEnhanceAssetId(event.target.value ? Number(event.target.value) : null);
@@ -5637,6 +5631,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
           ))}
         </select>
       </label>
+      <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
+        title="Removes only a near-uniform background connected to the image corners; not AI subject segmentation"
+        onClick={() => void processImageAsset("background")}>
+        Remove Flat Background — Download PNG
+      </button>
+      <p className="empty-hint">Background removal works on plain, near-uniform backgrounds only. Complex scenes need manual review.</p>
+
       <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
         onClick={() => void processImageAsset("enhance")}>
         {enhanceBusy ? "Enhancing…" : "Auto Enhance — Download PNG"}
