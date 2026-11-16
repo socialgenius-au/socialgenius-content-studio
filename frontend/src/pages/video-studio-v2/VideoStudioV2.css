@@ -460,3 +460,29 @@
 @media (max-width: 560px) {
   .editor-shell > .ai-tools-panel { grid-template-columns: minmax(0, 1fr); }
 }
+
+
+/* Creative tools: use theme-aware inputs and accessible focus indicators. */
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] select,
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] textarea {
+  background: #0d1b1f;
+  color: #f1fafb;
+  border: 1px solid #34525a;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font: inherit;
+  line-height: 1.45;
+}
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] textarea::placeholder {
+  color: #9cb8bf;
+  opacity: 1;
+}
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] select:focus-visible,
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] textarea:focus-visible {
+  outline: 2px solid #36d7dc;
+  outline-offset: 2px;
+}
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] option {
+  background: #0d1b1f;
+  color: #f1fafb;
+}
