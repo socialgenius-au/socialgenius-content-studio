@@ -100,8 +100,19 @@ def _validate_mechanisms(decision: BlueprintDecision, ctx: BlueprintContext) -> 
     choices = {c.mechanism_id: c for c in decision.mechanism_choices}
     if known and not any(c.decision == "USED" for c in choices.values()):
         _fail("no C3 mechanism is USED -- a blueprint that transfers nothing from the reference is not a reconstruction.")
+    # The declared mapping is audit metadata, but it must still refer to real sections.
+    # Mismatches with the authoritative mapping remain non-blocking quality findings.
+    valid_section_ids = {sec.section_number for sec in decision.sections}
+    for choice in decision.mechanism_choices:
+        invalid = sorted(set(choice.applied_in_sections) - valid_section_ids)
+        if invalid:
+            _fail(f"{choice.mechanism_id} declares application in nonexistent section(s) {invalid}.")
+        if len(choice.applied_in_sections) != len(set(choice.applied_in_sections)):
+            _fail(f"{choice.mechanism_id} repeats a section in applied_in_sections.")
     # AUTHORITATIVE MAPPING = section.mechanisms_applied. Blocking only what makes it unsafe or self-contradictory.
     for sec in decision.sections:
+        if len(sec.mechanisms_applied) != len(set(sec.mechanisms_applied)):
+            _fail(f"section {sec.section_number} repeats a mechanism in mechanisms_applied.")
         for mid in sec.mechanisms_applied:
             c = choices.get(mid)
             if c is None:
