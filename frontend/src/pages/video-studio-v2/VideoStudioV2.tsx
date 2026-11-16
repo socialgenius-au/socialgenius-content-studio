@@ -183,7 +183,7 @@ export default function VideoStudioV2() {
         <div className="vsv2-project-card">
           <div className="pc-head"><FolderOpen size={15} /><span>Current Project</span></div>
           <ProjectIdentityCard />
-          <button>Change Project</button>
+          <button type="button" onClick={() => setStage("create")} title="Open Create / Edit to load or save a named draft">Open / Save Project</button>
         </div>
       </aside>
 
