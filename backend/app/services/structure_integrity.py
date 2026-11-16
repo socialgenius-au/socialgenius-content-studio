@@ -119,7 +119,7 @@ async def load_boundary_attempts(db, video_analysis_id: int) -> dict:
     from sqlalchemy import select
     from app.models.analysis_annotation import AnalysisAnnotation
     out = {"scene": [], "beat": []}
-    for kind, category, flag in (("scene", "semantic_boundary_attempt", "is_scene_boundary"), ("beat", "story_beat_boundary_attempt", "is_story_beat_boundary")):
+    for kind, category, flag in (("scene", "semantic_boundary_attempt", "is_semantic_boundary"), ("beat", "story_beat_boundary_attempt", "is_story_beat_boundary")):
         rows = (await db.execute(select(AnalysisAnnotation).where(AnalysisAnnotation.video_analysis_id == video_analysis_id, AnalysisAnnotation.category == category)
                                  .order_by(AnalysisAnnotation.start_time, AnalysisAnnotation.id))).scalars().all()
         latest: dict[float, AnalysisAnnotation] = {}
