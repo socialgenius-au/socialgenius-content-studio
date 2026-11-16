@@ -43,6 +43,8 @@ async def generate_content(
         "Write the content now. Return only the JSON object."
     )
 
+    if not settings.AI_SPEND_ENABLED:
+        raise RuntimeError("AI spending is switched off (AI_SPEND_ENABLED=false). Nothing was sent.")
     message = await get_client().messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=1024,
@@ -124,6 +126,8 @@ async def chat_reply(prompt: str, brand_context: dict | None, context: dict) -> 
     brand_block = f"\nBrand: {json.dumps(brand_context)}" if brand_context else ""
     ctx_block = f"\nCurrent editor context: {json.dumps(context)}" if context else ""
 
+    if not settings.AI_SPEND_ENABLED:
+        raise RuntimeError("AI spending is switched off (AI_SPEND_ENABLED=false). Nothing was sent.")
     message = await get_client().messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=1024,
