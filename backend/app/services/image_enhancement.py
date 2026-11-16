@@ -117,8 +117,8 @@ def remove_complex_background(image_bytes: bytes, *, margin_percent: int = 8) ->
         raise ImageProcessingError("Margin must be between 3 and 25 percent")
     try:
         with Image.open(BytesIO(image_bytes)) as source:
-            if source.width * source.height > 6_000_000:
-                raise ImageProcessingError("Complex background removal supports up to 6 megapixels")
+            if source.width * source.height > 2_000_000:
+                raise ImageProcessingError("Complex background removal supports up to 2 megapixels")
             image = ImageOps.exif_transpose(source).convert("RGBA")
             image.load()
     except (UnidentifiedImageError, OSError, ValueError) as exc:
