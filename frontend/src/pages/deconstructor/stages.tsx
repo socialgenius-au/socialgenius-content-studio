@@ -186,6 +186,16 @@ export function AnatomyStage({ anatomy, busy = null, onReadFrames, onRereadSpeec
           <ul className="ml-4 list-disc text-xs text-muted-foreground">{ov.readingNotes.map(n => <li key={n}>{n}</li>)}</ul>
         </div>
       )}
+      {(ov.opening || ov.progression || ov.structureNotes.length > 0) && (
+        <div className={`${box} space-y-2 text-sm`} data-testid="anatomy-creative-structure">
+          {ov.opening && (<div data-testid="anatomy-opening"><div className="font-medium">How the opening works</div><p className="text-xs text-muted-foreground">{ov.opening.summary}</p>
+            <p className="text-xs text-muted-foreground">{ov.opening.channels.join(' · ')}</p>
+            {ov.opening.relationships.length > 0 && <ul className="ml-4 list-disc text-xs text-muted-foreground">{ov.opening.relationships.map(r => <li key={r}>{r}</li>)}</ul>}</div>)}
+          {ov.progression && (<div data-testid="anatomy-progression"><div className="font-medium">How the story progresses</div><p className="text-xs text-muted-foreground">{ov.progression}</p></div>)}
+          {ov.structureNotes.length > 0 && (<div data-testid="anatomy-structure-notes"><div className="font-medium">What the scene and story-beat analysis could not establish</div>
+            <ul className="ml-4 list-disc text-xs text-amber-700">{ov.structureNotes.map(n => <li key={n}>{n}</li>)}</ul></div>)}
+        </div>
+      )}
       <ol className="space-y-3">
         {a.sections.map(s => {
           const c = anatomyCard(s)
@@ -283,12 +293,15 @@ export function IntentStage(p: {
   mechanismsReady: boolean; busy: string | null; onBuild: () => void; hasExistingBlueprint: boolean
   /** M7: the "Learning from Previous Videos" panel (optional; the form works without it) */
   lessonsPanel?: React.ReactNode
+  /** what the reference teaches: mechanisms with evidence, conditions and adaptation guidance (optional) */
+  intelligencePanel?: React.ReactNode
 }) {
   const building = p.busy === 'blueprint'
   const f = { form: p.form, errors: p.errors, set: p.set }
   return (
     <div className="space-y-4" data-testid="stage-intent">
       <div><h2 className="text-base font-semibold">What we will apply</h2><p className={sub}>Tell us about the NEW content. Only what you enter is used — nothing is invented.</p></div>
+      {p.intelligencePanel}
       {p.hasExistingBlueprint && <Notice>A blueprint already exists for this reference (see the Blueprint step). Building here creates a NEW blueprint from the details below.</Notice>}
       <div className={`${box} grid gap-4 sm:grid-cols-2`}>
         <Field id="product" label="Product, service or topic" required {...f} placeholder="e.g. choosing tiles for a home renovation" />

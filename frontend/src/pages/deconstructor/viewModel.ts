@@ -178,6 +178,12 @@ export interface AnatomyOverview {
   readingNotes: string[]
   hasVisualReading: boolean
   hasSpeechReading: boolean
+  /** the opening's construction, channels and relationships (null when no hook was analysed) */
+  opening: { summary: string; channels: string[]; relationships: string[] } | null
+  /** the progression read from the frames, or null when it is not established */
+  progression: string | null
+  /** what the scene and story-beat reasoning did not establish, in plain words */
+  structureNotes: string[]
 }
 
 export function readingNotes(v: Anatomy['video']): string[] {
@@ -198,6 +204,28 @@ export function readingNotes(v: Anatomy['video']): string[] {
   return out
 }
 
+const CHANNEL_WORDS: Record<string, string> = { spoken: 'Spoken words', on_screen_text: 'On-screen text', visual: 'Picture', editing_or_framing: 'Editing and framing' }
+
+/** Plain-language view of the derived opening profile, narrative and structure check (all computed by the server; nothing is inferred here). */
+export function creativeStructure(v: Anatomy['video']): Pick<AnatomyOverview, 'opening' | 'progression' | 'structureNotes'> {
+  const hp = v.hook_profile as { window?: { start_time: number | null; end_time: number | null }; classification?: { primary_type: string | null; secondary_types: string[] }; channels?: Record<string, { present: boolean; reliable: boolean | null }>; relationships?: string[] } | null | undefined
+  let opening: AnalysisOpening | null = null
+  if (hp) {
+    const kinds = [hp.classification?.primary_type, ...(hp.classification?.secondary_types ?? [])].filter(Boolean).map(x => titleCase(x as string))
+    const w = hp.window
+    opening = {
+      summary: `${kinds.join(' + ') || 'Not classified'}${w && w.start_time != null && w.end_time != null ? ` · ${fmtRange(w.start_time, w.end_time)}` : ''} (an AI interpretation of apparent design)`,
+      channels: Object.entries(hp.channels ?? {}).filter(([, c]) => c.present).map(([k, c]) => `${CHANNEL_WORDS[k] ?? titleCase(k)}${c.reliable === false ? ' (unverified)' : ''}`),
+      relationships: hp.relationships ?? [],
+    }
+  }
+  const n = v.narrative
+  const progression = n ? (n.arc_text ? `${n.arc_text} (read from the frames by an AI; inferred)` : 'Not established: no section has a visual reading yet.') : null
+  return { opening, progression, structureNotes: [...(v.structure?.uncertainty ?? []), ...(v.structure?.issues ?? []).map(i => i.message)] }
+}
+
+type AnalysisOpening = { summary: string; channels: string[]; relationships: string[] }
+
 export function anatomyOverview(a: Anatomy): AnatomyOverview {
   const v = a.video
   const p = v.pacing_profile
@@ -212,6 +240,7 @@ export function anatomyOverview(a: Anatomy): AnatomyOverview {
       : `${r.accepted_count} retention ${r.accepted_count === 1 ? 'device' : 'devices'} confirmed`,
     gaps: dedupe(a.gaps.map(g => g.reason)),
     readingNotes: readingNotes(v), hasVisualReading: !!v.creative, hasSpeechReading: !!(v.transcript && v.transcript.alternatives.length),
+    ...creativeStructure(v),
   }
 }
 

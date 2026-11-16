@@ -150,6 +150,9 @@ class VideoAnatomy(BaseModel):
     progression: list[dict]
     retention: dict
     interpretive: InterpretiveFields
+    hook_profile: dict | None = None      # how the opening works: channels, timing, reliability, relationships (derived view; see services/hook_profile.py)
+    structure: dict | None = None         # scene/story-beat <-> shot mapping, integrity issues and an honest account of what the boundary reasoning did not establish
+    narrative: dict | None = None         # progression assembled from what the AI read in the frames; 'not_established' when nothing supports it
     transcript: dict | None = None        # present only when an alternative transcript exists: original vs alternatives with provenance, quality, agreement
     creative: dict | None = None          # present only with a Creative Read: summary, limitations, provenance
     reconciliation: dict | None = None    # present only with a Creative Read: which readings are established / disputed / unverified, and in what order of authority to trust them

@@ -10,6 +10,7 @@ import { emptyIntentForm, validateIntentForm, type IntentErrors, type IntentForm
 import { useDeconstructor } from './useDeconstructor'
 import { learningApi } from '../../api/client'
 import LessonsPanel from './LessonsPanel'
+import IntelligencePanel from './IntelligencePanel'
 import { briefFromForm, briefKey, idsToSend, prune, suggestedIds, toggle, type LessonCandidate } from './lessons'
 import { anatomyReady, mechanismsView } from './viewModel'
 import { AnatomyStage, BlueprintStage, CreateStage, IntentStage, MechanismsStage, ReferenceStage } from './stages'
@@ -192,6 +193,7 @@ export default function DeconstructorPage() {
             <IntentStage
               form={form} errors={errors} set={(k, v) => { setForm(f => ({ ...f, [k]: v })); if (errors[k]) setErrors(e => ({ ...e, [k]: undefined })) }}
               mechanismsReady={mechanismsReady} busy={d.busy} onBuild={() => void onBuild()} hasExistingBlueprint={!!d.blueprint.data?.blueprint}
+              intelligencePanel={<IntelligencePanel status={d.intelligence.loading ? 'loading' : d.intelligence.error ? 'error' : 'ready'} intel={d.intelligence.data} error={d.intelligence.error} />}
               lessonsPanel={
                 <LessonsPanel
                   status={lessonStatus} lessons={lessonList} useLessons={useLessons} selected={selectedLessons}

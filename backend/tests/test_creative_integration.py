@@ -170,7 +170,7 @@ def test_the_mechanism_input_carries_the_visual_reading_the_reconciliation_and_c
 
 
 def test_the_prompt_is_versioned_and_tells_the_model_to_follow_the_reconciliation():
-    assert MECHANISM_PROMPT_VERSION == "v3"
+    assert MECHANISM_PROMPT_VERSION == "v4"
     for needle in ("creative_findings", "reconciliation", "unverified_speech_ids", "cannot support a `high` confidence", "audience_effects", "principle_hint", "never to copy"):
         assert needle in SYSTEM_PROMPT, needle
 

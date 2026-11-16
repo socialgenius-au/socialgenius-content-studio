@@ -72,6 +72,11 @@ export interface Anatomy {
     structural_pattern: { summary: string }
     retention: { analysis_status: string; accepted_count: number; examined_count: number }
     creative?: { summary: string | null; limitations: string[]; certainty: string; finding_count: number; model: string | null; frames_shown: number } | null
+    /** derived views (hook channels and timing, scene/story-beat structure with its uncertainty, narrative progression); see services/hook_profile.py and structure_integrity.py */
+    hook_profile?: Record<string, unknown> | null
+    structure?: { partition: { scenes: string; beats: string; shots: number }; issues: { code: string; message: string }[]; uncertainty: string[]
+      reasoning: { beat: { examined: number; accepted: number; rejected: number; undecided: number }; scene: { examined: number; accepted: number; rejected: number; undecided: number } } } | null
+    narrative?: { status: string; arc_text: string | null; sections: { section: number; role_label: string | null; basis: string }[]; uncertainty: string[]; unsupported: string[] } | null
     reconciliation?: { items: { id: string; topic: string; status: string; note: string; sections: number[] }[]; audience_effects: string; unverified_speech_ids: number[]; low_confidence_text_ids: number[] } | null
     transcript?: { original: { model: string | null; quality: { plausible: boolean; reasons: string[]; mean_avg_logprob: number | null } }; preferred_run_id: string | null; policy: string
       alternatives: { run_id: string; model: string; status: string; quotable: boolean; quality: { plausible: boolean; reasons: string[]; mean_avg_logprob: number | null }; agreement_with_original: { value: number | null; comparable: boolean; reason: string | null } }[] } | null

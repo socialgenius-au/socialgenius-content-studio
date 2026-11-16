@@ -3654,6 +3654,24 @@ async def get_full_deconstruction(
 # and explicit gaps. No LLM call, nothing persisted; recomputed (and fingerprinted) on every read.
 # =====================================================================================
 
+@router.get("/{reference_video_id}/creative-intelligence")
+async def get_reference_video_creative_intelligence(
+    reference_video_id: int,
+    video_analysis_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """The reusable record of how this reference works creatively: the opening's profile, the narrative progression, the scene/story-beat structure and what it does not establish, and for each mechanism its purpose,
+    typed evidence with timestamps and reliability, conditions of use, adaptation guidance and the reuse-versus-copy split. Pure read; no AI call; recomputed from stored results. 404 unknown/foreign video; 422 anatomy not ready."""
+    from app.services.creative_intelligence import get_creative_intelligence
+    try:
+        return await get_creative_intelligence(db, user, reference_video_id, video_analysis_id=video_analysis_id)
+    except OrchestrationError as exc:
+        raise _orchestration_http_error(exc)
+    except ContentAnatomyError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
 @router.get("/{reference_video_id}/anatomy", response_model=ContentAnatomyResponse)
 async def get_reference_video_anatomy(
     reference_video_id: int,

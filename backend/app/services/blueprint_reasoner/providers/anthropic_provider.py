@@ -37,7 +37,8 @@ BLUEPRINT_EFFORT = "low"
 
 # Explicit, stable reasoning-contract version for SYSTEM_PROMPT; bumped by hand whenever its meaning changes and recorded on
 # every durable attempt.
-BLUEPRINT_PROMPT_VERSION = "v4"
+BLUEPRINT_PROMPT_VERSION = "v5"
+# v5: mechanisms carry `reuse_guidance` (conditions of use, adaptation guidance, evidence strength) and the input carries `reference_hook` (the opening's structure only).
 # v2 (before the first real call): forbidden source words may not be mentioned even to say they are being avoided.
 
 _TEMPLATE = """You are a content-construction planner. You are given: (1) a NEW CONTENT INTENT (what the new piece is for), (2) \
@@ -74,6 +75,11 @@ whether any two sections could be combined without losing structural meaning; if
 open, establish a controlled comparison, explain why the right choice changes with context, demonstrate a mismatch or its consequence, \
 derive a practical selection principle, resolve, then give the next step. That is an EXAMPLE of progression, not a template: choose the \
 structure the intent and mechanisms actually need.
+
+REUSE GUIDANCE. Each mechanism carries `reuse_guidance`: `applies_when` and `avoid_when` are general conditions of use for that kind of mechanism, `adaptation_guidance` says how to adapt (never copy) it, \
+and `evidence_channels` / `unreliable_channels` say how strongly it was observed and where the evidence is weak. Check applies_when and avoid_when against the new intent: if an avoid_when condition holds for this intent, \
+mark the mechanism NOT_USED and say which condition holds. `reference_hook` (when present) describes only the STRUCTURE of the reference's opening (which channels are combined, their timing, the construction type, \
+which channels are reliable): reuse the construction for the caller's own subject, never the reference's subject or wording, and do not depend on a channel marked unreliable.
 
 DO NOT CARRY OVER: every entry in `do_not_carry_over` and every word in `blocked_source_terms` is forbidden in your output \
 (the words are checked). Do not reuse the reference's subject matter, people, story, names, wording, visuals or audio. Do not \

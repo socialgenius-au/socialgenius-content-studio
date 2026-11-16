@@ -229,6 +229,26 @@ def _creative_video_view(video: dict) -> dict:
                               "unverified_speech_ids": r.get("unverified_speech_ids"), "low_confidence_text_ids": r.get("low_confidence_text_ids"), "audience_effects": r.get("audience_effects")}}
 
 
+def _intelligence_view(video: dict) -> dict:
+    """The opening's profile, what the scene/story-beat reasoning did not establish, and the progression read from the frames. Empty (adds no key) when the anatomy carries none of them."""
+    hp, st, nar = _d(video.get("hook_profile")), _d(video.get("structure")), _d(video.get("narrative"))
+    out: dict = {}
+    if hp:
+        cls = _d(hp.get("classification"))
+        out["hook_profile"] = {
+            "window": [_t(_d(hp.get("window")).get("start_time")), _t(_d(hp.get("window")).get("end_time"))], "primary_type": cls.get("primary_type"), "secondary_types": cls.get("secondary_types"),
+            "probable_intent": cls.get("probable_intent"), "attention_mechanism": hp.get("attention_mechanism"),
+            "channels": {k: {"present": v.get("present"), "reliable": v.get("reliable"), "first_seen": _t(v.get("first_seen"))} for k, v in _d(hp.get("channels")).items()},
+            "elements": [{"element_type": e.get("element_type"), "channels": e.get("channels"), "start": _t(e.get("start_time")), "end": _t(e.get("end_time")), "reliability": e.get("reliability")} for e in _l(hp.get("elements"))],
+            "relationships": hp.get("relationships"), "contradictions": hp.get("contradictions"),
+        }
+    if st.get("uncertainty"):
+        out["structure_uncertainty"] = st["uncertainty"]
+    if nar.get("arc_text"):
+        out["narrative_arc"] = nar["arc_text"]
+    return out
+
+
 def build_reasoner_input(anatomy: dict) -> dict:
     """The COMPACT, provider-facing view of the C2 anatomy. The canonical anatomy is never modified and validation
     always runs against it, not against this view.
@@ -262,6 +282,7 @@ def build_reasoner_input(anatomy: dict) -> dict:
         },
         "sections": [_compact_section(s) for s in _l(anatomy.get("sections")) if isinstance(s, dict) and isinstance(s.get("number"), int)],
         **_creative_video_view(video),
+        **_intelligence_view(video),
         "gaps": [{"field": g.get("field"), "kind": g.get("kind"), "reason": g.get("reason"),
                   **({"section": g["section_number"]} if g.get("section_number") is not None else {})}
                  for g in _l(anatomy.get("gaps")) if isinstance(g, dict)],

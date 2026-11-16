@@ -324,7 +324,19 @@ async def _has_existing_results(db: AsyncSession, key: str, video_analysis_id: i
         ))).scalar_one() > 0
 
     if key == "scene_story_beats":
-        return (await db.execute(select(func.count()).select_from(Scene).where(Scene.video_analysis_id == video_analysis_id))).scalar_one() > 0
+        if (await db.execute(select(func.count()).select_from(Scene).where(Scene.video_analysis_id == video_analysis_id))).scalar_one() == 0:
+            return False
+        # Scenes existing is not enough. Reference 5131's story-beat reasoning failed for a candidate while the scene already existed, and the stage was reported "already complete" and never finished.
+        # It is complete only when no boundary candidate is still waiting for its reasoning (for each reasoner that is configured). The finishing run is bounded: it reasons ONLY about candidates that
+        # have no stored result, and a candidate whose stored result was a "no" or "undecided" is never offered again.
+        from app.config import settings
+        from app.services.semantic_boundary_reasoning_store_svc import find_unreasoned_candidates
+        from app.services.story_beat_boundary_reasoning_store_svc import find_unreasoned_story_beat_candidates
+        if settings.SEMANTIC_REASONER_PROVIDER and await find_unreasoned_candidates(db, video_analysis_id):
+            return False
+        if settings.STORY_BEAT_REASONER_PROVIDER and await find_unreasoned_story_beat_candidates(db, video_analysis_id):
+            return False
+        return True
     if key == "editing_rhythm":
         return await annotations("editing_rhythm_profile")
     if key == "hook_window":

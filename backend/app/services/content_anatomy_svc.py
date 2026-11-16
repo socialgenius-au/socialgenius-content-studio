@@ -195,7 +195,7 @@ def _choose_skeleton(agg: dict, duration: float, stage_status: dict) -> tuple[li
 
 # ── the pure builder ────────────────────────────────────────────────────────────────────────
 
-def build_content_anatomy(aggregate: dict, creative: dict | None = None, transcript: dict | None = None) -> dict:
+def build_content_anatomy(aggregate: dict, creative: dict | None = None, transcript: dict | None = None, boundary_attempts: dict | None = None) -> dict:
     """Pure: `deconstruction/full` dict (evidence may be the pydantic model) -> Content Anatomy dict.
     `creative` (optional) is the stored Creative Read; when it is present and current the anatomy gains a creative layer and a reconciliation of unequal-authority readings
     (app.services.creative_reconcile). Without it the output is exactly what it always was."""
@@ -504,6 +504,17 @@ def build_content_anatomy(aggregate: dict, creative: dict | None = None, transcr
                "ids": {"reference_video_id": source.get("reference_video_id"), "video_analysis_id": va.get("id")}}
     fingerprint = hashlib.sha256(json.dumps(content, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")).hexdigest()
 
+    # DERIVED VIEWS (hook profile, structure check, narrative progression). They are re-arrangements and checks of the evidence already hashed above, plus the stored boundary-reasoning attempts, so they are
+    # attached AFTER the fingerprint is taken: adding them does not make an existing mechanism set or blueprint look stale. Pure and deterministic; no AI call.
+    from app.services.hook_profile import build_hook_profile, narrative_progression
+    from app.services.structure_integrity import analyze_structure
+    elements = _l(hook_details.get("hook_elements"))
+    if isinstance(video["hook"].get("classification"), dict) and elements:
+        video["hook"]["classification"]["hook_elements"] = [{"element_type": e.get("element_type"), "evidence_references": e.get("evidence_references") or {}} for e in elements if isinstance(e, dict)]
+    video["structure"] = analyze_structure(duration, shots, _l(structure.get("scenes")), boundary_attempts)
+    video["hook_profile"] = build_hook_profile(hook=video["hook"], sections=sections, shots=shots, reconciliation=video.get("reconciliation"), creative_view=video.get("creative"))
+    video["narrative"] = narrative_progression(sections, video["hook_profile"], video["structure"])
+
     return {
         "video": video, "section_source": section_source, "sections": sections,
         "evidence_coverage": coverage, "gaps": gaps,
@@ -533,4 +544,6 @@ async def get_content_anatomy(db: AsyncSession, user: User, reference_video_id: 
     ev = aggregate["evidence"].model_dump(mode="json") if hasattr(aggregate["evidence"], "model_dump") else aggregate["evidence"]
     rows = await load_alternative_rows(db, aggregate["video_analysis"]["id"])
     transcript = build_alternatives_view(list(ev.get("speech_segments") or []), rows) if rows else None
-    return build_content_anatomy(aggregate, creative if creative.get("status") == "current" else None, transcript)
+    from app.services.structure_integrity import load_boundary_attempts
+    attempts = await load_boundary_attempts(db, aggregate["video_analysis"]["id"])
+    return build_content_anatomy(aggregate, creative if creative.get("status") == "current" else None, transcript, attempts)

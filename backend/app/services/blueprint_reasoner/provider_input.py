@@ -35,6 +35,8 @@ def build_reasoner_input(ctx: BlueprintContext) -> dict:
         if s.get("overlaps_hook_window"):
             item["hook"] = True
         sections.append(item)
+    from app.services.creative_intelligence import blueprint_guidance
+    guide = blueprint_guidance(ctx.mechanisms, anatomy)
     intent = dict(ctx.intent)
     intent["mandatory_points"] = [{"id": k, "text": v} for k, v in ctx.mandatory_points.items()]
     out = {
@@ -51,6 +53,7 @@ def build_reasoner_input(ctx: BlueprintContext) -> dict:
             "transferable_principle": m.get("transferable_principle"),
             "known_limitations": (m.get("limitations") or {}).get("model_stated") or [],
             "do_not_carry_over": [{"kind": e.get("kind"), "description": e.get("description")} for e in (m.get("non_transferable_elements") or [])],
+            "reuse_guidance": guide["mechanisms"].get(m["mechanism_id"]),
         } for m in ctx.mechanisms],
         "reference_gaps": [{"field": g.get("field"), "kind": g.get("kind")} for g in (anatomy.get("gaps") or [])],
         "blocked_source_terms": ctx.guard.blocked_terms,
@@ -60,6 +63,8 @@ def build_reasoner_input(ctx: BlueprintContext) -> dict:
             "mandatory_point_ids": list(ctx.mandatory_points),
         },
     }
+    if guide.get("reference_hook"):
+        out["reference_hook"] = guide["reference_hook"]
     if ctx.lessons:          # only when the person chose lessons: a request without lessons is byte-for-byte what it always was
         from app.services.learning_guidance import provider_guidance
         out["learning_guidance"] = provider_guidance(ctx.lessons)

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { deconstructorApi, referenceVideosApi, uploadApi } from '../../api/client'
 import type { ReferenceVideo } from '../../types'
 import type { Anatomy, BlueprintResponse, DeconStatus, MechanismSet, NewContentIntent } from '../../types/deconstructor'
+import type { CreativeIntelligence } from './intelligence'
 import { summarizeDeconStatus } from './viewModel'
 import { GIVE_UP_MESSAGE, nextPoll, POLL_MS } from './pollPolicy'
 
@@ -25,6 +26,7 @@ export function useDeconstructor(referenceVideoId: number | null) {
   const [anatomy, setAnatomy] = useState<Loadable<Anatomy>>(idle())
   const [mechanisms, setMechanisms] = useState<Loadable<MechanismSet>>(idle())
   const [blueprint, setBlueprint] = useState<Loadable<BlueprintResponse>>(idle())
+  const [intelligence, setIntelligence] = useState<Loadable<CreativeIntelligence>>(idle())
   const [busy, setBusy] = useState<null | 'deconstruct' | 'mechanisms' | 'blueprint' | 'upload' | 'frames' | 'speech'>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const followRef = useRef<((id: number, startedByClick: boolean) => void) | null>(null)   // set below; lets load() resume following a run that is already in progress
@@ -43,8 +45,9 @@ export function useDeconstructor(referenceVideoId: number | null) {
   const load = useCallback(async (id: number) => {
     const my = ++seq.current
     setAnatomy({ ...idle(), loading: true }); setMechanisms({ ...idle(), loading: true }); setBlueprint({ ...idle(), loading: true })
-    const [st, an, me, bp] = await Promise.allSettled([
-      deconstructorApi.deconstructStatus(id), deconstructorApi.anatomy(id), deconstructorApi.mechanisms(id), deconstructorApi.blueprint(id),
+    setIntelligence({ ...idle(), loading: true })
+    const [st, an, me, bp, ci] = await Promise.allSettled([
+      deconstructorApi.deconstructStatus(id), deconstructorApi.anatomy(id), deconstructorApi.mechanisms(id), deconstructorApi.blueprint(id), deconstructorApi.creativeIntelligence(id),
     ])
     if (my !== seq.current) return
     const loaded = st.status === 'fulfilled' ? (st.value.data as DeconStatus) : null
@@ -60,11 +63,12 @@ export function useDeconstructor(referenceVideoId: number | null) {
     setAnatomy(pack<Anatomy>(an, 'the content anatomy'))
     setMechanisms(pack<MechanismSet>(me, 'the mechanisms'))
     setBlueprint(pack<BlueprintResponse>(bp, 'the blueprint'))
+    setIntelligence(pack<CreativeIntelligence>(ci, 'the creative intelligence'))
   }, [])
 
   useEffect(() => { void loadReferences() }, [loadReferences])
   useEffect(() => {
-    if (referenceVideoId == null) { seq.current++; setStatus(null); setAnatomy(idle()); setMechanisms(idle()); setBlueprint(idle()); return }
+    if (referenceVideoId == null) { seq.current++; setStatus(null); setAnatomy(idle()); setMechanisms(idle()); setBlueprint(idle()); setIntelligence(idle()); return }
     void load(referenceVideoId)
   }, [referenceVideoId, load])
 
@@ -124,9 +128,10 @@ export function useDeconstructor(referenceVideoId: number | null) {
 
   /** After a new reading is added the anatomy changed, so re-read it and the (possibly now stale) mechanisms from the server. */
   const reloadAfterReading = useCallback(async (id: number) => {
-    const [an, me] = await Promise.allSettled([deconstructorApi.anatomy(id), deconstructorApi.mechanisms(id)])
+    const [an, me, ci] = await Promise.allSettled([deconstructorApi.anatomy(id), deconstructorApi.mechanisms(id), deconstructorApi.creativeIntelligence(id)])
     if (an.status === 'fulfilled') setAnatomy({ data: an.value.data as Anatomy, loading: false, error: null, missing: false })
     if (me.status === 'fulfilled') setMechanisms({ data: me.value.data as MechanismSet, loading: false, error: null, missing: false })
+    if (ci.status === 'fulfilled') setIntelligence({ data: ci.value.data as CreativeIntelligence, loading: false, error: null, missing: false })
   }, [])
 
   // PAID: an AI looks at selected keyframes. Only ever called after the page has confirmed with the user.
@@ -151,6 +156,7 @@ export function useDeconstructor(referenceVideoId: number | null) {
     try {
       const { data } = await deconstructorApi.deriveMechanisms(referenceVideoId, anatomy.data?.provenance.fingerprint ?? null)
       setMechanisms({ data: data as MechanismSet, loading: false, error: null, missing: false })
+      void deconstructorApi.creativeIntelligence(referenceVideoId).then(r => setIntelligence({ data: r.data as CreativeIntelligence, loading: false, error: null, missing: false })).catch(() => undefined)
     } catch (e) {
       setActionError(errorMessage(e, 'Could not derive mechanisms.'))
     } finally { setBusy(null) }
@@ -190,5 +196,5 @@ export function useDeconstructor(referenceVideoId: number | null) {
   }, [loadReferences])
 
   const progress = summarizeDeconStatus(status)
-  return { references, status, progress, anatomy, mechanisms, blueprint, busy, actionError, setActionError, deconstruct, deriveMechanisms, readFrames, rereadSpeech, buildBlueprint, addReference, refreshStatus, reload: () => (referenceVideoId != null ? load(referenceVideoId) : Promise.resolve()) }
+  return { references, status, progress, anatomy, mechanisms, blueprint, intelligence, busy, actionError, setActionError, deconstruct, deriveMechanisms, readFrames, rereadSpeech, buildBlueprint, addReference, refreshStatus, reload: () => (referenceVideoId != null ? load(referenceVideoId) : Promise.resolve()) }
 }
