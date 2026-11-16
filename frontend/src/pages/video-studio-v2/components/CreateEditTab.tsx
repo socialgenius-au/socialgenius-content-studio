@@ -5557,7 +5557,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     }
   };
 
-  const processImageAsset = async (operation: "enhance" | "background") => {
+  const processImageAsset = async (operation: "enhance" | "background" | "complex") => {
     if (enhanceBusy || enhanceAssetId === null) return;
     const source = mediaAssets.find(asset => asset.id === enhanceAssetId && asset.file_type === "image");
     if (!source) {
@@ -5570,12 +5570,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     try {
       const response = operation === "enhance"
         ? await assetsApi.autoEnhance(source.id)
+        : operation === "complex" ? await assetsApi.removeComplexBackground(source.id)
         : await assetsApi.removeFlatBackground(source.id);
       const blob = new Blob([response.data], { type: "image/png" });
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = objectUrl;
-      link.download = `${operation === "enhance" ? "enhanced" : "no-background"}-${source.id}.png`;
+      link.download = `${operation === "enhance" ? "enhanced" : operation === "complex" ? "foreground" : "no-background"}-${source.id}.png`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -5583,7 +5584,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
       setEnhanceSuccess(operation === "enhance"
         ? "Enhanced PNG downloaded. Your original image and draft are unchanged."
-        : "Flat-colour background removal downloaded. Review the result; complex backgrounds are not supported.");
+        : operation === "complex"
+          ? "Foreground PNG downloaded. This is an approximate offline cutout; review its edges before use."
+          : "Flat-colour background removal downloaded. Review the result; complex backgrounds are not supported.");
     } catch (error) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setEnhanceError(typeof detail === "string" ? detail : "Enhancement failed. Your original image was not changed.");
@@ -5716,7 +5719,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         onClick={() => void processImageAsset("background")}>
         Remove Flat Background — Download PNG
       </button>
-      <p className="empty-hint">Background removal works on plain, near-uniform backgrounds only. Complex scenes need manual review.</p>
+      <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
+        title="Offline approximate foreground extraction for centrally positioned subjects; not AI semantic segmentation"
+        onClick={() => void processImageAsset("complex")}>
+        Remove Complex Background — Download PNG
+      </button>
+      <p className="empty-hint">Flat removal is best for solid backgrounds. Complex removal estimates a central foreground using offline GrabCut; review cutout edges. Originals are preserved.</p>
 
       <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
         onClick={() => void processImageAsset("enhance")}>
