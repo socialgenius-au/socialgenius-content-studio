@@ -5592,6 +5592,30 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     }
   };
 
+  // Generated suggestions are never applied automatically. The user explicitly
+  // chooses "Use in editor"; insert one editable title at the current playhead.
+  // Long scripts remain in the editable tool output rather than being dumped
+  // wholesale over the video preview.
+  const useCreativeTextInEditor = (content: string, task: CreativeTask) => {
+    const firstLine = content.split(/\\r?\\n/).map(line => line.trim())
+      .find(line => line.length > 0 && !/^[-*#]+$/.test(line));
+    if (!firstLine) return;
+    const title = firstLine.replace(/^[-*#\\d.)\\s]+/, "").slice(0, 140).trim();
+    if (!title) return;
+    const startTime = timeline.currentTime;
+    const overlay: TextOverlay = {
+      id: crypto.randomUUID(),
+      text: title,
+      x: 5, y: 80, width: 90,
+      startTime,
+      endTime: Math.min(startTime + 5, effectiveDuration || startTime + 5),
+      fontFamily: "Inter", fontSize: 48, bold: true, italic: false,
+      color: "#FFFFFF", bgColor: "transparent", bgOpacity: 0.7, animation: "fade_in",
+    };
+    addTextOverlay(overlay);
+    setSelectedElement({ type: "text", id: overlay.id });
+  };
+
   const aiToolsPanelBody = (
     <>
       <h3>✦ AI Tools</h3>
@@ -5614,7 +5638,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       </button>
       {activeCreativeTask && (
         <CreativeToolsPanel key={activeCreativeTask} initialTask={activeCreativeTask}
-          context={buildAiPromptContext()} />
+          context={buildAiPromptContext()} onUseText={useCreativeTextInEditor} />
       )}
       <h3>Quick Actions</h3>
       <label className="stack-field">
