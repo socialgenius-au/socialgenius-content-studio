@@ -74,11 +74,14 @@ async def chat(
                 "tone_of_voice": brand.tone_of_voice,
             }
 
-    reply = await generate_svc.chat_reply(
-        prompt=body.prompt,
-        brand_context=brand_context,
-        context=body.context,
-    )
+    try:
+        reply = await generate_svc.chat_reply(
+            prompt=body.prompt,
+            brand_context=brand_context,
+            context=body.context,
+        )
+    except AIProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return ChatResponse(**reply)
 
 
@@ -262,15 +265,18 @@ async def generate(
                 "tone_of_voice": brand.tone_of_voice,
             }
 
-    content = await generate_svc.generate_content(
-        step=step,
-        platform=body.platform,
-        tone=body.tone,
-        brand_context=brand_context,
-        additional_context=body.additional_context,
-        job_summary=job.plan_json.get("summary", ""),
-        word_limit=body.word_limit,
-    )
+    try:
+        content = await generate_svc.generate_content(
+            step=step,
+            platform=body.platform,
+            tone=body.tone,
+            brand_context=brand_context,
+            additional_context=body.additional_context,
+            job_summary=job.plan_json.get("summary", ""),
+            word_limit=body.word_limit,
+        )
+    except AIProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     if body.save_to_step:
         plan = copy.deepcopy(job.plan_json)
