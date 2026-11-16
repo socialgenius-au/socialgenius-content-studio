@@ -1,5 +1,6 @@
 
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { assessProject } from "../learn/assessment";
 import { buildRecommendations } from "../learn/recommendations";
 import { useStudio } from "../../../contexts/StudioContext";
@@ -14,6 +15,7 @@ import { validCanvasBackdrop } from "../export/canvasBackdrop";
 import { buildExportInserts, buildExportLowerThirds, buildExportShapes, buildExportSubtitles, buildExportSubtitleStyle, exportNotices, missingInsertSources } from "../export/layerExport";
 
 export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
+  const navigate = useNavigate();
   const { canvasFormat, videoClips, additionalVideoClips, textOverlays, mediaOverlays, shapes, lowerThirds, subtitles, subtitleStyle, audioTracks, timeline } = useStudio();
   const activeClip = findActiveClip(videoClips, timeline.currentTime);
   const hasRealSrc = !!activeClip?.url;
@@ -182,6 +184,11 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
           <p><strong>{canExport ? "Ready for export checks" : "Not ready to export"}</strong></p>
           <p>No AI quality or audience performance score is available. These checks use this project's actual timeline and export safeguards.</p>
           <ul><li>{videoClips.length} timeline clips; {missingAssets} missing source assets</li><li>{missingInserts} B-roll inserts without sources</li><li>{textOverlays.length} text overlays; {audioTracks.length} separate audio tracks</li><li>{readiness.ok ? "Reconstruction export checks passed" : readiness.message}</li></ul>
+          {blueprintPlan && !readiness.ok && (
+            <button type="button" className="secondary" onClick={() => navigate(`/deconstructor/${blueprintPlan.referenceVideoId}`)}>
+              Return to Reconstructor — Fix Scene Footage
+            </button>
+          )}
           <h4>Project observations</h4>
           {assessment.findings.map(f => <div className="criteria" key={f.id} style={{ display: "block", overflowWrap: "anywhere", marginBottom: 12 }}><strong>{f.title} ({f.kind})</strong><p>{f.finding}</p><small>{f.reasoning}</small></div>)}
         </section>
