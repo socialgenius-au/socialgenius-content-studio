@@ -450,6 +450,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [promptGenCopied, setPromptGenCopied] = useState(false);
   // Four creative tools share one editor-side panel; no draft mutation or automatic AI calls.
   const [activeCreativeTask, setActiveCreativeTask] = useState<CreativeTask | null>(null);
+  const [enhanceAssetId, setEnhanceAssetId] = useState<number | null>(null);
+  const [enhanceBusy, setEnhanceBusy] = useState(false);
+  const [enhanceError, setEnhanceError] = useState<string | null>(null);
+  const [enhanceSuccess, setEnhanceSuccess] = useState<string | null>(null);
 
   // Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Wires up "Import External"
   // — previously a dead creation-mode button; `mode` (see the comment above `draftId` below)
@@ -5553,6 +5557,37 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     }
   };
 
+  const enhanceImageAsset = async () => {
+    if (enhanceBusy || enhanceAssetId === null) return;
+    const source = mediaAssets.find(asset => asset.id === enhanceAssetId && asset.file_type === "image");
+    if (!source) {
+      setEnhanceError("Select an uploaded image first.");
+      return;
+    }
+    setEnhanceBusy(true);
+    setEnhanceError(null);
+    setEnhanceSuccess(null);
+    try {
+      const response = await assetsApi.autoEnhance(source.id);
+      const blob = new Blob([response.data], { type: "image/png" });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `enhanced-${source.id}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Give the browser time to begin the download before revoking the URL.
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      setEnhanceSuccess("Enhanced PNG downloaded. Your original image and draft are unchanged.");
+    } catch (error) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setEnhanceError(typeof detail === "string" ? detail : "Enhancement failed. Your original image was not changed.");
+    } finally {
+      setEnhanceBusy(false);
+    }
+  };
+
   const aiToolsPanelBody = (
     <>
       <h3>✦ AI Tools</h3>
@@ -5578,9 +5613,29 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
           context={buildAiPromptContext()} />
       )}
       <h3>Quick Actions</h3>
-      {["Remove Background", "Auto Enhance"].map(x => (
-        <button key={x} type="button" title="Not yet connected to a generation backend">{x}</button>
-      ))}
+      <button type="button" disabled title="Background removal is not yet connected to a segmentation engine">
+        Remove Background (not available yet)
+      </button>
+      <label className="stack-field">
+        <span>Image to enhance</span>
+        <select value={enhanceAssetId ?? ""} disabled={enhanceBusy}
+          onChange={event => {
+            setEnhanceAssetId(event.target.value ? Number(event.target.value) : null);
+            setEnhanceError(null);
+            setEnhanceSuccess(null);
+          }}>
+          <option value="">Select an uploaded image</option>
+          {mediaAssets.filter(asset => asset.file_type === "image").map(asset => (
+            <option key={asset.id} value={asset.id}>{asset.original_filename}</option>
+          ))}
+        </select>
+      </label>
+      <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
+        onClick={() => void enhanceImageAsset()}>
+        {enhanceBusy ? "Enhancing…" : "Auto Enhance — Download PNG"}
+      </button>
+      {enhanceError && <p role="alert" className="inline-status error">{enhanceError}</p>}
+      {enhanceSuccess && <p role="status" className="inline-status">{enhanceSuccess}</p>}
       <button type="button" onClick={() => setResizePicker(v => !v)}>Resize for Platforms</button>
       {resizePicker && (
         <div className="resize-picker">
