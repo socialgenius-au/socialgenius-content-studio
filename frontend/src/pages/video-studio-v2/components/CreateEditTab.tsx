@@ -5597,10 +5597,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // Long scripts remain in the editable tool output rather than being dumped
   // wholesale over the video preview.
   const useCreativeTextInEditor = (content: string, _task: CreativeTask) => {
-    const firstLine = content.split(/\\r?\\n/).map(line => line.trim())
+    const firstLine = content.split(/\r?\n/).map(line => line.trim())
       .find(line => line.length > 0 && !/^[-*#]+$/.test(line));
     if (!firstLine) return;
-    const title = firstLine.replace(/^[-*#\\d.)\\s]+/, "").slice(0, 140).trim();
+    const title = firstLine.replace(/^[-*#\d.)\s]+/, "").slice(0, 140).trim();
     if (!title) return;
     const startTime = timeline.currentTime;
     const overlay: TextOverlay = {
