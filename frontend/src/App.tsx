@@ -67,7 +67,8 @@ function PageFallback() {
 function AppRoutes() {
   const { user, loading } = useAuth()
 
-  if (loading) return null
+  // Public recovery routes must render even if the backend is unavailable.
+  // Protected routes retain their own RequireAuth loading guard.
 
   return (
     <Routes>
