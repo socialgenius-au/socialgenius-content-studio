@@ -12,12 +12,13 @@ const TASKS: ReadonlyArray<{ key: CreativeTask; title: string; hint: string }> =
 
 export interface CreativeToolsPanelProps {
   context: Record<string, unknown>
+  initialTask?: CreativeTask
   onUseText?: (text: string, task: CreativeTask) => void
 }
 
 /** Does not write to drafts or trigger paid calls on mount. Every generation requires a click. */
-export default function CreativeToolsPanel({ context, onUseText }: CreativeToolsPanelProps) {
-  const [task, setTask] = useState<CreativeTask>('hook_generation')
+export default function CreativeToolsPanel({ context, initialTask = 'hook_generation', onUseText }: CreativeToolsPanelProps) {
+  const [task, setTask] = useState<CreativeTask>(initialTask)
   const [instruction, setInstruction] = useState('')
   const [result, setResult] = useState('')
   const [error, setError] = useState('')
