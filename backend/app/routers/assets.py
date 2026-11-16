@@ -15,6 +15,7 @@ from app.models.asset import Asset
 from app.models.user import User
 from app.schemas.asset import AssetResponse
 from app.services.media_storage import asset_file_present
+from app.services.image_enhancement import enhance_image, ImageProcessingError
 
 router = APIRouter()
 
@@ -65,6 +66,41 @@ async def download_asset(
         path=asset.file_path,
         filename=asset.original_filename,
         media_type=asset.mime_type,
+    )
+
+
+@router.post("/{asset_id}/auto-enhance")
+async def auto_enhance_asset(
+    asset_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Return a new enhanced PNG download; do not overwrite the original asset.
+
+    Only the authenticated asset owner can access this endpoint. This is a
+    deterministic image operation with no AI provider or paid API calls.
+    """
+    result = await db.execute(select(Asset).where(
+        Asset.id == asset_id, Asset.user_id == user.id
+    ))
+    asset = result.scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.file_type != "image":
+        raise HTTPException(status_code=422, detail="Auto Enhance requires an image asset")
+    path = Path(asset.file_path)
+    if not path.is_file():
+        raise HTTPException(status_code=410, detail="Original image file is missing")
+    if path.stat().st_size > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image exceeds 20 MB")
+    try:
+        enhanced = enhance_image(path.read_bytes())
+    except ImageProcessingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return StreamingResponse(
+        io.BytesIO(enhanced), media_type="image/png",
+        headers={"Content-Disposition": f'attachment; filename="enhanced-{asset_id}.png"',
+                 "Cache-Control": "no-store"},
     )
 
 
