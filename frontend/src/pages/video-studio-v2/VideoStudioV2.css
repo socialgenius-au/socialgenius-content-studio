@@ -486,3 +486,24 @@
   background: #0d1b1f;
   color: #f1fafb;
 }
+
+/* Image generation uses the same legible dark controls as creative text tools. */
+.editor-shell .ai-tools-panel section[aria-label="AI image generator"] textarea {
+  display: block;
+  width: 100%;
+  min-height: 90px;
+  box-sizing: border-box;
+  background: #0d1b1f;
+  color: #f1fafb;
+  border: 1px solid #34525a;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font: inherit;
+}
+.editor-shell .ai-tools-panel section[aria-label="AI image generator"] textarea::placeholder {
+  color: #9cb8bf;
+}
+.editor-shell .ai-tools-panel section[aria-label="AI image generator"] textarea:focus-visible {
+  outline: 2px solid #36d7dc;
+  outline-offset: 2px;
+}
