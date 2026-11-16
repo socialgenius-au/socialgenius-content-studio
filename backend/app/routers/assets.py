@@ -15,7 +15,7 @@ from app.models.asset import Asset
 from app.models.user import User
 from app.schemas.asset import AssetResponse
 from app.services.media_storage import asset_file_present
-from app.services.image_enhancement import enhance_image, remove_flat_background, ImageProcessingError
+from app.services.image_enhancement import enhance_image, remove_flat_background, remove_complex_background, ImageProcessingError
 
 router = APIRouter()
 
@@ -132,6 +132,38 @@ async def remove_flat_background_asset(
     return StreamingResponse(
         io.BytesIO(output), media_type="image/png",
         headers={"Content-Disposition": f'attachment; filename="no-background-{asset_id}.png"',
+                 "Cache-Control": "no-store"},
+    )
+
+
+@router.post("/{asset_id}/remove-complex-background")
+async def remove_complex_background_asset(
+    asset_id: int,
+    margin_percent: int = Query(8, ge=3, le=25),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Offline approximate GrabCut foreground extraction. Original stays unchanged."""
+    row = await db.execute(select(Asset).where(
+        Asset.id == asset_id, Asset.user_id == user.id
+    ))
+    asset = row.scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.file_type != "image":
+        raise HTTPException(status_code=422, detail="Background removal requires an image")
+    path = Path(asset.file_path)
+    if not path.is_file():
+        raise HTTPException(status_code=410, detail="Original image is missing")
+    if path.stat().st_size > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image exceeds 20 MB")
+    try:
+        output = remove_complex_background(path.read_bytes(), margin_percent=margin_percent)
+    except ImageProcessingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return StreamingResponse(
+        io.BytesIO(output), media_type="image/png",
+        headers={"Content-Disposition": f'attachment; filename="foreground-{asset_id}.png"',
                  "Cache-Control": "no-store"},
     )
 
