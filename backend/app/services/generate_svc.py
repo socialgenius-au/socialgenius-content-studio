@@ -3,6 +3,7 @@ import json
 
 from app.config import settings
 from app.services import ai as ai_service
+from app.services.creative_adaptation import creative_context
 from app.services.claude import get_client
 
 SYSTEM = """You are SocialGenius, a professional social media content writer.
@@ -160,12 +161,26 @@ async def generate_creative_tool(
         raise ValueError("Unsupported creative tool")
     if not instruction.strip():
         raise ValueError("Instruction must not be blank")
+    # Deconstructor -> Reconstructor: preserve observed timing and mechanisms, not
+    # the source business identity or claims. Invalid scene evidence is rejected.
+    scene_guidance = ""
+    if task in {"hook_generation", "script_generation"} and project_context.get("scenes"):
+        scene_guidance = creative_context(
+            task="hook" if task == "hook_generation" else "script",
+            source_business=str(project_context.get("source_business") or ""),
+            target_business=str(project_context.get("target_business") or ""),
+            topic=str(project_context.get("topic") or ""),
+            audience=str(project_context.get("audience") or ""),
+            objective=str(project_context.get("objective") or ""),
+            scenes=project_context["scenes"],
+            lessons=project_context.get("lessons") or (),
+        )
     context = json.dumps(project_context, ensure_ascii=False)
     brand = json.dumps(brand_context, ensure_ascii=False) if brand_context else "No verified brand profile"
     prompt = (
         f"Creator instruction: {instruction.strip()}\n"
         f"Verified brand context: {brand}\n"
-        f"Current project context: {context}\n"
+        f"Current project context: {context}\n"\n        f"Scene-aware adaptation guidance: {scene_guidance}\n"
         "Source reference is for creative structure only. Preserve target business identity. "
         "Accepted lessons are preferences, not measured performance."
     )
