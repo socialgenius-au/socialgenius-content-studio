@@ -175,7 +175,15 @@ async def generate_creative_tool(
             scenes=project_context["scenes"],
             lessons=project_context.get("lessons") or (),
         )
-    context = json.dumps(project_context, ensure_ascii=False)
+    # Do not leak dismissed lessons or raw source-specific creative material into
+    # the generation prompt. The structured scene guidance already contains only
+    # observed timing, mechanism and explicitly relevant accepted preferences.
+    safe_context = dict(project_context)
+    if scene_guidance:
+        for key in ("scenes", "lessons", "source_script", "source_claims",
+                    "source_transcript", "source_visuals"):
+            safe_context.pop(key, None)
+    context = json.dumps(safe_context, ensure_ascii=False)
     brand = json.dumps(brand_context, ensure_ascii=False) if brand_context else "No verified brand profile"
     prompt = (
         f"Creator instruction: {instruction.strip()}\n"
