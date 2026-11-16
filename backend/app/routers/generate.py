@@ -153,7 +153,7 @@ class CreativeToolRequest(BaseModel):
     task: str
     instruction: str = Field(min_length=1, max_length=4000)
     brand_id: int | None = None
-    context: dict = {}
+    context: dict = Field(default_factory=dict)
 
 
 class CreativeToolResponse(BaseModel):
