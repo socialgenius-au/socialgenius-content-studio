@@ -22,11 +22,11 @@ from tests.test_blueprint_reasoner import default_ctx, tile_payload
 def test_invalid_mechanism_section_mappings_are_rejected(mutate, message):
     payload = copy.deepcopy(tile_payload())
     mutate(payload)
-    decision = decision_from_payload(payload, prompt_version="v3")
+    decision = decision_from_payload(payload, reasoning_contract_version="v3")
     with pytest.raises(BlueprintReasoningError, match=message):
         validate_decision(decision, default_ctx())
 
 
 def test_existing_valid_cross_business_blueprint_is_accepted():
-    decision = decision_from_payload(tile_payload(), prompt_version="v3")
+    decision = decision_from_payload(tile_payload(), reasoning_contract_version="v3")
     validate_decision(decision, default_ctx())
