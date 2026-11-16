@@ -5557,7 +5557,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     }
   };
 
-  const enhanceImageAsset = async () => {
+  const processImageAsset = async (operation: "enhance" | "background") => {
     if (enhanceBusy || enhanceAssetId === null) return;
     const source = mediaAssets.find(asset => asset.id === enhanceAssetId && asset.file_type === "image");
     if (!source) {
@@ -5568,18 +5568,22 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setEnhanceError(null);
     setEnhanceSuccess(null);
     try {
-      const response = await assetsApi.autoEnhance(source.id);
+      const response = operation === "enhance"
+        ? await assetsApi.autoEnhance(source.id)
+        : await assetsApi.removeFlatBackground(source.id);
       const blob = new Blob([response.data], { type: "image/png" });
       const objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = objectUrl;
-      link.download = `enhanced-${source.id}.png`;
+      link.download = `${operation === "enhance" ? "enhanced" : "no-background"}-${source.id}.png`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       // Give the browser time to begin the download before revoking the URL.
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-      setEnhanceSuccess("Enhanced PNG downloaded. Your original image and draft are unchanged.");
+      setEnhanceSuccess(operation === "enhance"
+        ? "Enhanced PNG downloaded. Your original image and draft are unchanged."
+        : "Flat-colour background removal downloaded. Review the result; complex backgrounds are not supported.");
     } catch (error) {
       const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setEnhanceError(typeof detail === "string" ? detail : "Enhancement failed. Your original image was not changed.");
@@ -5613,9 +5617,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
           context={buildAiPromptContext()} />
       )}
       <h3>Quick Actions</h3>
-      <button type="button" disabled title="Background removal is not yet connected to a segmentation engine">
-        Remove Background (not available yet)
+      <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
+        title="Removes only a near-uniform background connected to the image corners; not AI subject segmentation"
+        onClick={() => void processImageAsset("background")}>
+        Remove Flat Background — Download PNG
       </button>
+      <p className="empty-hint">Background removal works on plain, near-uniform backgrounds only. Complex scenes need manual review.</p>
       <label className="stack-field">
         <span>Image to enhance</span>
         <select value={enhanceAssetId ?? ""} disabled={enhanceBusy}
@@ -5631,7 +5638,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         </select>
       </label>
       <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
-        onClick={() => void enhanceImageAsset()}>
+        onClick={() => void processImageAsset("enhance")}>
         {enhanceBusy ? "Enhancing…" : "Auto Enhance — Download PNG"}
       </button>
       {enhanceError && <p role="alert" className="inline-status error">{enhanceError}</p>}
