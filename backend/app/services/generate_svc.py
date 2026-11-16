@@ -188,7 +188,8 @@ async def generate_creative_tool(
     prompt = (
         f"Creator instruction: {instruction.strip()}\n"
         f"Verified brand context: {brand}\n"
-        f"Current project context: {context}\n"\n        f"Scene-aware adaptation guidance: {scene_guidance}\n"
+        f"Current project context: {context}\n"
+        f"Scene-aware adaptation guidance: {scene_guidance}\n"
         "Source reference is for creative structure only. Preserve target business identity. "
         "Accepted lessons are preferences, not measured performance."
     )
