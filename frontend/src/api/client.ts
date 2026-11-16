@@ -99,6 +99,20 @@ export const generateApi = {
   chat: (body: Record<string, unknown>) => api.post('/generate/chat', body),
   // Video Studio V2 AI Tools — AI Prompt Generator (first of six AI Tools cards).
   prompt: (body: Record<string, unknown>) => api.post('/generate/prompt', body),
+  // Provider-neutral creative generation. No call bypasses the backend spending kill switch.
+  creativeTool: (body: {
+    task: 'hook_generation' | 'script_generation' | 'caption_generation' | 'thumbnail_ideas'
+    instruction: string
+    brand_id?: number
+    context?: Record<string, unknown>
+  }) => api.post<{
+    content: string
+    provider: string
+    model: string
+    input_tokens: number | null
+    output_tokens: number | null
+    estimated_cost_usd: number | null
+  }>('/generate/creative-tool', body),
 }
 
 // Short-lived media token for /uploads links (the file routes are no longer public).
