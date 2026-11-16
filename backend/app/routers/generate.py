@@ -1,6 +1,8 @@
 import copy
+import io
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,6 +14,7 @@ from app.models.brand import Brand
 from app.models.job import Job
 from app.models.user import User
 from app.services import generate_svc
+from app.services.image_generation import ImageGenerationError, generate_image_png
 from app.services.ai import AIProviderError
 
 router = APIRouter()
@@ -147,6 +150,29 @@ async def generate_prompt(
     )
 
 
+
+
+class ImageGenerationRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/image")
+@limiter.limit("3/minute")
+async def generate_image(
+    request: Request,
+    body: ImageGenerationRequest,
+    user: User = Depends(current_user),
+):
+    """Generate one downloadable PNG after explicit request and spending authorization."""
+    try:
+        png = await generate_image_png(body.prompt)
+    except ImageGenerationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return StreamingResponse(
+        io.BytesIO(png), media_type="image/png",
+        headers={"Content-Disposition": 'attachment; filename="generated-image.png"',
+                 "Cache-Control": "no-store"},
+    )
 
 
 class CreativeToolRequest(BaseModel):
