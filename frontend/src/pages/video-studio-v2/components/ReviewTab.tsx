@@ -42,6 +42,19 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
     audioTrackCount: audioTracks.length, plan: blueprintPlan,
   });
   const recommendations = buildRecommendations(assessment);
+  // Group only identical scene-specific recommendations; preserve distinct advice and caveats.
+  const groupedRecommendations = recommendations.reduce<Array<{ key: string; basis: string; text: string; caveat: string; scenes: number[] }>>((groups, recommendation) => {
+    const match = recommendation.text.match(/\\bscene\\s+(\\d+)\\b/i);
+    const scene = match ? Number(match[1]) : null;
+    const normalized = scene == null ? recommendation.text : recommendation.text.replace(/\\bscene\\s+\\d+\\b/gi, "the affected scene");
+    const group = scene == null ? undefined : groups.find(item => item.text === normalized && item.basis === recommendation.basis && item.caveat === recommendation.caveat);
+    if (group && scene != null) {
+      if (!group.scenes.includes(scene)) group.scenes.push(scene);
+    } else {
+      groups.push({ key: recommendation.key, basis: recommendation.basis, text: normalized, caveat: recommendation.caveat, scenes: scene == null ? [] : [scene] });
+    }
+    return groups;
+  }, []);
   const readiness = checkReconstructionExport(textOverlays, videoClips, blueprintPlan?.scenes ?? []);
   const missingAssets = videoClips.filter(c => c.assetId == null).length;
   const missingInserts = missingInsertSources(additionalVideoClips);
@@ -163,16 +176,16 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
   return (
     <div className="stage-page review-page">
       <h2>Review your video and optimize for maximum impact.</h2>
-      <div className="review-grid">
-        <section className="card quality">
+      <div className="review-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", alignItems: "start", gap: 16 }}>
+        <section className="card quality" style={{ minWidth: 0, overflowWrap: "anywhere" }}>
           <h3>Production Readiness — Measured Checks</h3>
           <p><strong>{canExport ? "Ready for export checks" : "Not ready to export"}</strong></p>
           <p>No AI quality or audience performance score is available. These checks use this project's actual timeline and export safeguards.</p>
           <ul><li>{videoClips.length} timeline clips; {missingAssets} missing source assets</li><li>{missingInserts} B-roll inserts without sources</li><li>{textOverlays.length} text overlays; {audioTracks.length} separate audio tracks</li><li>{readiness.ok ? "Reconstruction export checks passed" : readiness.message}</li></ul>
           <h4>Project observations</h4>
-          {assessment.findings.map(f => <div className="criteria" key={f.id}><strong>{f.title} ({f.kind})</strong><p>{f.finding}</p><small>{f.reasoning}</small></div>)}
+          {assessment.findings.map(f => <div className="criteria" key={f.id} style={{ display: "block", overflowWrap: "anywhere", marginBottom: 12 }}><strong>{f.title} ({f.kind})</strong><p>{f.finding}</p><small>{f.reasoning}</small></div>)}
         </section>
-        <section className="card review-preview">
+        <section className="card review-preview" style={{ minWidth: 0 }}>
           <h3>Video Preview</h3>
           {hasRealSrc ? (
             <div className="video-preview review real" style={{ width: canvasBox.w, height: canvasBox.h }}>
@@ -187,15 +200,15 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
           <p>This preview shows the current source clip, not a rendered composite. Export the MP4 to inspect final overlays and audio.</p>
         </section>
 
-        <section className="mid-stack">
+        <section className="mid-stack" style={{ minWidth: 0 }}>
           <section className="card">
             <h3>Recommendations — Not Performance Predictions</h3>
-            {recommendations.length ? <ul className="check-list">{recommendations.map(r => <li key={r.key}><strong>{r.basis === "evidence" ? "Production observation" : "Hypothesis to test"}:</strong> {r.text}<p><small>{r.caveat}</small></p></li>)}</ul> : <p>No specific recommendations from the available checks.</p>}
+            {groupedRecommendations.length ? <ul className="check-list">{groupedRecommendations.map(r => <li key={r.key}><strong>{r.basis === "evidence" ? "Production observation" : "Hypothesis to test"}:</strong> {r.text}{r.scenes.length > 0 && <span> (Scene{r.scenes.length > 1 ? "s" : ""} {r.scenes.sort((a, b) => a - b).join(", ")})</span>}<p><small>{r.caveat}</small></p></li>)}</ul> : <p>No specific recommendations from the available checks.</p>}
             <p>Suggestions are advisory; nothing is automatically applied. Make changes in Create / Edit.</p>
           </section>
           <section className="card"><h3>Publishing</h3><p>Social publishing and scheduling are not connected here. Export the video to publish through your chosen platform.</p></section>
         </section>
-        <aside className="right-stack">
+        <aside className="right-stack" style={{ minWidth: 0 }}>
           <section className="card"><h3>Not yet measured</h3><p>Viewer retention, engagement, conversion, emotional impact and brand fit have not been measured. No numerical scores are shown.</p></section>
           <section className="card">
             <h3>Review Notes</h3>
