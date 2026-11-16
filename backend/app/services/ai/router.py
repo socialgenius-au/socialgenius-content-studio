@@ -31,14 +31,14 @@ async def generate_text(task: str, prompt: str) -> AIResult:
     generate_svc.generate_prompt), since the shape of "context" is different per task and the
     router has no business knowing it.
     """
+    task_config = TASK_CONFIGS.get(task)
+    if task_config is None:
+        raise AIProviderError(f"Unknown AI task '{task}' — no TaskConfig registered for it.")
+
     # Hard gate BEFORE provider selection or any external request. A configured API key
     # is never permission to spend. The operator must explicitly enable spending.
     if not settings.AI_SPEND_ENABLED:
         raise AIProviderError("AI spending is switched off (AI_SPEND_ENABLED=false). Nothing was sent.")
-
-    task_config = TASK_CONFIGS.get(task)
-    if task_config is None:
-        raise AIProviderError(f"Unknown AI task '{task}' — no TaskConfig registered for it.")
 
     provider_name = task_config.provider or settings.AI_TEXT_PROVIDER
     provider = _PROVIDERS.get(provider_name)
