@@ -25,6 +25,7 @@ import {
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
 import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, Shape, SubtitleSegment, SubtitleStyle, ReferenceVideo } from "../../../types";
 // C6 (Blueprint -> Video Studio V2): the active blueprint plan travels with every saved draft and is restored when one is opened.
+import CreativeToolsPanel, { type CreativeTask } from "./CreativeToolsPanel";
 import { getBlueprintPlan, setBlueprintPlan } from "../blueprint/blueprintPlanStore";
 import { defaultDraftNameFor, identityForSave, isStoredIdentity, resolveProjectIdentity } from "../identity/projectIdentity";
 import { getProjectContext, setProjectContext } from "../identity/projectContextStore";
@@ -447,6 +448,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [promptGenResult, setPromptGenResult] = useState<string | null>(null);
   const [promptGenError, setPromptGenError] = useState<string | null>(null);
   const [promptGenCopied, setPromptGenCopied] = useState(false);
+  // Four creative tools share one editor-side panel; no draft mutation or automatic AI calls.
+  const [activeCreativeTask, setActiveCreativeTask] = useState<CreativeTask | null>(null);
 
   // Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Wires up "Import External"
   // — previously a dead creation-mode button; `mode` (see the comment above `draftId` below)
@@ -5553,21 +5556,26 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const aiToolsPanelBody = (
     <>
       <h3>✦ AI Tools</h3>
-      {[
-        ["AI Prompt Generator", "Generate on-brand prompts"],
-        ["AI Image Generator", "Create custom images"],
-        ["AI Hook Suggestion", "Get better hooks"],
-        ["AI Script Writer", "Write engaging scripts"],
-        ["AI Caption Generator", "Create captions & hashtags"],
-        ["AI Thumbnail Ideas", "Generate thumbnails"],
-      ].map(([t, d]) =>
-        // AI Prompt Generator only, first of these six — the other five stay exactly as they
-        // were (dead, honestly labeled) until each is implemented and approved individually.
-        t === "AI Prompt Generator" ? (
-          <button key={t} type="button" onClick={() => setPromptGenOpen(true)}><b>{t}</b><small>{d}</small></button>
-        ) : (
-          <button key={t} type="button" title="Not yet connected to a generation backend"><b>{t}</b><small>{d}</small></button>
-        )
+      <button type="button" onClick={() => setPromptGenOpen(true)}>
+        <b>AI Prompt Generator</b><small>Generate on-brand prompts</small>
+      </button>
+      {([
+        ["hook_generation", "AI Hook Suggestion", "Get better hooks"],
+        ["script_generation", "AI Script Writer", "Write engaging scripts"],
+        ["caption_generation", "AI Caption Generator", "Create captions & hashtags"],
+        ["thumbnail_ideas", "AI Thumbnail Ideas", "Generate thumbnail concepts"],
+      ] as const).map(([task, title, description]) => (
+        <button key={task} type="button" aria-expanded={activeCreativeTask === task}
+          onClick={() => setActiveCreativeTask(current => current === task ? null : task)}>
+          <b>{title}</b><small>{description}</small>
+        </button>
+      ))}
+      <button type="button" disabled title="Image generation is not yet connected to an image provider">
+        <b>AI Image Generator</b><small>Not available yet</small>
+      </button>
+      {activeCreativeTask && (
+        <CreativeToolsPanel key={activeCreativeTask} initialTask={activeCreativeTask}
+          context={buildAiPromptContext()} />
       )}
       <h3>Quick Actions</h3>
       {["Remove Background", "Auto Enhance"].map(x => (
