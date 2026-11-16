@@ -38,7 +38,7 @@ async def generate_image_png(prompt: str) -> bytes:
         response.raise_for_status()
         encoded = response.json()["data"][0]["b64_json"]
         output = base64.b64decode(encoded, validate=True)
-        if not output.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        if not output.startswith(bytes((137, 80, 78, 71, 13, 10, 26, 10))):
             raise ImageGenerationError("Image provider did not return a PNG.")
         if len(output) > 20 * 1024 * 1024:
             raise ImageGenerationError("Generated image exceeds the 20 MB download limit.")
