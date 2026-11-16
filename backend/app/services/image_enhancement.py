@@ -99,3 +99,53 @@ def remove_flat_background(image_bytes: bytes, *, tolerance: int = 24) -> bytes:
     output = BytesIO()
     image.save(output, format="PNG", optimize=True)
     return output.getvalue()
+
+
+def remove_complex_background(image_bytes: bytes, *, margin_percent: int = 8) -> bytes:
+    """Attempt foreground extraction with OpenCV GrabCut, without paid AI.
+
+    Assumes the subject is central and background occupies the outer margin.
+    Results are approximate, especially with hair, transparent objects or
+    subjects touching the image edge. Always review the downloaded PNG.
+    """
+    import cv2
+    import numpy as np
+
+    if not image_bytes or len(image_bytes) > MAX_INPUT_BYTES:
+        raise ImageProcessingError("Image is empty or exceeds 20 MB")
+    if not 3 <= margin_percent <= 25:
+        raise ImageProcessingError("Margin must be between 3 and 25 percent")
+    try:
+        with Image.open(BytesIO(image_bytes)) as source:
+            if source.width * source.height > 6_000_000:
+                raise ImageProcessingError("Complex background removal supports up to 6 megapixels")
+            image = ImageOps.exif_transpose(source).convert("RGBA")
+            image.load()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        if isinstance(exc, ImageProcessingError):
+            raise
+        raise ImageProcessingError("Unsupported or damaged image") from exc
+    width, height = image.size
+    if min(width, height) < 40:
+        raise ImageProcessingError("Image must be at least 40 pixels on each side")
+    x_margin = max(2, width * margin_percent // 100)
+    y_margin = max(2, height * margin_percent // 100)
+    rect = (x_margin, y_margin, width - 2 * x_margin, height - 2 * y_margin)
+    rgb = np.asarray(image.convert("RGB"))
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    mask = np.zeros((height, width), np.uint8)
+    background_model = np.zeros((1, 65), np.float64)
+    foreground_model = np.zeros((1, 65), np.float64)
+    try:
+        cv2.grabCut(bgr, mask, rect, background_model, foreground_model, 3, cv2.GC_INIT_WITH_RECT)
+    except cv2.error as exc:
+        raise ImageProcessingError("Unable to isolate foreground in this image") from exc
+    alpha = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
+    # Respect existing transparency rather than turning transparent pixels opaque.
+    original_alpha = np.asarray(image.getchannel("A"), dtype=np.uint8)
+    alpha = np.minimum(alpha, original_alpha)
+    result = image.copy()
+    result.putalpha(Image.fromarray(alpha, mode="L"))
+    output = BytesIO()
+    result.save(output, format="PNG", optimize=True)
+    return output.getvalue()
