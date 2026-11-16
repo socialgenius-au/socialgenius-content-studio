@@ -147,6 +147,61 @@ async def generate_prompt(
     )
 
 
+
+
+class CreativeToolRequest(BaseModel):
+    task: str
+    instruction: str
+    brand_id: int | None = None
+    context: dict = {}
+
+
+class CreativeToolResponse(BaseModel):
+    content: str
+    provider: str
+    model: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    estimated_cost_usd: float | None = None
+
+
+@router.post("/creative-tool", response_model=CreativeToolResponse)
+@limiter.limit("20/minute")
+async def generate_creative_tool(
+    request: Request,
+    body: CreativeToolRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    allowed = {"hook_generation", "script_generation", "caption_generation", "thumbnail_ideas"}
+    if body.task not in allowed:
+        raise HTTPException(status_code=422, detail="Unsupported creative tool")
+    if not body.instruction.strip():
+        raise HTTPException(status_code=422, detail="Instruction is required")
+    brand_context = None
+    if body.brand_id is not None:
+        row = await db.execute(
+            select(Brand).where(Brand.id == body.brand_id, Brand.user_id == user.id)
+        )
+        brand = row.scalar_one_or_none()
+        if brand is None:
+            raise HTTPException(status_code=404, detail="Brand not found")
+        brand_context = {
+            "name": brand.name, "colors": brand.colors,
+            "fonts": brand.fonts, "tone_of_voice": brand.tone_of_voice,
+        }
+    try:
+        result = await generate_svc.generate_creative_tool(
+            body.task, body.instruction, brand_context, body.context
+        )
+    except AIProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return CreativeToolResponse(
+        content=result.text, provider=result.provider, model=result.model,
+        input_tokens=result.input_tokens, output_tokens=result.output_tokens,
+        estimated_cost_usd=result.estimated_cost_usd,
+    )
+
 @router.post("/", response_model=GenerateResponse)
 @limiter.limit("30/minute")
 async def generate(
