@@ -1,7 +1,7 @@
 import copy
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -42,7 +42,7 @@ class ChatRequest(BaseModel):
     prompt: str
     brand_id: int | None = None
     job_id: int | None = None
-    context: dict = {}
+    context: dict = Field(default_factory=dict)
 
 
 class ChatResponse(BaseModel):
@@ -84,9 +84,9 @@ async def chat(
 # real Brand row exists for this user (there currently is none at all in this environment), which
 # generate_svc.generate_prompt already treats as "no brand context to include", never fabricated.
 class PromptGeneratorRequest(BaseModel):
-    instruction: str
+    instruction: str = Field(min_length=1, max_length=4000)
     brand_id: int | None = None
-    context: dict = {}
+    context: dict = Field(default_factory=dict)
 
 
 class PromptGeneratorResponse(BaseModel):
@@ -151,7 +151,7 @@ async def generate_prompt(
 
 class CreativeToolRequest(BaseModel):
     task: str
-    instruction: str
+    instruction: str = Field(min_length=1, max_length=4000)
     brand_id: int | None = None
     context: dict = {}
 
