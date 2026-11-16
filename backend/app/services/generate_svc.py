@@ -149,3 +149,24 @@ async def chat_reply(prompt: str, brand_context: dict | None, context: dict) -> 
         "needs_approval": approval_summary is not None,
         "approval_summary": approval_summary,
     }
+
+
+async def generate_creative_tool(
+    task: str, instruction: str, brand_context: dict | None, project_context: dict
+) -> ai_service.AIResult:
+    """Provider-neutral creative tools. The provider enforces the spending kill switch."""
+    allowed = {"hook_generation", "script_generation", "caption_generation", "thumbnail_ideas"}
+    if task not in allowed:
+        raise ValueError("Unsupported creative tool")
+    if not instruction.strip():
+        raise ValueError("Instruction must not be blank")
+    context = json.dumps(project_context, ensure_ascii=False)
+    brand = json.dumps(brand_context, ensure_ascii=False) if brand_context else "No verified brand profile"
+    prompt = (
+        f"Creator instruction: {instruction.strip()}\\n"
+        f"Verified brand context: {brand}\\n"
+        f"Current project context: {context}\\n"
+        "Source reference is for creative structure only. Preserve target business identity. "
+        "Accepted lessons are preferences, not measured performance."
+    )
+    return await ai_service.generate_text(task, prompt)
