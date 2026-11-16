@@ -91,9 +91,20 @@ def build_creative_intelligence(anatomy: dict, mechanisms: dict | None) -> dict:
     status = mech.get("status") or "not_run"
     entries = [mechanism_entry(m, anatomy) for m in (mech.get("mechanisms") or [])] if status in ("current", "stale") else []
     rec = video.get("reconciliation") or {}
-    contradictions = [{"topic": i.get("topic"), "status": i.get("status"), "sections": i.get("sections"), "note": i.get("note"), "authority": i.get("authority")} for i in rec.get("items") or [] if i.get("status") != "established"]
+    contradictions_by_key = {}
+    sources = [{"topic": i.get("topic"), "status": i.get("status"), "sections": i.get("sections"), "note": i.get("note"), "authority": i.get("authority")} for i in rec.get("items") or [] if i.get("status") != "established"]
     hp = video.get("hook_profile")
-    contradictions += [{"topic": c["topic"], "status": c["status"], "sections": [1], "note": c["note"], "authority": "hook profile"} for c in (hp or {}).get("contradictions") or []]
+    sources += [{"topic": c["topic"], "status": c["status"], "sections": [1], "note": c["note"], "authority": "hook profile"} for c in (hp or {}).get("contradictions") or []]
+    for item in sources:
+        key = (item.get("topic"), item.get("status"), item.get("note"), item.get("authority"))
+        if key not in contradictions_by_key:
+            contradictions_by_key[key] = {**item, "sections": list(item.get("sections") or [])}
+        else:
+            existing = contradictions_by_key[key]["sections"]
+            for section in item.get("sections") or []:
+                if section not in existing:
+                    existing.append(section)
+    contradictions = list(contradictions_by_key.values())
     limitations = list(mech.get("overall_limitations") or []) + list((video.get("structure") or {}).get("uncertainty") or [])
     prov = anatomy.get("provenance") or {}
     return {
