@@ -2,6 +2,7 @@
 // from every MP4. These two pure mappers turn the editor's own state into the request fields the existing backend schema already accepts (ExportShape / ExportLowerThird).
 // Percent values (x, y, width, height) are the same unit on both sides; nothing here rescales anything.
 import type { LowerThird, Shape, SubtitleSegment, SubtitleStyle, VideoClip } from '../../../types'
+import { isBehindFootage } from './footageGeometry'
 
 /** The box a lower third gets when it has none of its own. The same numbers as CreateEditTab's DEFAULT_LOWER_THIRD_BOX (a wiring test pins them to its source). */
 export const DEFAULT_LOWER_THIRD_BOX = { x: 5, y: 78, width: 55, height: 14 } as const
@@ -21,6 +22,8 @@ export interface ExportShapeItem {
   border_radius: number
   full_width: boolean
   order: number
+  /** Option C: present (true) only for a shape marked "behind footage"; absent otherwise, so every other request is unchanged. */
+  behind_footage?: boolean
 }
 
 export interface ExportLowerThirdItem {
@@ -49,6 +52,7 @@ export function buildExportShapes(shapes: readonly Shape[]): ExportShapeItem[] {
         fill_color: s.fillColor, opacity: clamp01(finite(s.opacity) ? s.opacity : 1),
         border_color: border > 0 ? s.borderColor ?? '#000000' : null,            // the editor draws a border only when it has a width, in black unless told otherwise
         border_width: border, border_radius: finite(s.borderRadius) && s.borderRadius > 0 ? s.borderRadius : 0, full_width: s.fullWidth === true, order: s.order ?? 0,
+        ...(isBehindFootage(s) ? { behind_footage: true } : {}),
       }
     })
 }

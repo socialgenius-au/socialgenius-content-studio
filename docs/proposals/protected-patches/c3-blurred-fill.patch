@@ -1,0 +1,370 @@
+diff --git a/backend/app/routers/video_export.py b/backend/app/routers/video_export.py
+index 35b323c..2692f13 100644
+--- a/backend/app/routers/video_export.py
++++ b/backend/app/routers/video_export.py
+@@ -240,6 +240,7 @@ async def export_project(
+         "audio_tracks": audio_tracks,
+         "canvas_background": body.canvas_background,
+         "transition_edge_policy": body.transition_edge_policy,
++        "canvas_backdrop": body.canvas_backdrop,
+     }
+ 
+     try:
+diff --git a/backend/app/schemas/video_export.py b/backend/app/schemas/video_export.py
+index 9d8ebb8..9867ea7 100644
+--- a/backend/app/schemas/video_export.py
++++ b/backend/app/schemas/video_export.py
+@@ -239,3 +239,5 @@ class ExportProjectRequest(BaseModel):
+     # Opt-in: what a dissolve does at a join where a clip has no spare source frames. "shorten" (default) = the dissolve is shortened (never invents a frame); "hold_incoming" = the incoming
+     # clip's first frame is held while it fades in, so the dissolve keeps its full length. Nothing else about the timeline changes.
+     transition_edge_policy: Literal["shorten", "hold_incoming"] = "shorten"
++    # C3: what fills the bars of a letterboxed ("fit") clip. "color" (default) = canvas_background / black, exactly as before; "blur" = the same clip, scaled to cover the canvas and blurred.
++    canvas_backdrop: Literal["color", "blur"] = "color"
+diff --git a/backend/app/services/ffmpeg_svc.py b/backend/app/services/ffmpeg_svc.py
+index 0b8cfaf..0d21870 100644
+--- a/backend/app/services/ffmpeg_svc.py
++++ b/backend/app/services/ffmpeg_svc.py
+@@ -507,6 +507,21 @@ def _atempo_chain(speed: float) -> str:
+     return f"atempo={speed}"
+ 
+ 
++BACKDROP_BLUR_RADIUS = 20       # boxblur radius in pixels at the canvas size; 2 passes
++BACKDROP_BLUR_PASSES = 2
++
++
++def blurred_fit_filter(canvas_w: int, canvas_h: int) -> str:
++    """Pure: the filtergraph for a "fit" clip over a blurred copy of itself. Both copies are scaled onto the canvas; the backdrop covers it (cropping the overflow), the foreground fits inside it."""
++    r, n = BACKDROP_BLUR_RADIUS, BACKDROP_BLUR_PASSES
++    return (
++        f"split[bd][fg];"
++        f"[bd]scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase,crop={canvas_w}:{canvas_h},boxblur={r}:{n}[bdb];"
++        f"[fg]scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease[fgs];"
++        f"[bdb][fgs]overlay=(W-w)/2:(H-h)/2,setsar=1"
++    )
++
++
+ async def build_clip_segment(
+     input_path: str,
+     trim_in: float,
+@@ -525,6 +540,7 @@ async def build_clip_segment(
+     crop_x: float = 50.0,
+     crop_y: float = 50.0,
+     pad_color: str = "black",
++    backdrop: str = "color",
+ ) -> Path:
+     """One clip's [trimIn, trimIn+sourceDuration) source range → a single normalized segment:
+     speed-adjusted, colour/brightness/contrast/saturation applied, scaled onto the project's
+@@ -575,7 +591,10 @@ async def build_clip_segment(
+         vf_parts.append(f"eq=brightness={b:.4f}:contrast={c:.4f}:saturation={s:.4f}")
+     if speed != 1:
+         vf_parts.append(f"setpts=PTS/{speed},fps=30")        # re-sample to the output rate HERE: left to the output's -r, the first frames of a sped-up clip lagged by one output frame
+-    if fit_mode == "fit":
++    if fit_mode == "fit" and backdrop == "blur":
++        # C3: the whole frame stays visible (as "fit"), but the bars show the SAME clip scaled to cover the canvas and blurred instead of a flat colour.
++        vf_parts.append(blurred_fit_filter(canvas_w, canvas_h))
++    elif fit_mode == "fit":
+         vf_parts.append(
+             f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease,"
+             f"pad={canvas_w}:{canvas_h}:(ow-iw)/2:(oh-ih)/2:color={pad_color},setsar=1"
+@@ -980,7 +999,7 @@ def _stack_runs(project: dict) -> list[tuple[str, list[dict]]]:
+     return runs
+ 
+ 
+-async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, user_id: int, pad_color: str = "black") -> tuple[Path, list[str], int]:
++async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, user_id: int, pad_color: str = "black", backdrop: str = "color") -> tuple[Path, list[str], int]:
+     """One CONTIGUOUS run of V1 clips (each starts where the previous ends) -> its base video, the intermediate files to clean up afterwards, and its exact length in frames. This is the
+     whole of what render_project always did for the V1 timeline; a project without a gap is exactly one run."""
+ 
+@@ -1024,7 +1043,7 @@ async def _render_clip_run(clips: list[dict], cw: int, ch: int, policy: str, use
+             c["path"], cp.source_trim_in, cp.source_duration, c["speed"],
+             c["color_grade"], c["brightness"], c["contrast"], c["saturation"],
+             cw, ch, keep_audio=keep_audio, volume=clip_volume, user_id=user_id,
+-            fit_mode=c.get("fit_mode", "fit"), crop_x=c.get("crop_x", 50.0), crop_y=c.get("crop_y", 50.0), pad_color=pad_color,
++            fit_mode=c.get("fit_mode", "fit"), crop_x=c.get("crop_x", 50.0), crop_y=c.get("crop_y", 50.0), pad_color=pad_color, backdrop=backdrop,
+         )
+         segment_paths.append(str(seg))
+ 
+@@ -1108,13 +1127,14 @@ async def render_project(project: dict, user_id: int) -> Path:
+     policy = project.get("transition_edge_policy", "shorten")
+     bg = project.get("canvas_background")
+     pad_color = "0x" + bg[1:] if isinstance(bg, str) and len(bg) == 7 and bg.startswith("#") else "black"
++    backdrop = "blur" if project.get("canvas_backdrop") == "blur" else "color"
+ 
+     # V1 clips -> contiguous runs. A gap between runs (or before the first clip) is black video and silence, exactly as the editor shows it; a project without a gap is one run and takes
+     # the unchanged path.
+     runs = timeline_plan.split_runs(clips)
+     lead = timeline_plan.to_frames(clips[0]["start_time"])
+     if len(runs) == 1 and lead < 1:
+-        base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id, pad_color)
++        base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id, pad_color, backdrop)
+     else:
+         parts: list[tuple[str | None, int]] = []
+         run_intermediates: list[str] = []
+@@ -1123,7 +1143,7 @@ async def render_project(project: dict, user_id: int) -> Path:
+             gap = timeline_plan.to_frames(run[0]["start_time"]) - pos
+             if gap >= 1:
+                 parts.append((None, gap)); pos += gap
+-            rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id, pad_color)
++            rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id, pad_color, backdrop)
+             parts.append((str(rb), frames)); pos += frames
+             run_intermediates += im + [str(rb)]
+         base = await concat_runs_with_gaps(parts, cw, ch, user_id, pad_color)
+diff --git a/backend/tests/test_canvas_backdrop.py b/backend/tests/test_canvas_backdrop.py
+new file mode 100644
+index 0000000..5dd33f5
+--- /dev/null
++++ b/backend/tests/test_canvas_backdrop.py
+@@ -0,0 +1,80 @@
++"""(ships with the C3 patch) The optional blurred backdrop behind a letterboxed ("fit") clip: request schema, the pure filter, and a real ffmpeg render."""
++import asyncio
++import subprocess
++from pathlib import Path
++
++import numpy as np
++import pytest
++from pydantic import ValidationError
++
++from app.schemas.video_export import ExportProjectRequest
++from app.services import ffmpeg_svc
++from test_timeline_sync_render import FPS, H, W, _clip, _frames, sources  # noqa: F401  (sources is a fixture)
++
++USER_ID = 996
++
++
++def _req(**kw):
++    return ExportProjectRequest(canvas_width=W, canvas_height=H, video_clips=[], **kw)
++
++
++def test_the_request_defaults_to_a_colour_backdrop_and_accepts_only_the_two_values():
++    assert _req().canvas_backdrop == "color" and _req(canvas_backdrop="blur").canvas_backdrop == "blur"
++    for bad in ("Blur", "gaussian", "blur; drawtext=x", ""):
++        with pytest.raises(ValidationError):
++            _req(canvas_backdrop=bad)
++
++
++def test_the_filter_keeps_the_whole_frame_and_covers_the_canvas_with_a_blurred_copy():
++    f = ffmpeg_svc.blurred_fit_filter(1080, 1920)
++    assert "force_original_aspect_ratio=increase,crop=1080:1920,boxblur=" in f and "force_original_aspect_ratio=decrease" in f and f.endswith("overlay=(W-w)/2:(H-h)/2,setsar=1")
++
++
++def _render(clips, tmp_path, tag, **extra):
++    project = {"canvas_width": W, "canvas_height": H, "video_clips": clips, "text_overlays": [], "shapes": [], "audio_tracks": [], "subtitle_style": {}, **extra}
++    out = asyncio.run(ffmpeg_svc.render_project(project, USER_ID))
++    dst = tmp_path / f"{tag}.mp4"
++    dst.write_bytes(Path(out).read_bytes())
++    return _frames(str(dst))
++
++
++def _wide(sources, tmp_path):
++    p = tmp_path / "wide.mp4"
++    subprocess.run([ffmpeg_svc.FFMPEG_BIN, "-y", "-v", "error", "-i", sources["A"], "-vf", f"scale={W}:{W // 2},setsar=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "copy", "-t", "2", str(p)], check=True)
++    return str(p)
++
++
++def _detail(tmp_path):
++    """a wide clip full of sharp detail (colour bars, grid, text), so blurred and sharp are easy to tell apart"""
++    p = tmp_path / "detail.mp4"
++    subprocess.run([ffmpeg_svc.FFMPEG_BIN, "-y", "-v", "error", "-f", "lavfi", "-i", f"testsrc=size={W}x{W // 2}:rate=30:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", str(p)], check=True)
++    return str(p)
++
++
++def test_the_bars_show_a_blurred_copy_of_the_clip_and_the_picture_in_the_middle_is_unchanged(sources, tmp_path):
++    clip = _clip(_detail(tmp_path), 0, 2, trim=0.0)
++    plain = _render([clip], tmp_path, "plain")
++    blur = _render([clip], tmp_path, "blur", canvas_backdrop="blur")
++    top = slice(int(H * 0.02), int(H * 0.18))
++    centre = slice(int(H * 0.45), int(H * 0.55))
++    assert plain.shape == blur.shape
++    assert plain[10, 0, top, :].mean() < 20                                           # colour backdrop: black bars as before
++    assert blur[10, 0, top, :].mean() > 40                                            # blurred backdrop: the clip's own light/colour fills the bar
++    assert blur[10, 0, top, :].std() > 8                                              # ... and it is the clip's picture, not one flat colour
++    assert abs(float(np.mean(np.abs(blur[10, 0, centre, :].astype(int) - plain[10, 0, centre, :].astype(int))))) < 3     # the foreground picture is the same in both
++    # blurred = smooth: neighbouring pixels in the bar differ far less than in the sharp picture
++    assert np.abs(np.diff(blur[10, 0, top, :].astype(int), axis=1)).mean() * 3 < np.abs(np.diff(plain[10, 0, centre, :].astype(int), axis=1)).mean()
++
++
++def test_a_clip_that_already_fills_the_canvas_is_unaffected_by_the_backdrop(sources, tmp_path):
++    clip = {**_clip(sources["A"], 0, 2, trim=0.0), "fit_mode": "fill"}
++    a = _render([clip], tmp_path, "fa")
++    b = _render([clip], tmp_path, "fb", canvas_backdrop="blur")
++    assert a.shape == b.shape and (a == b).all()
++
++
++def test_without_the_field_the_render_is_unchanged(sources, tmp_path):
++    clips = [_clip(sources["A"], 0, 2, trim=0.0)]
++    a = _render(clips, tmp_path, "n1")
++    b = _render(clips, tmp_path, "n2", canvas_backdrop="color")
++    assert a.shape == b.shape and (a == b).all()
+diff --git a/frontend/src/contexts/StudioContext.tsx b/frontend/src/contexts/StudioContext.tsx
+index 3880635..6df64b2 100644
+--- a/frontend/src/contexts/StudioContext.tsx
++++ b/frontend/src/contexts/StudioContext.tsx
+@@ -32,6 +32,8 @@ export interface CanvasFormatState {
+   height: number
+   /** Optional "#rrggbb" behind a letterboxed clip and in timeline gaps (preview and export). Absent = black. */
+   background?: string
++  /** C3: "blur" = the bars of a letterboxed (Fit) clip show a blurred copy of the clip instead of the plain colour. Absent = plain colour, as before. */
++  backdrop?: 'blur'
+ }
+ 
+ const DEFAULT_CANVAS_FORMAT: CanvasFormatState = {
+diff --git a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
+index 62519a9..7e40636 100644
+--- a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
++++ b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
+@@ -2,6 +2,7 @@
+ import { validCanvasBackground } from "../export/canvasBackground";
+ import { clipFadeOpacity } from "../export/transitionFade";
+ import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissolveWindow";
++import { previewBlurPx, validCanvasBackdrop } from "../export/canvasBackdrop";
+ import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+ import { useStudio } from "../../../contexts/StudioContext";
+ import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
+@@ -1037,7 +1038,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+     const label = `${CANVAS_PLATFORMS.find(p => p.key === platformKey)?.label ?? platformKey} - ${placement.label}`;
+     const next: CanvasFormatState = {
+       platformKey, placementKey: placement.key, label,
+-      ratio: placement.ratio, width: placement.width, height: placement.height, background: canvasFormat.background,
++      ratio: placement.ratio, width: placement.width, height: placement.height, background: canvasFormat.background, backdrop: canvasFormat.backdrop,
+     };
+     setCanvasFormat(next);
+     addCanvasVersion(next);
+@@ -1054,7 +1055,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+     setCustomW(w); setCustomH(h);
+     const next: CanvasFormatState = {
+       platformKey: "website", placementKey: "custom", label: "Website / General - Custom Size",
+-      ratio: "CUSTOM", width: w, height: h, background: canvasFormat.background,
++      ratio: "CUSTOM", width: w, height: h, background: canvasFormat.background, backdrop: canvasFormat.backdrop,
+     };
+     setCanvasFormat(next);
+     addCanvasVersion(next);
+@@ -1252,6 +1253,25 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+   // same blend with no change of stacking at the join. It is purely reactive to timeline.currentTime / playing, exactly like the V2 insert and A1 audio effects above: it never drives the master
+   // clock, never reads the active clip's element, and mounts only while a dissolve is within a second of starting, so a project without a dissolve renders and plays exactly as before. Audio is
+   // untouched (the active clip's own sound plays as before; the exporter's audio crossfade is not previewed). Whip pan and zoom punch are not previewed. ----
++  // ---- C3 (blurred backdrop): when the canvas backdrop is "blur" and the active clip is letterboxed (Fit), a muted copy of that same clip sits BEHIND it, covering the canvas and blurred, so the bars show the
++  // video's own light and colour -- the picture the exporter builds with ffmpeg (backend blurred_fit_filter). Same reactive pattern as the D1 block: it follows timeline.currentTime / playing and never drives them. ----
++  const backdropClip = hasRealSrc && validCanvasBackdrop(canvasFormat.backdrop) && activeVideoClip && activeVideoClip.fitMode !== "fill" ? activeVideoClip : null;
++  const backdropVideoRef = useRef<HTMLVideoElement>(null);
++  useEffect(() => {
++    const vid = backdropVideoRef.current;
++    if (!vid || !backdropClip) return;
++    const target = sourceTimeAt(backdropClip, timeline.currentTime);
++    const apply = () => {
++      if (Math.abs(vid.currentTime - target) > (timeline.playing ? 0.3 : 0.05)) vid.currentTime = target;
++      vid.playbackRate = backdropClip.speed || 1;
++      if (timeline.playing) vid.play().catch(() => {});
++      else vid.pause();
++    };
++    if (vid.readyState >= 1) apply();
++    else vid.addEventListener("loadedmetadata", apply, { once: true });
++    return () => vid.removeEventListener("loadedmetadata", apply);
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [timeline.currentTime, timeline.playing, backdropClip?.id]);
+   const blendWindows = useMemo(() => planBlendWindows(videoClips), [videoClips]);
+   const blendRaw = hasRealSrc ? blendPreviewAt(blendWindows, timeline.currentTime) : null;
+   const blendPreview = blendRaw && activeVideoClip?.id === (blendRaw.phase === "before" ? blendRaw.window.outId : blendRaw.window.inId) ? blendRaw : null;
+@@ -5569,7 +5589,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+             key={`${v.platformKey}|${v.placementKey}`}
+             type="button"
+             className={v.platformKey === canvasFormat.platformKey && v.placementKey === canvasFormat.placementKey ? "active" : ""}
+-            onClick={() => setCanvasFormat({ ...v, background: canvasFormat.background })}
++            onClick={() => setCanvasFormat({ ...v, background: canvasFormat.background, backdrop: canvasFormat.backdrop })}
+             title={`${v.width}×${v.height}`}
+           >
+             {v.label} ({v.ratio})
+@@ -5596,6 +5616,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+               <input type="color" data-testid="canvas-background" value={validCanvasBackground(canvasFormat.background) ?? "#000000"} onChange={e => setCanvasFormat({ ...canvasFormat, background: e.target.value })} />
+               <button type="button" disabled={!canvasFormat.background} onClick={() => setCanvasFormat({ ...canvasFormat, background: undefined })}>Reset to black</button>
+             </label>
++            <label className="canvas-bg-control" title="What fills the bars of a letterboxed (Fit) video: the colour, or a blurred copy of the video itself. Blur makes exports take longer. The preview shows the active clip's backdrop only: during a dissolve the other clip's backdrop is not drawn (the MP4 has it).">
++              <select data-testid="canvas-backdrop" value={canvasFormat.backdrop ?? "color"} onChange={e => setCanvasFormat({ ...canvasFormat, backdrop: validCanvasBackdrop(e.target.value) })}>
++                <option value="color">Bars: colour</option>
++                <option value="blur">Bars: blurred video</option>
++              </select>
++            </label>
+             {/* STEP 7 (Platform Canvas / Full-Screen Video Acceptance): was a fully dead
+                 placeholder button (no onClick at all) — the same "decorative control" pattern
+                 already found and fixed for the preview mute speaker and Undo/Redo before this
+@@ -5698,6 +5724,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+                 onClick={e => { e.stopPropagation(); setSelectedElement({ type: "clip", lane: "video", id: activeVideoClip!.id }); }}
+                 title={`${activeVideoClip!.name || "Video"} — click to select`}
+               >
++                {backdropClip && (
++                  <video ref={backdropVideoRef} key={backdropClip.id} src={backdropClip.url} className="real-video-el" data-testid="canvas-backdrop-video" muted playsInline preload="auto" draggable={false}
++                    style={{
++                      position: "absolute", inset: 0, pointerEvents: "none", objectFit: "cover", transform: "scale(1.12)",
++                      filter: `${getMediaFilter(backdropClip) ?? ""} blur(${previewBlurPx(canvasBox.w, canvasFormat.width)}px)`.trim(),
++                    }} />
++                )}
+                 <video ref={videoRef} src={activeVideoClip!.url} className="real-video-el" playsInline
+                   // Manual test defect (Crop & Reposition drag not working in real Chrome):
+                   // <video> (like <img>) is natively draggable in Chrome by default — a real,
+@@ -5717,6 +5750,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+                   draggable={false}
+                   onMouseDown={beginCropDrag(activeVideoClip!)}
+                   style={{
++                    ...(backdropClip ? { position: "relative" as const } : {}),
+                     filter: getMediaFilter(activeVideoClip!),
+                     opacity: getClipTransitionOpacity(activeVideoClip!, timeline.currentTime),
+                     // STEP 7 (Platform Canvas / Full-Screen Video Acceptance): 'fit' (undefined/
+diff --git a/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx b/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx
+index f0dac28..be83bb8 100644
+--- a/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx
++++ b/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx
+@@ -8,6 +8,7 @@ import { videoExportApi } from "../../../api/client";
+ import { checkReconstructionExport } from "../blueprint/exportGuard";
+ import { buildExportTextOverlays } from "../export/textOverlayExport";
+ import { validCanvasBackground } from "../export/canvasBackground";
++import { validCanvasBackdrop } from "../export/canvasBackdrop";
+ import { buildExportInserts, buildExportLowerThirds, buildExportShapes, buildExportSubtitles, buildExportSubtitleStyle, exportNotices, missingInsertSources } from "../export/layerExport";
+ 
+ const PLATFORMS = [
+@@ -114,6 +115,7 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
+         subtitle_style: buildExportSubtitleStyle(subtitleStyle),
+         ...(validCanvasBackground(canvasFormat.background) ? { canvas_background: validCanvasBackground(canvasFormat.background) } : {}),
+         transition_edge_policy: edgePolicy,
++        ...(validCanvasBackdrop(canvasFormat.backdrop) ? { canvas_backdrop: validCanvasBackdrop(canvasFormat.backdrop) } : {}),
+         media_overlays: mediaOverlays.map(o => ({
+           asset_id: o.assetId, start_time: o.startTime, end_time: o.endTime,
+           x: o.x, y: o.y, width: o.width, height: o.height, opacity: o.opacity, order: o.order ?? 0,
+diff --git a/frontend/src/pages/video-studio-v2/export/canvasBackdrop.test.ts b/frontend/src/pages/video-studio-v2/export/canvasBackdrop.test.ts
+new file mode 100644
+index 0000000..917b734
+--- /dev/null
++++ b/frontend/src/pages/video-studio-v2/export/canvasBackdrop.test.ts
+@@ -0,0 +1,15 @@
++import { describe, expect, it } from 'vitest'
++import { EXPORT_BLUR_SIGMA, previewBlurPx, validCanvasBackdrop } from './canvasBackdrop'
++
++describe('canvas backdrop', () => {
++  it('only "blur" is a backdrop; anything else (or nothing, as in every older draft) means the plain colour', () => {
++    expect(validCanvasBackdrop('blur')).toBe('blur')
++    for (const v of [undefined, null, '', 'color', 'Blur', 'gaussian', 1, {}]) expect(validCanvasBackdrop(v)).toBeUndefined()
++  })
++  it("the preview blur is the export's boxblur=20:2 expressed as a gaussian sigma (about 16.7 px at the canvas size), scaled to the preview box", () => {
++    expect(EXPORT_BLUR_SIGMA).toBeCloseTo(16.73, 2)
++    expect(previewBlurPx(1080, 1080)).toBeCloseTo(16.7, 1)
++    expect(previewBlurPx(330, 1080)).toBeCloseTo(5.1, 1)
++    expect(previewBlurPx(0, 1080)).toBe(0)
++  })
++})
+diff --git a/frontend/src/pages/video-studio-v2/export/canvasBackdrop.ts b/frontend/src/pages/video-studio-v2/export/canvasBackdrop.ts
+new file mode 100644
+index 0000000..ba9f653
+--- /dev/null
++++ b/frontend/src/pages/video-studio-v2/export/canvasBackdrop.ts
+@@ -0,0 +1,13 @@
++// C3 -- the optional blurred backdrop behind a letterboxed ("fit") clip. It lives on the canvas format (`canvasFormat.backdrop`), so it is saved in the draft and restored with it. Absent (every draft
++// written before it existed) = the plain colour/black bars, exactly as before. Anything other than "blur" is ignored.
++export type CanvasBackdrop = 'blur'
++export const validCanvasBackdrop = (v: unknown): CanvasBackdrop | undefined => (v === 'blur' ? 'blur' : undefined)
++
++// The exporter blurs the covering copy with ffmpeg `boxblur=20:2` at the canvas size (backend ffmpeg_svc.BACKDROP_BLUR_RADIUS / _PASSES): a box of 2*20+1 = 41 px applied twice has variance 2 * (41^2 - 1) / 12
++// = 280 px^2, i.e. a gaussian-equivalent sigma of about 16.7 px at the canvas size. CSS `blur()` takes the standard deviation directly, so the preview scales the same sigma by how much smaller the preview box is.
++export const EXPORT_BLUR_RADIUS = 20
++export const EXPORT_BLUR_PASSES = 2
++export const EXPORT_BLUR_SIGMA = Math.sqrt(EXPORT_BLUR_PASSES * ((2 * EXPORT_BLUR_RADIUS + 1) ** 2 - 1) / 12)
++
++/** CSS blur radius (px) that looks like the export's blur on a preview box `boxWidth` px wide for a canvas `canvasWidth` px wide. */
++export const previewBlurPx = (boxWidth: number, canvasWidth: number) => (canvasWidth > 0 && boxWidth > 0 ? Math.round(EXPORT_BLUR_SIGMA * (boxWidth / canvasWidth) * 10) / 10 : 0)

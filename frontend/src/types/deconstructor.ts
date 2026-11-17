@@ -50,6 +50,11 @@ export interface AnatomySection {
   pacing: { shot_count: number; cut_count: number }
   retention_devices: AnatomyDevice[]
   rejected_candidates: AnatomyRejected[]
+  /** Present only after "Add AI visual reading": what an AI saw in this section's frames (INFERRED, never measured). */
+  creative?: { basis: string; certainty: string; shot_reads: { shot_order: number; focal_subject: string | null; framing: string | null; notes: string | null }[];
+    findings: { id: number; kind: string | null; confidence: string | null; statement: string | null; mechanism_hint: string | null; candidate_principle: string | null }[] } | null
+  /** Present only after "Re-read speech": a second machine reading of this section's speech (unverified, not a quotation). */
+  speech_reading?: { text: string; model: string | null; quotable: boolean; status: string } | null
   interpretive: { narrative_role: string | null; messaging_role: string | null; emotional_function: string | null; cta_role: string | null }
   features: string[]
 }
@@ -66,6 +71,15 @@ export interface Anatomy {
     pacing_profile: { shot_count: number; cut_count: number; average_shot_duration_seconds: number | null; cuts_per_minute: number | null }
     structural_pattern: { summary: string }
     retention: { analysis_status: string; accepted_count: number; examined_count: number }
+    creative?: { summary: string | null; limitations: string[]; certainty: string; finding_count: number; model: string | null; frames_shown: number } | null
+    /** derived views (hook channels and timing, scene/story-beat structure with its uncertainty, narrative progression); see services/hook_profile.py and structure_integrity.py */
+    hook_profile?: Record<string, unknown> | null
+    structure?: { partition: { scenes: string; beats: string; shots: number }; issues: { code: string; message: string }[]; uncertainty: string[]
+      reasoning: { beat: { examined: number; accepted: number; rejected: number; undecided: number }; scene: { examined: number; accepted: number; rejected: number; undecided: number } } } | null
+    narrative?: { status: string; arc_text: string | null; sections: { section: number; role_label: string | null; basis: string }[]; uncertainty: string[]; unsupported: string[] } | null
+    reconciliation?: { items: { id: string; topic: string; status: string; note: string; sections: number[] }[]; audience_effects: string; unverified_speech_ids: number[]; low_confidence_text_ids: number[] } | null
+    transcript?: { original: { model: string | null; quality: { plausible: boolean; reasons: string[]; mean_avg_logprob: number | null } }; preferred_run_id: string | null; policy: string
+      alternatives: { run_id: string; model: string; status: string; quotable: boolean; quality: { plausible: boolean; reasons: string[]; mean_avg_logprob: number | null }; agreement_with_original: { value: number | null; comparable: boolean; reason: string | null } }[] } | null
   }
   section_source: { selected: string | null }
   sections: AnatomySection[]
@@ -149,6 +163,27 @@ export interface BlueprintSection {
   evidence_refs: { anatomy_section_numbers: number[]; mechanism_ids: string[] }
   confidence: ConfidenceLevel
   limitations: string[]
+  /** ids of the lessons (from earlier videos) this section applies; absent/empty when none */
+  lessons_applied?: number[]
+}
+
+/** A lesson the person brought from an earlier video, with its ORIGINAL provenance and what this blueprint did with it. Guidance, never a verified performance finding. */
+export interface BlueprintLesson {
+  lesson_id: number
+  text: string
+  classification: string
+  classification_label: string
+  qualifiers: string[]
+  confidence: { level: string; source: string }
+  source: { draft_id: number | null; draft_name: string; blueprint_id: string | null; reference_video_id: number | null; platform: string | null; accepted_at: string | null }
+  evidence: string[]
+  caveat: string | null
+  user_note: string | null
+  relevance: { score: number; relevant: boolean; reasons: string[]; conflicts: string[] } | null
+  decision: 'APPLIED' | 'NOT_APPLIED' | null
+  applied_in_sections: number[]
+  how_or_why: string | null
+  notice: string
 }
 
 export interface BlueprintGap { field: string; kind: string; reason: string }
@@ -174,6 +209,7 @@ export interface Blueprint {
   sections: BlueprintSection[]
   mandatory_point_accounting: { id: string; text: string; status: 'ASSIGNED' | 'UNASSIGNED'; section_numbers: number[]; reason: string | null }[]
   gaps: BlueprintGap[]
+  lessons?: BlueprintLesson[]
   limitations: string[]
   provenance: Record<string, unknown>
 }

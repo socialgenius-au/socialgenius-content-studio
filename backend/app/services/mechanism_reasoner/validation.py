@@ -43,15 +43,15 @@ __all__ = ["MAX_MECHANISMS", "validate_decision", "finalize_mechanisms", "derive
 MAX_MECHANISMS = 12
 
 _VIDEO_LEVEL_FEATURES = frozenset({"hook_classification", "structural_pattern", "progression", "pacing_profile"})
-_CONTENT_FEATURES = frozenset({"transcript", "speech", "on_screen_text", "visual_objects"})
+_CONTENT_FEATURES = frozenset({"transcript", "speech", "on_screen_text", "visual_objects"})   # (creative_read is added per type below)
 # type -> features of which at least one must be used (and, by the presence check, is actually in the anatomy)
 _TYPE_REQUIRES_ANY = {
     "text_attention": {"on_screen_text"},
     "audio_attention": {"speech", "silence"},
-    "visual_attention": {"visual_objects", "cuts", "transitions", "motion"},
+    "visual_attention": {"visual_objects", "cuts", "transitions", "motion", "creative_read"},
     "pattern_interruption": {"cuts", "transitions", "motion", "accepted_retention_device"},
-    "proof_credibility": _CONTENT_FEATURES, "demonstration": _CONTENT_FEATURES, "information_reveal": _CONTENT_FEATURES,
-    "problem_tension": _CONTENT_FEATURES, "contrast": _CONTENT_FEATURES, "emotional_progression": _CONTENT_FEATURES,
+    "proof_credibility": _CONTENT_FEATURES | {"creative_read"}, "demonstration": _CONTENT_FEATURES | {"creative_read"}, "information_reveal": _CONTENT_FEATURES,
+    "problem_tension": _CONTENT_FEATURES, "contrast": _CONTENT_FEATURES | {"creative_read"}, "emotional_progression": _CONTENT_FEATURES | {"creative_read"},
     "cta_next_step": _CONTENT_FEATURES,
 }
 # relation types need a span of >= 2 sections: they describe how one part relates to another
@@ -144,6 +144,24 @@ def _d(x) -> dict:
     return x if isinstance(x, dict) else {}
 
 
+def _validate_reliability(label: str, m: Mechanism, anatomy: dict) -> None:
+    """Evidence the reconciliation marked UNVERIFIED (speech-to-text with no confidence / mixed scripts / low confidence; low-confidence OCR) cannot carry a confident mechanism.
+    No effect when the anatomy has no creative layer (the lists are empty)."""
+    rec = _d(_d(anatomy.get("video")).get("reconciliation"))
+    bad_speech, bad_text = set(rec.get("unverified_speech_ids") or []), set(rec.get("low_confidence_text_ids") or [])
+    if not (bad_speech or bad_text):
+        return
+    ids = m.supporting_evidence_ids
+    weak = [("speech_segments", i) for i in ids.get("speech_segments", []) if i in bad_speech] + [("text_elements", i) for i in ids.get("text_elements", []) if i in bad_text]
+    if not weak:
+        return
+    if m.confidence == "high":
+        _fail(label, f"cites evidence the reconciliation marks unverified ({weak}) -- confidence cannot be 'high'.")
+    others = [(k, i) for k, v in ids.items() for i in v if (k, i) not in weak]
+    if not others and m.confidence != "low":
+        _fail(label, f"rests ONLY on evidence the reconciliation marks unverified ({weak}) -- confidence must be 'low'.")
+
+
 def _validate_text(label: str, m: Mechanism, principle_index: dict, other_index: dict) -> None:
     named = [("statement", m.statement), ("transferable_principle", m.transferable_principle), ("other_label", m.other_label),
              ("other_rationale", m.other_rationale)]
@@ -177,6 +195,7 @@ def validate_decision(decision: MechanismDecision, anatomy: dict) -> None:
     for n, m in enumerate(decision.mechanisms, 1):
         label = f"mechanism {n} ({m.mechanism_type})"
         _validate_evidence(label, m, anatomy, sections)
+        _validate_reliability(label, m, anatomy)
         selected = _selected_sections(m, sections)
         # SECTION scope: features must be present in the cited sections. VIDEO scope: anywhere in the same video.
         used = _validate_features(label, m, anatomy, selected if m.scope == "sections" else list(sections.values()))

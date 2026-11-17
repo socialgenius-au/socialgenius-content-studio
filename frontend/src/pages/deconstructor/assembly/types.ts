@@ -33,6 +33,8 @@ export interface FootageClip {
   name: string
   duration: number            // source length in seconds
   hasAudio?: boolean
+  width?: number              // the video's own size in pixels, when it could be read (used to tell whether footage reaches a background bar)
+  height?: number
   asset?: Asset               // optional full record, so the Media panel can list it when the draft opens
 }
 

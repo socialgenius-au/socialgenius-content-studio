@@ -10,6 +10,7 @@ returns a HookResult in memory. Durable storage is app.services.hook_classificat
 separate job.
 """
 from app.config import settings
+from app.services.ai_metering import run_reasoner_call
 
 from .contract import HookReasoningError, HookResult
 from .providers.anthropic_provider import AnthropicHookReasoner
@@ -55,7 +56,7 @@ async def classify_hook(evidence_bundle: dict) -> HookResult:
             "required secret or setting)."
         )
 
-    decision = await provider.classify_hook(evidence_bundle, model=settings.HOOK_REASONER_MODEL)
+    decision = await run_reasoner_call(lambda: provider.classify_hook(evidence_bundle, model=settings.HOOK_REASONER_MODEL))
     return HookResult(
         decision=decision,
         provider=provider.name,

@@ -6,11 +6,19 @@ from app.database import get_db
 from app.deps import current_user
 from app.models.user import User
 from app.models.video_studio_draft import VideoStudioDraft
+from app.services.media_access import create_media_token, rewrite_media_urls, strip_media_tokens
 from app.schemas.video_studio_draft import (
     VideoStudioDraftCreate, VideoStudioDraftUpdate, VideoStudioDraftSummary, VideoStudioDraftResponse,
 )
 
 router = APIRouter()
+
+
+def _present(draft: VideoStudioDraft, user: User) -> VideoStudioDraftResponse:
+    """The draft as its OWNER sees it: media URLs carry a fresh short-lived token. Nothing is written back."""
+    token, _ttl = create_media_token(user.id)
+    resp = VideoStudioDraftResponse.model_validate(draft)
+    return resp.model_copy(update={"project_json": rewrite_media_urls(draft.project_json, user.id, token)})
 
 
 # Step 7.9: "My Drafts" list — summary only (see schema comment for why project_json is
@@ -30,11 +38,11 @@ async def create_draft(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    draft = VideoStudioDraft(user_id=user.id, name=body.name, project_json=body.project_json)
+    draft = VideoStudioDraft(user_id=user.id, name=body.name, project_json=strip_media_tokens(body.project_json))
     db.add(draft)
     await db.commit()
     await db.refresh(draft)
-    return draft
+    return _present(draft, user)
 
 
 # Step 7.9: "Open / Continue Editing" — full project_json for reconstructing the editor.
@@ -46,7 +54,7 @@ async def get_draft(
     draft = result.scalar_one_or_none()
     if not draft:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
-    return draft
+    return _present(draft, user)
 
 
 # Step 7.9: "Save Draft" on a project that already has a draft id — updates the existing row in
@@ -64,10 +72,10 @@ async def update_draft(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
 
     draft.name = body.name
-    draft.project_json = body.project_json
+    draft.project_json = strip_media_tokens(body.project_json)
     await db.commit()
     await db.refresh(draft)
-    return draft
+    return _present(draft, user)
 
 
 @router.delete("/{draft_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,9 +1,9 @@
 // M2.5a -- candidates: one per transcript segment, with flags that say how far to trust it and whether the exporter can draw its script. Whether the words are included by
 // default depends on whose they are (a third party's reference: no) and how the recogniser rated them.
-import { THRESHOLDS, SCRIPT_LABEL, unsupportedScript, type UnsupportedScript } from './contract'
+import { ARABIC_NOTE, THRESHOLDS, SCRIPT_LABEL, exporterCannotDraw, unsupportedScript, type UnsupportedScript } from './contract'
 import type { SegmentEvidence, SpeechEvidence } from './evidence'
 
-export type SpeechFlagCode = 'third_party_words' | 'low_quality' | 'maybe_not_speech' | 'repetitive' | 'very_short' | 'very_long' | 'script_unsupported' | 'machine_transcript'
+export type SpeechFlagCode = 'third_party_words' | 'low_quality' | 'maybe_not_speech' | 'repetitive' | 'very_short' | 'very_long' | 'script_unsupported' | 'script_naskh' | 'machine_transcript'
 export interface SpeechFlag { code: SpeechFlagCode; severity: 'info' | 'warning'; message: string }
 
 export interface SpeechCandidate {
@@ -30,7 +30,8 @@ export function buildSpeechCandidates(evidence: SpeechEvidence): SpeechCandidate
     if (repetitive) flags.push({ code: 'repetitive', severity: 'warning', message: `Highly repetitive text (compression ratio ${d.compressionRatio!.toFixed(2)}): a common sign of a looping or wrong transcript.` })
     if (dur < THRESHOLDS.shortSeconds) flags.push({ code: 'very_short', severity: 'info', message: 'Shorter than half a second: hard to read on screen.' })
     if (dur > THRESHOLDS.longSeconds) flags.push({ code: 'very_long', severity: 'info', message: 'Longer than seven seconds: consider splitting it in the editor.' })
-    if (script) flags.push({ code: 'script_unsupported', severity: 'warning', message: `This text is in ${SCRIPT_LABEL[script]}. It looks right in the editor, but the exporter cannot lay it out correctly yet, so the exported subtitle would be wrong.` })
+    if (script === 'arabic') flags.push({ code: 'script_naskh', severity: 'info', message: `This text is in Arabic script. ${ARABIC_NOTE}` })
+    if (exporterCannotDraw(script)) flags.push({ code: 'script_unsupported', severity: 'warning', message: `This text is in ${SCRIPT_LABEL[script!]}. It looks right in the editor, but the exporter cannot lay it out correctly yet, so the exported subtitle would be wrong.` })
     return { id: `sp:${segment.id}`, segment, flags, script, defaultInclude: !thirdParty && !lowQuality && !notSpeech && !repetitive }
   })
 }

@@ -30,6 +30,10 @@ export interface CanvasFormatState {
   ratio: string
   width: number
   height: number
+  /** Optional "#rrggbb" behind a letterboxed clip and in timeline gaps (preview and export). Absent = black. */
+  background?: string
+  /** C3: "blur" = the bars of a letterboxed (Fit) clip show a blurred copy of the clip instead of the plain colour. Absent = plain colour, as before. */
+  backdrop?: 'blur'
 }
 
 const DEFAULT_CANVAS_FORMAT: CanvasFormatState = {
@@ -84,6 +88,8 @@ export type SelectedElement =
   | null
 
 interface StudioState {
+  // Keep reconstruction provenance through Create/Edit -> Review -> Create/Edit remounts.
+  reconstructionExtrasRef: { current: import('../pages/video-studio-v2/export/draftExtras').DraftExtras }
   // Brand / Job
   activeBrand: Brand | null
   activeJob: Job | null
@@ -152,6 +158,8 @@ interface StudioState {
   // (see CanvasItemPosition above). Keyed by the element's canvasItem id.
   canvasItemPositions: Record<string, CanvasItemPosition>
   setCanvasItemPosition: (id: string, pos: CanvasItemPosition) => void
+  /** Forget every dragged canvas-item position (used when another project is opened, so one project's drags never follow into the next). */
+  resetCanvasItemPositions: () => void
 
   // Icon-rail: which tool panel is expanded (null = collapsed, canvas gets full width)
   activeRailTool: RailTool | null
@@ -242,6 +250,7 @@ interface StudioState {
 const StudioCtx = createContext<StudioState | null>(null)
 
 export function StudioProvider({ children }: { children: ReactNode }) {
+  const reconstructionExtrasRef = useRef<import('../pages/video-studio-v2/export/draftExtras').DraftExtras>({ kept: {}, issues: [] })
   const [activeBrand, setActiveBrand] = useState<Brand | null>(null)
   const [activeJob, setActiveJob] = useState<Job | null>(null)
   const [brands, setBrands] = useState<Brand[]>([])
@@ -303,6 +312,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const setCanvasItemPosition = useCallback((id: string, pos: CanvasItemPosition) =>
     setCanvasItemPositions(p => ({ ...p, [id]: pos })), [])
+  const resetCanvasItemPositions = useCallback(() => setCanvasItemPositions({}), [])
 
   const msgIdRef = useRef(1)
   const nextId = () => String(msgIdRef.current++)
@@ -481,6 +491,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value: StudioState = {
+    reconstructionExtrasRef,
     activeBrand, activeJob, brands, recentJobs,
     contentType, platform,
     videoClips, additionalVideoClips, imageSlides, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, subtitles, subtitleStyle, intro, outro,
@@ -491,7 +502,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     templates,
     mediaAssets, addMediaAsset, removeMediaAsset,
     canvasFormat, setCanvasFormat, canvasVersions, addCanvasVersion,
-    canvasItemPositions, setCanvasItemPosition,
+    canvasItemPositions, setCanvasItemPosition, resetCanvasItemPositions,
     activeRailTool, selectedElement,
     uploadProgress,
     pendingApproval,

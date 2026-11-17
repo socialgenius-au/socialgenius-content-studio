@@ -24,12 +24,12 @@ export const referenceAssetIdsOf = (refs: ReadonlyArray<{ asset_id: number }> | 
   Array.from(new Set((refs ?? []).map(r => r.asset_id).filter(Number.isInteger))).sort((a, b) => a - b)
 
 /** A duration is only ever the file's REAL length. Anything else is a failure, never a guess. */
-export function readyEntry(asset: Asset, duration: number, previewUrl: (filePath: string) => string): LibraryEntry {
+export function readyEntry(asset: Asset, duration: number, previewUrl: (filePath: string) => string, size?: { width?: number; height?: number }): LibraryEntry {
   const key = footageKeyFor(asset.id)
   if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) {
     return { state: 'failed', key, assetId: asset.id, name: asset.original_filename, reason: 'The length of this video could not be read, so it cannot be placed on the timeline.' }
   }
-  return { state: 'ready', key, assetId: asset.id, name: asset.original_filename, clip: { key, assetId: asset.id, url: previewUrl(asset.file_path), name: asset.original_filename, duration, asset } }
+  return { state: 'ready', key, assetId: asset.id, name: asset.original_filename, clip: { key, assetId: asset.id, url: previewUrl(asset.file_path), name: asset.original_filename, duration, ...(size?.width && size?.height ? { width: size.width, height: size.height } : {}), asset } }
 }
 
 // ── what the person typed ────────────────────────────────────────────────────────────────────────────────────────────────────────

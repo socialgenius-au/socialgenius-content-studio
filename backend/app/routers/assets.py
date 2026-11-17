@@ -14,6 +14,8 @@ from app.deps import current_user
 from app.models.asset import Asset
 from app.models.user import User
 from app.schemas.asset import AssetResponse
+from app.services.media_storage import asset_file_present
+from app.services.image_enhancement import enhance_image, remove_flat_background, remove_complex_background, ImageProcessingError
 
 router = APIRouter()
 
@@ -34,6 +36,20 @@ async def list_assets(
     return result.scalars().all()
 
 
+@router.get("/integrity")
+async def media_integrity(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Read-only: which of YOUR assets have a database record but no file on disk. Nothing is deleted, replaced or recreated; the person re-uploads."""
+    rows = (await db.execute(select(Asset).where(Asset.user_id == user.id).order_by(Asset.created_at.desc()))).scalars().all()
+    missing = [
+        {"id": a.id, "original_filename": a.original_filename, "file_type": a.file_type, "created_at": a.created_at}
+        for a in rows if not asset_file_present(a.file_path)
+    ]
+    return {"total": len(rows), "available": len(rows) - len(missing), "missing_count": len(missing), "missing": missing}
+
+
 @router.get("/{asset_id}/download")
 async def download_asset(
     asset_id: int,
@@ -50,6 +66,105 @@ async def download_asset(
         path=asset.file_path,
         filename=asset.original_filename,
         media_type=asset.mime_type,
+    )
+
+
+@router.post("/{asset_id}/auto-enhance")
+async def auto_enhance_asset(
+    asset_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Return a new enhanced PNG download; do not overwrite the original asset.
+
+    Only the authenticated asset owner can access this endpoint. This is a
+    deterministic image operation with no AI provider or paid API calls.
+    """
+    result = await db.execute(select(Asset).where(
+        Asset.id == asset_id, Asset.user_id == user.id
+    ))
+    asset = result.scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.file_type != "image":
+        raise HTTPException(status_code=422, detail="Auto Enhance requires an image asset")
+    path = Path(asset.file_path)
+    if not path.is_file():
+        raise HTTPException(status_code=410, detail="Original image file is missing")
+    if path.stat().st_size > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image exceeds 20 MB")
+    try:
+        enhanced = enhance_image(path.read_bytes())
+    except ImageProcessingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return StreamingResponse(
+        io.BytesIO(enhanced), media_type="image/png",
+        headers={"Content-Disposition": f'attachment; filename="enhanced-{asset_id}.png"',
+                 "Cache-Control": "no-store"},
+    )
+
+
+@router.post("/{asset_id}/remove-flat-background")
+async def remove_flat_background_asset(
+    asset_id: int,
+    tolerance: int = Query(24, ge=0, le=80),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Free flat-colour removal only; not AI subject segmentation. Original is unchanged."""
+    row = await db.execute(select(Asset).where(
+        Asset.id == asset_id, Asset.user_id == user.id
+    ))
+    asset = row.scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.file_type != "image":
+        raise HTTPException(status_code=422, detail="Background removal requires an image")
+    path = Path(asset.file_path)
+    if not path.is_file():
+        raise HTTPException(status_code=410, detail="Original image is missing")
+    if path.stat().st_size > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image exceeds 20 MB")
+    try:
+        output = remove_flat_background(path.read_bytes(), tolerance=tolerance)
+    except ImageProcessingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return StreamingResponse(
+        io.BytesIO(output), media_type="image/png",
+        headers={"Content-Disposition": f'attachment; filename="no-background-{asset_id}.png"',
+                 "Cache-Control": "no-store"},
+    )
+
+
+@router.post("/{asset_id}/remove-complex-background")
+async def remove_complex_background_asset(
+    asset_id: int,
+    margin_percent: int = Query(8, ge=3, le=25),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Offline approximate GrabCut foreground extraction. Original stays unchanged."""
+    row = await db.execute(select(Asset).where(
+        Asset.id == asset_id, Asset.user_id == user.id
+    ))
+    asset = row.scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.file_type != "image":
+        raise HTTPException(status_code=422, detail="Background removal requires an image")
+    path = Path(asset.file_path)
+    if not path.is_file():
+        raise HTTPException(status_code=410, detail="Original image is missing")
+    if path.stat().st_size > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Image exceeds 20 MB")
+    try:
+        output = remove_complex_background(path.read_bytes(), margin_percent=margin_percent)
+    except ImageProcessingError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return StreamingResponse(
+        io.BytesIO(output), media_type="image/png",
+        headers={"Content-Disposition": f'attachment; filename="foreground-{asset_id}.png"',
+                 "Cache-Control": "no-store"},
     )
 
 

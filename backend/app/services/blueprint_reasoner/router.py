@@ -5,6 +5,7 @@ can bypass the safeguards. Same registry pattern and honest-unconfigured default
 No persistence happens here -- only an in-memory BlueprintResult is returned (see app.services.reconstruction_blueprint_svc).
 """
 from app.config import settings
+from app.services.ai_metering import run_reasoner_call
 
 from .contract import BlueprintReasoningError, BlueprintResult
 from .provider_input import build_reasoner_input
@@ -39,8 +40,14 @@ async def derive_blueprint(ctx: BlueprintContext) -> BlueprintResult:
         raise BlueprintReasoningError(
             f"Blueprint reasoner '{provider_name}' is registered but not configured (missing its required secret or setting).")
 
-    decision = await provider.derive_blueprint(build_reasoner_input(ctx), model=settings.BLUEPRINT_REASONER_MODEL)
-    validate_decision(decision, ctx)
+    async def attempt():
+        # The safeguards run INSIDE the metered attempt: a paid reply that parses but breaks one (a source term carried over, an unsupported claim) is recorded as invalid_output,
+        # never served again from the duplicate cache, and gets exactly one fresh request.
+        d = await provider.derive_blueprint(build_reasoner_input(ctx), model=settings.BLUEPRINT_REASONER_MODEL)
+        validate_decision(d, ctx)
+        return d
+
+    decision = await run_reasoner_call(attempt)
     return BlueprintResult(
         decision=decision, provider=provider.name, model=settings.BLUEPRINT_REASONER_MODEL,
         reasoning_contract_version=decision.reasoning_contract_version)

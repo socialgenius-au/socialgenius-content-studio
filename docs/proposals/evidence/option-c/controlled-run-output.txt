@@ -1,0 +1,47 @@
+=== cdp_optc2 (optc_dist)
+      IDENT frontend: {"worktree": "/c/Users/samee/Documents/socialgenius-content-studio-optc", "commit": "8832698145860c20b0c2817e1216e48881d3bf74", "dirty_files": 0, "built": "2026-11-03T16:00:14"}
+      IDENT backend : {"worktree": "C:\\Users\\samee\\Documents\\socialgenius-content-studio-optc", "commit": "8832698145860c20b0c2817e1216e48881d3bf74", "dirty_files": 0, "behind_footage_module": "C:\\Users\\samee\\Documents\\socialgenius-content-studio-optc\\backend\\app\\services\\behind_footage.py", "app_module": "C:\\Users\\samee\\Documents\\socialgenius-content-studio-optc\\backend\\app\\main.py"}
+PASS  E1: the frontend being tested was built from the Option C scratch commit, with a clean tree
+PASS  E2: the backend being tested runs the same commit from the same worktree, with the Option C module loaded
+PASS  E3: its export schema knows behind_footage
+PASS  E4: the browser page reaches that same backend (same commit seen from the page)
+PASS  C1: the behind layer is in the preview
+      DIAG c1_1.0: {"real": true, "behindLayer": true, "wrappers": 1, "v": {"rs": 4, "t": 2.99, "w": 640, "h": 360, "op": "1"}, "box": [300, 533]}
+      DIAG c1_3.9: {"real": true, "behindLayer": true, "wrappers": 2, "v": {"rs": 4, "t": 5.9, "w": 640, "h": 360, "op": "1"}, "box": [300, 533]}
+      DIAG c1_6.0: {"real": true, "behindLayer": true, "wrappers": 1, "v": {"rs": 4, "t": 4.99, "w": 400, "h": 640, "op": "1"}, "box": [300, 533]}
+PASS  c1: an MP4 was exported
+PASS  c1 @ 1.0s: preview and MP4 show the shape in the same places (overlap 0.990)
+PASS  c1 @ 3.9s: preview and MP4 show the shape in the same places (overlap 0.988)
+PASS  c1 @ 6.0s: preview and MP4 show the shape in the same places (overlap 0.988)
+PASS  C1 Fit landscape on portrait: shape in both bars, picture not covered (preview)
+PASS  C1 dissolve: the shape is hidden under BOTH pictures and visible outside both (preview)
+PASS  C1: the export request marks the shape behind_footage
+PASS  C1 dissolve (MP4): hidden under both pictures, visible outside both
+PASS  C2: selecting the shape offers 'Behind footage', checked
+      DIAG c2_off: {"real": true, "behindLayer": false, "wrappers": 0, "v": {"rs": 4, "t": 2.99, "w": 640, "h": 360, "op": "1"}, "box": [300, 533]}
+PASS  C2: unchecking returns it to the ordinary stack: no behind layer, and the shape now covers the picture
+PASS  C2: checking it again puts it behind the footage
+PASS  C2: the saved draft carries behindFootage on the shape and every clip and its fit unchanged
+      DIAG c2_reopen: {"real": true, "behindLayer": true, "wrappers": 1, "v": {"rs": 4, "t": 2.99, "w": 640, "h": 360, "op": "1"}, "box": [300, 533]}
+PASS  C2: after reopening, the shape is still behind the footage (bars yellow, picture not covered)
+      DIAG c3_1.0: {"real": true, "behindLayer": true, "wrappers": 1, "v": {"rs": 4, "t": 3.99, "w": 640, "h": 360, "op": "1"}, "box": [533, 533]}
+PASS  c3: an MP4 was exported
+PASS  c3 @ 1.0s: preview and MP4 show the shape in the same places (overlap 0.999)
+PASS  C3 square canvas, trimmed landscape clip: bars top and bottom are the shape, picture not covered
+      DIAG c4_1.0: {"real": true, "behindLayer": true, "wrappers": 1, "v": {"rs": 4, "t": 1.99, "w": 400, "h": 640, "op": "1"}, "box": [718, 404]}
+PASS  c4: an MP4 was exported
+PASS  c4 @ 1.0s: preview and MP4 show the shape in the same places (overlap 1.000)
+PASS  C4 landscape canvas, portrait clip: the side bars are the shape, picture not covered
+      DIAG c5_1.0: {"real": true, "behindLayer": true, "wrappers": 1, "v": {"rs": 4, "t": 1.99, "w": 640, "h": 360, "op": "1"}, "box": [300, 533]}
+PASS  c5: an MP4 was exported
+PASS  c5 @ 1.0s: preview and MP4 show the shape in the same places (overlap 1.000)
+PASS  C5 Fill: no yellow anywhere in the preview, and none in the MP4
+      DIAG c6_1.0: {"real": true, "behindLayer": false, "wrappers": 0, "v": {"rs": 4, "t": 1.99, "w": 640, "h": 360, "op": "1"}, "box": [300, 533]}
+PASS  c6: an MP4 was exported
+PASS  c6 @ 1.0s: preview and MP4 show the shape in the same places (overlap 0.990)
+PASS  C6 existing project: the ordinary shape still covers the picture (preview and MP4), no behind layer exists
+PASS  C6: its export request has no behind_footage key at all
+PASS  C6: saving it from the editor adds no behindFootage key (the draft JSON is unchanged)
+
+32 passed, 0 failed
+exit=0

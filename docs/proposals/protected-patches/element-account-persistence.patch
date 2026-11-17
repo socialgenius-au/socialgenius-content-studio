@@ -1,0 +1,40 @@
+diff --git a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
+index 2a58f90..21dc919 100644
+--- a/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
++++ b/frontend/src/pages/video-studio-v2/components/CreateEditTab.tsx
+@@ -4,6 +4,7 @@ import { clipFadeOpacity } from "../export/transitionFade";
+ import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissolveWindow";
+ import { previewBlurPx, validCanvasBackdrop } from "../export/canvasBackdrop";
+ import { durationCorrection } from "../export/measuredDuration";
++import { draftExtrasForSave, emptyExtras, pickDraftExtras, type DraftExtras } from "../export/draftExtras";
+ import React, { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+ import { useStudio } from "../../../contexts/StudioContext";
+ import { assetsApi, videoStudioDraftsApi, generateApi, referenceVideosApi, transcribeApi } from "../../../api/client";
+@@ -570,7 +571,11 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+   const [draftsLoading, setDraftsLoading] = useState(false);
+   const [draftsError, setDraftsError] = useState<string | null>(null);
+ 
++  // Records the draft carries that this editor does not model (the Reconstructor's `*Reconstruction` records and its draft-level table): picked up when a draft is opened and written back on save, so a save from the editor no
++  // longer drops them. Named keys below always win; nothing here edits a layer (see export/draftExtras.ts).
++  const draftExtrasRef = useRef<DraftExtras>(emptyExtras());
+   const buildProjectSnapshot = (): DraftProjectSnapshot => ({
++    ...draftExtrasForSave(draftExtrasRef.current, { textOverlays, mediaOverlays, shapes }),
+     videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, subtitles, subtitleStyle, mediaAssets,
+     canvasFormat, timeline, canvasItemPositions,
+     clientIdentity: PROJECT_CLIENT_IDENTITY,
+@@ -599,6 +604,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+   };
+ 
+   const applyDraftSnapshot = (snap: DraftProjectSnapshot) => {
++    draftExtrasRef.current = pickDraftExtras(snap);
+     clearLiveProject();
+     (snap.videoClips ?? []).forEach(c => rawAddVideoClip(c));
+     (snap.additionalVideoClips ?? []).forEach(c => rawAddAdditionalVideoClip(c));
+@@ -628,6 +634,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
+   // modified by this action.
+   const handleNewDraft = () => {
+     if (!window.confirm("Start a new project? This clears the current editor (any Saved Draft is not affected — you can reopen it from My Drafts).")) return;
++    draftExtrasRef.current = emptyExtras();
+     clearLiveProject();
+     setBlueprintPlan(null);
+     setDraftId(null);

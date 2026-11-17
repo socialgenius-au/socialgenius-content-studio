@@ -182,6 +182,7 @@
   "counts": {
    "detected": 4,
    "drawn": 1,
+   "inferred": 0,
    "included": 2,
    "waitingForUpload": 0,
    "waitingForDecision": 1,

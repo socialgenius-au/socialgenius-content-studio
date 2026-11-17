@@ -3,6 +3,8 @@ import json
 
 from app.config import settings
 from app.services import ai as ai_service
+from app.services.ai import AIProviderError
+from app.services.creative_adaptation import creative_context
 from app.services.claude import get_client
 
 SYSTEM = """You are SocialGenius, a professional social media content writer.
@@ -42,6 +44,8 @@ async def generate_content(
         "Write the content now. Return only the JSON object."
     )
 
+    if not settings.AI_SPEND_ENABLED:
+        raise AIProviderError("AI spending is switched off (AI_SPEND_ENABLED=false). Nothing was sent.")
     message = await get_client().messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=1024,
@@ -123,6 +127,8 @@ async def chat_reply(prompt: str, brand_context: dict | None, context: dict) -> 
     brand_block = f"\nBrand: {json.dumps(brand_context)}" if brand_context else ""
     ctx_block = f"\nCurrent editor context: {json.dumps(context)}" if context else ""
 
+    if not settings.AI_SPEND_ENABLED:
+        raise AIProviderError("AI spending is switched off (AI_SPEND_ENABLED=false). Nothing was sent.")
     message = await get_client().messages.create(
         model=settings.CLAUDE_MODEL,
         max_tokens=1024,
@@ -149,3 +155,47 @@ async def chat_reply(prompt: str, brand_context: dict | None, context: dict) -> 
         "needs_approval": approval_summary is not None,
         "approval_summary": approval_summary,
     }
+
+
+async def generate_creative_tool(
+    task: str, instruction: str, brand_context: dict | None, project_context: dict
+) -> ai_service.AIResult:
+    """Provider-neutral creative tools. The provider enforces the spending kill switch."""
+    allowed = {"hook_generation", "script_generation", "caption_generation", "thumbnail_ideas"}
+    if task not in allowed:
+        raise ValueError("Unsupported creative tool")
+    if not instruction.strip():
+        raise ValueError("Instruction must not be blank")
+    # Deconstructor -> Reconstructor: preserve observed timing and mechanisms, not
+    # the source business identity or claims. Invalid scene evidence is rejected.
+    scene_guidance = ""
+    if task in {"hook_generation", "script_generation"} and project_context.get("scenes"):
+        scene_guidance = creative_context(
+            task="hook" if task == "hook_generation" else "script",
+            source_business=str(project_context.get("source_business") or ""),
+            target_business=str(project_context.get("target_business") or ""),
+            topic=str(project_context.get("topic") or ""),
+            audience=str(project_context.get("audience") or ""),
+            objective=str(project_context.get("objective") or ""),
+            scenes=project_context["scenes"],
+            lessons=project_context.get("lessons") or (),
+        )
+    # Do not leak dismissed lessons or raw source-specific creative material into
+    # the generation prompt. The structured scene guidance already contains only
+    # observed timing, mechanism and explicitly relevant accepted preferences.
+    safe_context = dict(project_context)
+    if scene_guidance:
+        for key in ("scenes", "lessons", "source_script", "source_claims",
+                    "source_transcript", "source_visuals"):
+            safe_context.pop(key, None)
+    context = json.dumps(safe_context, ensure_ascii=False)
+    brand = json.dumps(brand_context, ensure_ascii=False) if brand_context else "No verified brand profile"
+    prompt = (
+        f"Creator instruction: {instruction.strip()}\n"
+        f"Verified brand context: {brand}\n"
+        f"Current project context: {context}\n"
+        f"Scene-aware adaptation guidance: {scene_guidance}\n"
+        "Source reference is for creative structure only. Preserve target business identity. "
+        "Accepted lessons are preferences, not measured performance."
+    )
+    return await ai_service.generate_text(task, prompt)

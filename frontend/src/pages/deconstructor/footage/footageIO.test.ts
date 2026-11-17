@@ -131,6 +131,23 @@ describe('saving through the existing drafts API', () => {
     expect(proj.assembly.createdAt).toBe('2026-10-05T10:00:00.000Z')                  // stamped at save time by the caller
     expect(proj.assembly.unsupported.length).toBe(6)
   })
+  it('writes a canvas colour ONLY when one was chosen, and never a canvas format', async () => {
+    const plain = vi.fn().mockResolvedValue({ data: { id: 1 } })
+    await saveAssembledDraft(input(), { createDraft: plain, updateDraft: vi.fn(), now: NOW })
+    const withNone = vi.fn().mockResolvedValue({ data: { id: 2 } })
+    await saveAssembledDraft(input({ canvasColour: null }), { createDraft: withNone, updateDraft: vi.fn(), now: NOW })
+    const bad = vi.fn().mockResolvedValue({ data: { id: 3 } })
+    await saveAssembledDraft(input({ canvasColour: 'red; drop' }), { createDraft: bad, updateDraft: vi.fn(), now: NOW })
+    const chosen = vi.fn().mockResolvedValue({ data: { id: 4 } })
+    await saveAssembledDraft(input({ canvasColour: '#080808' }), { createDraft: chosen, updateDraft: vi.fn(), now: NOW })
+    const json = (m: ReturnType<typeof vi.fn>) => JSON.parse(JSON.stringify(m.mock.calls[0][0].project_json))
+    for (const m of [plain, withNone, bad]) expect(json(m)).not.toHaveProperty('canvasBackground')
+    expect(json(withNone)).toEqual(json(plain)); expect(json(bad)).toEqual(json(plain))                  // identical to a draft saved without the feature
+    const c = json(chosen)
+    expect(c.canvasBackground).toBe('#080808'); expect(c).not.toHaveProperty('canvasFormat')
+    const { canvasBackground, ...rest } = c
+    expect(rest).toEqual(json(plain))                                                                  // nothing else in the draft changed
+  })
   it('saving again updates the same draft instead of creating a copy', async () => {
     const createDraft = vi.fn(), updateDraft = vi.fn().mockResolvedValue({})
     const r = await saveAssembledDraft(input({ existingDraftId: 31 }), { createDraft, updateDraft, now: NOW })

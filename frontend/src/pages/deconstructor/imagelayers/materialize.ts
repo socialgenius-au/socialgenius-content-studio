@@ -48,7 +48,7 @@ export interface ImageReconstructionRecord {
   videoAnalysisId: number
   createdAt: string
   timeMap: { mode: TimeMap['mode']; factor: number; referenceSeconds: number | null; planSeconds: number }
-  counts: { detected: number; drawn: number; included: number; waitingForUpload: number; waitingForDecision: number; excluded: number; duplicates: number; outside: number; invalid: number }
+  counts: { detected: number; drawn: number; inferred: number; included: number; waitingForUpload: number; waitingForDecision: number; excluded: number; duplicates: number; outside: number; invalid: number }
   items: ImagePlanItem[]
   /** What this record does NOT claim. Always false. */
   claims: typeof NO_CLAIMS
@@ -111,8 +111,9 @@ export function planImageLayers(candidates: readonly ImageCandidate[], correctio
     if (existingIds.has(id)) { add('duplicate', 'This is already in the draft as a reconstruction layer.'); continue }
 
     const image = images[c.id]
-    if (!image) { add('needs_image', 'Choose an image of your own, or a crop of the reference, to put here.'); continue }
+    if (!image) { add('needs_image', c.userAssetRequired ? 'Choose your own image to put here: this is a mark you classified, and nothing in the analysis says what it looks like.' : 'Choose an image of your own, or a crop of the reference, to put here.'); continue }
     const crop = image.source === 'reference_frame_crop'
+    if (crop && c.userAssetRequired) { add('needs_image', 'This slot is for a mark you classified: only your own image can fill it, not a crop of the reference.'); continue }
     if (crop && !r.rightsAcknowledged) { add('needs_rights', 'Confirm you may use this part of the reference video, or choose an image of your own.'); continue }
     if (crop && (!image.cropRegion || !sameRegion(image.cropRegion, r.region.value))) { add('crop_outdated', 'The region changed after the crop was made. Crop it again, or choose an image of your own.'); continue }
     const fit = fitContain(r.region.value, image, ctx.canvas)
@@ -131,7 +132,7 @@ export function planImageLayers(candidates: readonly ImageCandidate[], correctio
     schema: RECONSTRUCTION_SCHEMA, kind: 'image', engineVersion: IMAGE_ENGINE_VERSION, referenceVideoId: ctx.referenceVideoId, videoAnalysisId: ctx.videoAnalysisId, createdAt: ctx.createdAt,
     timeMap: { mode: ctx.timeMap.mode, factor: round3(ctx.timeMap.factor), referenceSeconds: ctx.timeMap.referenceSeconds, planSeconds: ctx.timeMap.planSeconds },
     counts: {
-      detected: candidates.filter(c => c.origin === 'detected_region').length, drawn: candidates.filter(c => c.origin === 'user_region').length,
+      detected: candidates.filter(c => c.origin === 'detected_region').length, drawn: candidates.filter(c => c.origin === 'user_region').length, inferred: candidates.filter(c => c.origin === 'inferred_region').length,
       included: count('included'), waitingForUpload: count('ready_to_upload'), waitingForDecision: count('needs_image', 'needs_rights', 'crop_outdated'),
       excluded: count('excluded_default', 'excluded_user'), duplicates: count('duplicate'), outside: count('outside_timeline'), invalid: count('invalid'),
     },
