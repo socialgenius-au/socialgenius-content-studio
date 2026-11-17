@@ -202,6 +202,8 @@ def plan_timeline(clips: list[dict], xfade_names: dict[str, str | None], file_du
 def split_runs(clips: list[dict]) -> list[list[dict]]:
     """Group the V1 clips (timeline order) into CONTIGUOUS runs: a new run starts wherever the next clip begins at least one whole frame after the previous one ends. The editor shows black
     and silence in such a gap; the exporter joins the runs with exactly that (see ffmpeg_svc.concat_runs_with_gaps). A project without a gap is a single run."""
+    if not clips:
+        return []
     runs: list[list[dict]] = [[clips[0]]]
     for prev, c in zip(clips, clips[1:]):
         if to_frames(c["start_time"]) - to_frames(prev["end_time"]) >= 1:
