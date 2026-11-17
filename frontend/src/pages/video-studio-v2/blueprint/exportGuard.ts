@@ -8,7 +8,7 @@
 // Projects with no blueprint-tagged overlay are not reconstruction projects: this guard returns ok and never looks at them again.
 import type { TextOverlay, VideoClip } from '../../../types'
 import { PLACEHOLDER_CTA_PREFIX, PLACEHOLDER_TEXT_PREFIX } from './blueprintPlan'
-import { scenesWithoutFootage, type SceneWindow } from './coverage'
+import { coveredSeconds, scenesWithoutFootage, type SceneWindow } from './coverage'
 
 export type ExportCheck = { ok: true } | { ok: false; code: 'placeholders' | 'footage' | 'gaps'; message: string }
 
@@ -57,6 +57,21 @@ export function checkReconstructionExport(
     return {
       ok: false, code: 'footage',
       message: `${bare.length === 1 ? 'This scene has' : `${bare.length} scenes have`} no footage yet: ${shown}. Add footage under ${bare.length === 1 ? 'it' : 'them'} in Create / Edit (Media Library, then "+ Add to Timeline"), or assign footage to the scenes in Reconstruct, then export again.`,
+    }
+  }
+
+  // A clip touching a scene for a fraction of a second is not enough to render that
+  // scene. The existing no-footage check catches entirely empty scenes; also reject
+  // partially covered scene windows (including missing footage at the very end).
+  const partial = scenes.filter(scene => {
+    const duration = scene.endTime - scene.startTime
+    return duration > GAP_TOLERANCE && duration - coveredSeconds(scene.startTime, scene.endTime, videoClips ?? []) > GAP_TOLERANCE
+  })
+  if (partial.length > 0) {
+    const names = partial.slice(0, 4).map(scene => `scene ${scene.sceneNumber}`).join(', ')
+    return {
+      ok: false, code: 'footage',
+      message: `The reconstruction has incomplete footage coverage in ${names}${partial.length > 4 ? ` and ${partial.length - 4} more` : ''}. Fill the missing parts of each blueprint scene before exporting; otherwise the video and text can fall out of sync.`,
     }
   }
 
