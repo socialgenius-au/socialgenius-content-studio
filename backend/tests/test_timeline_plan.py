@@ -156,3 +156,8 @@ def test_graph_forces_every_segment_to_its_planned_length():
     plan = tp.plan_timeline([clip(0, 3, trim=2, transition="fade_black", td=0.5), clip(3, 6, trim=2)], XF, {"a.mp4": 12.0})
     g, _v, _a = ffmpeg_svc.build_join_graph(plan)
     assert "trim=end_frame=90" in g and "atrim=end=3.000000" in g and "fade=t=out:start_frame=83:nb_frames=7" in g and "fade=t=in:start_frame=0:nb_frames=8" in g
+
+
+def test_split_runs_empty_timeline_returns_no_runs():
+    """Clearing all clips must not crash run segmentation."""
+    assert tp.split_runs([]) == []
