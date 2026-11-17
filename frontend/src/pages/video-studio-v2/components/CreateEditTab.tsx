@@ -972,7 +972,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     ...audioTracks.map(t => t.endTime),
     ...mediaOverlays.map(o => o.endTime),
   ];
-  const effectiveDuration = Math.max(timeline.duration || 0, ...authoredEnds, 15);
+  // Empty projects need a work area; authored projects show their actual duration.
+  const effectiveDuration = Math.max(timeline.duration || 0, ...authoredEnds) || 15;
 
   // Phase 6 (Video Studio V2 — Safe Areas / Guides / Snapping): the raw guide LINES currently
   // enabled, in canvas percent — independent of aspect ratio for every guide except the
