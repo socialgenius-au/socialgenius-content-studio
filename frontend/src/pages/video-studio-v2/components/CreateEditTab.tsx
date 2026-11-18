@@ -1665,7 +1665,18 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     addVideoClip(clip);
     setSelectedElement({ type: "clip", lane: "video", id: clip.id });
 
-    const hasAudio = await probeHasAudioTrack(url);
+    // Use the server's FFmpeg stream probe, not captureStream() in the browser:
+    // Chromium may report zero audio tracks even for MP4s with sound.
+    // A failed probe is surfaced rather than silently treating audio as absent.
+    let hasAudio = false;
+    try {
+      const response = await assetsApi.hasAudioStream(assetId);
+      hasAudio = response.data.has_audio;
+    } catch (error) {
+      console.error("Unable to detect embedded video audio", error);
+      // Keep the existing browser probe as a best-effort fallback if the API is unavailable.
+      hasAudio = await probeHasAudioTrack(url);
+    }
     if (hasAudio) {
       const audioTrack: AudioTrack = {
         id: crypto.randomUUID(), assetId, url, name: `${name} (Audio)`,
