@@ -1743,7 +1743,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const handleAddAssetToTimeline = async (asset: Asset, kind: "Videos" | "Images" | "Audio") => {
     const url = assetsApi.previewUrl(asset.file_path);
     const startTime = timeline.currentTime;
-    if (kind === "Videos") await insertVideoClipAt(asset.id, url, asset.original_filename, startTime);
+    if (kind === "Videos") {
+      if (videoClips.length > 0) await insertAdditionalVideoClipAt(asset.id, url, asset.original_filename, startTime);
+      else await insertVideoClipAt(asset.id, url, asset.original_filename, startTime);
+    }
     else if (kind === "Audio") await insertAudioTrackAt(asset.id, url, asset.original_filename, startTime);
     else insertImageOverlayAt(asset.id, url, startTime);
   };
@@ -1878,7 +1881,22 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     if (!source) return;
     if (source.kind === "audio") await insertAudioTrackAt(source.assetId, source.url, source.name, dropTime);
     else if (source.kind === "image") insertImageOverlayAt(source.assetId, source.url, dropTime);
+    else if (videoClips.length > 0) await insertAdditionalVideoClipAt(source.assetId, source.url, source.name, dropTime);
     else await insertVideoClipAt(source.assetId, source.url, source.name, dropTime);
+  };
+
+  // Explicit V1 drop remains available for users adding another main-sequence clip.
+  // Stop bubbling so the generic timeline handler cannot reroute it to V2.
+  const handleDropOnV1Row = async (e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropActive(false);
+    setDragOverKind(null);
+    const dropTime = computeDropTime(e);
+    let source;
+    try { source = await resolveDroppedMediaSource(e); } catch { return; }
+    if (!source || source.kind !== "video") return;
+    await insertVideoClipAt(source.assetId, source.url, source.name, dropTime);
   };
 
   // Phase 1 — "Canvas Intent" requirement ("A video must be able to be intentionally added to
@@ -1918,7 +1936,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     let source;
     try { source = await resolveDroppedMediaSource(e); } catch { return; }
     if (!source || source.kind !== "video") return;
-    if (activeVideoClip) await insertAdditionalVideoClipAt(source.assetId, source.url, source.name, timeline.currentTime);
+    if (videoClips.length > 0) await insertAdditionalVideoClipAt(source.assetId, source.url, source.name, timeline.currentTime);
     else await insertVideoClipAt(source.assetId, source.url, source.name, timeline.currentTime);
   };
 
@@ -6149,7 +6167,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
             {Array.from({ length: 6 }).map((_, i) => <span key={i}>{formatTimecode((i / 5) * effectiveDuration)}</span>)}
           </div>
 
-          <TrackRow label="V1 Video" highlight={dragOverKind === "video"}>
+          <TrackRow label="V1 Video" highlight={dragOverKind === "video"}
+            onLaneDragOver={e => { if (detectDragKind(e) === "video") { e.preventDefault(); e.stopPropagation(); setDropActive(true); setDragOverKind("video"); } }}
+            onLaneDragLeave={() => { setDropActive(false); setDragOverKind(null); }}
+            onLaneDrop={handleDropOnV1Row}>
             {videoClips.map(c => (
               <ClipBlock key={c.id} start={c.startTime} end={c.endTime} total={effectiveDuration}
                 selected={selectedElement?.type === "clip" && selectedElement.lane === "video" && selectedElement.id === c.id}
