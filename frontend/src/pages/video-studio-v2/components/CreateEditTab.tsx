@@ -1664,8 +1664,6 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       trimIn: 0, trimOut: 0, colorGrade: "none", speed: 1,
       brightness: 0, contrast: 0, saturation: 0, transition: "cut", transitionDuration: 0.5,
     };
-    addVideoClip(clip);
-    setSelectedElement({ type: "clip", lane: "video", id: clip.id });
 
     // Use the server's FFmpeg stream probe, not captureStream() in the browser:
     // Chromium may report zero audio tracks even for MP4s with sound.
@@ -1679,13 +1677,19 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       // Keep the existing browser probe as a best-effort fallback if the API is unavailable.
       hasAudio = await probeHasAudioTrack(url);
     }
+    // One timeline insertion (V1 + optional A1) must be one undoable transaction.
+    // Using the wrapped addVideoClip/addAudioTrack separately records two snapshots,
+    // and the async probe can capture stale clip arrays, breaking Undo/Redo.
+    pushHistory();
+    rawAddVideoClip(clip);
+    setSelectedElement({ type: "clip", lane: "video", id: clip.id });
     if (hasAudio) {
       const audioTrack: AudioTrack = {
         id: crypto.randomUUID(), assetId, url, name: `${name} (Audio)`,
         volume: 1, startTime, endTime: startTime + duration,
         trimIn: 0, trimOut: 0, fadeIn: 0, fadeOut: 0, duck: false,
       };
-      addAudioTrack(audioTrack);
+      rawAddAudioTrack(audioTrack);
     }
   };
 
