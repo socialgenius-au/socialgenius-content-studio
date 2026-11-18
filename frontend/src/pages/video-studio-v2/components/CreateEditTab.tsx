@@ -4918,13 +4918,34 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               <select value={String(selectedText.fontSize)} onChange={e => updateTextOverlay(selectedText.id, { fontSize: Number(e.target.value) })}>
                 {[24, 32, 48, 56, 72, 96].map(s => <option key={s}>{s}</option>)}
               </select>
-              <input type="color" value={selectedText.color} onChange={e => updateTextOverlay(selectedText.id, { color: e.target.value })} disabled={!!selectedText.useGradient}
-                title={selectedText.useGradient ? "Solid colour is unused while Gradient Fill is on" : "Text colour"} />
+
             </div>
 
             {/* Phase 3 — Requirement (TYPOGRAPHY): italic already rendered on canvas but had no
                 control here (a real gap the audit called out); underline/alignment/letter and
                 line spacing are new fields entirely. */}
+            <div className="text-colour-editor" style={{ display: "grid", gap: 9, padding: "12px", border: "1px solid var(--v-line)", borderRadius: 8, margin: "12px 0" }}>
+              <label htmlFor="v2-text-colour" style={{ fontWeight: 700 }}>Text Colour</label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <input id="v2-text-colour" aria-label="Choose text colour" type="color"
+                  value={/^#[0-9a-f]{6}$/i.test(selectedText.color) ? selectedText.color : "#ffffff"}
+                  onChange={e => updateTextOverlay(selectedText.id, { color: e.target.value, useGradient: false })}
+                  style={{ width: 56, height: 42, padding: 2, cursor: "pointer" }} />
+                <input aria-label="Text colour hex code" type="text" maxLength={7}
+                  key={selectedText.id + selectedText.color} defaultValue={selectedText.color} placeholder="#FFFFFF"
+                  onBlur={e => { if (/^#[0-9a-f]{6}$/i.test(e.target.value)) updateTextOverlay(selectedText.id, { color: e.target.value, useGradient: false }); else e.target.value = selectedText.color; }}
+                  onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                  style={{ width: 100, minWidth: 0, padding: "9px", background: "var(--v-panel)", color: "var(--v-text)", border: "1px solid var(--v-line)", borderRadius: 6 }} />
+              </div>
+              <div aria-label="Quick text colours" style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                {["#FFFFFF", "#000000", "#FFDD00", "#FF3333", "#12A656", "#00D4FF", "#FF69B4", "#FF8C00"].map(color => (
+                  <button key={color} type="button" aria-label={`Set text colour ${color}`} title={color}
+                    onClick={() => updateTextOverlay(selectedText.id, { color, useGradient: false })}
+                    style={{ background: color, width: 30, height: 30, borderRadius: 6, border: selectedText.color.toLowerCase() === color.toLowerCase() && !selectedText.useGradient ? "3px solid var(--v-accent)" : "1px solid var(--v-line)", cursor: "pointer" }} />
+                ))}
+              </div>
+              {selectedText.useGradient && <small>Choosing a solid colour turns off Gradient Fill for this text.</small>}
+            </div>
             <h4>Typography</h4>
             <div className="row align-row">
               {(["left", "center", "right"] as const).map(a => (
