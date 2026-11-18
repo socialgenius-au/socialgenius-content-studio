@@ -3,6 +3,8 @@ import io
 import zipfile
 from pathlib import Path
 
+from app.services.ffmpeg_svc import _has_audio_stream
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,6 +50,27 @@ async def media_integrity(
         for a in rows if not asset_file_present(a.file_path)
     ]
     return {"total": len(rows), "available": len(rows) - len(missing), "missing_count": len(missing), "missing": missing}
+
+
+@router.get("/{asset_id}/audio-stream")
+async def asset_audio_stream(
+    asset_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Probe the stored source server-side; browser captureStream cannot reliably detect audio."""
+    result = await db.execute(select(Asset).where(Asset.id == asset_id, Asset.user_id == user.id))
+    asset = result.scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.file_type != "video":
+        raise HTTPException(status_code=422, detail="Audio stream probe requires a video asset")
+    if not Path(asset.file_path).is_file():
+        raise HTTPException(status_code=410, detail="Video file is missing")
+    try:
+        return {"has_audio": await _has_audio_stream(asset.file_path)}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Audio stream probe unavailable") from exc
 
 
 @router.get("/{asset_id}/download")
