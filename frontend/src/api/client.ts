@@ -128,6 +128,7 @@ export const aiUsageApi = {
 
 export const assetsApi = {
   list:     (params?: { file_type?: string; job_id?: number }) => api.get('/assets/', { params }),
+  hasAudioStream: (id: number) => api.get<{ has_audio: boolean }>(`/assets/${id}/audio-stream`),
   download: (id: number)                  => api.get(`/assets/${id}/download`, { responseType: 'blob' }),
   // Deterministic enhancement returns a new PNG blob; never overwrites the original.
   autoEnhance: (id: number) => api.post(`/assets/${id}/auto-enhance`, null, { responseType: 'blob' }),
