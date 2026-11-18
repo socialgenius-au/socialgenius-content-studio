@@ -5090,9 +5090,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 separate rendering system): one click sets a bundle of stroke/shadow/background
                 values, exactly as if set by hand through the controls above. */}
             <h4>Style Presets</h4>
-            <div className="row">
+            <div className="text-style-presets-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, width: "100%", minWidth: 0 }}>
               {[...TEXT_STYLE_PRESETS, ...EXTRA_TEXT_STYLE_PRESETS].map(p => (
-                <button key={p.name} type="button" onClick={() => updateTextOverlay(selectedText.id, p.apply)} title={p.name}>{p.name}</button>
+                <button key={p.name} type="button" onClick={() => updateTextOverlay(selectedText.id, p.apply)} title={p.name}
+                  style={{ display: "block", width: "100%", minWidth: 0, minHeight: 42, padding: "8px 6px", whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "normal", lineHeight: 1.3, textAlign: "center" }}>
+                  {p.name}
+                </button>
               ))}
             </div>
 
