@@ -389,6 +389,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
 
   const [mode, setMode] = useState(CREATION_MODES[0]);
   const [mediaTab, setMediaTab] = useState<typeof MEDIA_TABS[number]>("All");
+  const [canvasTool, setCanvasTool] = useState<"select" | "pan">("select");
+  const panStartRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const [search, setSearch] = useState("");
   const [rightTab, setRightTab] = useState<"Properties" | "Layers" | "Adjustments">("Properties");
   const [chatInput, setChatInput] = useState("");
@@ -4159,7 +4161,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // behavioural difference between them.
   const mediaPanelBody = (
     <>
-      <div className="asset-head"><b>Media</b><select defaultValue="all"><option value="all">All Media</option></select></div>
+      <div className="asset-head"><b>Media</b><select aria-label="Filter media" value={mediaTab} onChange={e => setMediaTab(e.target.value as typeof MEDIA_TABS[number])}>{MEDIA_TABS.map(t => <option key={t} value={t}>{t === "All" ? "All Media" : t}</option>)}</select></div>
       <input className="search" placeholder="Search media..." value={search} onChange={e => setSearch(e.target.value)} />
       <div className="subtabs compact">
         {MEDIA_TABS.map(t => <button key={t} className={mediaTab === t ? "active" : ""} onClick={() => setMediaTab(t)} type="button">{t}</button>)}
@@ -4841,7 +4843,19 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
 
   // Swapped into both places mediaPanelBody normally renders (the asset-panel aside and its
   // focus-mode drawer equivalent) so "Import External" behaves consistently in both.
-  const assetPanelBody = mode === "Import External" ? importExternalPanelBody : mediaPanelBody;
+  const assetPanelBody = mode === "Import External" ? importExternalPanelBody : mode === "Templates" ? (
+    <div className="asset-panel-templates">
+      <div className="asset-head"><b>Canvas Templates</b></div>
+      <p className="empty-hint">Choose a format preset. Existing timeline clips are preserved.</p>
+      {canvasVersions.map(v => (
+        <button key={v.platformKey + "|" + v.placementKey} type="button"
+          className={canvasFormat.platformKey === v.platformKey && canvasFormat.placementKey === v.placementKey ? "active" : ""}
+          onClick={() => setCanvasFormat({ ...v, background: canvasFormat.background, backdrop: canvasFormat.backdrop })}>
+          {v.label} ({v.ratio})
+        </button>
+      ))}
+    </div>
+  ) : mediaPanelBody;
 
   // Defect fix (Video Editor Playback Regression, found via Sameena's Stage-4 manual test):
   // the Speed control below used to write ONLY the `speed` field, leaving `endTime` fixed at
@@ -5859,8 +5873,8 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
           <div className="canvas-toolbar">
             <button type="button" onClick={handleUndo} disabled={undoStackRef.current.length === 0} title="Undo">↶</button>
             <button type="button" onClick={handleRedo} disabled={redoStackRef.current.length === 0} title="Redo">↷</button>
-            <button type="button">✋</button>
-            <button className="active" type="button">⌁</button>
+            <button type="button" className={canvasTool === "pan" ? "active" : ""} onClick={() => setCanvasTool("pan")} title="Pan canvas (drag to scroll)">✋</button>
+            <button type="button" className={canvasTool === "select" ? "active" : ""} onClick={() => setCanvasTool("select")} title="Select canvas elements">⌁</button>
             <span className="zoom-readout" title="Actual scale of the canvas as displayed">{Math.round((canvasBox.w / rawW) * 100)}%</span>
             <label className="canvas-bg-control" title="Colour behind a letterboxed video (Fit) and in timeline gaps">
               <input type="color" data-testid="canvas-background" value={validCanvasBackground(canvasFormat.background) ?? "#000000"} onChange={e => setCanvasFormat({ ...canvasFormat, background: e.target.value })} />
@@ -5961,7 +5975,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
           <div
             className={`preview-canvas-region orientation-${orientation} ${canvasDropActive ? "drop-active" : ""}`}
             ref={previewRegionRef}
-            onClick={deselectCanvas}
+            style={{ cursor: canvasTool === "pan" ? "grab" : undefined, overflow: canvasTool === "pan" ? "auto" : undefined }}
+            onMouseDown={e => { if (canvasTool !== "pan") return; const el = previewRegionRef.current; if (!el) return; e.preventDefault(); panStartRef.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }; }}
+            onMouseMove={e => { if (canvasTool !== "pan" || !panStartRef.current || !previewRegionRef.current) return; const p = panStartRef.current; previewRegionRef.current.scrollLeft = p.left - (e.clientX - p.x); previewRegionRef.current.scrollTop = p.top - (e.clientY - p.y); }}
+            onMouseUp={() => { panStartRef.current = null; }}
+            onMouseLeave={() => { panStartRef.current = null; }}
+            onClick={e => { if (canvasTool === "pan") { e.stopPropagation(); return; } deselectCanvas(); }}
             onDragOver={e => { if (detectDragKind(e) === "video") { e.preventDefault(); setCanvasDropActive(true); } }}
             onDragLeave={() => setCanvasDropActive(false)}
             onDrop={handleCanvasVideoDrop}
