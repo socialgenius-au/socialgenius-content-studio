@@ -4932,8 +4932,9 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                   onChange={e => updateTextOverlay(selectedText.id, { color: e.target.value, useGradient: false })}
                   style={{ width: 56, height: 42, padding: 2, cursor: "pointer" }} />
                 <input aria-label="Text colour hex code" type="text" maxLength={7}
-                  value={selectedText.color} placeholder="#FFFFFF"
-                  onChange={e => { if (/^#[0-9a-f]{6}$/i.test(e.target.value)) updateTextOverlay(selectedText.id, { color: e.target.value, useGradient: false }); }}
+                  key={selectedText.id + selectedText.color} defaultValue={selectedText.color} placeholder="#FFFFFF"
+                  onBlur={e => { if (/^#[0-9a-f]{6}$/i.test(e.target.value)) updateTextOverlay(selectedText.id, { color: e.target.value, useGradient: false }); else e.target.value = selectedText.color; }}
+                  onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
                   style={{ width: 100, minWidth: 0, padding: "9px", background: "var(--v-panel)", color: "var(--v-text)", border: "1px solid var(--v-line)", borderRadius: 6 }} />
               </div>
               <div aria-label="Quick text colours" style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
