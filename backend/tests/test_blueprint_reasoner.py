@@ -682,7 +682,7 @@ async def test_the_adapter_sends_the_documented_request_and_parses_a_valid_respo
     prompt = kwargs["messages"][0]["content"]
     assert prompt.startswith("Blueprint input (compact JSON):\n") and "\n  " not in prompt
     assert all(t not in prompt for _, _, _, t in SOURCE_LINES)
-    assert out.reasoning_contract_version == BLUEPRINT_PROMPT_VERSION == "v4" and len(out.sections) == 5
+    assert out.reasoning_contract_version == BLUEPRINT_PROMPT_VERSION == "v5" and len(out.sections) == 5
 
 
 async def test_truncated_empty_and_abnormal_responses_are_rejected_with_diagnostics(monkeypatch):
@@ -714,7 +714,7 @@ def test_the_system_prompt_states_the_non_negotiables():
                    "PROHIBITED", "desired_cta", "15%", "blocked_source_terms", "do_not_carry_over", "NO PERFORMANCE CLAIMS", "begin with"):
         assert phrase in SYSTEM_PROMPT, phrase
     assert "even to say you are avoiding it" in SYSTEM_PROMPT
-    assert "<<" not in SYSTEM_PROMPT and BLUEPRINT_PROMPT_VERSION == "v4"
+    assert "<<" not in SYSTEM_PROMPT and BLUEPRINT_PROMPT_VERSION == "v5"
 
 
 def _max_blueprint_payload(scale: float) -> dict:
@@ -952,7 +952,7 @@ def test_prompt_v3_states_the_corrections_without_hard_coding_any_business_domai
     lowered = SYSTEM_PROMPT.lower()
     for domain_word in ("tile", "renovation", "showroom", "bathroom"):
         assert domain_word not in lowered, f"the prompt must not hard-code a business domain ({domain_word!r})"
-    assert BLUEPRINT_PROMPT_VERSION == "v4"
+    assert BLUEPRINT_PROMPT_VERSION == "v5"
     assert "defining relationship" not in lowered, "the prompt must not induce the model to write 'relationship' (a source-associated word for some references)"
 
 

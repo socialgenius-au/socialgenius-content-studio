@@ -22,7 +22,7 @@ describe('review panel', () => {
   const m = html(props())
   it('says plainly what it does not do', () => {
     expect(m).toContain('data-testid="transitions-honesty"'); expect(m).toContain('not the effect that was used'); expect(m).toContain('original effect and its settings are not recovered')
-    expect(m).toContain('whip pan and zoom punch are never guessed'); expect(m).not.toMatch(/effect (was|has been) recovered|exact effect/i)
+    expect(m).toContain('a whip pan or zoom punch is offered only as an estimate from the stored motion measurements, never included until you choose it'); expect(m).toContain('exported as the editor’s own effect'); expect(m).not.toMatch(/effect (was|has been) recovered|exact effect/i)
   })
   it('shows one row per measured cut with its estimate, confidence, reasons and the numbers behind them', () => {
     for (const id of ['tb-1', 'tb-2', 'tb-3']) expect(m).toContain(`data-testid="transition-item-${id}"`)

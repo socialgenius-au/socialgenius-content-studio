@@ -184,3 +184,69 @@ describe('M2.3f manifest hook', () => {
     expect(compositionManifest(comp, 'recommended')[0]).toMatchObject({ family: 'composition', element: 'stacking_order' }); expect(compositionManifest(null, 'recommended')).toEqual([])
   })
 })
+
+// ── M2.3 task 3.4: a smooth gradient along an edge, rebuilt as two flat steps ──────────────────────────────────────────────────
+// A band whose lines are flat across but whose colour drifts steadily inwards (the picture begins where the lines stop being flat). The two steps are the average colour of each half.
+const gradientTop = (frac: number, from: RGB, to: RGB) => image(W, H, (x, y) => {
+  const rows = Math.round(H * frac)
+  if (y >= rows) return noise(x, y)
+  const t = y / (rows - 1)
+  return [0, 1, 2].map(k => Math.round(from[k] + (to[k] - from[k]) * t)) as RGB
+})
+
+describe('M2.3 / 3.4 gradient steps', () => {
+  const m = measureFrame(gradientTop(0.2, [20, 20, 60], [100, 100, 160]))
+  it('measures a gradient band along an edge: its size, and the average colour of each half (darker at the edge, lighter inwards)', () => {
+    const g = m.gradients!.find(x => x.side === 'top')!
+    expect(g.size).toBeCloseTo(Math.round(H * 0.2) / H, 2)
+    const lum = (h: string) => parseInt(h.slice(1, 3), 16) + parseInt(h.slice(3, 5), 16) + parseInt(h.slice(5, 7), 16)
+    expect(lum(g.halves[1])).toBeGreaterThan(lum(g.halves[0]) + 40); expect(g.uniformity).toBeGreaterThan(0.99)
+    expect(m.bars).toEqual([]); expect(m.variance).toBe('gradient')
+  })
+  it('finds no gradient in a flat bar, a busy picture, or a frame that is one gradient from edge to edge', () => {
+    expect(measureFrame(letterbox(0.12, [0, 0, 0])).gradients).toEqual([])
+    expect(measureFrame(image(W, H, noise)).gradients).toEqual([])
+    expect(measureFrame(image(W, H, (_x, y) => [Math.round((y / H) * 200), 40, 90])).gradients).toEqual([])
+  })
+  it('does not call a noisy wander or a barely changing colour a gradient', () => {
+    expect(measureFrame(image(W, H, (x, y) => (y < 40 ? ([y % 2 ? 30 : 60, 40, 90] as RGB) : noise(x, y)))).gradients).toEqual([])
+    expect(measureFrame(image(W, H, (x, y) => (y < 40 ? ([30 + (y > 20 ? 2 : 0), 40, 90] as RGB) : noise(x, y)))).gradients).toEqual([])
+  })
+  const meas = new Map<number, FrameBackground | null>([[1, m], [2, m]])
+  const ev = evidence(meas)
+  it('gives the scene two steps with the half-colours, the first against the edge and the second beginning where it ends', () => {
+    const cs = buildPlateCandidates(ev, CANVAS)
+    expect(cs.map(c => c.id)).toEqual(['bg:1:top:outer', 'bg:1:top:inner'])
+    const [o, i] = cs
+    expect(o.offset).toBe(0); expect(i.offset).toBeCloseTo(o.size, 3); expect(o.size + i.size).toBeCloseTo(ev.scenes[0].gradients[0].size, 3)
+    expect(o.color).toBe(ev.scenes[0].gradients[0].halves[0]); expect(i.color).toBe(ev.scenes[0].gradients[0].halves[1])
+    expect(o.flags.map(f => f.code)).toContain('gradient_step'); expect(o.includeByDefault).toBe(true)
+  })
+  it('writes each step as a native full-width banner at its own offset, with provenance saying which half of a gradient it is, claiming nothing recovered', () => {
+    const cs = buildPlateCandidates(ev, CANVAS)
+    const plan = planBackground(cs, {}, { referenceVideoId: 1, videoAnalysisId: 9, planSeconds: 20, existingShapes: [], createdAt: '2026-11-02T00:00:00.000Z' })
+    expect(plan.shapes).toHaveLength(2)
+    const [a, b] = plan.shapes
+    expect(a).toMatchObject({ kind: 'banner', x: 0, y: 0, width: 100, fullWidth: true, order: PLATE_ORDER }); expect(b.y).toBeCloseTo(a.height, 2); expect(b.y + b.height).toBeCloseTo(ev.scenes[0].gradients[0].size * 100, 1)
+    expect(a.reconstruction).toMatchObject({ side: 'top', gradientPart: 'outer', claims: { backgroundRecovered: false, contentBehindOverlaysRecovered: false, inpainted: false } }); expect(b.reconstruction?.gradientPart).toBe('inner')
+    expect(a.fillColor).not.toBe(b.fillColor)
+  })
+  it('puts a step on the opposite edge from the bottom, and leaves out a step the footage would cover', () => {
+    const g = measureFrame(image(W, H, (x, y) => (y >= H - 40 ? ([20 + Math.round(((H - 1 - y) / 39) * 80), 30, 60] as RGB) : noise(x, y))))
+    const e = evidence(new Map<number, FrameBackground | null>([[1, g], [2, g]]))
+    const cs = buildPlateCandidates(e, CANVAS)
+    const plan = planBackground(cs, {}, { referenceVideoId: 1, videoAnalysisId: 9, planSeconds: 20, existingShapes: [], createdAt: 'x' })
+    expect(plan.shapes.map(s => s.reconstruction?.side)).toEqual(['bottom', 'bottom']); expect(plan.shapes[0].y + plan.shapes[0].height).toBeCloseTo(100, 1)
+    const covered = buildPlateCandidates(ev, CANVAS, { 1: [{ fit: 'fill' }] })                      // fill footage covers the whole canvas, so no step should be on by default
+    expect(covered.every(c => !c.includeByDefault && c.flags.some(f => f.code === 'footage_overlap'))).toBe(true)
+    const wide = buildPlateCandidates(ev, CANVAS, { 1: [{ width: 1920, height: 1080 }] })            // 16:9 footage centred on a 9:16 canvas leaves the top 34% free
+    expect(wide.every(c => c.includeByDefault)).toBe(true)
+  })
+  it('a step can be recoloured and resized like a bar, and reach is checked from its own offset', () => {
+    const cs = buildPlateCandidates(ev, CANVAS, { 1: [{ width: 1920, height: 1080 }] })
+    const inner = cs.find(c => c.part === 'inner')!
+    const plan = planBackground(cs, setPlateCorrection({}, inner.id, { color: '#336699', size: 0.1 }), { referenceVideoId: 1, videoAnalysisId: 9, planSeconds: 20, existingShapes: [], createdAt: 'x' })
+    const shape = plan.shapes.find(s => s.reconstruction?.gradientPart === 'inner')!
+    expect(shape.fillColor).toBe('#336699'); expect(shape.height).toBeCloseTo(10, 1); expect(shape.reconstruction?.properties.color.basis).toBe('user')
+  })
+})

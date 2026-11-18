@@ -1,0 +1,71 @@
+{
+ "canvas": {
+  "width": 1080,
+  "height": 1920
+ },
+ "clips": [
+  {
+   "startTime": 0,
+   "endTime": 2,
+   "assetId": 7556,
+   "muted": null
+  },
+  {
+   "startTime": 2,
+   "endTime": 5,
+   "assetId": 7556,
+   "muted": null
+  },
+  {
+   "startTime": 5,
+   "endTime": 8,
+   "assetId": 7556,
+   "muted": null
+  },
+  {
+   "startTime": 8,
+   "endTime": 12,
+   "assetId": 7556,
+   "muted": null
+  }
+ ],
+ "texts": [
+  {
+   "text": "Turn Any Video Into Your Own Content",
+   "startTime": 0,
+   "endTime": 2,
+   "fontSize": 48,
+   "color": "#FFFFFF",
+   "bgColor": "#111827",
+   "bgOpacity": 0.78
+  },
+  {
+   "text": "“Discover What Makes a Video Work”",
+   "startTime": 2,
+   "endTime": 5,
+   "fontSize": 48,
+   "color": "#FFFFFF",
+   "bgColor": "#111827",
+   "bgOpacity": 0.78
+  },
+  {
+   "text": "“From Video Analysis to Your Own Creation”",
+   "startTime": 5,
+   "endTime": 8,
+   "fontSize": 48,
+   "color": "#FFFFFF",
+   "bgColor": "#111827",
+   "bgOpacity": 0.78
+  },
+  {
+   "text": "“Create Smarter Content with Social Genius”",
+   "startTime": 8,
+   "endTime": 12,
+   "fontSize": 48,
+   "color": "#FFFFFF",
+   "bgColor": "#111827",
+   "bgOpacity": 0.78
+  }
+ ],
+ "audioTrackCount": 0
+}

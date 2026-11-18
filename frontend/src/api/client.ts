@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { uploadUrlPath } from './uploadPaths'
+import { withMediaToken } from './mediaAccess'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? '',
@@ -98,11 +99,42 @@ export const generateApi = {
   chat: (body: Record<string, unknown>) => api.post('/generate/chat', body),
   // Video Studio V2 AI Tools — AI Prompt Generator (first of six AI Tools cards).
   prompt: (body: Record<string, unknown>) => api.post('/generate/prompt', body),
+  // Provider-neutral creative generation. No call bypasses the backend spending kill switch.
+  image: (prompt: string) => api.post("/generate/image", { prompt }, { responseType: "blob" }),
+  creativeTool: (body: {
+    task: 'hook_generation' | 'script_generation' | 'caption_generation' | 'thumbnail_ideas'
+    instruction: string
+    brand_id?: number
+    context?: Record<string, unknown>
+  }) => api.post<{
+    content: string
+    provider: string
+    model: string
+    input_tokens: number | null
+    output_tokens: number | null
+    estimated_cost_usd: number | null
+  }>('/generate/creative-tool', body),
+}
+
+// Short-lived media token for /uploads links (the file routes are no longer public).
+export const mediaApi = {
+  token: () => api.post('/media/token').then(r => r.data as { token: string; expires_in: number }),
+}
+
+// Admin-only, read-only AI spending and usage.
+export const aiUsageApi = {
+  usage: () => api.get('/ai/usage').then(r => r.data),
 }
 
 export const assetsApi = {
   list:     (params?: { file_type?: string; job_id?: number }) => api.get('/assets/', { params }),
   download: (id: number)                  => api.get(`/assets/${id}/download`, { responseType: 'blob' }),
+  // Deterministic enhancement returns a new PNG blob; never overwrites the original.
+  autoEnhance: (id: number) => api.post(`/assets/${id}/auto-enhance`, null, { responseType: 'blob' }),
+  removeComplexBackground: (id: number, marginPercent = 8) =>
+    api.post(`/assets/${id}/remove-complex-background`, null, { params: { margin_percent: marginPercent }, responseType: "blob" }),
+  removeFlatBackground: (id: number, tolerance = 24) =>
+    api.post(`/assets/${id}/remove-flat-background`, null, { params: { tolerance }, responseType: 'blob' }),
   delete:   (id: number)                  => api.delete(`/assets/${id}`),
   zip:      (asset_ids: number[])          => api.post('/assets/zip', { asset_ids }, { responseType: 'blob' }),
   // Unauthenticated static path for <video>/<img>/<audio> src — the /assets/:id/download
@@ -112,7 +144,7 @@ export const assetsApi = {
   // forward slashes first so the "uploads/" strip matches on every platform; otherwise on
   // Windows it never matches and the URL doubles up into "/uploads/uploads\1\x.mp4".
   // The absolute layout the Railway preview stores ("/data/uploads/1/x.mp4") is mapped to the same route too; any other path yields '' (see uploadPaths.ts).
-  previewUrl: (filePath: string)           => { const p = uploadUrlPath(filePath); return p === null ? '' : `${import.meta.env.VITE_API_URL ?? ''}/uploads/${p}` },
+  previewUrl: (filePath: string)           => { const p = uploadUrlPath(filePath); return p === null ? '' : withMediaToken(`${import.meta.env.VITE_API_URL ?? ''}/uploads/${p}`) },   // media links are short-lived signed links (see mediaAccess.ts)
 }
 
 // Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Takes an asset_id already
@@ -153,6 +185,12 @@ export const deconstructorApi = {
   deriveMechanisms:  (id: number, anatomyFingerprint?: string | null) =>
     api.post(`/reference-videos/${id}/mechanisms`, null, { params: anatomyFingerprint ? { anatomy_fingerprint: anatomyFingerprint } : {} }),
   blueprint:         (id: number)                 => api.get(`/reference-videos/${id}/reconstruction-blueprint`),
+  // PAID (needs AI spending switched on server-side and is capped per reference): an AI looks at selected keyframes. An unchanged re-run is answered from the stored result at no cost.
+  // The reusable record of how the reference works creatively (opening, progression, structure, each mechanism with evidence/conditions). Read-only; no AI call.
+  creativeIntelligence: (id: number)              => api.get(`/reference-videos/${id}/creative-intelligence`),
+  readFrames:        (id: number)                 => api.post(`/reference-videos/${id}/creative-read`, null, { timeout: 300000 }),
+  // FREE (local Whisper, no AI provider): a better-tuned second reading of the speech, stored beside the original.
+  rereadSpeech:      (id: number)                 => api.post(`/reference-videos/${id}/transcript-alternatives`, null, { params: { model: 'small' }, timeout: 600000 }),
   buildBlueprint:    (id: number, body: Record<string, unknown>) => api.post(`/reference-videos/${id}/reconstruction-blueprint`, body),
 }
 
@@ -173,6 +211,15 @@ export const videoStudioDraftsApi = {
   create: (body: { name: string; project_json: unknown })       => api.post('/video-studio-drafts/', body),
   update: (id: number, body: { name: string; project_json: unknown }) => api.put(`/video-studio-drafts/${id}`, body),
   delete: (id: number)                                          => api.delete(`/video-studio-drafts/${id}`),
+}
+
+// Learn stage: the person's decisions about the recommendations made for a saved draft, and the lessons they accepted on other videos. No analytics are stored here.
+export const learningApi = {
+  forDraft: (draftId: number) => api.get(`/learning/drafts/${draftId}`),
+  setStatus: (draftId: number, key: string, body: Record<string, unknown>) => api.put(`/learning/drafts/${draftId}/recommendations/${encodeURIComponent(key)}`, body),
+  // The person's accepted lessons ranked for a NEW brief (read-only; nothing is applied until they are selected for a blueprint).
+  relevant: (brief: object) => api.post('/learning/relevant', brief),
+  accepted: (excludeDraftId?: number) => api.get('/learning/accepted', { params: excludeDraftId != null ? { exclude_draft_id: excludeDraftId } : {} }),
 }
 
 // STEP 7.15F: real Video Studio V2 export/render — POSTs the current project (see

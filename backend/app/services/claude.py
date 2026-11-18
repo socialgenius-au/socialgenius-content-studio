@@ -1,16 +1,17 @@
 import json
 
-from anthropic import AsyncAnthropic
-
 from app.config import settings
+from app.services.ai_metering import MeteredClient
 
-_client: AsyncAnthropic | None = None
+_client: MeteredClient | None = None
 
 
-def get_client() -> AsyncAnthropic:
+def get_client() -> MeteredClient:
+    """The ONE client every Anthropic request uses. It is metered: kill switch, price table, per-reference and per-phase caps, duplicate and retry accounting
+    (app/services/ai_metering.py). The SDK's own hidden retries are off."""
     global _client
     if _client is None:
-        _client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        _client = MeteredClient()
     return _client
 
 

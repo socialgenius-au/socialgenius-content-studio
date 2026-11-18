@@ -10,8 +10,8 @@ export { deepFreeze, round3, clamp, fromUser, measured, inferred, defaulted, typ
 
 export type TransitionKind = VideoClip['transition']
 export const TRANSITION_KINDS: readonly TransitionKind[] = ['cut', 'dissolve', 'fade_black', 'whip_pan', 'zoom_punch']
-/** The only kinds the classifier ever proposes. The others exist in the editor and can be chosen by a person. */
-export const DETECTABLE_KINDS: readonly TransitionKind[] = ['cut', 'dissolve', 'fade_black']
+/** The kinds the classifier ever proposes. Whip pan and zoom punch only as a low/medium-confidence estimate from stored motion measurements (see motion.ts), never by default. */
+export const DETECTABLE_KINDS: readonly TransitionKind[] = ['cut', 'dissolve', 'fade_black', 'whip_pan', 'zoom_punch']
 export const KIND_LABEL: Record<TransitionKind, string> = { cut: 'Hard cut', dissolve: 'Dissolve', fade_black: 'Fade through black', whip_pan: 'Whip pan', zoom_punch: 'Zoom punch' }
 
 export const TRANSITIONS_ENGINE_VERSION = '1.0.0'
@@ -26,7 +26,7 @@ export const NO_CLAIMS = { originalEffectRecovered: false, originalSettingsRecov
 
 export const LIMITATIONS: readonly string[] = [
   'The analysis stores measurements around each cut, not the effect that was used. The type here is an estimate from those measurements.',
-  'Only a hard cut, a dissolve and a fade through black can be told apart from the measurements. Whip pan and zoom punch are never guessed: they are yours to choose.',
+  'A hard cut, a dissolve and a fade through black can be told apart from the brightness and change measurements, and a blink or fade of white is recognised from the brightness (the editor has no white transition, so it is proposed as a hard cut or a dissolve). A whip pan or zoom punch is only estimated when the stored motion measurements show a large, steady movement or scaling over several frame pairs; it is never above medium confidence, never included by default, and the export uses the editor’s own effect, not the measured direction.',
   'A dissolve-like signature can also be fast motion or a flash. It is flagged, and the person decides.',
   'The reference’s cuts and the blueprint’s scene joins are different things. A cut is applied only to a scene join close to it in time; the rest stay hard cuts.',
 ]

@@ -80,3 +80,25 @@ export function applyComposition<S extends CompositionInput>(snapshot: S, policy
   for (const c of plan.changes) counts[c.kind]++
   return { ...snapshot, shapes: move(snapshot.shapes), mediaOverlays: move(snapshot.mediaOverlays), textOverlays: move(snapshot.textOverlays), subtitles: move(snapshot.subtitles), compositionReconstruction: { kind: 'composition', policy, changes: plan.changes, counts } as CompositionRecord }
 }
+
+
+// ── M2.3 per-scene view: what the Reconstructor generated in each scene, bottom to top, and where the stacking policy puts it ─────────────────────────────────
+export const KIND_LABEL: Record<LayerKind, string> = { plate: 'Background plate', picture: 'Picture', text: 'Text', subtitle: 'Subtitle' }
+/** the editor's tie rule at equal `order` (media < text < lower third < shape < subtitle), so a plate (a shape) sits above text and pictures unless its explicit order says otherwise */
+const TIE_RANK: Record<LayerKind, number> = { picture: 0, text: 1, plate: 3, subtitle: 4 }
+
+export interface SceneLayerRow { id: string; kind: LayerKind; label: string; bucket: Bucket; startTime: number | null; endTime: number | null; before: number; after: number; moved: boolean }
+export interface SceneLayerGroup { sceneNumber: number; startTime: number; endTime: number; rows: SceneLayerRow[] }
+
+/** Group the plan's layers by the scene they start in (layers with no times, or outside every scene, go in no scene's list), each list bottom to top by the order the policy will write. */
+export function layersByScene(plan: CompositionPlan, scenes: readonly { sceneNumber: number; startTime: number; endTime: number }[]): SceneLayerGroup[] {
+  const after = new Map(plan.changes.map(c => [c.id, c.to] as const))
+  return scenes.map((sc, i) => {
+    const last = i === scenes.length - 1
+    const rows = plan.layers
+      .filter(l => l.startTime !== null && l.startTime >= sc.startTime && (l.startTime < sc.endTime || (last && l.startTime <= sc.endTime)))
+      .map(l => ({ id: l.id, kind: l.kind, label: KIND_LABEL[l.kind], bucket: l.bucket, startTime: l.startTime, endTime: l.endTime, before: l.order, after: after.get(l.id) ?? l.order, moved: after.has(l.id) }))
+      .sort((a, b) => a.after - b.after || TIE_RANK[a.kind] - TIE_RANK[b.kind] || a.id.localeCompare(b.id))
+    return { sceneNumber: sc.sceneNumber, startTime: sc.startTime, endTime: sc.endTime, rows }
+  }).filter(g => g.rows.length > 0)
+}

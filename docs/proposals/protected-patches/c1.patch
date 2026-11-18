@@ -1,0 +1,88 @@
+diff --git a/backend/app/routers/video_export.py b/backend/app/routers/video_export.py
+index ff302bf..22bb7c0 100644
+--- a/backend/app/routers/video_export.py
++++ b/backend/app/routers/video_export.py
+@@ -238,6 +238,7 @@ async def export_project(
+         "subtitles": subtitles,
+         "subtitle_style": subtitle_style,
+         "audio_tracks": audio_tracks,
++        "transition_edge_policy": body.transition_edge_policy,
+     }
+ 
+     try:
+diff --git a/backend/app/schemas/video_export.py b/backend/app/schemas/video_export.py
+index e3459d8..644a420 100644
+--- a/backend/app/schemas/video_export.py
++++ b/backend/app/schemas/video_export.py
+@@ -1,3 +1,5 @@
++from typing import Literal
++
+ from pydantic import BaseModel
+ 
+ 
+@@ -223,3 +225,6 @@ class ExportProjectRequest(BaseModel):
+     subtitles: list[ExportSubtitle] = []
+     subtitle_style: ExportSubtitleStyle = ExportSubtitleStyle()
+     audio_tracks: list[ExportAudioTrack] = []
++    # Opt-in: what a dissolve does at a join where a clip has no spare source frames. "shorten" (default) = the dissolve is shortened (never invents a frame); "hold_incoming" = the incoming
++    # clip's first frame is held while it fades in, so the dissolve keeps its full length. Nothing else about the timeline changes.
++    transition_edge_policy: Literal["shorten", "hold_incoming"] = "shorten"
+diff --git a/backend/tests/test_edge_policy_request.py b/backend/tests/test_edge_policy_request.py
+new file mode 100644
+index 0000000..8d27eb6
+--- /dev/null
++++ b/backend/tests/test_edge_policy_request.py
+@@ -0,0 +1,15 @@
++"""(ships with the C1 patch) The opt-in edge policy on the export request."""
++import pytest
++from pydantic import ValidationError
++
++from app.schemas.video_export import ExportProjectRequest
++
++
++def _req(**kw):
++    return ExportProjectRequest(canvas_width=360, canvas_height=640, video_clips=[], **kw)
++
++
++def test_the_request_edge_policy_defaults_to_shorten_and_allows_only_the_two_known_values():
++    assert _req().transition_edge_policy == "shorten" and _req(transition_edge_policy="hold_incoming").transition_edge_policy == "hold_incoming"
++    with pytest.raises(ValidationError):
++        _req(transition_edge_policy="hold")
+diff --git a/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx b/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx
+index c65d9ad..19d5ad8 100644
+--- a/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx
++++ b/frontend/src/pages/video-studio-v2/components/ReviewTab.tsx
+@@ -50,6 +50,8 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
+   // (ffmpeg was never actually installed in this environment, so no ffmpeg_svc.py function
+   // could ever have worked here regardless of what the button did).
+   const [exportState, setExportState] = useState<"idle" | "exporting" | "error">("idle");
++  // Opt-in (default: the exporter's existing behaviour). Applies to the next export only; it is not saved in the draft.
++  const [edgePolicy, setEdgePolicy] = useState<"shorten" | "hold_incoming">("shorten");
+   const [exportError, setExportError] = useState<string | null>(null);
+ 
+   const handleExportVideo = async () => {
+@@ -109,6 +111,7 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
+         additional_video_clips: buildExportInserts(additionalVideoClips),
+         subtitles: buildExportSubtitles(subtitles),
+         subtitle_style: buildExportSubtitleStyle(subtitleStyle),
++        transition_edge_policy: edgePolicy,
+         media_overlays: mediaOverlays.map(o => ({
+           asset_id: o.assetId, start_time: o.startTime, end_time: o.endTime,
+           x: o.x, y: o.y, width: o.width, height: o.height, opacity: o.opacity, order: o.order ?? 0,
+@@ -242,6 +245,16 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
+         <div className="inline-status error">{exportError}</div>
+       )}
+ 
++      {videoClips.some(c => c.transition === "dissolve") && (
++        <label className="stack-field" data-testid="edge-policy">
++          <span>Dissolves where a clip has no spare footage</span>
++          <select value={edgePolicy} onChange={e => setEdgePolicy(e.target.value as "shorten" | "hold_incoming")}>
++            <option value="shorten">Shorten the dissolve (default)</option>
++            <option value="hold_incoming">Hold the incoming clip’s first frame while it fades in</option>
++          </select>
++        </label>
++      )}
++
+       <div className="stage-footer triple">
+         <button className="secondary" onClick={onBack} type="button">← Back: Create / Edit</button>
+         <div>

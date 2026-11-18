@@ -21,8 +21,8 @@ export const ELEMENT_CLASSES: readonly ElementClass[] = [
 
   // ── unsupported: flattened inside the reference video ──
   { kind: 'reference_footage', editability: 'unsupported', reason: 'The reference video’s own footage is never reused: a reconstruction applies its principles to your media, it does not copy it.' },
-  { kind: 'reference_burned_in_text', editability: 'unsupported', reason: 'Text burned into the reference’s frames is flattened pixels, not a separate element, and is not copied or re-created as editable text.' },
-  { kind: 'reference_graphics', editability: 'unsupported', reason: 'Graphics and logos baked into the reference’s frames cannot be separated from the picture.' },
+  { kind: 'reference_burned_in_text', editability: 'unsupported', reason: 'The burned-in pixels are flattened and are never copied, removed or recovered. Text the analysis READ (OCR) can be rebuilt as an editable approximation in the Text panel (wording, position and timing from the reading; size and colour estimated; font, effects and animation not recovered). Text it could not read is not rebuilt.' },
+  { kind: 'reference_graphics', editability: 'unsupported', reason: 'Graphics and logos baked into the reference’s frames cannot be separated from the picture. A box the analysis found, or one you mark, can become an image slot that only your own image fills; a logo is never rebuilt from its text.' },
   { kind: 'reference_color_grade', editability: 'unsupported', reason: 'The reference’s colour treatment is baked into its pixels and is not extracted as editable settings.' },
   { kind: 'reference_effects', editability: 'unsupported', reason: 'Effects and filters applied to the reference are baked in and cannot be recovered as editable effects.' },
   { kind: 'reference_audio_mix', editability: 'unsupported', reason: 'The reference’s mixed audio cannot be split back into editable tracks.' },

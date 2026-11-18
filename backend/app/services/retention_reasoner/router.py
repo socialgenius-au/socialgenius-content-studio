@@ -10,6 +10,7 @@ returns a RetentionResult in memory. Durable storage is app.services.retention_c
 own, separate job.
 """
 from app.config import settings
+from app.services.ai_metering import run_reasoner_call
 
 from .contract import RetentionReasoningError, RetentionResult
 from .providers.anthropic_provider import AnthropicRetentionReasoner
@@ -57,7 +58,7 @@ async def classify_retention_candidate(evidence_bundle: dict) -> RetentionResult
             "required secret or setting)."
         )
 
-    decision = await provider.classify_retention_candidate(evidence_bundle, model=settings.RETENTION_REASONER_MODEL)
+    decision = await run_reasoner_call(lambda: provider.classify_retention_candidate(evidence_bundle, model=settings.RETENTION_REASONER_MODEL))
     return RetentionResult(
         decision=decision,
         provider=provider.name,

@@ -8,8 +8,9 @@
 // Projects with no blueprint-tagged overlay are not reconstruction projects: this guard returns ok and never looks at them again.
 import type { TextOverlay, VideoClip } from '../../../types'
 import { PLACEHOLDER_CTA_PREFIX, PLACEHOLDER_TEXT_PREFIX } from './blueprintPlan'
+import { coveredSeconds, scenesWithoutFootage, type SceneWindow } from './coverage'
 
-export type ExportCheck = { ok: true } | { ok: false; code: 'placeholders' | 'gaps'; message: string }
+export type ExportCheck = { ok: true } | { ok: false; code: 'placeholders' | 'footage' | 'gaps'; message: string }
 
 /** Seconds. The exporter itself overlaps junctions by 0.05 s, so anything inside that is not a gap worth reporting. */
 export const GAP_TOLERANCE = 0.05
@@ -30,9 +31,13 @@ export function isUnreplacedPlaceholder(o: Tagged): boolean {
 const fmt = (n: number) => `${Math.round(n * 10) / 10}s`
 
 /** Run immediately before the export request is built. Pure: no I/O, no mutation. */
-export function checkReconstructionExport(textOverlays: readonly Tagged[], videoClips: readonly Pick<VideoClip, 'startTime' | 'endTime'>[]): ExportCheck {
+export function checkReconstructionExport(
+  textOverlays: readonly Tagged[],
+  videoClips: readonly Pick<VideoClip, 'startTime' | 'endTime'>[],
+  scenes: readonly SceneWindow[] = [],                                        // the active blueprint plan's scenes (empty when the project did not come from a blueprint)
+): ExportCheck {
   const all = textOverlays ?? []
-  if (!all.some(hasTag)) return { ok: true }                                  // not a reconstruction project: nothing here applies
+  if (!all.some(hasTag) && scenes.length === 0) return { ok: true }           // not a reconstruction project: nothing here applies
 
   const left = all.filter(isUnreplacedPlaceholder)
   if (left.length > 0) {
@@ -41,6 +46,32 @@ export function checkReconstructionExport(textOverlays: readonly Tagged[], video
     return {
       ok: false, code: 'placeholders',
       message: `${n} placeholder ${n === 1 ? 'text' : 'texts'} from the reconstruction blueprint ${n === 1 ? 'is' : 'are'} still in this video (${where.join('; ')}). Replace or delete ${n === 1 ? 'it' : 'them'} in Create / Edit, then export again.`,
+    }
+  }
+
+  // Scenes the blueprint planned that have no footage under them: the exporter joins clips end to end, so a missing scene would silently pull everything after it earlier.
+  const bare = scenesWithoutFootage(scenes, videoClips ?? [])
+  if (bare.length > 0) {
+    const list = bare.map(s => `scene ${s.sceneNumber} (${fmt(s.startTime)}–${fmt(s.endTime)})`)
+    const shown = list.length > 4 ? `${list.slice(0, 4).join(', ')} and ${list.length - 4} more` : list.join(', ')
+    return {
+      ok: false, code: 'footage',
+      message: `${bare.length === 1 ? 'This scene has' : `${bare.length} scenes have`} no footage yet: ${shown}. Add footage under ${bare.length === 1 ? 'it' : 'them'} in Create / Edit (Media Library, then "+ Add to Timeline"), or assign footage to the scenes in Reconstruct, then export again.`,
+    }
+  }
+
+  // A clip touching a scene for a fraction of a second is not enough to render that
+  // scene. The existing no-footage check catches entirely empty scenes; also reject
+  // partially covered scene windows (including missing footage at the very end).
+  const partial = scenes.filter(scene => {
+    const duration = scene.endTime - scene.startTime
+    return duration > GAP_TOLERANCE && duration - coveredSeconds(scene.startTime, scene.endTime, videoClips ?? []) > GAP_TOLERANCE
+  })
+  if (partial.length > 0) {
+    const names = partial.slice(0, 4).map(scene => `scene ${scene.sceneNumber}`).join(', ')
+    return {
+      ok: false, code: 'footage',
+      message: `The reconstruction has incomplete footage coverage in ${names}${partial.length > 4 ? ` and ${partial.length - 4} more` : ''}. Fill the missing parts of each blueprint scene before exporting; otherwise the video and text can fall out of sync.`,
     }
   }
 

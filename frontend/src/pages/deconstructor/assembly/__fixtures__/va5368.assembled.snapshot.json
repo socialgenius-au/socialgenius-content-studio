@@ -1410,12 +1410,12 @@
         {
           "kind": "reference_burned_in_text",
           "editability": "unsupported",
-          "reason": "Text burned into the reference’s frames is flattened pixels, not a separate element, and is not copied or re-created as editable text."
+          "reason": "The burned-in pixels are flattened and are never copied, removed or recovered. Text the analysis READ (OCR) can be rebuilt as an editable approximation in the Text panel (wording, position and timing from the reading; size and colour estimated; font, effects and animation not recovered). Text it could not read is not rebuilt."
         },
         {
           "kind": "reference_graphics",
           "editability": "unsupported",
-          "reason": "Graphics and logos baked into the reference’s frames cannot be separated from the picture."
+          "reason": "Graphics and logos baked into the reference’s frames cannot be separated from the picture. A box the analysis found, or one you mark, can become an image slot that only your own image fills; a logo is never rebuilt from its text."
         },
         {
           "kind": "reference_color_grade",

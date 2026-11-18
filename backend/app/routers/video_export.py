@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.deps import current_user
 from app.models.asset import Asset
+from app.services.media_storage import asset_file_present, missing_file_message
 from app.models.user import User
 from app.schemas.video_export import ExportProjectRequest
 from app.services import ffmpeg_svc
@@ -20,6 +21,8 @@ async def _resolve_asset_path(db: AsyncSession, asset_id: int, user_id: int) -> 
     asset = result.scalar_one_or_none()
     if not asset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Asset {asset_id} not found")
+    if not asset_file_present(asset.file_path):
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=missing_file_message(asset.original_filename))
     return asset.file_path
 
 
@@ -163,6 +166,7 @@ async def export_project(
             "border_width": sh.border_width,
             "border_radius": sh.border_radius,
             "full_width": sh.full_width,
+            "behind_footage": sh.behind_footage,
         })
 
     # Phase 7 (deferred item F — Lower Third export parity). show_logo is carried through for
@@ -238,6 +242,9 @@ async def export_project(
         "subtitles": subtitles,
         "subtitle_style": subtitle_style,
         "audio_tracks": audio_tracks,
+        "canvas_background": body.canvas_background,
+        "transition_edge_policy": body.transition_edge_policy,
+        "canvas_backdrop": body.canvas_backdrop,
     }
 
     try:

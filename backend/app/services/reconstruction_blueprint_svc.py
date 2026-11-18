@@ -61,9 +61,9 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def _reuse_key(anatomy_fp: str, mechanism_attempt_id: int, ihash: str, provider: str, model: str, prompt_version: str) -> dict:
+def _reuse_key(anatomy_fp: str, mechanism_attempt_id: int, ihash: str, provider: str, model: str, prompt_version: str, lessons_digest: str | None = None) -> dict:
     return {"anatomy_fingerprint": anatomy_fp, "mechanism_attempt_id": mechanism_attempt_id, "intent_hash": ihash,
-            "provider": provider, "model": model, "prompt_version": prompt_version}
+            "provider": provider, "model": model, "prompt_version": prompt_version, "lessons_digest": lessons_digest}
 
 
 async def _load_effective(db: AsyncSession, va_id: int) -> AnalysisAnnotation | None:
@@ -103,7 +103,7 @@ def _compose(row: AnalysisAnnotation | None, *, rv_id: int, va_id: int, current_
             "reasoning_attempt_id": d.get("reasoning_attempt_id"), "provider": d.get("provider"), "model": d.get("model"),
             "prompt_version": d.get("prompt_version"), "blueprint_version": d.get("blueprint_version"),
             "taxonomy_version": d.get("taxonomy_version"), "certainty": "INFERRED", "llm_calls": llm_calls, "persisted": True,
-            "effective_since": _iso(row.created_at),
+            "effective_since": _iso(row.created_at), "recovery": d.get("recovery"),
         },
     }
 
@@ -154,12 +154,23 @@ async def list_blueprint_attempts(db: AsyncSession, user: User, reference_video_
 async def derive_and_persist_blueprint(
     db: AsyncSession, user: User, reference_video_id: int, intent, *, video_analysis_id: int | None = None,
     expected_anatomy_fingerprint: str | None = None, expected_mechanism_attempt_id: int | None = None, force: bool = False,
+    recovered_reply: dict | None = None, lesson_ids: list[int] | None = None,
 ) -> dict:
     """C4's single entry point. See the module docstring for the order of operations and the error contract.
     Raises BlueprintInputError (422), OrchestrationNotFound (404), ContentAnatomyError incl. NotReady (422), BlueprintStateConflict
     (409), BlueprintReasoningError (no/failed/invalid reasoner -- nothing persisted)."""
     canonical = normalize_intent(intent)
     ihash = intent_hash(canonical)
+
+    lessons: list[dict] = []
+    if lesson_ids:       # the person's own accepted lessons, loaded here (ownership checked); a different selection is a different blueprint
+        from app.services.learning_guidance import LessonUnavailable, load_selected
+        try:
+            lessons = await load_selected(db, user, list(lesson_ids), canonical)
+        except LessonUnavailable as exc:
+            raise BlueprintInputError(str(exc)) from exc
+    from app.services.learning_guidance import lessons_digest
+    ldigest = lessons_digest(lessons)
 
     anatomy = await get_content_anatomy(db, user, reference_video_id, video_analysis_id=video_analysis_id)
     try:
@@ -196,28 +207,39 @@ async def derive_and_persist_blueprint(
         if row is not None:
             d = row.details
             want = _reuse_key(fingerprint, mech_attempt_id, ihash, settings.BLUEPRINT_REASONER_PROVIDER, settings.BLUEPRINT_REASONER_MODEL,
-                              BLUEPRINT_PROMPT_VERSION)
+                              BLUEPRINT_PROMPT_VERSION, ldigest)
             if all(d.get(k) == v for k, v in want.items()):
                 return _compose(row, rv_id=reference_video_id, va_id=va_id, current_fp=fingerprint, current_mech_attempt=mech_attempt_id,
                                 reused=True, llm_calls=0)
 
-    ctx = build_context(anatomy, mechanisms, canonical)
-    result = await derive_blueprint(ctx)  # BlueprintReasoningError here persists nothing -- see module docstring
+    ctx = build_context(anatomy, mechanisms, canonical, lessons)
+    recovery_audit = None
+    if recovered_reply is not None:   # an ALREADY-PAID reply re-read from the ledger (read only): no provider call; every C4 check is re-run -- see blueprint_reasoner/recovery.py
+        from app.services.blueprint_reasoner.recovery import recover_stored_reply
+        result, recovery_audit = recover_stored_reply(recovered_reply["raw_text"], ctx, ledger=recovered_reply["ledger"])
+    else:
+        result = await derive_blueprint(ctx)  # BlueprintReasoningError here persists nothing -- see module docstring
     pins = {
         "reference_video_id": reference_video_id, "video_analysis_id": va_id, "anatomy_fingerprint": fingerprint,
         "anatomy_version": anatomy["provenance"].get("anatomy_version"), "mechanism_attempt_id": mech_attempt_id,
         "mechanism_provider": mech_prov.get("provider"), "mechanism_model": mech_prov.get("model"),
         "mechanism_prompt_version": mech_prov.get("prompt_version"), "taxonomy_version": mech_prov.get("taxonomy_version"),
         "intent_hash": ihash, "provider": result.provider, "model": result.model, "prompt_version": result.reasoning_contract_version,
+        **({"lessons_digest": ldigest} if ldigest else {}),
     }
     blueprint = finalize_blueprint(result.decision, ctx, pins, mech.get("overall_limitations") or [])
+    if recovery_audit is not None:
+        blueprint["provenance"]["recovery"] = recovery_audit
     duration = float((anatomy.get("video") or {}).get("duration") or 0.0)
     common = {
         "reference_video_id": reference_video_id, "anatomy_fingerprint": fingerprint, "anatomy_version": pins["anatomy_version"],
         "mechanism_attempt_id": mech_attempt_id, "taxonomy_version": pins["taxonomy_version"], "intent_hash": ihash,
         "provider": result.provider, "model": result.model, "prompt_version": result.reasoning_contract_version,
         "blueprint_version": BLUEPRINT_VERSION, "section_count": len(blueprint["sections"]), "mechanisms_used": blueprint["mechanisms_used"],
+        "lessons_digest": ldigest, "lesson_ids": [l["lesson_id"] for l in lessons],
     }
+    if recovery_audit is not None:
+        common["recovery"] = recovery_audit
 
     # Durable, append-only attempt FIRST (committed) -- before the effective blueprint is ever touched.
     attempt = AnalysisAnnotation(
@@ -245,4 +267,4 @@ async def derive_and_persist_blueprint(
 
     row = await _load_effective(db, va_id)
     return _compose(row, rv_id=reference_video_id, va_id=va_id, current_fp=fingerprint, current_mech_attempt=mech_attempt_id,
-                    reused=False, llm_calls=1)
+                    reused=False, llm_calls=0 if recovery_audit is not None else 1)

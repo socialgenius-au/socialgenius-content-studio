@@ -21,6 +21,16 @@ from app.services.ai.providers.google_provider import GoogleProvider
 from app.services.ai.providers.openai_provider import OpenAIProvider
 
 
+@pytest.fixture(autouse=True)
+def permit_mock_provider_calls(monkeypatch):
+    """Existing router tests exercise mocked provider behavior, not the spending gate.
+
+    Production still defaults to AI_SPEND_ENABLED=False. The separate spend-gate
+    regression suite verifies no provider call is possible while disabled.
+    """
+    monkeypatch.setattr("app.services.ai.router.settings.AI_SPEND_ENABLED", True)
+
+
 class _FakeTextBlock:
     def __init__(self, text: str):
         self.type = "text"

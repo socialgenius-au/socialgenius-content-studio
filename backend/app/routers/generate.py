@@ -1,7 +1,9 @@
 import copy
+import io
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -12,6 +14,7 @@ from app.models.brand import Brand
 from app.models.job import Job
 from app.models.user import User
 from app.services import generate_svc
+from app.services.image_generation import ImageGenerationError, generate_image_png
 from app.services.ai import AIProviderError
 
 router = APIRouter()
@@ -42,7 +45,7 @@ class ChatRequest(BaseModel):
     prompt: str
     brand_id: int | None = None
     job_id: int | None = None
-    context: dict = {}
+    context: dict = Field(default_factory=dict)
 
 
 class ChatResponse(BaseModel):
@@ -71,11 +74,14 @@ async def chat(
                 "tone_of_voice": brand.tone_of_voice,
             }
 
-    reply = await generate_svc.chat_reply(
-        prompt=body.prompt,
-        brand_context=brand_context,
-        context=body.context,
-    )
+    try:
+        reply = await generate_svc.chat_reply(
+            prompt=body.prompt,
+            brand_context=brand_context,
+            context=body.context,
+        )
+    except AIProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return ChatResponse(**reply)
 
 
@@ -84,9 +90,9 @@ async def chat(
 # real Brand row exists for this user (there currently is none at all in this environment), which
 # generate_svc.generate_prompt already treats as "no brand context to include", never fabricated.
 class PromptGeneratorRequest(BaseModel):
-    instruction: str
+    instruction: str = Field(min_length=1, max_length=4000)
     brand_id: int | None = None
-    context: dict = {}
+    context: dict = Field(default_factory=dict)
 
 
 class PromptGeneratorResponse(BaseModel):
@@ -147,6 +153,86 @@ async def generate_prompt(
     )
 
 
+
+
+class ImageGenerationRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+
+
+@router.post("/image")
+@limiter.limit("3/minute")
+async def generate_image(
+    request: Request,
+    body: ImageGenerationRequest,
+    user: User = Depends(current_user),
+):
+    """Generate one downloadable PNG after explicit request and spending authorization."""
+    try:
+        png = await generate_image_png(body.prompt)
+    except ImageGenerationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return StreamingResponse(
+        io.BytesIO(png), media_type="image/png",
+        headers={"Content-Disposition": 'attachment; filename="generated-image.png"',
+                 "Cache-Control": "no-store"},
+    )
+
+
+class CreativeToolRequest(BaseModel):
+    task: str
+    instruction: str = Field(min_length=1, max_length=4000)
+    brand_id: int | None = None
+    context: dict = Field(default_factory=dict)
+
+
+class CreativeToolResponse(BaseModel):
+    content: str
+    provider: str
+    model: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    estimated_cost_usd: float | None = None
+
+
+@router.post("/creative-tool", response_model=CreativeToolResponse)
+@limiter.limit("20/minute")
+async def generate_creative_tool(
+    request: Request,
+    body: CreativeToolRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    allowed = {"hook_generation", "script_generation", "caption_generation", "thumbnail_ideas"}
+    if body.task not in allowed:
+        raise HTTPException(status_code=422, detail="Unsupported creative tool")
+    if not body.instruction.strip():
+        raise HTTPException(status_code=422, detail="Instruction is required")
+    brand_context = None
+    if body.brand_id is not None:
+        row = await db.execute(
+            select(Brand).where(Brand.id == body.brand_id, Brand.user_id == user.id)
+        )
+        brand = row.scalar_one_or_none()
+        if brand is None:
+            raise HTTPException(status_code=404, detail="Brand not found")
+        brand_context = {
+            "name": brand.name, "colors": brand.colors,
+            "fonts": brand.fonts, "tone_of_voice": brand.tone_of_voice,
+        }
+    try:
+        result = await generate_svc.generate_creative_tool(
+            body.task, body.instruction, brand_context, body.context
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except AIProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return CreativeToolResponse(
+        content=result.text, provider=result.provider, model=result.model,
+        input_tokens=result.input_tokens, output_tokens=result.output_tokens,
+        estimated_cost_usd=result.estimated_cost_usd,
+    )
+
 @router.post("/", response_model=GenerateResponse)
 @limiter.limit("30/minute")
 async def generate(
@@ -179,15 +265,18 @@ async def generate(
                 "tone_of_voice": brand.tone_of_voice,
             }
 
-    content = await generate_svc.generate_content(
-        step=step,
-        platform=body.platform,
-        tone=body.tone,
-        brand_context=brand_context,
-        additional_context=body.additional_context,
-        job_summary=job.plan_json.get("summary", ""),
-        word_limit=body.word_limit,
-    )
+    try:
+        content = await generate_svc.generate_content(
+            step=step,
+            platform=body.platform,
+            tone=body.tone,
+            brand_context=brand_context,
+            additional_context=body.additional_context,
+            job_summary=job.plan_json.get("summary", ""),
+            word_limit=body.word_limit,
+        )
+    except AIProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     if body.save_to_step:
         plan = copy.deepcopy(job.plan_json)
