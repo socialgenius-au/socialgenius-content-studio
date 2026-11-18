@@ -110,6 +110,20 @@ const TEXT_STYLE_PRESETS: { name: string; apply: Partial<TextOverlay> }[] = [
   },
 ];
 
+// Additional one-click text looks use existing editable fields, so preview, draft
+// persistence, undo/redo and export all follow the same rendering path.
+const EXTRA_TEXT_STYLE_PRESETS: { name: string; apply: Partial<TextOverlay> }[] = [
+  { name: "Gold Luxury", apply: { color: "#FFD700", fontFamily: "Montserrat", bold: true, useGradient: true, gradientFrom: "#FFF4AD", gradientTo: "#B8860B", strokeColor: "#352200", strokeWidth: 2, shadowColor: "#000000", shadowBlur: 8, shadowOffsetX: 3, shadowOffsetY: 3, bgColor: "transparent", bgOpacity: 0 } },
+  { name: "3D Shadow", apply: { color: "#FFFFFF", bold: true, useGradient: false, strokeColor: "#141414", strokeWidth: 2, shadowColor: "#000000", shadowBlur: 2, shadowOffsetX: 7, shadowOffsetY: 7, bgColor: "transparent", bgOpacity: 0 } },
+  { name: "Cinematic", apply: { color: "#FFFFFF", fontFamily: "Montserrat", bold: true, useGradient: false, strokeColor: "#000000", strokeWidth: 1, shadowColor: "#000000", shadowBlur: 10, shadowOffsetX: 0, shadowOffsetY: 3, bgColor: "#000000", bgOpacity: 0.45, bgBorderRadius: 2, bgFullWidth: true, bgBlur: false } },
+  { name: "Outline Pop", apply: { color: "#FFFFFF", bold: true, useGradient: false, strokeColor: "#FF2468", strokeWidth: 5, shadowColor: "#000000", shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, bgColor: "transparent", bgOpacity: 0 } },
+  { name: "Retro Sunset", apply: { color: "#FFCC33", bold: true, useGradient: true, gradientFrom: "#FFDE59", gradientTo: "#FF4E50", strokeColor: "#5B1B64", strokeWidth: 3, shadowColor: "#5B1B64", shadowBlur: 0, shadowOffsetX: 4, shadowOffsetY: 4, bgColor: "transparent", bgOpacity: 0 } },
+  { name: "Ice Gradient", apply: { color: "#D6FFFF", bold: true, useGradient: true, gradientFrom: "#FFFFFF", gradientTo: "#00C8FF", strokeColor: "#083C70", strokeWidth: 2, shadowColor: "#00C8FF", shadowBlur: 12, shadowOffsetX: 0, shadowOffsetY: 0, bgColor: "transparent", bgOpacity: 0 } },
+  { name: "Minimal", apply: { color: "#FFFFFF", fontFamily: "Inter", bold: false, useGradient: false, strokeWidth: 0, shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, bgColor: "transparent", bgOpacity: 0 } },
+  { name: "Social Bold", apply: { color: "#FFFFFF", fontFamily: "Poppins", bold: true, useGradient: false, strokeColor: "#000000", strokeWidth: 4, shadowColor: "#000000", shadowBlur: 5, shadowOffsetX: 2, shadowOffsetY: 2, bgColor: "#FF006E", bgOpacity: 0.88, bgBorderRadius: 8, bgFullWidth: false, bgBlur: false } },
+  { name: "Electric Blue", apply: { color: "#00E5FF", bold: true, useGradient: false, strokeColor: "#003D66", strokeWidth: 2, shadowColor: "#00D4FF", shadowBlur: 20, shadowOffsetX: 0, shadowOffsetY: 0, bgColor: "transparent", bgOpacity: 0 } },
+  { name: "Elegant", apply: { color: "#F7E8D0", fontFamily: "Montserrat", bold: false, useGradient: false, strokeColor: "#4C3527", strokeWidth: 1, shadowColor: "#000000", shadowBlur: 3, shadowOffsetX: 1, shadowOffsetY: 2, bgColor: "transparent", bgOpacity: 0 } },
+];
 // Phase 4 (Video Studio V2 — Independent Shapes): one starting box + style per named kind the
 // spec asks for — "rounded rectangle" isn't its own kind (see Shape's own type comment), so it
 // isn't listed separately here either; picking it is Rectangle + dragging the Radius slider up.
@@ -5077,7 +5091,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 values, exactly as if set by hand through the controls above. */}
             <h4>Style Presets</h4>
             <div className="row">
-              {TEXT_STYLE_PRESETS.map(p => (
+              {[...TEXT_STYLE_PRESETS, ...EXTRA_TEXT_STYLE_PRESETS].map(p => (
                 <button key={p.name} type="button" onClick={() => updateTextOverlay(selectedText.id, p.apply)} title={p.name}>{p.name}</button>
               ))}
             </div>
