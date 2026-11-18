@@ -159,28 +159,44 @@ export function probeHasAudioTrack(url: string): Promise<boolean> {
   return new Promise(resolve => {
     const vid = document.createElement('video')
     let settled = false
+    let stream: MediaStream | null = null
     const finish = (has: boolean) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      vid.pause()
+      stream?.getTracks().forEach(track => track.stop())
       vid.removeAttribute('src')
+      vid.load()
       resolve(has)
     }
-    const timer = setTimeout(() => finish(false), 4000)
-    vid.preload = 'metadata'
+    const timer = setTimeout(() => finish(false), 6000)
+    vid.preload = 'auto'
     vid.muted = true
-    vid.onloadedmetadata = () => {
+    vid.playsInline = true
+
+    const checkTracks = () => {
+      if (settled) return
       try {
-        // captureStream() isn't in the standard DOM typings this project's tsconfig uses,
-        // though it's a real, already-supported method (this project already relies on the
-        // same API on <canvas> elsewhere, for recording) — cast narrowly just for this call.
-        const captureStream = (vid as unknown as { captureStream: () => MediaStream }).captureStream
-        const stream = captureStream.call(vid)
-        finish(stream.getAudioTracks().length > 0)
+        // Chromium may expose zero captureStream tracks at loadedmetadata.
+        // Check again once playback has started and the media tracks are active.
+        const capture = vid as HTMLVideoElement & { captureStream?: () => MediaStream }
+        if (typeof capture.captureStream !== 'function') return
+        stream ??= capture.captureStream()
+        if (stream.getAudioTracks().length > 0) finish(true)
       } catch {
-        finish(false)
+        // Do not mistake a temporarily unavailable capture stream for silent media.
       }
     }
+    vid.onloadedmetadata = () => {
+      checkTracks()
+      if (settled) return
+      void vid.play().then(checkTracks).catch(() => {
+        // Browser policy may prevent playback; allow the timeout fallback.
+      })
+    }
+    vid.onplaying = checkTracks
+    vid.ontimeupdate = checkTracks
     vid.onerror = () => finish(false)
     vid.src = url
   })
