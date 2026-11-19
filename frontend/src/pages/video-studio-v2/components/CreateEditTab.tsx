@@ -4952,7 +4952,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                   style={{ width: 100, minWidth: 0, padding: "9px", background: "var(--v-panel)", color: "var(--v-text)", border: "1px solid var(--v-line)", borderRadius: 6 }} />
               </div>
               <div aria-label="Quick text colours" style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                {["#FFFFFF", "#000000", "#FFDD00", "#FF3333", "#12A656", "#00D4FF", "#FF69B4", "#FF8C00"].map(color => (
+                {["#FFFFFF", "#E5E7EB", "#9CA3AF", "#4B5563", "#000000", "#FFF3B0", "#FFDD00", "#F59E0B", "#FF8C00", "#B45309", "#FF3333", "#DC2626", "#991B1B", "#FF69B4", "#EC4899", "#BE185D", "#A855F7", "#7C3AED", "#4C1D95", "#3B82F6", "#1D4ED8", "#00D4FF", "#0891B2", "#0F766E", "#10B981", "#12A656", "#166534", "#84CC16", "#D9F99D", "#F97316", "#FB7185", "#C084FC"].map(color => (
                   <button key={color} type="button" aria-label={`Set text colour ${color}`} title={color}
                     onClick={() => updateTextOverlay(selectedText.id, { color, useGradient: false })}
                     style={{ background: color, width: 30, height: 30, borderRadius: 6, border: selectedText.color.toLowerCase() === color.toLowerCase() && !selectedText.useGradient ? "3px solid var(--v-accent)" : "1px solid var(--v-line)", cursor: "pointer" }} />
@@ -5110,9 +5110,41 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
               <option value="typewriter">Typewriter</option><option value="pop">Pop</option>
             </select>
 
-            <h4>Transform</h4>
-            <div className="row">
-              <input value={`X ${Math.round(selectedText.x)}`} readOnly /><input value={`Y ${Math.round(selectedText.y)}`} readOnly />
+            <h4>Transform &amp; Alignment</h4>
+            <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                <label className="stack-field"><span>X position (%)</span>
+                  <input aria-label="Text X position" type="number" min={0} max={100} step={1}
+                    value={Math.round(selectedText.x)}
+                    onChange={e => { const n = Number(e.target.value); if (Number.isFinite(n)) updateTextOverlay(selectedText.id, { x: Math.max(0, Math.min(100, n)) }); }} />
+                </label>
+                <label className="stack-field"><span>Y position (%)</span>
+                  <input aria-label="Text Y position" type="number" min={0} max={100} step={1}
+                    value={Math.round(selectedText.y)}
+                    onChange={e => { const n = Number(e.target.value); if (Number.isFinite(n)) updateTextOverlay(selectedText.id, { y: Math.max(0, Math.min(100, n)) }); }} />
+                </label>
+              </div>
+              <span style={{ fontWeight: 600 }}>Position on canvas</span>
+              <div role="group" aria-label="Text position alignment" style={{ display: "grid", gridTemplateColumns: "repeat(3, 36px)", gap: 4, justifyContent: "center" }}>
+                {[
+                  { x: 10, y: 10, label: "Top left", symbol: "↖" },
+                  { x: 50, y: 10, label: "Top centre", symbol: "↑" },
+                  { x: 90, y: 10, label: "Top right", symbol: "↗" },
+                  { x: 10, y: 50, label: "Middle left", symbol: "←" },
+                  { x: 50, y: 50, label: "Centre", symbol: "⊞" },
+                  { x: 90, y: 50, label: "Middle right", symbol: "→" },
+                  { x: 10, y: 90, label: "Bottom left", symbol: "↙" },
+                  { x: 50, y: 90, label: "Bottom centre", symbol: "↓" },
+                  { x: 90, y: 90, label: "Bottom right", symbol: "↘" },
+                ].map(pos => (
+                  <button type="button" key={pos.label} aria-label={pos.label} title={pos.label}
+                    onClick={() => updateTextOverlay(selectedText.id, { x: pos.x, y: pos.y })}
+                    style={{ width: 36, height: 36, padding: 0, borderRadius: 5, fontSize: 19, background: Math.abs(selectedText.x - pos.x) < 1 && Math.abs(selectedText.y - pos.y) < 1 ? "rgba(0,212,255,.22)" : "rgba(255,255,255,.06)" }}>
+                    {pos.symbol}
+                  </button>
+                ))}
+              </div>
+              <small>Choose a position or adjust X and Y precisely. Letter spacing and line height remain under Typography.</small>
             </div>
           </>
         ) : selectedClip ? (
