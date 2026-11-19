@@ -19,6 +19,8 @@ import Inspector from './components/Inspector'
 import LayersPanel from './components/LayersPanel'
 import ExportPanel from './components/ExportPanel'
 import SlideView from './components/SlideView'
+import { ConflictBanner, RecoveryPrompt, SaveBadge } from './components/SyncStatus'
+import type { SyncState } from '../../lib/carousel/syncEngine'
 
 function ctx(): OpContext { let n = 0; return { newId: p => `${p}_${++n}`, now: () => new Date('2026-11-19T09:00:00Z') } }
 const doc = (layouts: Parameters<typeof createCarouselDocument>[0] extends infer O ? (O extends { layouts?: infer L } ? L : never) : never = ['cover', 'title_body', 'cta'], c = ctx()) => createCarouselDocument({ title: 'Tile tips', layouts }, c)
@@ -72,7 +74,7 @@ describe('slide filmstrip', () => {
 })
 
 describe('start screen', () => {
-  const props = { saved: [], storageAvailable: true, onOpen: noop, onDelete: noop, onCreate: noop }
+  const props = { items: [], listState: 'ready' as const, onRetryList: noop, busy: false, onOpen: noop, onDuplicate: noop, onDelete: noop, onCreate: noop }
   it('offers a new carousel with the registry carousel formats and the themes, Instagram 4:5 first', () => {
     const h = html(<StartScreen {...props} />)
     expect(h).toContain('Carousel Creator')
@@ -81,17 +83,85 @@ describe('start screen', () => {
     for (const t of ['Forest', 'Ivory', 'Ink', 'Sunrise']) expect(h).toContain(`>${t}</option>`)
     expect(h).toContain('Plan from a blueprint')
     expect(h).toContain('Nothing saved yet')
+    expect(h).toContain('saved to your account')
+    expect(h).not.toContain('data-testid="browser-copies"')
   })
 
-  it('lists saved carousels with slide counts and warns when browser storage is blocked', () => {
-    const saved = [{ id: 'a', title: 'Tile tips', slideCount: 5, updatedAt: '2026-11-19T09:00:00Z', platformKey: 'instagram', formatKey: 'carousel' }]
-    const h = html(<StartScreen {...props} saved={saved} storageAvailable={false} />)
+  const item = { id: 'a', title: 'Tile tips', slideCount: 5, updatedAt: '2026-11-19T09:00:00Z', createdAt: '2026-11-19T09:00:00Z', platformKey: 'instagram', formatKey: 'carousel', themeId: 'forest', origin: 'server', version: 3 }
+
+  it('lists your account carousels with slide counts and open / duplicate / delete actions', () => {
+    const h = html(<StartScreen {...props} items={[item]} />)
     expect(h).toContain('Tile tips')
     expect(h).toContain('5 slides')
     expect(h).toContain('aria-label="Open Tile tips"')
+    expect(h).toContain('aria-label="Duplicate Tile tips"')
     expect(h).toContain('aria-label="Delete Tile tips"')
-    expect(h).toContain('data-testid="no-storage"')
-    expect(h).toContain('blocking site storage')
+    expect(h).not.toContain('blocking site storage')
+  })
+
+  it('says when the list is loading or could not be loaded, with a way to try again', () => {
+    expect(html(<StartScreen {...props} listState="loading" />)).toContain('Loading your carousels')
+    const h = html(<StartScreen {...props} listState="error" listError="Could not reach the server." />)
+    expect(h).toContain('data-testid="list-error"')
+    expect(h).toContain('Could not reach the server.')
+    expect(h).toContain('data-testid="retry-list"')
+    expect(h).not.toContain('Nothing saved yet')
+  })
+
+  it('offers browser-only carousels for an explicit copy to the account, and only offers removal after they are in the account', () => {
+    const local = [
+      { id: 'l1', title: 'Old one', slideCount: 3, updatedAt: '2026-11-01T09:00:00Z', platformKey: 'instagram', formatKey: 'carousel' },
+      { id: 'l2', title: 'Old two', slideCount: 4, updatedAt: '2026-11-02T09:00:00Z', platformKey: 'instagram', formatKey: 'carousel', imported: { serverId: 'l2', at: '2026-11-19T00:00:00Z', asCopy: false } },
+    ]
+    const h = html(<StartScreen {...props} local={local} />)
+    expect(h).toContain('Saved only in this browser')
+    expect(h).toContain('Nothing is deleted from this browser')
+    expect(h).toContain('aria-label="Copy Old one to my account"')
+    expect(h).not.toContain('aria-label="Remove Old one from this browser"')
+    expect(h).toContain('aria-label="Remove Old two from this browser"')
+    expect(h).not.toContain('data-testid="import-all"')                          // only one is waiting: no bulk button
+    const many = html(<StartScreen {...props} local={[local[0], { ...local[0], id: 'l3', title: 'Old three' }]} />)
+    expect(many).toContain('Copy all 2 to my account')
+  })
+
+  it('shows the result of an import in words, with an escape hatch when the id is taken by a different carousel', () => {
+    const local = [{ id: 'l1', title: 'Old one', slideCount: 3, updatedAt: '2026-11-01T09:00:00Z', platformKey: 'instagram', formatKey: 'carousel' }]
+    const h = html(<StartScreen {...props} local={local} importResults={{ l1: { id: 'l1', status: 'exists-different', message: 'A different carousel with this id is already in your account. It was not changed.' } }} />)
+    expect(h).toContain('It was not changed')
+    expect(h).toContain('data-testid="import-as-copy"')
+  })
+})
+
+describe('save status, conflict and recovery messages', () => {
+  const base = { version: 2, unsaved: false, attempts: 0 }
+  it('names every state in words', () => {
+    const t = (state: Partial<SyncState> & { status: SyncState['status'] }) => html(<SaveBadge state={{ ...base, ...state }} onRetry={noop} />)
+    expect(t({ status: 'saving' })).toContain('Saving…')
+    expect(t({ status: 'dirty', unsaved: true })).toContain('Saving…')
+    expect(t({ status: 'saved', lastSavedAt: '2026-11-19T09:00:00Z' })).toMatch(/Saved \d/)
+    expect(t({ status: 'clean' })).toContain('All changes saved')
+    expect(t({ status: 'retrying', unsaved: true, attempts: 2 })).toMatch(/retrying. Your changes are kept/)
+    expect(t({ status: 'failed', unsaved: true, error: 'slide 2 is broken' })).toContain('Save failed: slide 2 is broken')
+    expect(t({ status: 'conflict', unsaved: true })).toContain('needs your decision')
+    expect(t({ status: 'auth', unsaved: true })).toContain('signed out')
+    expect(t({ status: 'saved' })).toContain('data-sync-status="saved"')
+  })
+  it('the conflict banner offers two explicit choices and appears only in conflict', () => {
+    expect(html(<ConflictBanner state={{ ...base, status: 'saved' }} onKeepMine={noop} onUseServer={noop} />)).toBe('')
+    const h = html(<ConflictBanner state={{ ...base, status: 'conflict', unsaved: true }} onKeepMine={noop} onUseServer={noop} />)
+    expect(h).toContain('changed somewhere else')
+    expect(h).toContain('nothing is overwritten until you do')
+    expect(h).toContain('data-testid="keep-mine"')
+    expect(h).toContain('data-testid="use-server"')
+  })
+  it('the recovery prompt explains what was found and offers restore or discard', () => {
+    const h = html(<RecoveryPrompt title="Tile tips" serverNewer onRestore={noop} onDiscard={noop} />)
+    expect(h).toContain('Unsaved edits found')
+    expect(h).toContain('Tile tips')
+    expect(h).toContain('choose which one to keep')
+    expect(h).toContain('data-testid="recovery-restore"')
+    expect(h).toContain('data-testid="recovery-discard"')
+    expect(html(<RecoveryPrompt title="Tile tips" serverNewer={false} onRestore={noop} onDiscard={noop} />)).not.toContain('choose which one to keep')
   })
 })
 

@@ -231,6 +231,16 @@ export const videoExportApi = {
     api.post('/video-export/export', body, { responseType: 'blob' }),
 }
 
+// Carousel Creator: authenticated, per-user server storage (see backend/app/routers/carousels.py). Nothing here touches browser storage.
+export const carouselsApi = {
+  list:      ()                                            => api.get('/carousels/'),
+  get:       (docId: string)                               => api.get(`/carousels/${encodeURIComponent(docId)}`),
+  create:    (body: Record<string, unknown>)               => api.post('/carousels/', body),
+  update:    (docId: string, body: Record<string, unknown>) => api.put(`/carousels/${encodeURIComponent(docId)}`, body),
+  duplicate: (docId: string)                               => api.post(`/carousels/${encodeURIComponent(docId)}/duplicate`),
+  delete:    (docId: string)                               => api.delete(`/carousels/${encodeURIComponent(docId)}`),
+}
+
 export const uploadApi = {
   upload: (file: File, job_id?: number) => {
     const form = new FormData()

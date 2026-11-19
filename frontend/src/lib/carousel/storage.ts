@@ -46,7 +46,7 @@ export function listCarousels(storage: KeyValueStorage): CarouselSummary[] {
 }
 
 /** Removes any media token from image URLs so nothing short-lived is persisted. */
-function stripTokens(doc: PostDocument, strip: (url: string) => string): PostDocument {
+export function stripTokens(doc: PostDocument, strip: (url: string) => string): PostDocument {
   const fixEl = (el: PostElement): PostElement => {
     if (el.type === 'image' && el.source.kind === 'asset' && el.source.url) return { ...el, source: { ...el.source, url: strip(el.source.url) } }
     if (el.type === 'group') return { ...el, children: el.children.map(fixEl) }
