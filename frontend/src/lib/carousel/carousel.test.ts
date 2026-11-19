@@ -5,7 +5,7 @@ import {
   newSlide, reorderSlides, renameSlide, setSlideBackground, setSlideElements, updateElement, type OpContext,
 } from './ops'
 import { createCarouselDocument } from './document'
-import { buildLayout, CAROUSEL_THEMES, LAYOUTS, themeById } from './layouts'
+import { blockHeight, buildLayout, CAROUSEL_THEMES, ctaLabel, estimateLines, fitSize, LAYOUTS, themeById, type LayoutId } from './layouts'
 import { carouselKey, CAROUSEL_INDEX_KEY, deleteCarousel, listCarousels, loadCarousel, memoryStorage, saveCarousel } from './storage'
 
 /** Deterministic ids and clock, so every assertion is exact. */
@@ -314,5 +314,64 @@ describe('persistence', () => {
     expect(raw).toContain('/uploads/1/pic.png')
     expect(raw).toContain('/uploads/1/bg.png')
     expect(s.getItem(CAROUSEL_INDEX_KEY)).toContain(d.id)
+  })
+})
+
+describe('content-aware layouts (real blueprint copy is long)', () => {
+  const LONG_HEAD = 'Establish one bold framing of the tile decision before any explanation of the options that follow'
+  const LONG_BODY = 'PLACEHOLDER — Open with a bold, general claim that a single tile choice can change the whole result of a renovation, stated before any explanation of the options and well before price comes up.'
+  const CASES: [LayoutId, Parameters<typeof buildLayout>[3]][] = [
+    ['cover', { headline: LONG_HEAD, body: LONG_BODY }],
+    ['title_body', { headline: LONG_HEAD, body: LONG_BODY }],
+    ['list', { headline: LONG_HEAD, items: ['PLACEHOLDER — The renovation situation the audience recognises', 'PLACEHOLDER — The two tile options to be compared (to be supplied)', 'PLACEHOLDER — Showroom access details'] }],
+    ['image_caption', { headline: LONG_HEAD, caption: LONG_BODY }],
+    ['quote', { body: LONG_BODY, caption: '— Name, role' }],
+    ['cta', { headline: LONG_HEAD, body: LONG_BODY, cta: 'visit/showroom/contact for guidance' }],
+    ['statement', { headline: LONG_HEAD }],
+  ]
+
+  it('shrinks long text to a readable floor and never below it', () => {
+    const f = fresh().format
+    const w = 1 - 2 * 0.075
+    const big = fitSize('x'.repeat(400), 800, w, 0.1, 0.05, 5)
+    expect(big).toBe(0.05)                                                                            // cannot fit: stays at the floor, never unreadable
+    expect(fitSize('Short', 800, w, 0.1, 0.05, 5)).toBe(0.1)                                         // short text keeps the full size
+    const mid = fitSize(LONG_HEAD, 800, w, 0.1, 0.05, 5)
+    expect(mid).toBeLessThan(0.1)
+    expect(mid).toBeGreaterThanOrEqual(0.05)
+    expect(estimateLines(LONG_HEAD, mid, 800, w)).toBeLessThanOrEqual(5)
+    expect(f.width).toBe(1080)
+  })
+
+  it('stacked text never overlaps: each text block ends above the next one starts, for every layout and format', () => {
+    for (const [platformKey, formatKey] of [['instagram', 'carousel'], ['instagram', 'square'], ['instagram', 'reel_story']] as const) {
+      const format = createCarouselDocument({ platformKey, formatKey }, ctx()).format
+      const s = Math.min(format.width, format.height)
+      const ch = format.height / s
+      const cw = format.width / s
+      for (const [layout, content] of CASES) {
+        const built = buildLayout(layout, format, themeById('forest'), content, ctx())
+        const blocks = built.elements.filter(e => e.type === 'text' && ['primary_headline', 'supporting_text', 'body_text', 'proof_point'].includes(e.role) && e.name !== 'Quote mark')
+        blocks.forEach((e, i) => {
+          if (e.type !== 'text') return
+          const h = blockHeight(e.content, e.style.fontSize, e.style.fontWeight, e.style.lineHeight, e.width * cw) / ch
+          const next = blocks[i + 1]
+          if (next) expect(e.y + h, `${platformKey}/${formatKey} ${layout}: "${e.name}" overlaps "${next.name}"`).toBeLessThanOrEqual(next.y + 1e-6)
+          expect(e.y + h, `${platformKey}/${formatKey} ${layout}: "${e.name}" runs off the bottom`).toBeLessThanOrEqual(1.02)
+          expect(e.style.fontSize, `${layout} ${e.name} readable`).toBeGreaterThanOrEqual(0.024)
+        })
+      }
+    }
+  })
+
+  it('a long call-to-action label wraps at its separators inside a full-width chip, not mid-word', () => {
+    expect(ctaLabel('visit/showroom/contact for guidance')).toBe('visit / showroom / contact for guidance')
+    expect(ctaLabel('  Book   now ')).toBe('Book now')
+    const format = fresh().format
+    const built = buildLayout('cta', format, themeById('ink'), { headline: 'Go', body: 'Now', cta: 'visit/showroom/contact for guidance' }, ctx())
+    const cta = built.elements.find(e => e.name === 'Call to action')!
+    expect(cta.type === 'text' && cta.content).toBe('visit / showroom / contact for guidance')
+    expect(cta.width).toBeGreaterThan(0.8)                                                            // room for the label, not a 60% chip
+    expect(cta.type === 'text' && cta.autoSize).toBe('auto-width')
   })
 })

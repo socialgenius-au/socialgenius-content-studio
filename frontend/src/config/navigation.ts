@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, Users, Radar, Target, ClipboardCheck, Map, Megaphone, Sparkles,
   Clapperboard, Scissors, GitBranch, Palette, Library, Send, Calendar, Plug, TrendingUp,
-  MessagesSquare, ListChecks, SlidersHorizontal, BarChart3, BookOpen, Settings,
+  MessagesSquare, ListChecks, SlidersHorizontal, BarChart3, BookOpen, Settings, GalleryHorizontal,
 } from 'lucide-react'
 import type { StaffRole } from '@/types/domain'
 import { VIDEO_STUDIO_ROUTE } from './studioRoutes'
@@ -50,6 +50,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'campaigns', label: 'Campaigns', icon: Megaphone, path: '/clients/{clientId}/campaigns', roles: ['admin', 'strategist', 'content_creator'], clientScoped: true },
       { id: 'post-creator', label: 'Post Creator', icon: Sparkles, path: '/post-creator-v2', roles: ['admin', 'content_creator'], clientScoped: false },
+      { id: 'carousel-creator', label: 'Carousel Creator', icon: GalleryHorizontal, path: '/carousel-creator', roles: ['admin', 'content_creator'], clientScoped: false },
       { id: 'studio', label: 'Video Studio', icon: Clapperboard, path: VIDEO_STUDIO_ROUTE, roles: ['admin', 'content_creator'], clientScoped: false },
       { id: 'deconstructor', label: 'Reconstruct', icon: GitBranch, path: '/deconstructor', roles: ['admin', 'content_creator'], clientScoped: false },
       { id: 'repurpose', label: 'Repurpose', icon: Scissors, path: '/clients/{clientId}/repurpose', roles: ['admin', 'content_creator'], clientScoped: true },

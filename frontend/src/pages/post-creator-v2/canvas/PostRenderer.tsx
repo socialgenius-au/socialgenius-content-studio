@@ -26,11 +26,15 @@ function paintCss(p: Paint, tokens?: BrandTokens): string {
   return typeof p === 'object' && 'kind' in p ? gradientCss(p, tokens) : resolveColor(p, tokens)
 }
 
-function backgroundStyle(bg: Background, tokens?: BrandTokens): CSSProperties {
+/** Maps a stored media URL to the one to display (adds the current short-lived media token). Identity by default. */
+export type ResolveUrl = (url: string) => string
+const identity: ResolveUrl = u => u
+
+function backgroundStyle(bg: Background, tokens?: BrandTokens, resolve: ResolveUrl = identity): CSSProperties {
   if (bg.kind === 'solid') return { background: resolveColor(bg.color, tokens) }
   if (bg.kind === 'gradient') return { background: gradientCss(bg, tokens) }
   if (bg.source.kind === 'asset' && bg.source.url) {
-    return { backgroundImage: `url(${bg.source.url})`, backgroundSize: bg.fit, backgroundPosition: `${(bg.focal?.x ?? 0.5) * 100}% ${(bg.focal?.y ?? 0.5) * 100}%`, backgroundRepeat: 'no-repeat' }
+    return { backgroundImage: `url(${resolve(bg.source.url)})`, backgroundSize: bg.fit, backgroundPosition: `${(bg.focal?.x ?? 0.5) * 100}% ${(bg.focal?.y ?? 0.5) * 100}%`, backgroundRepeat: 'no-repeat' }
   }
   return { background: '#808080' }   // image background without a resolvable source: neutral fill
 }
@@ -82,17 +86,26 @@ function renderText(el: TextElement, tokens?: BrandTokens): ReactNode {
   return <div key={el.id} {...attrs(el)} style={css}>{el.content}</div>
 }
 
-function renderImage(el: ImageElement): ReactNode {
+function renderImage(el: ImageElement, resolve: ResolveUrl = identity): ReactNode {
   const css: CSSProperties = { ...frameStyle(el), borderRadius: el.cornerRadius ? u(el.cornerRadius) : undefined, overflow: 'hidden' }
   const src = el.source
   let inner: ReactNode = null
   if (src.kind === 'asset' && src.url) {
-    inner = <img src={src.url} alt={el.alt ?? ''} draggable={false} style={{ width: '100%', height: '100%', objectFit: el.fit, objectPosition: `${(el.focal?.x ?? 0.5) * 100}% ${(el.focal?.y ?? 0.5) * 100}%`, display: 'block' }} />
+    inner = <img src={resolve(src.url)} alt={el.alt ?? ''} draggable={false} style={{ width: '100%', height: '100%', objectFit: el.fit, objectPosition: `${(el.focal?.x ?? 0.5) * 100}% ${(el.focal?.y ?? 0.5) * 100}%`, display: 'block' }} />
   } else if (src.kind === 'placeholder' || src.kind === 'brand') {
     // No real image yet: a wordmark placeholder sized from the element's own box (never stretched; the content keeps its own proportions).
     const label = src.kind === 'placeholder' ? src.label : 'LOGO'
     const glyph = src.kind === 'placeholder' ? src.glyph : undefined
     const h = typeof el.height === 'number' ? el.height : 0.05
+    const isSlot = src.kind === 'placeholder' && (el.role === 'hero_image' || el.role === 'product_image')
+    if (isSlot) {
+      // A picture slot (not a logo wordmark): a soft panel with a dashed outline and a small centred label, so an empty carousel slide reads as "put an image here".
+      css.display = 'flex'; css.alignItems = 'center'; css.justifyContent = 'center'
+      css.background = 'rgba(255,255,255,0.10)'
+      css.border = '0.4cqmin dashed rgba(255,255,255,0.55)'
+      css.fontSize = '2.6cqmin'; css.fontWeight = 600; css.color = 'rgba(255,255,255,0.85)'; css.lineHeight = 1.2; css.textAlign = 'center'
+      return <div key={el.id} {...attrs(el)} role={el.alt ? 'img' : undefined} aria-label={el.alt} style={css}><span>{label}</span></div>
+    }
     css.display = 'flex'
     css.alignItems = 'center'
     css.justifyContent = 'flex-start'
@@ -122,34 +135,34 @@ function renderShape(el: ShapeElement, tokens?: BrandTokens): ReactNode {
   return <div key={el.id} {...attrs(el)} style={css} />
 }
 
-function renderElement(el: PostElement, tokens?: BrandTokens): ReactNode {
+function renderElement(el: PostElement, tokens?: BrandTokens, resolve: ResolveUrl = identity): ReactNode {
   if (!el.visible) return null        // hidden elements stay in the data (a Layers panel will list them) but are not painted
   switch (el.type) {
     case 'text': return renderText(el, tokens)
-    case 'image': return renderImage(el)
+    case 'image': return renderImage(el, resolve)
     case 'shape': return renderShape(el, tokens)
     case 'group':
       return (
         <div key={el.id} {...attrs(el)} style={{ ...frameStyle(el), overflow: el.clip ? 'hidden' : undefined }}>
-          {el.children.map(c => renderElement(c, tokens))}
+          {el.children.map(c => renderElement(c, tokens, resolve))}
         </div>
       )
   }
 }
 
-/** Draws pages[0] of the document, filling its (positioned, size-container) parent. */
-export default function PostRenderer({ document: doc, brandTokens }: { document: PostDocument; brandTokens?: BrandTokens }) {
-  const page = primaryPage(doc)
+/** Draws one page of the document (by default pages[0]; a carousel passes the slide to show), filling its (positioned, size-container) parent. */
+export default function PostRenderer({ document: doc, brandTokens, pageId, resolveUrl }: { document: PostDocument; brandTokens?: BrandTokens; pageId?: string; resolveUrl?: ResolveUrl }) {
+  const page = (pageId && doc.pages.find(p => p.id === pageId)) || primaryPage(doc)
   return (
     <div
       data-testid="pcv2-post-page"
       data-document-id={doc.id}
       data-page-id={page.id}
       data-page-count={doc.pages.length}
-      style={{ position: 'absolute', inset: 0, overflow: 'hidden', ...backgroundStyle(page.background, brandTokens) }}
+      style={{ position: 'absolute', inset: 0, overflow: 'hidden', ...backgroundStyle(page.background, brandTokens, resolveUrl) }}
     >
       {/* Array order IS paint order: later siblings paint on top. */}
-      {page.elements.map(el => renderElement(el, brandTokens))}
+      {page.elements.map(el => renderElement(el, brandTokens, resolveUrl))}
     </div>
   )
 }

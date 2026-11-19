@@ -81,68 +81,133 @@ const SAMPLE: Record<LayoutId, LayoutContent> = {
   cta: { headline: 'Ready to take the next step?', body: 'Say exactly what to do and why it is worth it.', cta: 'Get in touch' },
 }
 
-/** Builds a layout for `format` in `theme`. Any field of `content` that is missing falls back to clearly-marked sample copy. */
+// ── text fitting ─────────────────────────────────────────────────────────────────────────────
+//
+// Layout cannot measure fonts (it is pure data), so it ESTIMATES how many lines a text takes from its length, size and weight, shrinks long text to a readable minimum, and stacks the
+// elements below it by the estimated height. A real measurement happens at draw time (PostRenderer / the rasterizer); the estimate only has to be close enough that nothing overlaps.
+
+/** Average glyph width as a multiple of the font size (wider for heavy weights). Slightly generous so the estimate errs on the side of more lines. */
+const avgEm = (weight: number) => (weight >= 700 ? 0.6 : weight >= 600 ? 0.56 : 0.52)
+
+/** Estimated number of wrapped lines for `text` at `size` (shorter-side fraction) inside `widthUnits` (shorter-side units). */
+export function estimateLines(text: string, size: number, weight: number, widthUnits: number): number {
+  const perLine = Math.max(1, Math.floor(widthUnits / (size * avgEm(weight))))
+  let lines = 0
+  for (const para of text.split('\n')) lines += Math.max(1, Math.ceil((para.length * 1.06) / perLine))
+  return lines
+}
+
+/** The largest size from `max` down to `min` at which the text fits in `maxLines`. */
+export function fitSize(text: string, weight: number, widthUnits: number, max: number, min: number, maxLines: number): number {
+  for (let s = max; s >= min - 1e-9; s -= 0.003) if (estimateLines(text, s, weight, widthUnits) <= maxLines) return r5(s)
+  return min
+}
+
+/** Estimated painted height (shorter-side units) of a text block. */
+export const blockHeight = (text: string, size: number, weight: number, lineHeight: number, widthUnits: number) => estimateLines(text, size, weight, widthUnits) * size * lineHeight
+
+/** Short call-to-action labels read best: collapse "a/b/c" into "a / b / c" so a long label can wrap at its separators instead of mid-word. */
+export const ctaLabel = (s: string) => s.replace(/\s*\/\s*/g, ' / ').replace(/\s+/g, ' ').trim()
+
+/** Builds a layout for `format` in `theme`. Any field of `content` that is missing falls back to clearly-marked sample copy. Long copy shrinks to a readable minimum and later elements move down with it. */
 export function buildLayout(layoutId: LayoutId, format: DocumentFormat, theme: CarouselTheme, content: LayoutContent = {}, ctx?: OpContext): BuiltLayout {
   const { X, Y, ch, cw } = units(format)
   const c = { ...SAMPLE[layoutId], ...Object.fromEntries(Object.entries(content).filter(([, v]) => v !== undefined && v !== '')) } as LayoutContent
   const PAD = 0.075
   const innerW = r5(1 - 2 * X(PAD))
+  const innerU = cw - 2 * PAD                        // inner width in shorter-side units
   const bg: Background = { kind: 'solid', color: theme.background }
   const H = (size: number, over = {}) => ({ fontFamily: theme.fontFamily, fontSize: size, fontWeight: 800, lineHeight: 1.1, align: 'left' as const, color: theme.foreground, ...over })
   const T = (el: Parameters<typeof makeText>[1]) => makeText(format, el, ctx)
+  const bottom = ch - 0.12                            // keep clear of the bottom edge / platform UI
+  const bar = (x: number, y: number, w = 0.14) => makeShape({ name: 'Accent bar', x: X(x), y: Y(y), width: X(w), height: Y(0.012), fill: theme.accent, role: 'decorative' }, ctx)
+  /** Body copy sized to the room left between `top` and `limit` (default: the bottom margin). */
+  const bodySize = (text: string, weight: number, lh: number, top: number, max: number, min: number, limit = bottom) => {
+    for (let s = max; s >= min - 1e-9; s -= 0.002) if (top + blockHeight(text, s, weight, lh, innerU) <= limit) return r5(s)
+    return min
+  }
 
   switch (layoutId) {
     case 'cover': {
-      const els: PostElement[] = [
-        makeShape({ name: 'Accent bar', x: X(PAD), y: Y(0.12), width: X(0.16), height: Y(0.012), fill: theme.accent, role: 'decorative' }, ctx),
+      const hs = fitSize(c.headline!, 800, innerU, 0.1, 0.05, 5)
+      const y0 = 0.3
+      const hEnd = y0 + blockHeight(c.headline!, hs, 800, 1.1, innerU)
+      const subTop = hEnd + 0.05
+      const ss = bodySize(c.body!, 500, 1.25, subTop, 0.04, 0.026, ch - 0.17 - 0.05)      // stay clear of the swipe chip
+      return { background: bg, elements: [
+        bar(PAD, 0.12, 0.16),
         T({ name: 'Kicker', role: 'secondary_headline', x: X(PAD), y: Y(0.15), width: innerW, content: c.kicker!, style: { ...H(0.03, { fontWeight: 700, color: theme.accent }), letterSpacing: 0.004 } as never }),
-        T({ name: 'Headline', role: 'primary_headline', x: X(PAD), y: Y(ch * 0.34), width: innerW, content: c.headline!, style: H(0.1) as never }),
-        T({ name: 'Subtitle', role: 'supporting_text', x: X(PAD), y: Y(ch * 0.34 + 0.46), width: X(cw * 0.8), content: c.body!, style: H(0.04, { fontWeight: 500, lineHeight: 1.25, color: theme.muted }) as never }),
-        T({
-          name: 'Swipe prompt', role: 'secondary_cta', x: X(PAD), y: Y(ch - 0.17), width: X(0.4), autoSize: 'auto-width', content: c.cta!,
-          style: H(0.032, { fontWeight: 700, color: theme.onAccent }) as never, box: { fill: theme.accent, radius: 0.05, paddingX: 0.04, paddingY: 0.02 },
-        }),
-      ]
-      return { background: bg, elements: els }
+        T({ name: 'Headline', role: 'primary_headline', x: X(PAD), y: Y(y0), width: innerW, content: c.headline!, style: H(hs) as never }),
+        T({ name: 'Subtitle', role: 'supporting_text', x: X(PAD), y: Y(subTop), width: r5(innerW * 0.92), content: c.body!, style: H(ss, { fontWeight: 500, lineHeight: 1.25, color: theme.muted }) as never }),
+        T({ name: 'Swipe prompt', role: 'secondary_cta', x: X(PAD), y: Y(ch - 0.17), width: X(0.4), autoSize: 'auto-width', content: c.cta!, style: H(0.032, { fontWeight: 700, color: theme.onAccent }) as never, box: { fill: theme.accent, radius: 0.05, paddingX: 0.04, paddingY: 0.02 } }),
+      ] }
     }
-    case 'title_body':
+    case 'title_body': {
+      const hs = fitSize(c.headline!, 800, innerU, 0.075, 0.042, 4)
+      const hEnd = 0.17 + blockHeight(c.headline!, hs, 800, 1.1, innerU)
+      const bTop = hEnd + 0.06
+      const bs = bodySize(c.body!, 500, 1.35, bTop, 0.042, 0.026)
       return { background: bg, elements: [
-        makeShape({ name: 'Accent bar', x: X(PAD), y: Y(0.12), width: X(0.12), height: Y(0.012), fill: theme.accent }, ctx),
-        T({ name: 'Headline', role: 'primary_headline', x: X(PAD), y: Y(0.17), width: innerW, content: c.headline!, style: H(0.075) as never }),
-        T({ name: 'Body', role: 'body_text', x: X(PAD), y: Y(0.17 + 0.075 * 1.1 * 2 + 0.07), width: innerW, content: c.body!, style: H(0.042, { fontWeight: 500, lineHeight: 1.35, color: theme.muted }) as never }),
+        bar(PAD, 0.12, 0.12),
+        T({ name: 'Headline', role: 'primary_headline', x: X(PAD), y: Y(0.17), width: innerW, content: c.headline!, style: H(hs) as never }),
+        T({ name: 'Body', role: 'body_text', x: X(PAD), y: Y(bTop), width: innerW, content: c.body!, style: H(bs, { fontWeight: 500, lineHeight: 1.35, color: theme.muted }) as never }),
       ] }
-    case 'statement':
+    }
+    case 'statement': {
+      const hs = fitSize(c.headline!, 800, innerU, 0.085, 0.045, 7)
+      const hH = blockHeight(c.headline!, hs, 800, 1.1, innerU)
+      const y0 = Math.max(0.22, (ch - hH) / 2)
       return { background: bg, elements: [
-        T({ name: 'Statement', role: 'primary_headline', x: X(PAD), y: Y(ch * 0.32), width: innerW, content: c.headline!, style: H(0.085, { align: 'center' }) as never }),
-        makeShape({ name: 'Accent bar', x: r5(0.5 - X(0.07)), y: Y(ch * 0.32 - 0.1), width: X(0.14), height: Y(0.012), fill: theme.accent }, ctx),
+        bar(0.5 * cw - 0.07, y0 - 0.1),
+        T({ name: 'Statement', role: 'primary_headline', x: X(PAD), y: Y(y0), width: innerW, content: c.headline!, style: H(hs, { align: 'center' }) as never }),
       ] }
+    }
     case 'list': {
       const items = (c.items && c.items.length ? c.items : SAMPLE.list.items!).slice(0, 5)
+      const hs = fitSize(c.headline!, 800, innerU, 0.07, 0.042, 3)
+      const hEnd = 0.14 + blockHeight(c.headline!, hs, 800, 1.1, innerU)
+      const text = items.map((t, i) => `${i + 1}  ${t}`).join('\n\n')
+      const ps = bodySize(text, 600, 1.3, hEnd + 0.07, 0.045, 0.026)
       return { background: bg, elements: [
-        T({ name: 'Headline', role: 'primary_headline', x: X(PAD), y: Y(0.14), width: innerW, content: c.headline!, style: H(0.07) as never }),
-        T({ name: 'Points', role: 'body_text', x: X(PAD), y: Y(0.14 + 0.07 * 1.1 * 2 + 0.08), width: innerW, content: items.map((t, i) => `${i + 1}  ${t}`).join('\n\n'), style: H(0.045, { fontWeight: 600, lineHeight: 1.3 }) as never }),
+        T({ name: 'Headline', role: 'primary_headline', x: X(PAD), y: Y(0.14), width: innerW, content: c.headline!, style: H(hs) as never }),
+        T({ name: 'Points', role: 'body_text', x: X(PAD), y: Y(hEnd + 0.07), width: innerW, content: text, style: H(ps, { fontWeight: 600, lineHeight: 1.3 }) as never }),
       ] }
     }
-    case 'image_caption':
+    case 'image_caption': {
+      const imgH = ch * 0.46
+      const top = PAD + imgH + 0.05
+      const hs = fitSize(c.headline!, 800, innerU, 0.06, 0.038, 3)
+      const hEnd = top + blockHeight(c.headline!, hs, 800, 1.1, innerU)
+      const cs = bodySize(c.caption!, 500, 1.3, hEnd + 0.03, 0.036, 0.024)
       return { background: bg, elements: [
-        makeImage({ name: 'Hero image', role: 'hero_image', x: X(PAD), y: Y(PAD), width: innerW, height: Y(ch * 0.52), cornerRadius: 0.03 }, ctx),
-        T({ name: 'Headline', role: 'primary_headline', x: X(PAD), y: Y(PAD + ch * 0.52 + 0.06), width: innerW, content: c.headline!, style: H(0.06) as never }),
-        T({ name: 'Caption', role: 'supporting_text', x: X(PAD), y: Y(PAD + ch * 0.52 + 0.06 + 0.06 * 1.1 * 2 + 0.04), width: innerW, content: c.caption!, style: H(0.036, { fontWeight: 500, lineHeight: 1.3, color: theme.muted }) as never }),
+        makeImage({ name: 'Hero image', role: 'hero_image', x: X(PAD), y: Y(PAD), width: innerW, height: Y(imgH), cornerRadius: 0.03 }, ctx),
+        T({ name: 'Headline', role: 'primary_headline', x: X(PAD), y: Y(top), width: innerW, content: c.headline!, style: H(hs) as never }),
+        T({ name: 'Caption', role: 'supporting_text', x: X(PAD), y: Y(hEnd + 0.03), width: innerW, content: c.caption!, style: H(cs, { fontWeight: 500, lineHeight: 1.3, color: theme.muted }) as never }),
       ] }
-    case 'quote':
+    }
+    case 'quote': {
+      const qTop = 0.32
+      const qs = bodySize(c.body!, 700, 1.25, qTop + 0.1, 0.058, 0.03)        // the room left below the quote mark, leaving space for the attribution
+      const qEnd = qTop + blockHeight(c.body!, qs, 700, 1.25, innerU)
       return { background: bg, elements: [
         T({ name: 'Quote mark', role: 'decorative', x: X(PAD), y: Y(0.1), width: X(0.3), content: '“', style: H(0.24, { color: theme.accent, lineHeight: 1 }) as never }),
-        T({ name: 'Quote', role: 'proof_point', x: X(PAD), y: Y(ch * 0.3), width: innerW, content: c.body!, style: H(0.058, { fontWeight: 700, lineHeight: 1.25 }) as never }),
-        T({ name: 'Attribution', role: 'supporting_text', x: X(PAD), y: Y(ch * 0.3 + 0.58), width: innerW, content: c.caption!, style: H(0.034, { fontWeight: 600, color: theme.muted }) as never }),
+        T({ name: 'Quote', role: 'proof_point', x: X(PAD), y: Y(qTop), width: innerW, content: c.body!, style: H(qs, { fontWeight: 700, lineHeight: 1.25 }) as never }),
+        T({ name: 'Attribution', role: 'supporting_text', x: X(PAD), y: Y(qEnd + 0.05), width: innerW, content: c.caption!, style: H(0.034, { fontWeight: 600, color: theme.muted }) as never }),
       ] }
-    case 'cta':
+    }
+    case 'cta': {
+      const label = ctaLabel(c.cta!)
+      const hs = fitSize(c.headline!, 800, innerU, 0.082, 0.045, 5)
+      const y0 = 0.22
+      const hEnd = y0 + blockHeight(c.headline!, hs, 800, 1.1, innerU)
+      const ctaSize = fitSize(label, 700, innerU - 0.1, 0.04, 0.026, 2)
+      const ctaH = blockHeight(label, ctaSize, 700, 1.1, innerU - 0.1) + 0.05
+      const ts = bodySize(c.body!, 500, 1.3, hEnd + 0.05, 0.04, 0.026, ch - 0.1 - ctaH - 0.05)     // stay clear of the button
       return { background: bg, elements: [
-        T({ name: 'Headline', role: 'primary_headline', x: X(PAD), y: Y(ch * 0.26), width: innerW, content: c.headline!, style: H(0.082) as never }),
-        T({ name: 'Supporting text', role: 'supporting_text', x: X(PAD), y: Y(ch * 0.26 + 0.082 * 1.1 * 3 + 0.05), width: innerW, content: c.body!, style: H(0.04, { fontWeight: 500, lineHeight: 1.3, color: theme.muted }) as never }),
-        T({
-          name: 'Call to action', role: 'primary_cta', x: X(PAD), y: Y(ch - 0.24), width: X(0.6), autoSize: 'auto-width', content: c.cta!,
-          style: H(0.04, { fontWeight: 700, color: theme.onAccent }) as never, box: { fill: theme.accent, radius: 0.03, paddingX: 0.05, paddingY: 0.026 },
-        }),
+        T({ name: 'Headline', role: 'primary_headline', x: X(PAD), y: Y(y0), width: innerW, content: c.headline!, style: H(hs) as never }),
+        T({ name: 'Supporting text', role: 'supporting_text', x: X(PAD), y: Y(hEnd + 0.05), width: innerW, content: c.body!, style: H(ts, { fontWeight: 500, lineHeight: 1.3, color: theme.muted }) as never }),
+        T({ name: 'Call to action', role: 'primary_cta', x: X(PAD), y: Y(ch - 0.1 - ctaH), width: innerW, autoSize: 'auto-width', content: label, style: H(ctaSize, { fontWeight: 700, lineHeight: 1.1, color: theme.onAccent }) as never, box: { fill: theme.accent, radius: 0.03, paddingX: 0.05, paddingY: 0.025 } }),
       ] }
+    }
   }
 }

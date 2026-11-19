@@ -101,11 +101,13 @@ export function carouselFromPlan(plan: CarouselPlan, bp: Blueprint, opts: PlanTo
   const theme = themeById(opts.themeId)
   const cta = opts.intentCta ?? bp.intent?.desired_cta ?? undefined
   const contents: LayoutContent[] = plan.slides.map(s => ({
+    // the new-content call to action belongs on the closing slide only; the cover keeps its own "Swipe" prompt
+
     headline: s.headline,
     body: `PLACEHOLDER — ${s.instruction}`,
     caption: `PLACEHOLDER — ${s.requiredInformation.length ? `Still needed: ${s.requiredInformation.join('; ')}` : s.instruction}`,
     items: s.requiredInformation.length ? s.requiredInformation.slice(0, 3).map(t => `PLACEHOLDER — ${t}`) : undefined,
-    cta: cta || undefined,
+    cta: s.layout === 'cta' ? cta || undefined : undefined,
     kicker: s.role.replace(/_/g, ' ').toUpperCase(),
   }))
   const doc = createCarouselDocument({

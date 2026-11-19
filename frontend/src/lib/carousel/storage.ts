@@ -94,6 +94,16 @@ export function deleteCarousel(storage: KeyValueStorage, id: string): void {
   try { storage.setItem(CAROUSEL_INDEX_KEY, JSON.stringify(readIndex(storage).filter(s => s.id !== id))) } catch { /* index stays as is */ }
 }
 
+/** The browser's localStorage, or null when it is unavailable or blocked (private windows, blocked site data). Every access is guarded. */
+export function browserStorage(): KeyValueStorage | null {
+  try {
+    const s = globalThis.localStorage
+    const probe = '__sg_carousel_probe__'
+    s.setItem(probe, '1'); s.removeItem(probe)
+    return s
+  } catch { return null }
+}
+
 /** An in-memory store (tests and non-browser use). */
 export function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & { dump(): Record<string, string> } {
   const m = new Map(Object.entries(initial))

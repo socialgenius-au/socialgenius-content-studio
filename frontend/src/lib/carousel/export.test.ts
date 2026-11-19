@@ -19,14 +19,14 @@ function recorder() {
   const grads: { args: number[]; stops: [number, string][] }[] = []
   const ctx = new Proxy(state, {
     get(t, k: string) {
-      if (k in t) return (t as never)[k]
+      if (k in t) return (t as Record<string, unknown>)[k]
       if (k === 'save') return () => { stack.push({ ...state }); calls.push(['save']) }
       if (k === 'restore') return () => { Object.assign(state, stack.pop()); calls.push(['restore']) }
       if (k === 'measureText') return (s: string) => ({ width: s.length * parseFloat(/(\d+(?:\.\d+)?)px/.exec(state.font)?.[1] ?? '10') * 0.5 })
       if (k === 'createLinearGradient') return (...args: number[]) => { const g = { args, stops: [] as [number, string][] }; grads.push(g); calls.push(['gradient', ...args]); return { addColorStop: (o: number, c: string) => g.stops.push([o, c]), _g: g } }
       return (...args: unknown[]) => { calls.push([k, ...args, state.fillStyle, state.globalAlpha, state.font]) }
     },
-    set(t, k: string, v) { (t as never)[k] = v; return true },
+    set(t, k: string, v) { (t as Record<string, unknown>)[k] = v; return true },
   }) as unknown as Ctx2D
   return { ctx, calls, state, grads }
 }
