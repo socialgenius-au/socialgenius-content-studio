@@ -4951,13 +4951,14 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                   onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
                   style={{ width: 100, minWidth: 0, padding: "9px", background: "var(--v-panel)", color: "var(--v-text)", border: "1px solid var(--v-line)", borderRadius: 6 }} />
               </div>
-              <div aria-label="Quick text colours" style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                {["#FFFFFF", "#E5E7EB", "#9CA3AF", "#4B5563", "#000000", "#FFF3B0", "#FFDD00", "#F59E0B", "#FF8C00", "#B45309", "#FF3333", "#DC2626", "#991B1B", "#FF69B4", "#EC4899", "#BE185D", "#A855F7", "#7C3AED", "#4C1D95", "#3B82F6", "#1D4ED8", "#00D4FF", "#0891B2", "#0F766E", "#10B981", "#12A656", "#166534", "#84CC16", "#D9F99D", "#F97316", "#FB7185", "#C084FC"].map(color => (
-                  <button key={color} type="button" aria-label={`Set text colour ${color}`} title={color}
-                    onClick={() => updateTextOverlay(selectedText.id, { color, useGradient: false })}
-                    style={{ background: color, width: 30, height: 30, borderRadius: 6, border: selectedText.color.toLowerCase() === color.toLowerCase() && !selectedText.useGradient ? "3px solid var(--v-accent)" : "1px solid var(--v-line)", cursor: "pointer" }} />
-                ))}
-              </div>
+              <label htmlFor="v2-text-colour-preset" style={{ fontWeight: 600 }}>Choose a preset colour</label>
+              <select id="v2-text-colour-preset" aria-label="Text colour presets"
+                value={["#FFFFFF","#E5E7EB","#9CA3AF","#4B5563","#000000","#FFF3B0","#FFDD00","#F59E0B","#FF8C00","#B45309","#FF3333","#DC2626","#991B1B","#FF69B4","#EC4899","#BE185D","#A855F7","#7C3AED","#4C1D95","#3B82F6","#1D4ED8","#00D4FF","#0891B2","#0F766E","#10B981","#12A656","#166534","#84CC16","#D9F99D","#F97316","#FB7185","#C084FC"].includes(selectedText.color.toUpperCase()) && !selectedText.useGradient ? selectedText.color.toUpperCase() : ""}
+                onChange={e => { if (e.target.value) updateTextOverlay(selectedText.id, { color: e.target.value, useGradient: false }); }}
+                style={{ width: "100%", minWidth: 0, minHeight: 42, padding: "8px", background: "var(--v-panel)", color: "var(--v-text)", border: "1px solid var(--v-line)", borderRadius: 6 }}>
+                <option value="">Custom colour — use picker above</option>
+                {[{ name: "White", hex: "#FFFFFF" }, { name: "Light Grey", hex: "#E5E7EB" }, { name: "Grey", hex: "#9CA3AF" }, { name: "Charcoal", hex: "#4B5563" }, { name: "Black", hex: "#000000" }, { name: "Cream", hex: "#FFF3B0" }, { name: "Yellow", hex: "#FFDD00" }, { name: "Amber", hex: "#F59E0B" }, { name: "Orange", hex: "#FF8C00" }, { name: "Brown", hex: "#B45309" }, { name: "Red", hex: "#FF3333" }, { name: "Deep Red", hex: "#DC2626" }, { name: "Burgundy", hex: "#991B1B" }, { name: "Pink", hex: "#FF69B4" }, { name: "Rose", hex: "#EC4899" }, { name: "Magenta", hex: "#BE185D" }, { name: "Purple", hex: "#A855F7" }, { name: "Violet", hex: "#7C3AED" }, { name: "Indigo", hex: "#4C1D95" }, { name: "Blue", hex: "#3B82F6" }, { name: "Royal Blue", hex: "#1D4ED8" }, { name: "Cyan", hex: "#00D4FF" }, { name: "Teal Blue", hex: "#0891B2" }, { name: "Dark Teal", hex: "#0F766E" }, { name: "Mint", hex: "#10B981" }, { name: "Green", hex: "#12A656" }, { name: "Forest Green", hex: "#166534" }, { name: "Lime", hex: "#84CC16" }, { name: "Pale Lime", hex: "#D9F99D" }, { name: "Tangerine", hex: "#F97316" }, { name: "Coral", hex: "#FB7185" }, { name: "Lavender", hex: "#C084FC" }].map(c => <option key={c.hex} value={c.hex}>{c.name} — {c.hex}</option>)}
+              </select>
               {selectedText.useGradient && <small>Choosing a solid colour turns off Gradient Fill for this text.</small>}
             </div>
             <h4>Typography</h4>
@@ -5090,14 +5091,17 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
                 separate rendering system): one click sets a bundle of stroke/shadow/background
                 values, exactly as if set by hand through the controls above. */}
             <h4>Style Presets</h4>
-            <div className="text-style-presets-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, width: "100%", minWidth: 0 }}>
+            <select aria-label="Choose text style preset" defaultValue=""
+              onChange={e => {
+                const preset = [...TEXT_STYLE_PRESETS, ...EXTRA_TEXT_STYLE_PRESETS].find(p => p.name === e.target.value);
+                if (preset) updateTextOverlay(selectedText.id, preset.apply);
+              }}
+              style={{ width: "100%", minWidth: 0, minHeight: 42, padding: "8px", background: "var(--v-panel)", color: "var(--v-text)", border: "1px solid var(--v-line)", borderRadius: 6 }}>
+              <option value="" disabled>Select a text style…</option>
               {[...TEXT_STYLE_PRESETS, ...EXTRA_TEXT_STYLE_PRESETS].map(p => (
-                <button key={p.name} type="button" onClick={() => updateTextOverlay(selectedText.id, p.apply)} title={p.name}
-                  style={{ display: "block", width: "100%", minWidth: 0, minHeight: 42, padding: "8px 6px", whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "normal", lineHeight: 1.3, textAlign: "center" }}>
-                  {p.name}
-                </button>
+                <option key={p.name} value={p.name}>{p.name}</option>
               ))}
-            </div>
+            </select>
 
             <h4>Animation</h4>
             {/* Field is real and persists/exports-ready for a later phase; it does not yet drive
