@@ -16,7 +16,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401) {
+    // A rejected login belongs to the login form, not session expiry.
+    // Redirecting here reloads the page before its error message can render.
+    if (err.response?.status === 401 && err.config?.url !== '/auth/login') {
       localStorage.removeItem('token')
       window.location.href = '/login'
     }
