@@ -59,7 +59,7 @@ export default function Login() {
             required
             autoComplete="current-password"
           />
-          {error && <p style={s.error}>{error}</p>}
+          {error && <p role="alert" style={s.error}>{error}</p>}
           <button style={{ ...s.btn, opacity: loading ? 0.7 : 1 }} type="submit" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
