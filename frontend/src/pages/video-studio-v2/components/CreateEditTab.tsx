@@ -257,7 +257,7 @@ function formatShotTimecode(t: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toFixed(3).padStart(6, "0")}`;
 }
 
-export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
+export default function CreateEditTab({ onNext, onBack, projectDialogRequest = 0 }: { onNext?: () => void; onBack?: () => void; projectDialogRequest?: number }) {
   const {
     videoClips, addVideoClip: rawAddVideoClip, updateVideoClip: rawUpdateVideoClip, removeVideoClip: rawRemoveVideoClip,
     // Phase 1 (V2 Inserts/B-roll): additionalVideoClips already existed on StudioContext with
@@ -592,9 +592,16 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [showSaveDraft, setShowSaveDraft] = useState(false);
   const [saveNameInput, setSaveNameInput] = useState("");
   const [showMyDrafts, setShowMyDrafts] = useState(false);
+  const [showProjectChooser, setShowProjectChooser] = useState(false);
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [draftsError, setDraftsError] = useState<string | null>(null);
+
+  // Sidebar Open / Save Project must open real actions even when already in Create / Edit.
+  // Request counter also works when navigating here from another workflow stage.
+  useEffect(() => {
+    if (projectDialogRequest > 0) setShowProjectChooser(true);
+  }, [projectDialogRequest]);
 
   // Records the draft carries that this editor does not model (the Reconstructor's `*Reconstruction` records and its draft-level table): picked up when a draft is opened and written back on save, so a save from the editor no
   // longer drops them. Named keys below always win; nothing here edits a layer (see export/draftExtras.ts).
@@ -6419,6 +6426,20 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
         <button className="secondary" onClick={onBack} type="button">← Back: Creative Lab</button>
         <button className="primary" onClick={onNext} type="button">Next: Review →</button>
       </div>
+
+      {showProjectChooser && (
+        <div className="draft-modal-overlay" onClick={() => setShowProjectChooser(false)}>
+          <div className="draft-modal" onClick={e => e.stopPropagation()}>
+            <h3>Open / Save Project</h3>
+            <p className="empty-hint">Save your current video project or open a previously saved draft.</p>
+            <div className="draft-modal-actions">
+              <button type="button" onClick={() => setShowProjectChooser(false)}>Cancel</button>
+              <button type="button" onClick={() => { setShowProjectChooser(false); void openMyDrafts(); }}>Open Saved Project</button>
+              <button type="button" className="primary" onClick={() => { setShowProjectChooser(false); openSaveDraft(); }} disabled={draftBusy}>Save Current Project</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* STEP 7.9: Save Draft — overlay, doesn't rearrange the approved screen underneath it. */}
       {showSaveDraft && (

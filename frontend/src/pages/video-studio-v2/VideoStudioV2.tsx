@@ -130,6 +130,7 @@ export default function VideoStudioV2() {
     return isWorkflowStage(saved) ? saved : "brief";
   });
   const [theme, setTheme] = useState<ThemeMode>("light");
+  const [projectDialogRequest, setProjectDialogRequest] = useState(0);
 
   const setStage = (next: WorkflowStage) => {
     setStageState(next);
@@ -187,7 +188,7 @@ export default function VideoStudioV2() {
         <div className="vsv2-project-card">
           <div className="pc-head"><FolderOpen size={15} /><span>Current Project</span></div>
           <ProjectIdentityCard />
-          <button type="button" onClick={() => setStage("create")} title="Open Create / Edit to load or save a named draft">Open / Save Project</button>
+          <button type="button" onClick={() => { setStage("create"); setProjectDialogRequest(n => n + 1); }} title="Open project save and load options">Open / Save Project</button>
         </div>
       </aside>
 
@@ -218,7 +219,9 @@ export default function VideoStudioV2() {
         <BlueprintPlanPanel />
 
         <section className="vsv2-workspace">
-          <Current onNext={goNext} onBack={goBack} />
+          {stage === "create"
+            ? <CreateEditTab onNext={goNext} onBack={goBack} projectDialogRequest={projectDialogRequest} />
+            : <Current onNext={goNext} onBack={goBack} />}
         </section>
       </main>
     </div>
