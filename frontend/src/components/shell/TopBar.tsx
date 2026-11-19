@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Bell, Sparkles, Sun, Moon, Monitor, LogOut, User as UserIcon } from 'lucide-react'
+import { Search, Bell, Sparkles, Sun, Moon, Monitor, LogOut, User as UserIcon, Menu } from 'lucide-react'
 import { ClientSwitcher } from './ClientSwitcher'
 import { Breadcrumbs } from './Breadcrumbs'
 import { Input } from '@/components/ui/input'
@@ -24,7 +24,13 @@ const MOCK_NOTIFICATIONS = [
   { id: 'n3', text: 'Warranty claims SLA task is overdue', time: '1d ago' },
 ]
 
-export function TopBar() {
+interface TopBarProps {
+  /** Narrow viewport: show the button that opens the navigation drawer. */
+  showMenuButton?: boolean
+  onOpenMenu?: () => void
+}
+
+export function TopBar({ showMenuButton = false, onOpenMenu }: TopBarProps = {}) {
   const { client } = useClient()
   const { user, logout } = useAuth()
   const { mode, resolvedTheme, setMode } = useTheme()
@@ -39,7 +45,12 @@ export function TopBar() {
   const ThemeIcon = mode === 'auto' ? Monitor : resolvedTheme === 'dark' ? Moon : Sun
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-4">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-3 sm:gap-3 sm:px-4">
+      {showMenuButton && (
+        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={onOpenMenu} aria-label="Open navigation">
+          <Menu className="h-5 w-5" />
+        </Button>
+      )}
       <ClientSwitcher />
 
       <div className="hidden items-center gap-1.5 lg:flex">
@@ -50,17 +61,17 @@ export function TopBar() {
         )}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
-        <Breadcrumbs />
+      <div className="ml-auto flex min-w-0 items-center gap-2">
+        <div className="hidden lg:block"><Breadcrumbs /></div>
 
         <div className="relative hidden sm:block">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="h-8 w-48 pl-8" />
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="h-8 w-36 pl-8 lg:w-48" />
         </div>
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative h-8 w-8">
+            <Button variant="ghost" size="icon" className="relative h-8 w-8 shrink-0">
               <Bell className="h-4 w-4" />
               <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground">
                 {MOCK_NOTIFICATIONS.length}
@@ -80,18 +91,18 @@ export function TopBar() {
           </PopoverContent>
         </Popover>
 
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={cycleTheme} title={`Theme: ${mode}`}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={cycleTheme} title={`Theme: ${mode}`}>
           <ThemeIcon className="h-4 w-4" />
         </Button>
 
-        <Button size="sm" className="h-8 gap-1.5 bg-sg-forest text-sg-ivory hover:bg-sg-forest/90" onClick={openCompanion}>
+        <Button size="sm" className="h-8 shrink-0 gap-1.5 bg-sg-forest text-sg-ivory hover:bg-sg-forest/90" onClick={openCompanion}>
           <Sparkles className="h-3.5 w-3.5" />
-          <span className="hidden md:inline">AI Companion</span>
+          <span className="hidden lg:inline">AI Companion</span>
         </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button>
+            <button className="shrink-0">
               <Avatar className="h-8 w-8">
                 <AvatarFallback>{(user?.username ?? 'U').slice(0, 2).toUpperCase()}</AvatarFallback>
               </Avatar>
