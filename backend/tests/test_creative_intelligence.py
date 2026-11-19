@@ -191,6 +191,16 @@ class TestHookAndStory:
         assert any("1 of 4 sections have no visual reading" in u for u in n["uncertainty"])
         assert any("whether it worked on an audience" in u for u in n["unsupported"])
 
+    @pytest.mark.parametrize("order", [0, 1])
+    def test_the_most_specific_role_leads_whatever_the_order_of_the_findings_and_the_others_are_kept(self, order):
+        hook = {"id": 1, "kind": "hook_visual", "mechanism_hint": "hook_curiosity", "confidence": "medium"}
+        text = {"id": 2, "kind": "text_use", "mechanism_hint": "text_attention", "confidence": "low"}
+        findings = [hook, text] if order == 0 else [text, hook]
+        n = narrative_progression([{"number": 1, "start_time": 0.0, "end_time": 2.0, "creative": {"findings": findings}}], None, None)
+        s = n["sections"][0]
+        assert (s["role"], s["role_label"], s["also"], s["confidence"]) == ("opening_hook", "Opening / hook", ["Text focus"], "low")
+        assert n["arc_text"].startswith("Opening / hook (section 1)")
+
     def test_without_a_visual_reading_the_progression_is_not_established_and_says_how_to_establish_it(self):
         n = anatomy(creative=False)["video"]["narrative"]
         assert n["status"] == "not_established" and n["arc_text"] is None and all(s["role"] is None for s in n["sections"])
@@ -243,6 +253,21 @@ class TestIntelligenceRecord:
         rec = build_creative_intelligence(anatomy(), MECH_RESP())
         assert rec["reuse_policy"]["reuse"].startswith("The mechanism") and "wording, brand" in rec["reuse_policy"]["never_copy"]
         assert set(rec["evidence_classes"]) == {"observed", "ai_interpretation", "unsupported"}
+
+    def test_the_same_disagreement_across_several_sections_is_one_finding_listing_every_section_and_note(self):
+        rec = build_creative_intelligence(anatomy(), MECH_RESP())
+        keys = [(c["topic"], c["status"]) for c in rec["contradictions"]]
+        assert len(keys) == len(set(keys))
+        for c in rec["contradictions"]:
+            assert c["sections"] == sorted(set(c["sections"])) and len(c["notes"]) == len(set(c["notes"]))
+            assert c["note"] == (c["notes"][0] if c["notes"] else None)
+        a = {"video": {"duration": 10.0, "reconciliation": {"items": [
+            {"topic": "spoken wording", "status": "contradicted", "sections": [3], "note": "n-a", "authority": "x"},
+            {"topic": "spoken wording", "status": "contradicted", "sections": [1, 2], "note": "n-b", "authority": "x"},
+            {"topic": "spoken wording", "status": "contradicted", "sections": [2, 4], "note": "n-a", "authority": "x"},
+            {"topic": "spoken wording", "status": "established", "sections": [1], "note": "ok", "authority": "x"}]}}, "sections": [], "provenance": {}}
+        got = build_creative_intelligence(a, None)["contradictions"]
+        assert len(got) == 1 and got[0]["sections"] == [1, 2, 3, 4] and got[0]["notes"] == ["n-a", "n-b"] and got[0]["note"] == "n-a"
 
     @pytest.mark.parametrize("status,expected,count", [("current", "ready", 3), ("stale", "mechanisms_stale", 3), ("not_run", "mechanisms_not_run", 0), ("unknown", "mechanisms_unknown", 0)])
     def test_it_reports_honestly_when_mechanisms_are_stale_or_missing(self, status, expected, count):

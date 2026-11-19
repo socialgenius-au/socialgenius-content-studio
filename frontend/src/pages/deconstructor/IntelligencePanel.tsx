@@ -82,7 +82,17 @@ export default function IntelligencePanel({ status, intel, error }: Intelligence
 
           {intel.contradictions.length > 0 && (
             <Details label={`Where the evidence disagrees or is weak (${intel.contradictions.length})`}>
-              <ul className="ml-4 list-disc">{intel.contradictions.map(c => <li key={`${c.topic}-${c.note}`}><strong>{c.topic}</strong> ({c.status.replace(/_/g, ' ')}): {c.note}</li>)}</ul>
+              <ul className="ml-4 list-disc">{intel.contradictions.map(c => {
+                const more = Math.max(0, (c.notes?.length ?? 0) - 1)
+                const where = c.sections && c.sections.length ? `sections ${c.sections.join(', ')}` : null
+                const extra = [more > 0 ? `+${more} more note${more > 1 ? 's' : ''}` : null, where].filter(Boolean).join('; ')
+                return (
+                  <li key={`${c.topic}-${c.status}`}>
+                    <strong>{c.topic}</strong> ({c.status.replace(/_/g, ' ')}): {c.note}
+                    {extra && <span className="text-slate-500"> ({extra})</span>}
+                  </li>
+                )
+              })}</ul>
             </Details>
           )}
           {intel.structure && intel.structure.uncertainty.length > 0 && (
