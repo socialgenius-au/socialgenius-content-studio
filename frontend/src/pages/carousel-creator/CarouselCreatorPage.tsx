@@ -55,9 +55,9 @@ function Editor({ initialDoc, themeId, activeSlideId, storage, onExit }: { initi
 
   return (
     <div className="flex flex-col gap-3" data-testid="carousel-editor" data-document-id={state.doc.id}>
-      <header className="flex flex-wrap items-center gap-2">
+      <header className="flex flex-wrap items-center gap-2" data-testid="editor-header">
         <button type="button" onClick={onExit} className="inline-flex h-9 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-sm hover:bg-muted" data-testid="back-to-list"><ArrowLeft className="h-4 w-4" />All carousels</button>
-        <input aria-label="Carousel name" className="h-9 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-lg font-semibold hover:border-border focus:border-border focus:bg-background" value={state.doc.title} onChange={e => dispatch({ type: 'setTitle', title: e.target.value })} data-testid="doc-title" />
+        <input aria-label="Carousel name" className="order-last h-9 w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 text-lg font-semibold hover:border-border focus:border-border focus:bg-background md:order-none md:w-auto md:flex-1" value={state.doc.title} onChange={e => dispatch({ type: 'setTitle', title: e.target.value })} data-testid="doc-title" />
         <div className="flex items-center gap-1">
           <button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card hover:bg-muted disabled:opacity-40" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={state.past.length === 0} onClick={() => dispatch({ type: 'undo' })} data-testid="undo"><Undo2 className="h-4 w-4" /></button>
           <button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card hover:bg-muted disabled:opacity-40" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={state.future.length === 0} onClick={() => dispatch({ type: 'redo' })} data-testid="redo"><Redo2 className="h-4 w-4" /></button>
@@ -73,10 +73,10 @@ function Editor({ initialDoc, themeId, activeSlideId, storage, onExit }: { initi
 
       {state.notice && <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100" data-testid="notice">{state.notice} <button type="button" className="ml-2 underline" onClick={() => dispatch({ type: 'clearNotice' })}>Dismiss</button></p>}
 
-      <div className="grid gap-3 md:grid-cols-[9.5rem_minmax(0,1fr)] xl:h-[calc(100vh-11rem)] xl:min-h-[560px] xl:grid-cols-[9.5rem_minmax(0,1fr)_21rem]">
-        <div className="order-2 min-h-0 md:order-none md:h-[72vh] md:min-h-[480px] xl:h-full xl:min-h-0"><Filmstrip doc={state.doc} activeId={page.id} onSelect={id => dispatch({ type: 'selectSlide', id })} onAdd={layout => dispatch({ type: 'addSlide', layout })} onDuplicate={id => dispatch({ type: 'duplicateSlide', id })} onDelete={id => dispatch({ type: 'deleteSlide', id })} onMove={(id, to) => dispatch({ type: 'moveSlide', id, to })} /></div>
-        <div className="order-1 flex min-h-0 flex-col md:order-none md:h-[72vh] md:min-h-[480px] xl:h-full xl:min-h-0"><StageCanvas doc={state.doc} pageId={page.id} selectedId={state.selectedElementId} dispatch={dispatch} /></div>
-        <aside className="order-3 min-h-0 rounded-lg border border-border bg-card p-3 md:col-span-2 xl:col-span-1 xl:h-full xl:overflow-y-auto" aria-label="Editor panels">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 xl:h-[calc(100vh-11rem)] xl:min-h-[560px] xl:grid-cols-[9.5rem_minmax(0,1fr)_21rem]">
+        <div className="order-2 min-h-0 xl:order-none xl:h-full"><Filmstrip doc={state.doc} activeId={page.id} onSelect={id => dispatch({ type: 'selectSlide', id })} onAdd={layout => dispatch({ type: 'addSlide', layout })} onDuplicate={id => dispatch({ type: 'duplicateSlide', id })} onDelete={id => dispatch({ type: 'deleteSlide', id })} onMove={(id, to) => dispatch({ type: 'moveSlide', id, to })} /></div>
+        <div className="order-1 flex min-h-0 flex-col xl:order-none xl:h-full"><StageCanvas doc={state.doc} pageId={page.id} selectedId={state.selectedElementId} dispatch={dispatch} /></div>
+        <aside className="order-3 min-h-0 rounded-lg border border-border bg-card p-3 xl:h-full xl:overflow-y-auto" aria-label="Editor panels">
           <div role="tablist" aria-label="Panels" className="mb-3 flex gap-1 rounded-md bg-muted p-1">{tabBtn('edit', 'Edit')}{tabBtn('layers', 'Layers')}{tabBtn('export', 'Export')}</div>
           {tab === 'edit' && <Inspector doc={state.doc} page={page} selected={selected} dispatch={dispatch} />}
           {tab === 'layers' && <LayersPanel page={page} selectedId={state.selectedElementId} dispatch={dispatch} />}

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type KeyboardEvent, type PointerEvent } from 'react'
 import type { PostDocument } from '../../../lib/postDocument'
 import { fitCanvasBox } from '../../../lib/platformFormats'
+import { STACKED_QUERY, useMatchMedia } from '../useMatchMedia'
 import type { EditorAction } from '../editorState'
 import SlideView from './SlideView'
 
@@ -27,7 +28,11 @@ export default function StageCanvas({ doc, pageId, selectedId, dispatch }: { doc
   const [stage, setStage] = useState({ w: 520, h: 640 })
   const [overlay, setOverlay] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const page = doc.pages.find(p => p.id === pageId)!
-  const box = fitCanvasBox(doc.format.width, doc.format.height, Math.max(stage.w - MARGIN * 2, 80), Math.max(stage.h - MARGIN * 2, 80))
+  // When the editor is stacked (phones and tablets) the page scrolls, so the canvas is sized by the available WIDTH (the stage grows to fit it); on larger screens it is fitted inside the stage's fixed height.
+  const narrow = useMatchMedia(STACKED_QUERY)
+  const availW = Math.max(stage.w - MARGIN * 2, 80)
+  const availH = narrow ? Math.max(availW * (doc.format.height / doc.format.width), 80) : Math.max(stage.h - MARGIN * 2, 80)
+  const box = fitCanvasBox(doc.format.width, doc.format.height, availW, availH)
   const selected = selectedId ? page.elements.find(e => e.id === selectedId) : undefined
 
   useLayoutEffect(() => {
@@ -114,7 +119,7 @@ export default function StageCanvas({ doc, pageId, selectedId, dispatch }: { doc
       onKeyDown={onKeyDown}
       aria-label="Slide canvas. Click an element to select it, drag to move, arrow keys to nudge, Delete to remove."
       data-testid="stage"
-      className="flex min-h-[320px] flex-1 items-center justify-center rounded-lg bg-muted/60 p-3 outline-none focus-visible:ring-2 focus-visible:ring-primary md:min-h-0"
+      className="flex min-h-[320px] flex-1 items-center justify-center rounded-lg bg-muted/60 p-3 outline-none focus-visible:ring-2 focus-visible:ring-primary xl:min-h-0"
     >
       <div
         ref={canvasRef}

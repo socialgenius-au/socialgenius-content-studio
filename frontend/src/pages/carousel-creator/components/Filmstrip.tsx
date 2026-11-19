@@ -28,7 +28,7 @@ export default function Filmstrip({ doc, activeId, onSelect, onAdd, onDuplicate,
   const only = doc.pages.length <= 1
 
   return (
-    <section aria-label="Slides" data-testid="filmstrip" className="flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-2 md:h-full">
+    <section aria-label="Slides" data-testid="filmstrip" className="flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-2 xl:h-full">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Slides <span data-testid="slide-count">{doc.pages.length}</span>/{MAX_SLIDES}</h2>
         <div className="flex items-center gap-1">
@@ -39,7 +39,7 @@ export default function Filmstrip({ doc, activeId, onSelect, onAdd, onDuplicate,
         </div>
       </div>
 
-      <ol className="flex min-h-0 flex-1 gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-x-hidden md:overflow-y-auto md:pb-0" data-testid="slide-list">
+      <ol className="flex min-h-0 flex-1 gap-2 overflow-x-auto pb-1 xl:flex-col xl:overflow-x-hidden xl:overflow-y-auto xl:pb-0" data-testid="slide-list">
         {doc.pages.map((p, i) => (
           <li
             key={p.id}
@@ -52,7 +52,7 @@ export default function Filmstrip({ doc, activeId, onSelect, onAdd, onDuplicate,
             onDragLeave={() => setOverIndex(cur => (cur === i ? null : cur))}
             onDrop={e => { e.preventDefault(); if (dragId && dragId !== p.id) onMove(dragId, i); setDragId(null); setOverIndex(null) }}
             onDragEnd={() => { setDragId(null); setOverIndex(null) }}
-            className={cn('w-24 shrink-0 cursor-pointer rounded-md border-2 p-1 md:w-full', p.id === activeId ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-muted', overIndex === i && dragId !== p.id && 'ring-2 ring-primary/60', dragId === p.id && 'opacity-50')}
+            className={cn('w-24 shrink-0 cursor-pointer rounded-md border-2 p-1 xl:w-full', p.id === activeId ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-muted', overIndex === i && dragId !== p.id && 'ring-2 ring-primary/60', dragId === p.id && 'opacity-50')}
           >
             <button type="button" onClick={() => onSelect(p.id)} className="block w-full text-left" aria-label={`Open slide ${i + 1}${p.name ? `: ${p.name}` : ''}`} aria-current={p.id === activeId ? 'true' : undefined}>
               <div className="pointer-events-none overflow-hidden rounded border border-border shadow-sm"><SlideView doc={doc} pageId={p.id} /></div>
