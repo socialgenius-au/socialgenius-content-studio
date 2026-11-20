@@ -241,6 +241,15 @@ export const carouselsApi = {
   delete:    (docId: string)                               => api.delete(`/carousels/${encodeURIComponent(docId)}`),
 }
 
+// Carousel Creator: the design library (reusable elements and backgrounds saved by the user).
+export const libraryItemsApi = {
+  list:   ()                                          => api.get('/library-items/'),
+  get:    (id: number)                                => api.get(`/library-items/${id}`),
+  create: (body: Record<string, unknown>)             => api.post('/library-items/', body),
+  rename: (id: number, name: string)                  => api.put(`/library-items/${id}`, { name }),
+  delete: (id: number)                                => api.delete(`/library-items/${id}`),
+}
+
 // Carousel Creator: animated video export. The browser renders every frame; the server encodes them with FFmpeg (see backend/app/routers/carousel_video.py).
 export const carouselVideoApi = {
   createJob:  (body: Record<string, unknown>) => api.post('/carousel-video/jobs', body),

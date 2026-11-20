@@ -46,6 +46,9 @@ ANIMATION_KINDS = {
     "emphasis": frozenset({"pulse", "bounce", "rotate", "zoom", "fade"}),
 }
 TRANSITION_KINDS = frozenset({"none", "fade", "dissolve", "slide", "push", "wipe", "zoom", "flip"})
+PATTERN_IDS = frozenset({"dots", "dots-fine", "stripes", "diagonal", "grid", "checker", "zigzag", "plus", "crosshatch", "grain"})
+SHAPE_KINDS = frozenset({"rect", "ellipse", "line", "triangle", "right-triangle", "diamond", "parallelogram", "trapezoid", "cross", "heart", "pentagon", "hexagon", "octagon", "star-4", "star-5", "star-6",
+                         "burst", "arrow-right", "arrow-left", "arrow-up", "arrow-down", "arrow-double", "chevron", "bubble", "bubble-round", "line-arrow", "line-arrow-double"})
 
 
 def _num(v, lo, hi) -> bool:
@@ -208,6 +211,8 @@ def _check_elements(elements, path: str, ids: set[str], assets: set[int], errors
             continue
         if el.get("animations") is not None:
             _check_animations(el["animations"], p, errors)
+        if el["type"] == "shape" and el.get("shape") not in SHAPE_KINDS:
+            errors.append(f"{p}.shape: unknown shape")
         if el["type"] == "image":
             _collect_assets(el.get("source"), assets, errors, f"{p}.source")
         elif el["type"] == "group":
@@ -279,6 +284,8 @@ def validate_document(doc, expected_doc_id: str | None = None) -> tuple[dict, se
                 errors.append(f"{path}.background: invalid")
             elif bg.get("kind") == "image":
                 _collect_assets(bg.get("source"), assets, errors, f"{path}.background.source")
+            elif bg.get("kind") == "pattern" and bg.get("pattern") not in PATTERN_IDS:
+                errors.append(f"{path}.background.pattern: unknown pattern")
             _check_page_motion(p, path, errors)
             _check_elements(p.get("elements"), f"{path}.elements", ids, assets, errors, 0)
 

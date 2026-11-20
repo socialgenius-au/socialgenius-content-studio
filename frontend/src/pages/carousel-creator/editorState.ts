@@ -53,6 +53,7 @@ export type EditorAction =
   /** Replaces the document with a prepared one (applying a Brand Kit or a template) as ONE undo step; optionally opens a slide and selects elements. */
   | { type: 'commitDoc'; doc: PostDocument; activeSlideId?: string; selectIds?: string[] }
   | { type: 'addPrepared'; element: PostElement }
+  | { type: 'addPreparedMany'; elements: PostElement[] }
   | { type: 'slideMotion'; id: string; patch: SlideMotionPatch }
   | { type: 'transitionForAll'; transition: SlideTransition | null }
   | { type: 'elementAnimation'; id: string; phase: ElementAnimation['phase']; anim: ElementAnimation | null }
@@ -160,6 +161,11 @@ function reduce(s: EditorState, a: EditorAction, ctx?: OpContext): EditorState {
     case 'elementAnimation': return commit(s, setElementAnimation(s.doc, active, a.id, a.phase, a.anim, ctx))
     case 'animateAll': return commit(s, animateAllEntrances(s.doc, active, a.kind, { staggerMs: a.staggerMs, direction: a.direction }, ctx))
     case 'clearAnimations': return commit(s, clearSlideAnimations(s.doc, active, ctx))
+    case 'addPreparedMany': {
+      let next = s.doc
+      for (const e of a.elements) next = addElement(next, active, e, ctx)
+      return commit(s, next, { ...sel(a.elements.map(e => e.id)) })
+    }
     case 'addPrepared': return commit(s, addElement(s.doc, active, a.element, ctx), { ...sel([a.element.id]) })
     case 'updateElement': return commit(s, updateElement(s.doc, active, a.id, a.patch, ctx))
     case 'deleteElement': return commit(s, deleteElement(s.doc, active, a.id, ctx), { ...sel(s.selectedIds.filter(i => i !== a.id)) })

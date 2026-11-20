@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { MemoryRouter } from 'react-router-dom'
 import { createCarouselDocument } from '../../lib/carousel/document'
-import { addElement, insertSlide, makeImage, makeText, newSlide, setElementAnimation, type OpContext } from '../../lib/carousel/ops'
+import { addElement, insertSlide, makeImage, makeShape, makeText, newSlide, setElementAnimation, type OpContext } from '../../lib/carousel/ops'
 import type { PostDocument } from '../../lib/postDocument'
 
 vi.mock('../../api/client', () => ({
@@ -21,6 +21,9 @@ import ExportPanel from './components/ExportPanel'
 import SlideView from './components/SlideView'
 import { ConflictBanner, RecoveryPrompt, SaveBadge } from './components/SyncStatus'
 import AnimatePanel from './components/AnimatePanel'
+import DesignPanel from './components/DesignPanel'
+import { PLAIN_SHAPES, SHAPES } from '../../lib/carousel/shapes'
+import { themeById } from '../../lib/carousel/layouts'
 import { defaultAnimation } from '../../lib/carousel/animation'
 import BrandPanel from './components/BrandPanel'
 import TemplatesPanel from './components/TemplatesPanel'
@@ -425,5 +428,40 @@ describe('Animate panel', () => {
     expect(h).toContain('Static PNG, JPEG and PDF exports are not affected')
     expect(h).toContain('data-testid="video-no-motion"')
     expect(h).toContain('MP4 video'); expect(h).toContain('>GIF<'); expect(h).toContain('data-testid="export-video"')
+  })
+})
+
+describe('Design panel and element controls', () => {
+  const mkDoc = () => { const c = ctx(); let d = doc(['cover'], c); const page = d.pages[0].id; const t = makeText(d.format, { name: 'Words' }, c); const img = makeImage({ name: 'Code', source: { kind: 'qr', data: 'https://example.com' }, role: 'other' }, c); const sh = makeShape({ name: 'Star', shape: 'star-5' }, c); for (const e of [t, img, sh]) d = addElement(d, page, e, c); return { d, page: d.pages[0], t, img, sh } }
+
+  it('the design panel offers colours, gradients, patterns, every shape, information elements and a personal library', () => {
+    const { d, page } = mkDoc()
+    const h = html(<DesignPanel doc={d} page={page} theme={themeById('forest')} selectedIds={[]} dispatch={noop} libraryStore={{ list: async () => [] } as never} />)
+    expect(h.match(/aria-label="Gradient /g)).toHaveLength(12)
+    expect(h.match(/aria-label="Pattern /g)!.length).toBeGreaterThanOrEqual(8)
+    expect(h.match(/data-testid="add-shape-kind"/g)).toHaveLength(PLAIN_SHAPES.length + SHAPES.length)
+    for (const k of ['Star', 'Speech bubble', 'Arrow right', 'Heart', 'Line with arrow', 'Hexagon']) expect(h).toContain(`aria-label="Add ${k}"`)
+    for (const t of ['add-date', 'add-time', 'add-datetime', 'add-countdown', 'add-timer', 'add-location', 'add-address', 'add-map']) expect(h).toContain(`data-testid="${t}"`)
+    expect(h).toMatch(/disabled=""[^>]*data-testid="add-qr-btn"|data-testid="add-qr-btn"[^>]*disabled/)           // needs a valid address first
+    expect(h).toMatch(/disabled=""[^>]*data-testid="save-selection"|data-testid="save-selection"[^>]*disabled/)    // needs a name and a selection
+    expect(h).toContain('Countdowns and timers tick only in an animated video')
+  })
+
+  it('a text element offers typography extras, dynamic values and a link with a clear note about where links work', () => {
+    const { d, page, t } = mkDoc()
+    const h = html(<Inspector doc={d} page={page} selected={t} selectedIds={[t.id]} dispatch={noop} />)
+    for (const id of ['typography-extras', 'text-italic', 'text-spacing', 'text-outline', 'text-shadow', 'dynamic-controls', 'dynamic-kind', 'link-controls', 'link-to-map', 'opacity', 'rotation']) expect(h, id).toContain(`data-testid="${id}"`)
+    expect(h).toContain('Links stay clickable only in a PDF export')
+    expect(h).toContain('>900</option>')
+  })
+
+  it('a QR code edits its destination; a shape has a grouped shape list, outline and text inside; a picture has crop, flip and adjustments', () => {
+    const { d, page, img, sh } = mkDoc()
+    const qr = html(<Inspector doc={d} page={page} selected={img} selectedIds={[img.id]} dispatch={noop} />)
+    expect(qr).toContain('data-testid="qr-controls"'); expect(qr).toContain('Where the QR code goes'); expect(qr).toContain('value="https://example.com"')
+    const shape = html(<Inspector doc={d} page={page} selected={sh} selectedIds={[sh.id]} dispatch={noop} />)
+    expect(shape).toContain('data-testid="shape-kind"'); expect(shape).toContain('<optgroup label="Stars">'); expect(shape).toContain('data-testid="shape-text"'); expect(shape).toContain('data-testid="shape-outline"')
+    const pic = html(<Inspector doc={d} page={page} selected={{ ...img, source: { kind: 'asset', assetId: 1, url: '/uploads/1/a.png' } }} selectedIds={[img.id]} dispatch={noop} />)
+    for (const id of ['image-extras', 'flip-x', 'flip-y', 'trim-top', 'trim-left', 'adjust-brightness', 'adjust-blur', 'adjust-reset']) expect(pic, id).toContain(`data-testid="${id}"`)
   })
 })

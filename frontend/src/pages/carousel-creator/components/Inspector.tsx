@@ -9,6 +9,7 @@ import type { AlignMode, AlignTo } from '../../../lib/carousel/geometry'
 import type { EditorAction } from '../editorState'
 import ImagePicker from './ImagePicker'
 import { ImageExtras, ShapeExtras, ShapeSelect, TypographyExtras } from './ElementControls'
+import { DynamicControls, LinkControls, QrControls } from './InfoControls'
 
 export const FONT_STACKS: { label: string; value: string }[] = [
   { label: 'Inter', value: 'Inter, ui-sans-serif, system-ui, sans-serif' },
@@ -154,6 +155,7 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
 
             {selected.type === 'text' && (
               <>
+                <DynamicControls el={selected} upd={upd} />
                 <Row label="Text"><textarea className="min-h-20 w-full rounded-md border border-border bg-background p-2 text-sm" aria-label="Text content" value={selected.content} onChange={e => upd({ content: e.target.value })} data-testid="text-content" /></Row>
                 <Row label="Font"><select className={field} aria-label="Font" value={typeof selected.style.fontFamily === 'object' ? `token:${selected.style.fontFamily.token}` : FONT_STACKS.find(f => f.value === selected.style.fontFamily)?.value ?? (kitFonts.map(k => fontStack(k)).find(v => v === selected.style.fontFamily) ?? (typeof selected.style.fontFamily === 'string' ? selected.style.fontFamily : FONT_STACKS[0].value))} onChange={e => { const v = e.target.value; upd({ style: { fontFamily: v.startsWith('token:') ? { token: v.slice(6), fallback: typeof selected.style.fontFamily === 'string' ? selected.style.fontFamily : selected.style.fontFamily.fallback } : v } }) }}>
                   {tokens && <optgroup label="Brand Kit"><option value={`token:${BRAND.fontHeading}`}>Brand heading font</option><option value={`token:${BRAND.fontBody}`}>Brand body font</option>{kitFonts.map(k => <option key={k} value={fontStack(k)}>{k}</option>)}</optgroup>}
@@ -183,6 +185,7 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
 
             {selected.type === 'image' && (
               <>
+                <QrControls el={selected} upd={upd} />
                 <Row label="Fit"><select className={field} aria-label="Image fit" value={selected.fit} onChange={e => upd({ fit: e.target.value })}><option value="cover">Fill (crop)</option><option value="contain">Fit inside</option></select></Row>
                 <Row label="Alt text"><input className={field} aria-label="Image description" value={selected.alt ?? ''} placeholder="Describe the picture" onChange={e => upd({ alt: e.target.value })} /></Row>
                 <Row label="Corners"><input type="range" aria-label="Corner radius" min={0} max={12} step={0.5} value={pctOf(selected.cornerRadius ?? 0)} onChange={e => upd({ cornerRadius: toFrac(e.target.value, 0, 0.5) })} className="w-full" /></Row>
@@ -217,6 +220,7 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
               <Row label="Rotate °"><span className="flex items-center gap-1.5"><input type="range" aria-label="Rotation slider" min={-180} max={180} step={1} value={selected.rotation} onChange={e => upd({ rotation: Number(e.target.value) })} className="min-w-0 flex-1" data-testid="rotation" /><NumField label="Rotation degrees" value={selected.rotation} min={-180} max={180} step={1} onChange={v => upd({ rotation: v })} /></span></Row>
               <Row label={`Opacity ${Math.round(selected.opacity * 100)}%`}><input type="range" aria-label="Opacity" min={0} max={100} step={1} value={Math.round(selected.opacity * 100)} onChange={e => upd({ opacity: Number(e.target.value) / 100 })} className="w-full" data-testid="opacity" /></Row>
             </div>
+            <LinkControls el={selected} upd={upd} />
           </>
         )}
       </section>
