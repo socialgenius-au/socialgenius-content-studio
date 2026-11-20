@@ -241,6 +241,30 @@ export const carouselsApi = {
   delete:    (docId: string)                               => api.delete(`/carousels/${encodeURIComponent(docId)}`),
 }
 
+// Carousel Creator: Brand Kits (account-owned brand names, colours, logos, fonts, assets) and reusable carousel templates. Pictures and fonts live in the existing media storage.
+export const brandKitsApi = {
+  list:      ()                                              => api.get('/brand-kits/'),
+  get:       (id: number)                                    => api.get(`/brand-kits/${id}`),
+  create:    (body: Record<string, unknown>)                 => api.post('/brand-kits/', body),
+  update:    (id: number, body: Record<string, unknown>)     => api.put(`/brand-kits/${id}`, body),
+  duplicate: (id: number)                                    => api.post(`/brand-kits/${id}/duplicate`),
+  delete:    (id: number)                                    => api.delete(`/brand-kits/${id}`),
+  uploadFont: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/brand-kits/fonts', form, { headers: { 'Content-Type': undefined as unknown as string } })
+  },
+}
+
+export const carouselTemplatesApi = {
+  list:      ()                                              => api.get('/carousel-templates/'),
+  get:       (id: number)                                    => api.get(`/carousel-templates/${id}`),
+  create:    (body: Record<string, unknown>)                 => api.post('/carousel-templates/', body),
+  update:    (id: number, body: Record<string, unknown>)     => api.put(`/carousel-templates/${id}`, body),
+  duplicate: (id: number)                                    => api.post(`/carousel-templates/${id}/duplicate`),
+  delete:    (id: number)                                    => api.delete(`/carousel-templates/${id}`),
+}
+
 export const uploadApi = {
   upload: (file: File, job_id?: number) => {
     const form = new FormData()

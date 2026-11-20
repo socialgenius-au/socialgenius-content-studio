@@ -5,7 +5,7 @@
 //
 // SELECTION: `selectedIds` is the set of selected top-level elements on the open slide (in the order they were picked); `selectedElementId` is the primary one (the last picked), which the
 // inspector edits. Operations on several elements (align, distribute, group, nudge, delete, drag) apply to the whole set.
-import type { Background, PostDocument } from '../../lib/postDocument'
+import type { Background, PostDocument, PostElement } from '../../lib/postDocument'
 import {
   CarouselError, addElement, addImages, alignElements, deleteElement, deleteElements, deleteSlide, distributeElements, duplicateElement, duplicateSlide, groupElements, insertSlide, makeImage, makeShape,
   makeText, moveElementLayer, moveElementTo, moveSlide, newSlide, nudgeElements, renameSlide, setLockedMany, setSlideBackground, setSlideElements, slideIndex, ungroupElement, updateElement,
@@ -50,6 +50,9 @@ export type EditorAction =
   | { type: 'setTheme'; themeId: string }
   | { type: 'addElement'; kind: 'text' | 'shape' | 'image' }
   | { type: 'addImages'; items: ImageItem[] }
+  /** Replaces the document with a prepared one (applying a Brand Kit or a template) as ONE undo step; optionally opens a slide and selects elements. */
+  | { type: 'commitDoc'; doc: PostDocument; activeSlideId?: string; selectIds?: string[] }
+  | { type: 'addPrepared'; element: PostElement }
   | { type: 'updateElement'; id: string; patch: ElementPatch }
   | { type: 'deleteElement'; id: string }
   | { type: 'deleteSelected' }
@@ -143,6 +146,11 @@ function reduce(s: EditorState, a: EditorAction, ctx?: OpContext): EditorState {
       const r = addImages(s.doc, active, a.items, ctx)
       return commit(s, r.doc, { ...sel(r.ids) })
     }
+    case 'commitDoc': {
+      const open = a.activeSlideId && a.doc.pages.some(p => p.id === a.activeSlideId) ? a.activeSlideId : (a.doc.pages.some(p => p.id === active) ? active : a.doc.pages[0].id)
+      return commit(s, a.doc, { activeSlideId: open, ...sel(cleanIds(a.doc, open, a.selectIds ?? [])) })
+    }
+    case 'addPrepared': return commit(s, addElement(s.doc, active, a.element, ctx), { ...sel([a.element.id]) })
     case 'updateElement': return commit(s, updateElement(s.doc, active, a.id, a.patch, ctx))
     case 'deleteElement': return commit(s, deleteElement(s.doc, active, a.id, ctx), { ...sel(s.selectedIds.filter(i => i !== a.id)) })
     case 'deleteSelected': {

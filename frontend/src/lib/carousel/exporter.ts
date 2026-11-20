@@ -1,7 +1,7 @@
 // Carousel Creator — export orchestration: PNG / JPEG for one slide or all slides (as a ZIP), and one multi-page PDF in slide order.
 //
 // The drawing backend is injected (`RasterBackend`), so the same code runs on real <canvas> elements in the browser (see browserBackend.ts) and on stubs in tests.
-import type { PostDocument } from '../postDocument'
+import type { BrandTokens, PostDocument } from '../postDocument'
 import { drawSlide, type Ctx2D, type DrawableImage } from './rasterize'
 import { buildPdf, type PdfPage } from './pdf'
 import { buildZip } from './zip'
@@ -27,6 +27,8 @@ export interface ExportOptions {
   /** JPEG quality 0..1 (ignored for PNG). */
   quality?: number
   resolveUrl?: (url: string) => string
+  /** Brand Kit tokens, so token colours and fonts export exactly as they look on screen. */
+  tokens?: BrandTokens
   now?: () => Date
   /** Which slides (0-based indices, in the order given). Default: every slide. */
   indices?: number[]
@@ -63,7 +65,7 @@ export const exportPixelSize = (doc: PostDocument, scale = 1) => ({ width: Math.
 async function drawToSurface(doc: PostDocument, index: number, backend: RasterBackend, o: ExportOptions): Promise<{ surface: RasterSurface; width: number; height: number }> {
   const { width, height } = exportPixelSize(doc, o.scale)
   const surface = backend.createSurface(width, height)
-  await drawSlide(surface.ctx, doc, index, { width, height, resolveUrl: o.resolveUrl, loadImage: backend.loadImage })
+  await drawSlide(surface.ctx, doc, index, { width, height, resolveUrl: o.resolveUrl, tokens: o.tokens, loadImage: backend.loadImage })
   return { surface, width, height }
 }
 

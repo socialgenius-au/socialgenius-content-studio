@@ -1,8 +1,10 @@
 import { useState, type Dispatch, type ReactNode } from 'react'
 import { AlignCenter, AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalSpaceBetween, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, AlignVerticalSpaceBetween, ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Copy, Eye, EyeOff, Lock, Unlock, Trash2 } from 'lucide-react'
-import { resolveColor, shorterSide, type Background, type PostDocument, type PostElement, type PostPage } from '../../../lib/postDocument'
+import { resolveColor, shorterSide, type Background, type ColorRef, type PostDocument, type PostElement, type PostPage } from '../../../lib/postDocument'
 import { LAYOUTS, type LayoutId } from '../../../lib/carousel/layouts'
 import { IMAGE_MASKS } from '../../../lib/carousel/masks'
+import { useBrandTokens } from '../../../lib/carousel/brandContext'
+import { BRAND } from '../../../lib/carousel/brandKit'
 import type { AlignMode, AlignTo } from '../../../lib/carousel/geometry'
 import type { EditorAction } from '../editorState'
 import ImagePicker from './ImagePicker'
@@ -14,6 +16,8 @@ export const FONT_STACKS: { label: string; value: string }[] = [
   { label: 'Georgia (serif)', value: 'Georgia, "Times New Roman", serif' },
   { label: 'Courier (mono)', value: '"Courier New", ui-monospace, monospace' },
 ]
+
+export const fontStack = (family: string) => `"${family.replace(/"/g, '')}", Inter, ui-sans-serif, system-ui, sans-serif`
 
 const field = 'h-8 w-full rounded-md border border-border bg-background px-2 text-sm'
 const tbtn = 'inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card hover:bg-muted disabled:opacity-40'
@@ -30,24 +34,38 @@ function NumField({ value, onChange, min = 0, max = 100, step = 0.5, label, disa
   return <input type="number" aria-label={label} className={field} value={Number.isFinite(value) ? value : 0} min={min} max={max} step={step} disabled={disabled} onChange={e => { if (e.target.value !== '') onChange(Number(e.target.value)) }} />
 }
 
+function SwatchRow({ swatches, onPick, label }: { swatches: { label: string; ref: ColorRef; hex: string }[]; onPick: (ref: ColorRef) => void; label: string }) {
+  if (swatches.length === 0) return null
+  return (
+    <div className="flex flex-wrap items-center gap-1" aria-label={label} data-testid="brand-swatches">
+      {swatches.map(s => <button key={s.label + s.hex} type="button" title={`${s.label} ${s.hex}`} aria-label={`Use brand colour ${s.label}`} onClick={() => onPick(s.ref)} className="h-5 w-5 rounded-full border border-border" style={{ background: s.hex }} />)}
+    </div>
+  )
+}
+
 export interface InspectorProps {
   doc: PostDocument
   page: PostPage
   selected: PostElement | undefined
   /** Every selected element; with two or more the inspector offers align / distribute / group instead of single-element settings. */
   selectedIds?: string[]
+  /** Brand Kit colours to offer as one-click swatches (they follow the kit), and the kit's custom font families. */
+  swatches?: { label: string; ref: ColorRef; hex: string }[]
+  kitFonts?: string[]
   dispatch: Dispatch<EditorAction>
 }
 
 /** Properties of the open slide (name, layout, background) and of the selected element (position, text, image, shape, layering). */
-export default function Inspector({ doc, page, selected, selectedIds, dispatch }: InspectorProps) {
+export default function Inspector({ doc, page, selected, selectedIds, swatches = [], kitFonts = [], dispatch }: InspectorProps) {
+  const tokens = useBrandTokens()
+  const rc = (c: ColorRef) => resolveColor(c, tokens)
   const [layout, setLayout] = useState<LayoutId>('title_body')
   const [manyPicker, setManyPicker] = useState(false)
   const [alignTo, setAlignTo] = useState<AlignTo>('selection')
   const count = selectedIds?.length ?? (selected ? 1 : 0)
   const [bgPicker, setBgPicker] = useState(false)
   const bg = page.background
-  const solid = bg.kind === 'solid' ? hex(resolveColor(bg.color)) : '#1E4D2B'
+  const solid = bg.kind === 'solid' ? hex(rc(bg.color)) : '#1E4D2B'
   const setBg = (b: Background) => dispatch({ type: 'setBackground', background: b })
   const upd = (patch: Record<string, unknown>) => selected && dispatch({ type: 'updateElement', id: selected.id, patch: patch as never })
   const S = shorterSide(doc)
@@ -64,11 +82,12 @@ export default function Inspector({ doc, page, selected, selectedIds, dispatch }
             <button type="button" className="h-8 flex-1 rounded-md border border-border text-xs hover:bg-muted" onClick={() => setBgPicker(v => !v)} data-testid="bg-image">Image</button>
           </span>
         </Row>
+        <SwatchRow swatches={swatches} label="Brand colours for the background" onPick={ref => setBg({ kind: 'solid', color: ref })} />
         {bg.kind === 'gradient' && (
           <Row label="Gradient">
             <span className="flex items-center gap-1.5">
               {bg.stops.slice(0, 2).map((s, i) => (
-                <input key={i} type="color" aria-label={`Gradient colour ${i + 1}`} value={hex(resolveColor(s.color))} onChange={e => setBg({ ...bg, stops: bg.stops.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })} className="h-8 w-10 rounded border border-border p-0.5" />
+                <input key={i} type="color" aria-label={`Gradient colour ${i + 1}`} value={hex(rc(s.color))} onChange={e => setBg({ ...bg, stops: bg.stops.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })} className="h-8 w-10 rounded border border-border p-0.5" />
               ))}
               <NumField label="Gradient angle" value={bg.angle} min={0} max={360} step={5} onChange={v => setBg({ ...bg, angle: v })} />
             </span>
@@ -135,7 +154,8 @@ export default function Inspector({ doc, page, selected, selectedIds, dispatch }
             {selected.type === 'text' && (
               <>
                 <Row label="Text"><textarea className="min-h-20 w-full rounded-md border border-border bg-background p-2 text-sm" aria-label="Text content" value={selected.content} onChange={e => upd({ content: e.target.value })} data-testid="text-content" /></Row>
-                <Row label="Font"><select className={field} aria-label="Font" value={FONT_STACKS.find(f => f.value === selected.style.fontFamily)?.value ?? (typeof selected.style.fontFamily === 'string' ? selected.style.fontFamily : FONT_STACKS[0].value)} onChange={e => upd({ style: { fontFamily: e.target.value } })}>
+                <Row label="Font"><select className={field} aria-label="Font" value={typeof selected.style.fontFamily === 'object' ? `token:${selected.style.fontFamily.token}` : FONT_STACKS.find(f => f.value === selected.style.fontFamily)?.value ?? (kitFonts.map(k => fontStack(k)).find(v => v === selected.style.fontFamily) ?? (typeof selected.style.fontFamily === 'string' ? selected.style.fontFamily : FONT_STACKS[0].value))} onChange={e => { const v = e.target.value; upd({ style: { fontFamily: v.startsWith('token:') ? { token: v.slice(6), fallback: typeof selected.style.fontFamily === 'string' ? selected.style.fontFamily : selected.style.fontFamily.fallback } : v } }) }}>
+                  {tokens && <optgroup label="Brand Kit"><option value={`token:${BRAND.fontHeading}`}>Brand heading font</option><option value={`token:${BRAND.fontBody}`}>Brand body font</option>{kitFonts.map(k => <option key={k} value={fontStack(k)}>{k}</option>)}</optgroup>}
                   {typeof selected.style.fontFamily === 'string' && !FONT_STACKS.some(f => f.value === selected.style.fontFamily) && <option value={selected.style.fontFamily}>Custom</option>}
                   {FONT_STACKS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></Row>
                 <Row label={`Size (≈${Math.round(selected.style.fontSize * S)}px)`}><input type="range" aria-label="Text size" min={2} max={24} step={0.5} value={pctOf(selected.style.fontSize)} onChange={e => upd({ style: { fontSize: toFrac(e.target.value, 0.01, 0.4) } })} className="w-full" data-testid="text-size" /></Row>
@@ -148,7 +168,7 @@ export default function Inspector({ doc, page, selected, selectedIds, dispatch }
                     })}
                   </span>
                 </Row>
-                <Row label="Colour"><input type="color" aria-label="Text colour" value={hex(resolveColor(selected.style.color))} onChange={e => upd({ style: { color: e.target.value } })} className="h-8 w-14 rounded border border-border p-0.5" data-testid="text-color" /></Row>
+                <Row label="Colour"><span className="flex flex-wrap items-center gap-1.5"><input type="color" aria-label="Text colour" value={hex(rc(selected.style.color))} onChange={e => upd({ style: { color: e.target.value } })} className="h-8 w-14 rounded border border-border p-0.5" data-testid="text-color" /><SwatchRow swatches={swatches} label="Brand colours for the text" onPick={ref => upd({ style: { color: ref } })} /></span></Row>
                 <Row label="Line height"><input type="range" aria-label="Line height" min={0.9} max={2} step={0.05} value={selected.style.lineHeight} onChange={e => upd({ style: { lineHeight: Number(e.target.value) } })} className="w-full" /></Row>
                 <Row label="Button style">
                   <span className="flex items-center gap-1.5">
@@ -180,7 +200,7 @@ export default function Inspector({ doc, page, selected, selectedIds, dispatch }
             {selected.type === 'shape' && (
               <>
                 <Row label="Shape"><select className={field} aria-label="Shape type" value={selected.shape} onChange={e => upd({ shape: e.target.value })}><option value="rect">Rectangle</option><option value="ellipse">Ellipse</option></select></Row>
-                <Row label="Fill"><input type="color" aria-label="Fill colour" value={hex(typeof selected.fill === 'string' ? selected.fill : '#1E8A55')} onChange={e => upd({ fill: e.target.value })} className="h-8 w-14 rounded border border-border p-0.5" data-testid="shape-fill" /></Row>
+                <Row label="Fill"><span className="flex flex-wrap items-center gap-1.5"><input type="color" aria-label="Fill colour" value={hex(typeof selected.fill === 'string' ? selected.fill : selected.fill && 'token' in (selected.fill as object) ? rc(selected.fill as ColorRef) : '#1E8A55')} onChange={e => upd({ fill: e.target.value })} className="h-8 w-14 rounded border border-border p-0.5" data-testid="shape-fill" /><SwatchRow swatches={swatches} label="Brand colours for the fill" onPick={ref => upd({ fill: ref })} /></span></Row>
                 <Row label="Corners"><input type="range" aria-label="Corner radius" min={0} max={20} step={0.5} value={pctOf(selected.cornerRadius ?? 0)} onChange={e => upd({ cornerRadius: toFrac(e.target.value, 0, 0.5) })} className="w-full" /></Row>
               </>
             )}

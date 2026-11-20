@@ -5,6 +5,8 @@ import { createCarouselDocument, INSTAGRAM_CAROUSEL } from '../../../lib/carouse
 import { CAROUSEL_THEMES, DEFAULT_THEME_ID } from '../../../lib/carousel/layouts'
 import type { ServerCarouselSummary } from '../../../lib/carousel/serverStore'
 import type { ImportOutcome, LocalEntry } from '../../../lib/carousel/migration'
+import type { BrandKitSummary } from '../../../lib/carousel/brandKit'
+import type { TemplateSummary } from '../../../lib/carousel/templates'
 import type { PostDocument } from '../../../lib/postDocument'
 import PlanPanel from './PlanPanel'
 
@@ -18,7 +20,12 @@ export interface StartScreenProps {
   onOpen: (id: string) => void
   onDuplicate: (id: string) => void
   onDelete: (id: string) => void
-  onCreate: (doc: PostDocument, themeId: string) => void
+  onCreate: (doc: PostDocument, themeId: string, kitId?: number | null) => void
+  /** The account's Brand Kits and saved templates (null while loading). */
+  kits?: BrandKitSummary[] | null
+  templates?: TemplateSummary[] | null
+  onUseTemplate?: (id: number) => void
+  onOpenBrandKits?: () => void
   /** Carousels that exist only in this browser (saved before accounts stored them). Empty/omitted = nothing to bring over. */
   local?: LocalEntry[]
   importResults?: Record<string, ImportOutcome>
@@ -68,7 +75,8 @@ function BrowserCopies({ local, results, importing, onImportAll, onImportOne, on
 }
 
 export default function StartScreen(p: StartScreenProps) {
-  const [tab, setTab] = useState<'new' | 'plan'>('new')
+  const [tab, setTab] = useState<'new' | 'plan' | 'template'>('new')
+  const [kitId, setKitId] = useState<number | null>(null)
   const [title, setTitle] = useState('')
   const [format, setFormat] = useState(`${INSTAGRAM_CAROUSEL.platformKey}/${INSTAGRAM_CAROUSEL.formatKey}`)
   const [themeId, setThemeId] = useState(DEFAULT_THEME_ID)
@@ -81,6 +89,7 @@ export default function StartScreen(p: StartScreenProps) {
         <p className="text-sm text-muted-foreground">Build a swipeable carousel slide by slide. Edit text, pictures and backgrounds, then export every slide as images or one PDF. Your carousels are saved to your account.</p>
       </header>
       {p.actionError && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive" data-testid="action-error">{p.actionError}</p>}
+      {p.onOpenBrandKits && <div className="flex justify-end"><button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium hover:bg-muted" onClick={p.onOpenBrandKits} data-testid="open-brand-kits">Brand Kits</button></div>}
       {p.local && p.local.length > 0 && <BrowserCopies local={p.local} results={p.importResults ?? {}} importing={!!p.importing} onImportAll={p.onImportAll} onImportOne={p.onImportOne} onRemoveLocal={p.onRemoveLocal} />}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -88,20 +97,32 @@ export default function StartScreen(p: StartScreenProps) {
           <div role="tablist" aria-label="How to start" className="mb-4 flex gap-1 rounded-md bg-muted p-1 text-sm">
             <button role="tab" aria-selected={tab === 'new'} type="button" onClick={() => setTab('new')} className={`flex-1 rounded px-3 py-1.5 font-medium ${tab === 'new' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`} data-testid="tab-new">Start from scratch</button>
             <button role="tab" aria-selected={tab === 'plan'} type="button" onClick={() => setTab('plan')} className={`flex-1 rounded px-3 py-1.5 font-medium ${tab === 'plan' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`} data-testid="tab-plan">Plan from a blueprint</button>
+            <button role="tab" aria-selected={tab === 'template'} type="button" onClick={() => setTab('template')} className={`flex-1 rounded px-3 py-1.5 font-medium ${tab === 'template' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`} data-testid="tab-template">From a template</button>
           </div>
 
           {tab === 'new' ? (
-            <form className="space-y-3" onSubmit={e => { e.preventDefault(); const [platformKey, formatKey] = format.split('/'); p.onCreate(createCarouselDocument({ title, platformKey, formatKey, themeId }), themeId) }} data-testid="new-form">
+            <form className="space-y-3" onSubmit={e => { e.preventDefault(); const [platformKey, formatKey] = format.split('/'); p.onCreate(createCarouselDocument({ title, platformKey, formatKey, themeId }), themeId, kitId) }} data-testid="new-form">
               <label className="block space-y-1 text-xs"><span className="text-muted-foreground">Carousel name</span><input className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. 5 tile mistakes to avoid" data-testid="new-title" /></label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block space-y-1 text-xs"><span className="text-muted-foreground">Format</span><select className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm" value={format} onChange={e => setFormat(e.target.value)} data-testid="new-format">{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label>
                 <label className="block space-y-1 text-xs"><span className="text-muted-foreground">Colour theme</span><select className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm" value={themeId} onChange={e => setThemeId(e.target.value)} data-testid="new-theme">{CAROUSEL_THEMES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></label>
               </div>
+              <label className="block space-y-1 text-xs"><span className="text-muted-foreground">Brand Kit (optional)</span><select className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm" value={kitId ?? ''} onChange={e => setKitId(e.target.value ? Number(e.target.value) : null)} data-testid="new-kit" aria-label="Brand Kit for the new carousel"><option value="">No Brand Kit</option>{(p.kits ?? []).map(k => <option key={k.id} value={k.id}>{k.name}</option>)}</select></label>
               <button type="submit" disabled={p.busy} className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60" data-testid="new-create">{p.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilePlus2 className="h-4 w-4" />}Create carousel</button>
               <p className="text-xs text-muted-foreground">Starts with a cover, an explanation slide and a call to action. Add, remove and reorder slides in the editor.</p>
             </form>
+          ) : tab === 'template' ? (
+            <div className="space-y-2" data-testid="template-start">
+              {p.templates === null || p.templates === undefined ? <p className="text-sm text-muted-foreground">Loading templates…</p> : null}
+              {p.templates?.length === 0 && <p className="text-sm text-muted-foreground" data-testid="no-start-templates">No templates yet. Open a carousel, then use its Templates tab to save one.</p>}
+              <ul className="space-y-2">{(p.templates ?? []).map(t => (
+                <li key={t.id} className="flex items-center gap-2 rounded-md border border-border p-2" data-testid="start-template">
+                  <div className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{t.name}</span><span className="block text-xs text-muted-foreground">{t.kind === 'layout' ? 'Layout' : 'Carousel'} · {t.slideCount} slide{t.slideCount === 1 ? '' : 's'}</span></div>
+                  <button type="button" disabled={p.busy} className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-60" onClick={() => p.onUseTemplate?.(t.id)} aria-label={`Start a carousel from ${t.name}`} data-testid="use-template">Use</button>
+                </li>))}</ul>
+            </div>
           ) : (
-            <PlanPanel onCreate={doc => p.onCreate(doc, themeId)} />
+            <PlanPanel onCreate={doc => p.onCreate(doc, themeId, kitId)} />
           )}
         </section>
 

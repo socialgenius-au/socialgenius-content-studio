@@ -5,6 +5,7 @@ import { browserBackend, downloadBytes } from '../../../lib/carousel/browserBack
 import { exportAllSlidesZip, exportPdf, exportPixelSize, exportSlide, exportWarnings, type ExportFile, type ExportOptions, type ImageKind } from '../../../lib/carousel/exporter'
 import { exportAdvice } from '../../../lib/carousel/resources'
 import { withMediaToken } from '../../../api/mediaAccess'
+import { useBrandTokens } from '../../../lib/carousel/brandContext'
 
 const clampInt = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number.isFinite(v) ? v : lo)))
 
@@ -21,6 +22,7 @@ export default function ExportPanel({ doc, activeIndex }: { doc: PostDocument; a
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const abort = useRef<AbortController | null>(null)
+  const tokens = useBrandTokens()
   const warnings = useMemo(() => exportWarnings(doc), [doc])
   const size = exportPixelSize(doc, scale)
 
@@ -37,7 +39,7 @@ export default function ExportPanel({ doc, activeIndex }: { doc: PostDocument; a
     abort.current = ctl
     try {
       if (typeof document !== 'undefined' && document.fonts?.ready) await document.fonts.ready
-      const file = await job({ scale, resolveUrl: withMediaToken, indices, signal: ctl.signal, onProgress: (done, total) => setProgress({ done, total }) })
+      const file = await job({ scale, resolveUrl: withMediaToken, tokens, indices, signal: ctl.signal, onProgress: (done, total) => setProgress({ done, total }) })
       downloadBytes(file.name, file.mime, file.bytes)
       setMessage({ tone: 'ok', text: `Downloaded ${file.name} (${(file.bytes.length / 1024 / 1024).toFixed(2)} MB).` })
     } catch (e) {

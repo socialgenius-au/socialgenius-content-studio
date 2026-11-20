@@ -20,6 +20,9 @@ import LayersPanel from './components/LayersPanel'
 import ExportPanel from './components/ExportPanel'
 import SlideView from './components/SlideView'
 import { ConflictBanner, RecoveryPrompt, SaveBadge } from './components/SyncStatus'
+import BrandPanel from './components/BrandPanel'
+import TemplatesPanel from './components/TemplatesPanel'
+import BrandKitManager, { validateFontFile } from './components/BrandKitManager'
 import type { SyncState } from '../../lib/carousel/syncEngine'
 
 function ctx(): OpContext { let n = 0; return { newId: p => `${p}_${++n}`, now: () => new Date('2026-11-19T09:00:00Z') } }
@@ -307,5 +310,68 @@ describe('advanced layers UI', () => {
     expect(h).toContain('border-radius:50%')
     expect(h).toContain('transform:scale(2)')
     expect(h).toContain('transform-origin:25% 75%')
+  })
+})
+
+describe('Brand Kit and template panels', () => {
+  const kit = { id: 7, name: 'Acme', kit: { brand_names: [{ id: 'n1', label: 'Full', text: 'Acme Tiles' }], colors: { primary: '#C2185B', accent: '#00ACC1', extra: [{ name: 'Grout', hex: '#999999' }] }, logos: [{ id: 'l1', label: 'Main', asset_id: 9, url: '/uploads/1/logo.png' }], fonts: [], font_roles: {}, assets: [] } }
+  const kits = [{ id: 7, name: 'Acme', primary: '#C2185B', logoCount: 1, fontCount: 0, updatedAt: 't' }]
+  const base = { kit: null, kits, busy: false, onChooseKit: noop, onApply: noop, onDetach: noop, onAddLogo: noop, onAddName: noop, onManage: noop }
+
+  it('with no kit it offers to choose or create one; with a kit it shows colours, apply (non-destructive), logos and names', () => {
+    const none = html(<BrandPanel {...base} />)
+    expect(none).toContain('data-testid="kit-select"')
+    expect(none).toContain('data-testid="manage-kits"')
+    expect(none).not.toContain('data-testid="apply-kit"')
+    expect(html(<BrandPanel {...base} kits={[]} />)).toContain('You have no Brand Kits yet')
+    const h = html(<BrandPanel {...base} kit={kit} report={{ recoloured: 12, refonted: 3, kept: 2 }} />)
+    expect(h).toContain('data-testid="apply-kit"')
+    expect(h).toContain('Anything you changed yourself is left alone')
+    expect(h).toContain('Updated 12 colours and 3 fonts. Kept 2 custom colours as you set them.')
+    expect(h).toContain('aria-label="Add logo Main to this slide"')
+    expect(h).toContain('aria-label="Add brand name Full to this slide"')
+    expect(h).toContain('data-testid="kit-swatches"')
+    expect(html(<BrandPanel {...base} missingKitId={7} />)).toContain('no longer available')
+  })
+
+  it('the templates panel saves a carousel or a slide, and lists templates with apply / duplicate / rename / update / delete', () => {
+    const tpls = [{ id: 1, name: 'Tile tips', description: 'Five slides', kind: 'carousel' as const, slideCount: 5, platformKey: 'instagram', formatKey: 'carousel', brandKitId: null, updatedAt: 't' }]
+    const props = { busy: false, onSave: noop, onApply: noop, onDuplicate: noop, onRename: noop, onUpdateFrom: noop, onDelete: noop }
+    const h = html(<TemplatesPanel {...props} templates={tpls} />)
+    expect(h).toContain('data-testid="save-carousel-template"'); expect(h).toContain('data-testid="save-slide-template"')
+    expect(h).toMatch(/disabled=""[^>]*data-testid="save-carousel-template"|data-testid="save-carousel-template"[^>]*disabled/)    // needs a name first
+    expect(h).toContain('Tile tips'); expect(h).toContain('Carousel · 5 slides · Five slides')
+    for (const t of ['template-apply-after', 'template-apply-end', 'template-apply-replace', 'template-duplicate', 'template-delete', 'template-update-carousel']) expect(h).toContain(`data-testid="${t}"`)
+    expect(h).toContain('aria-label="Rename Tile tips"')
+    expect(html(<TemplatesPanel {...props} templates={[]} />)).toContain('No templates yet')
+    expect(html(<TemplatesPanel {...props} templates={null} />)).toContain('Loading your templates')
+  })
+
+  it('the start screen can start from a template, pick a Brand Kit for a new carousel and open the Brand Kit manager', () => {
+    const sp = { items: [], listState: 'ready' as const, onRetryList: noop, busy: false, onOpen: noop, onDuplicate: noop, onDelete: noop, onCreate: noop }
+    const tpl = { id: 1, name: 'Tile tips', description: '', kind: 'layout' as const, slideCount: 2, platformKey: 'instagram', formatKey: 'carousel', brandKitId: null, updatedAt: 't' }
+    const h = html(<StartScreen {...sp} kits={kits} templates={[tpl]} onUseTemplate={noop} onOpenBrandKits={noop} />)
+    expect(h).toContain('data-testid="tab-template"')
+    expect(h).toContain('data-testid="new-kit"'); expect(h).toContain('>Acme</option>')
+    expect(h).toContain('data-testid="open-brand-kits"')
+  })
+
+  it('only real font files are accepted for upload', () => {
+    expect(validateFontFile({ name: 'Brand.TTF', size: 1000 })).toBeNull()
+    for (const n of ['a.otf', 'b.woff', 'c.woff2']) expect(validateFontFile({ name: n, size: 10 })).toBeNull()
+    expect(validateFontFile({ name: 'virus.exe', size: 10 })).toMatch(/not a font file/)
+    expect(validateFontFile({ name: 'font.ttf.png', size: 10 })).toMatch(/not a font file/)
+    expect(validateFontFile({ name: 'huge.ttf', size: 9 * 1024 * 1024 })).toMatch(/larger than 8 MB/)
+  })
+
+  it('the inspector offers brand colour swatches and the kit fonts, and the manager renders its empty state', () => {
+    const { d, page, t } = (() => { const c = ctx(); let dd = doc(['cover'], c); const tx = makeText(dd.format, { name: 'Words' }, c); dd = addElement(dd, dd.pages[0].id, tx, c); return { d: dd, page: dd.pages[0], t: tx } })()
+    const h = html(<Inspector doc={d} page={page} selected={t} selectedIds={[t.id]} swatches={[{ label: 'Primary', ref: { token: 'brand.primary', fallback: '#C2185B' }, hex: '#C2185B' }]} kitFonts={['Acme Sans']} dispatch={noop} />)
+    expect(h).toContain('aria-label="Use brand colour Primary"')
+    expect(h).not.toContain('<optgroup label="Brand Kit">')                                   // the Brand Kit font group needs a loaded kit (tokens)
+    const none = html(<Inspector doc={d} page={page} selected={t} selectedIds={[t.id]} dispatch={noop} />)
+    expect(none).not.toContain('data-testid="brand-swatches"')
+    const mgr = html(<BrandKitManager store={{} as never} onClose={noop} />)
+    expect(mgr).toContain('data-testid="brand-manager"'); expect(mgr).toContain('data-testid="new-kit"'); expect(mgr).toContain('Choose a Brand Kit to edit')
   })
 })
