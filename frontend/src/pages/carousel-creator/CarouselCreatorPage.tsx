@@ -29,16 +29,17 @@ import BrandKitManager from './components/BrandKitManager'
 import AnimatePanel from './components/AnimatePanel'
 import DesignPanel from './components/DesignPanel'
 import FormatPanel from './components/FormatPanel'
+import ProjectPanel from './components/ProjectPanel'
 import { AuthBanner, ConflictBanner, RecoveryPrompt, SaveBadge } from './components/SyncStatus'
 
-type PanelTab = 'edit' | 'design' | 'format' | 'layers' | 'brand' | 'templates' | 'animate' | 'export'
+type PanelTab = 'edit' | 'design' | 'format' | 'layers' | 'brand' | 'templates' | 'animate' | 'export' | 'file'
 
 /** A carousel handed to the editor. `nonce` changes when the editor must start over from a different base (e.g. after loading the saved version). */
 interface Opened { id: string; doc: PostDocument; themeId: string; activeSlideId?: string; version: number; startDirty?: boolean; nonce: number }
 
 const messageOf = (e: unknown) => (e instanceof CarouselServerError ? e.message : e instanceof Error ? e.message : String(e))
 
-function Editor({ opened, server, buffer, brandStore, templateStore, libraryStore, videoSink, onExit, onReload, onManageKits, kitsRefresh }: { opened: Opened; server: CarouselServer; buffer: KeyValueStorage | null; brandStore: BrandKitStore; templateStore: TemplateStore; libraryStore: LibraryStore; videoSink?: VideoSink; onExit: () => void; onReload: (c: ServerCarousel) => void; onManageKits: () => void; kitsRefresh: number }) {
+function Editor({ opened, server, buffer, brandStore, templateStore, libraryStore, videoSink, onExit, onReload, onManageKits, kitsRefresh, notices, onDismissNotices, onCreateFrom }: { opened: Opened; notices: string[]; onDismissNotices: () => void; onCreateFrom: (doc: PostDocument, themeId: string, notices: string[]) => Promise<string | null>; server: CarouselServer; buffer: KeyValueStorage | null; brandStore: BrandKitStore; templateStore: TemplateStore; libraryStore: LibraryStore; videoSink?: VideoSink; onExit: () => void; onReload: (c: ServerCarousel) => void; onManageKits: () => void; kitsRefresh: number }) {
   const [state, dispatch] = useReducer((s: ReturnType<typeof initialState>, a: Parameters<typeof editorReducer>[1]) => editorReducer(s, a), undefined, () => initialState(opened.doc, opened.themeId, opened.activeSlideId))
   const [tab, setTab] = useState<PanelTab>('edit')
   const [engine, setEngine] = useState<SyncEngine | null>(null)
@@ -129,6 +130,7 @@ function Editor({ opened, server, buffer, brandStore, templateStore, libraryStor
     }
     onExit()
   }
+  const saveNow = async (): Promise<boolean> => { if (!engine) return false; await engine.flush(); return !engine.getState().unsaved }
   const resolve = async (choice: 'keep-mine' | 'use-server') => { if (!engine) return; setResolving(true); try { await engine.resolveConflict(choice) } finally { setResolving(false) } }
 
   const page = state.doc.pages.find(p => p.id === state.activeSlideId) ?? state.doc.pages[0]
@@ -155,13 +157,19 @@ function Editor({ opened, server, buffer, brandStore, templateStore, libraryStor
       <BrandTokensContext.Provider value={tokens}>
       <ConflictBanner state={sync} busy={resolving} onKeepMine={() => void resolve('keep-mine')} onUseServer={() => void resolve('use-server')} />
       <AuthBanner state={sync} />
+      {notices.length > 0 && (
+        <div role="status" className="rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-700 dark:bg-sky-950 dark:text-sky-100" data-testid="open-notices">
+          <ul className="list-disc space-y-0.5 pl-4">{notices.map((n, i) => <li key={i}>{n}</li>)}</ul>
+          <button type="button" className="mt-1 text-xs underline" onClick={onDismissNotices}>Dismiss</button>
+        </div>
+      )}
       {state.notice && <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100" data-testid="notice">{state.notice} <button type="button" className="ml-2 underline" onClick={() => dispatch({ type: 'clearNotice' })}>Dismiss</button></p>}
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 xl:h-[calc(100vh-11rem)] xl:min-h-[560px] xl:grid-cols-[9.5rem_minmax(0,1fr)_21rem]">
         <div className="order-2 min-h-0 xl:order-none xl:h-full"><Filmstrip doc={state.doc} activeId={page.id} onSelect={id => dispatch({ type: 'selectSlide', id })} onAdd={layout => dispatch({ type: 'addSlide', layout })} onDuplicate={id => dispatch({ type: 'duplicateSlide', id })} onDelete={id => dispatch({ type: 'deleteSlide', id })} onMove={(id, to) => dispatch({ type: 'moveSlide', id, to })} /></div>
         <div className="order-1 flex min-h-0 flex-col xl:order-none xl:h-full"><StageCanvas doc={state.doc} pageId={page.id} selectedId={state.selectedElementId} selectedIds={state.selectedIds} snap={snap} dispatch={dispatch} /></div>
         <aside className="order-3 min-h-0 rounded-lg border border-border bg-card p-3 xl:h-full xl:overflow-y-auto" aria-label="Editor panels">
-          <div role="tablist" aria-label="Panels" className="mb-3 flex gap-1 overflow-x-auto rounded-md bg-muted p-1">{tabBtn('edit', 'Edit')}{tabBtn('design', 'Design')}{tabBtn('format', 'Format')}{tabBtn('layers', 'Layers')}{tabBtn('brand', 'Brand')}{tabBtn('templates', 'Templates')}{tabBtn('animate', 'Animate')}{tabBtn('export', 'Export')}</div>
+          <div role="tablist" aria-label="Panels" className="mb-3 flex gap-1 overflow-x-auto rounded-md bg-muted p-1">{tabBtn('edit', 'Edit')}{tabBtn('design', 'Design')}{tabBtn('format', 'Format')}{tabBtn('layers', 'Layers')}{tabBtn('brand', 'Brand')}{tabBtn('templates', 'Templates')}{tabBtn('animate', 'Animate')}{tabBtn('export', 'Export')}{tabBtn('file', 'File')}</div>
           {tab === 'edit' && <Inspector doc={state.doc} page={page} selected={selected} selectedIds={state.selectedIds} swatches={kit ? kitSwatches(kit.kit) : []} kitFonts={kit ? kitFontFamilies(kit.kit) : []} dispatch={dispatch} />}
           {tab === 'design' && <DesignPanel doc={state.doc} page={page} theme={themeById(state.themeId)} selectedIds={state.selectedIds} dispatch={dispatch} libraryStore={libraryStore} />}
           {tab === 'format' && <FormatPanel key={`${state.doc.format.width}x${state.doc.format.height}`} doc={state.doc} dispatch={dispatch} />}
@@ -181,6 +189,7 @@ function Editor({ opened, server, buffer, brandStore, templateStore, libraryStor
           )}
           {tab === 'animate' && <AnimatePanel doc={state.doc} page={page} pageIndex={activeIndex} selected={state.selectedIds.length === 1 ? selected : undefined} dispatch={dispatch} videoSink={videoSink} />}
           {tab === 'export' && <ExportPanel doc={state.doc} activeIndex={activeIndex} />}
+          {tab === 'file' && <ProjectPanel doc={state.doc} themeId={state.themeId} dispatch={dispatch} onSaveNow={saveNow} onCreateFrom={onCreateFrom} onGoTemplates={() => setTab('templates')} />}
         </aside>
       </div>
       </BrandTokensContext.Provider>
@@ -224,6 +233,7 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
   const [importResults, setImportResults] = useState<Record<string, ImportOutcome>>({})
   const [importing, setImporting] = useState(false)
   const nonce = useRef(0)
+  const [notices, setNotices] = useState<string[]>([])
 
   const loadList = useCallback(async () => {
     setListState('loading')
@@ -271,6 +281,11 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
     catch (e) { setActionError(`Could not create the carousel: ${messageOf(e)}`) }
     finally { setBusy(false) }
   }
+  /** Saves a document as a NEW carousel and opens it (Save As, opening a project file). Resolves with an error message, or null on success. */
+  const createFrom = async (doc: PostDocument, themeId: string, openNotices: string[]): Promise<string | null> => {
+    try { const made = await server.create(doc, { themeId }); setNotices(openNotices); openCarousel(made); void loadList(); return null }
+    catch (e) { return `Could not create the new carousel: ${messageOf(e)}` }
+  }
   const duplicate = async (id: string) => {
     setBusy(true); setActionError(null)
     try { await server.duplicate(id); await loadList() } catch (e) { setActionError(`Could not duplicate: ${messageOf(e)}`) } finally { setBusy(false) }
@@ -311,7 +326,7 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
       <div className="space-y-3">
         {manager}
         <div hidden={managing}>
-          <Editor key={`${open.id}:${open.nonce}`} opened={open} server={server} buffer={storage} brandStore={brandStore} templateStore={templateStore} libraryStore={libraryStore} videoSink={videoSink} onExit={exit} kitsRefresh={kitsRefresh} onManageKits={() => setManaging(true)}
+          <Editor key={`${open.id}:${open.nonce}`} opened={open} notices={notices} onDismissNotices={() => setNotices([])} onCreateFrom={createFrom} server={server} buffer={storage} brandStore={brandStore} templateStore={templateStore} libraryStore={libraryStore} videoSink={videoSink} onExit={exit} kitsRefresh={kitsRefresh} onManageKits={() => setManaging(true)}
             onReload={c => { discardUnsynced(storage, c.id); openCarousel(c) }} />
         </div>
       </div>

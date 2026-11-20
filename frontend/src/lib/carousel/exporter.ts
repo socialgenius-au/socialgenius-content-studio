@@ -39,6 +39,8 @@ export interface ExportOptions {
   onProgress?: (done: number, total: number) => void
   /** Aborting stops before the next slide and rejects with an AbortError. */
   signal?: AbortSignal
+  /** The start of every file name (default: the carousel title). Cleaned to letters, numbers and hyphens. */
+  fileBase?: string
 }
 
 export class ExportCancelled extends Error {
@@ -58,9 +60,9 @@ export interface ExportFile { name: string; mime: string; bytes: Uint8Array }
 export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'carousel'
 
 /** "my-carousel-slide-03.png" — numbers are zero-padded to the width of the slide count, so files sort in swipe order. */
-export function slideFileName(doc: PostDocument, index: number, kind: ImageKind): string {
+export function slideFileName(doc: PostDocument, index: number, kind: ImageKind, base?: string): string {
   const width = Math.max(2, String(doc.pages.length).length)
-  return `${slug(doc.title)}-slide-${String(index + 1).padStart(width, '0')}.${EXT[kind]}`
+  return `${base ? slug(base) : slug(doc.title)}-slide-${String(index + 1).padStart(width, '0')}.${EXT[kind]}`
 }
 
 export const exportPixelSize = (doc: PostDocument, scale = 1) => ({ width: Math.round(doc.format.width * scale), height: Math.round(doc.format.height * scale) })
@@ -75,7 +77,7 @@ async function drawToSurface(doc: PostDocument, index: number, backend: RasterBa
 export async function exportSlide(doc: PostDocument, index: number, kind: ImageKind, backend: RasterBackend, o: ExportOptions = {}): Promise<ExportFile> {
   if (index < 0 || index >= doc.pages.length) throw new Error(`Slide ${index + 1} does not exist`)
   const { surface } = await drawToSurface(doc, index, backend, o)
-  return { name: slideFileName(doc, index, kind), mime: MIME[kind], bytes: await surface.toBytes(MIME[kind], kind === 'jpeg' ? o.quality ?? 0.92 : undefined) }
+  return { name: slideFileName(doc, index, kind, o.fileBase), mime: MIME[kind], bytes: await surface.toBytes(MIME[kind], kind === 'jpeg' ? o.quality ?? 0.92 : undefined) }
 }
 
 /** Every (selected) slide as an image, in slide order. */
@@ -92,7 +94,7 @@ export async function exportAllSlides(doc: PostDocument, kind: ImageKind, backen
 
 export async function exportAllSlidesZip(doc: PostDocument, kind: ImageKind, backend: RasterBackend, o: ExportOptions = {}): Promise<ExportFile> {
   const files = await exportAllSlides(doc, kind, backend, o)
-  return { name: `${slug(doc.title)}-slides-${kind}.zip`, mime: 'application/zip', bytes: buildZip(files.map(f => ({ name: f.name, data: f.bytes })), o.now) }
+  return { name: `${o.fileBase ? slug(o.fileBase) : slug(doc.title)}-slides-${kind}.zip`, mime: 'application/zip', bytes: buildZip(files.map(f => ({ name: f.name, data: f.bytes })), o.now) }
 }
 
 /** One page per slide, in slide order. Pages are JPEG-encoded (a PDF page image), at the export scale. Elements with a link become clickable rectangles over the page image. */
@@ -106,7 +108,7 @@ export async function exportPdf(doc: PostDocument, backend: RasterBackend, o: Ex
     pages.push({ jpeg: await surface.toBytes(MIME.jpeg, o.quality ?? 0.92), width, height, links })
     o.onProgress?.(pages.length, idx.length)
   }
-  return { name: `${slug(doc.title)}.pdf`, mime: 'application/pdf', bytes: buildPdf(pages, { title: doc.title, now: o.now }) }
+  return { name: `${o.fileBase ? slug(o.fileBase) : slug(doc.title)}.pdf`, mime: 'application/pdf', bytes: buildPdf(pages, { title: doc.title, now: o.now }) }
 }
 
 // ── pre-export check ─────────────────────────────────────────────────────────────────────────
