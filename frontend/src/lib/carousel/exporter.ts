@@ -4,6 +4,7 @@
 import type { BrandTokens, PostDocument } from '../postDocument'
 import { drawSlide, type Ctx2D, type DrawableImage } from './rasterize'
 import { buildPdf, type PdfPage } from './pdf'
+import { pageLinks } from './pageLinks'
 import { buildZip } from './zip'
 
 export type ImageKind = 'png' | 'jpeg'
@@ -94,14 +95,15 @@ export async function exportAllSlidesZip(doc: PostDocument, kind: ImageKind, bac
   return { name: `${slug(doc.title)}-slides-${kind}.zip`, mime: 'application/zip', bytes: buildZip(files.map(f => ({ name: f.name, data: f.bytes })), o.now) }
 }
 
-/** One page per slide, in slide order. Pages are JPEG-encoded (a PDF page image), at the export scale. */
+/** One page per slide, in slide order. Pages are JPEG-encoded (a PDF page image), at the export scale. Elements with a link become clickable rectangles over the page image. */
 export async function exportPdf(doc: PostDocument, backend: RasterBackend, o: ExportOptions = {}): Promise<ExportFile> {
   const pages: PdfPage[] = []
   const idx = pickIndices(doc, o)
   for (const i of idx) {
     await beforeSlide(o)
     const { surface, width, height } = await drawToSurface(doc, i, backend, o)
-    pages.push({ jpeg: await surface.toBytes(MIME.jpeg, o.quality ?? 0.92), width, height })
+    const links = pageLinks(doc, i).map(l => ({ url: l.url, x: l.x * width, y: l.y * height, w: l.w * width, h: l.h * height }))
+    pages.push({ jpeg: await surface.toBytes(MIME.jpeg, o.quality ?? 0.92), width, height, links })
     o.onProgress?.(pages.length, idx.length)
   }
   return { name: `${slug(doc.title)}.pdf`, mime: 'application/pdf', bytes: buildPdf(pages, { title: doc.title, now: o.now }) }
