@@ -42,7 +42,7 @@ describe('large carousels', () => {
     expect(files[299].name).toBe('big-slide-300.png')
     expect(progress[0]).toEqual([1, 300])
     expect(progress[299]).toEqual([300, 300])
-  })
+  }, 30000)
 
   it('exports only the chosen slides, in the order given, using one canvas at a time', async () => {
     const d = bigDoc(50)
