@@ -44,7 +44,7 @@ The SQL files in `backend/migrations/` match the models (a test compares them), 
 
 ## 4. Verification evidence
 
-- Candidate (`integration/carousel-v2-on-main`): tsc clean; frontend 1632 tests pass (one timing-sensitive 300-slide test hit its 5 s default under full parallel load and passes alone in ~3 s; fixed with an explicit 30 s timeout in `c1b000e`); full backend suite result: see section 7.
+- Candidate (`integration/carousel-v2-on-main`): tsc clean; frontend 1632 tests pass (one timing-sensitive 300-slide test hit its 5 s default under full parallel load and passes alone in ~3 s; fixed with an explicit 30 s timeout in `c1b000e`); full backend suite 2168 pass, 11 known environment-only failures (identical set to the pre-merge run); the 46 `test_forgot_password` errors seen only in the full parallel run are a Windows event-loop teardown flake: that file plus the other auth tests pass 79/79 when run alone.
 - Hosted acceptance (earlier revision `276e415`, new test data only): Carousel V2 PASS; Deconstructor/Reconstructor PASS for the flows that need no paid AI, including the footage-assignment check (new draft 12 with 6 clips and 9 text layers; an unreadable file is flagged and blocks saving until fixed; reference videos cannot be used as footage); drafts 9, 10 and 11 unchanged.
 - **Not yet done:** the merged candidate (with `main`'s 17 commits) has **not** been deployed to acceptance. An acceptance deploy was blocked this session. Do it before production (section 5, step 1).
 
