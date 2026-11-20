@@ -28,9 +28,10 @@ import TemplatesPanel from './components/TemplatesPanel'
 import BrandKitManager from './components/BrandKitManager'
 import AnimatePanel from './components/AnimatePanel'
 import DesignPanel from './components/DesignPanel'
+import FormatPanel from './components/FormatPanel'
 import { AuthBanner, ConflictBanner, RecoveryPrompt, SaveBadge } from './components/SyncStatus'
 
-type PanelTab = 'edit' | 'design' | 'layers' | 'brand' | 'templates' | 'animate' | 'export'
+type PanelTab = 'edit' | 'design' | 'format' | 'layers' | 'brand' | 'templates' | 'animate' | 'export'
 
 /** A carousel handed to the editor. `nonce` changes when the editor must start over from a different base (e.g. after loading the saved version). */
 interface Opened { id: string; doc: PostDocument; themeId: string; activeSlideId?: string; version: number; startDirty?: boolean; nonce: number }
@@ -160,9 +161,10 @@ function Editor({ opened, server, buffer, brandStore, templateStore, libraryStor
         <div className="order-2 min-h-0 xl:order-none xl:h-full"><Filmstrip doc={state.doc} activeId={page.id} onSelect={id => dispatch({ type: 'selectSlide', id })} onAdd={layout => dispatch({ type: 'addSlide', layout })} onDuplicate={id => dispatch({ type: 'duplicateSlide', id })} onDelete={id => dispatch({ type: 'deleteSlide', id })} onMove={(id, to) => dispatch({ type: 'moveSlide', id, to })} /></div>
         <div className="order-1 flex min-h-0 flex-col xl:order-none xl:h-full"><StageCanvas doc={state.doc} pageId={page.id} selectedId={state.selectedElementId} selectedIds={state.selectedIds} snap={snap} dispatch={dispatch} /></div>
         <aside className="order-3 min-h-0 rounded-lg border border-border bg-card p-3 xl:h-full xl:overflow-y-auto" aria-label="Editor panels">
-          <div role="tablist" aria-label="Panels" className="mb-3 flex gap-1 overflow-x-auto rounded-md bg-muted p-1">{tabBtn('edit', 'Edit')}{tabBtn('design', 'Design')}{tabBtn('layers', 'Layers')}{tabBtn('brand', 'Brand')}{tabBtn('templates', 'Templates')}{tabBtn('animate', 'Animate')}{tabBtn('export', 'Export')}</div>
+          <div role="tablist" aria-label="Panels" className="mb-3 flex gap-1 overflow-x-auto rounded-md bg-muted p-1">{tabBtn('edit', 'Edit')}{tabBtn('design', 'Design')}{tabBtn('format', 'Format')}{tabBtn('layers', 'Layers')}{tabBtn('brand', 'Brand')}{tabBtn('templates', 'Templates')}{tabBtn('animate', 'Animate')}{tabBtn('export', 'Export')}</div>
           {tab === 'edit' && <Inspector doc={state.doc} page={page} selected={selected} selectedIds={state.selectedIds} swatches={kit ? kitSwatches(kit.kit) : []} kitFonts={kit ? kitFontFamilies(kit.kit) : []} dispatch={dispatch} />}
           {tab === 'design' && <DesignPanel doc={state.doc} page={page} theme={themeById(state.themeId)} selectedIds={state.selectedIds} dispatch={dispatch} libraryStore={libraryStore} />}
+          {tab === 'format' && <FormatPanel key={`${state.doc.format.width}x${state.doc.format.height}`} doc={state.doc} dispatch={dispatch} />}
           {tab === 'layers' && <LayersPanel page={page} selectedId={state.selectedElementId} selectedIds={state.selectedIds} dispatch={dispatch} />}
           {tab === 'brand' && (
             <BrandPanel kit={kit} missingKitId={missingKit} kits={kits} error={kitError} busy={kitBusy} report={report} onChooseKit={id => void chooseKit(id)} onApply={applyKit} onDetach={() => void chooseKit(null)} onManage={onManageKits}
