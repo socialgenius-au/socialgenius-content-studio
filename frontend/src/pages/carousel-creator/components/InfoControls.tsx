@@ -22,7 +22,7 @@ export function LinkMessage({ raw }: { raw: string }) {
   return r.warning ? <p role="status" className="text-[11px] text-amber-700 dark:text-amber-300" data-testid="link-warning">{r.warning}</p> : <p role="status" className="text-[11px] text-emerald-700 dark:text-emerald-400" data-testid="link-ok">Link is valid.</p>
 }
 
-/** A hyperlink on any element. Only a PDF export can keep it clickable; image and video exports cannot contain clickable links. */
+/** A hyperlink on any element. A PDF export keeps it clickable (and an SVG opened in a web browser); PNG, JPEG, video and GIF exports cannot contain clickable links. */
 export function LinkControls({ el, upd }: { el: PostElement; upd: Upd }) {
   const [text, setText] = useState(el.link?.url ?? '')
   useEffect(() => { setText(el.link?.url ?? '') }, [el.id, el.link?.url])
@@ -33,7 +33,7 @@ export function LinkControls({ el, upd }: { el: PostElement; upd: Upd }) {
       <input className={field} aria-label="Link address" placeholder="https://… or mailto: / tel: / app link" value={text} onChange={e => { setText(e.target.value); commit(e.target.value) }} data-testid="link-url" />
       <LinkMessage raw={text} />
       {el.type === 'text' && <button type="button" className={btn} onClick={() => { const u = mapsLinkFor(el.content); setText(u); upd({ link: { url: u, label: 'Open in maps' } }) }} data-testid="link-to-map"><MapPin className="h-3.5 w-3.5" />Link this text to a map</button>}
-      <p className="text-[11px] text-muted-foreground" data-testid="link-note">Links stay clickable only in a PDF export. PNG, JPEG, SVG, video and GIF files cannot contain clickable links, so put the address in the caption or add a QR code too.</p>
+      <p className="text-[11px] text-muted-foreground" data-testid="link-note">Links are clickable in a PDF export, and in an SVG export when it is opened in a web browser. PNG, JPEG, video and GIF files cannot contain clickable links, so put the address in the caption or add a QR code too.</p>
     </div>
   )
 }
