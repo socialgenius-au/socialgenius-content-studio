@@ -248,3 +248,64 @@ describe('wiring', () => {
     expect(nav).toContain("path: '/carousel-creator'")
   })
 })
+
+describe('advanced layers UI', () => {
+  const withImgs = () => {
+    const c = ctx()
+    let d = doc(['cover'], c)
+    const page = d.pages[0].id
+    const a = makeImage({ name: 'Pic A', source: { kind: 'asset', assetId: 1, url: '/uploads/1/a.png' }, mask: 'hexagon', zoom: 2, focal: { x: 0.25, y: 0.75 } }, c)
+    const b = makeImage({ name: 'Pic B', source: { kind: 'asset', assetId: 2, url: '/uploads/1/b.png' }, mask: 'circle' }, c)
+    const t = makeText(d.format, { name: 'Words' }, c)
+    for (const e of [a, b, t]) d = addElement(d, page, e, c)
+    return { d, page: d.pages[0], a, b, t }
+  }
+
+  it('the inspector offers align / distribute / group for two or more selected elements, distribute only from three', () => {
+    const { d, page, a, b, t } = withImgs()
+    const two = html(<Inspector doc={d} page={page} selected={b} selectedIds={[a.id, b.id]} dispatch={noop} />)
+    expect(two).toContain('data-testid="multi-panel"')
+    expect(two).toContain('2 elements selected')
+    for (const m of ['left', 'center', 'right', 'top', 'middle', 'bottom']) expect(two).toContain(`data-testid="align-${m}"`)
+    expect(two).toMatch(/disabled=""[^>]*data-testid="distribute-h"|data-testid="distribute-h"[^>]*disabled/)
+    expect(two).not.toContain('data-testid="text-content"')                        // single-element settings are hidden while several are selected
+    const three = html(<Inspector doc={d} page={page} selected={t} selectedIds={[a.id, b.id, t.id]} dispatch={noop} />)
+    expect(three).not.toMatch(/disabled=""[^>]*data-testid="distribute-h"|data-testid="distribute-h"[^>]*disabled/)
+    expect(html(<Inspector doc={d} page={page} selected={a} selectedIds={[a.id]} dispatch={noop} />)).not.toContain('data-testid="multi-panel"')
+  })
+
+  it('an image offers shape (mask), zoom, pan and replace, and the toolbar can add several pictures', () => {
+    const { d, page, a } = withImgs()
+    const h = html(<Inspector doc={d} page={page} selected={a} selectedIds={[a.id]} dispatch={noop} />)
+    expect(h).toContain('data-testid="image-mask"')
+    for (const m of ['Circle / oval', 'Diamond', 'Hexagon', 'Triangle', 'Rounded']) expect(h).toContain(m)
+    expect(h).toContain('data-testid="image-zoom"')
+    expect(h).toContain('data-testid="image-focus-x"')
+    expect(h).toContain('Replace this picture')
+    expect(h).toContain('data-testid="add-images"')
+  })
+
+  it('the layers panel has per-layer select, lock, visibility and order controls, plus Group / Ungroup and Select all', () => {
+    const { page, a, b } = withImgs()
+    const one = html(<LayersPanel page={page} selectedId={a.id} selectedIds={[a.id]} dispatch={noop} />)
+    expect(one.match(/data-testid="layer-check"/g)).toHaveLength(page.elements.length)
+    expect(one).toContain('aria-label="Lock Pic A"')
+    expect(one).toContain('aria-label="Hide Pic A"')
+    expect(one).toContain('aria-label="Bring Pic A forward"')
+    expect(one).toMatch(/disabled=""[^>]*data-testid="group-btn"|data-testid="group-btn"[^>]*disabled/)
+    expect(one).toContain('1 selected')
+    const two = html(<LayersPanel page={page} selectedId={b.id} selectedIds={[a.id, b.id]} dispatch={noop} />)
+    expect(two).not.toMatch(/disabled=""[^>]*data-testid="group-btn"|data-testid="group-btn"[^>]*disabled/)
+    expect(two).toContain('2 selected')
+    expect(two).toContain('data-testid="select-all-btn"')
+  })
+
+  it('on screen, masks clip the picture and zoom scales it about its focus', () => {
+    const { d } = withImgs()
+    const h = html(<SlideView doc={d} pageId={d.pages[0].id} />)
+    expect(h).toContain('clip-path:polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)')
+    expect(h).toContain('border-radius:50%')
+    expect(h).toContain('transform:scale(2)')
+    expect(h).toContain('transform-origin:25% 75%')
+  })
+})

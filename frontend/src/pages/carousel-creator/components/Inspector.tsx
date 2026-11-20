@@ -1,7 +1,9 @@
 import { useState, type Dispatch, type ReactNode } from 'react'
-import { AlignCenter, AlignLeft, AlignRight, ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Copy, Eye, EyeOff, Lock, Unlock, Trash2 } from 'lucide-react'
+import { AlignCenter, AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignHorizontalSpaceBetween, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical, AlignVerticalSpaceBetween, ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, Copy, Eye, EyeOff, Lock, Unlock, Trash2 } from 'lucide-react'
 import { resolveColor, shorterSide, type Background, type PostDocument, type PostElement, type PostPage } from '../../../lib/postDocument'
 import { LAYOUTS, type LayoutId } from '../../../lib/carousel/layouts'
+import { IMAGE_MASKS } from '../../../lib/carousel/masks'
+import type { AlignMode, AlignTo } from '../../../lib/carousel/geometry'
 import type { EditorAction } from '../editorState'
 import ImagePicker from './ImagePicker'
 
@@ -32,12 +34,17 @@ export interface InspectorProps {
   doc: PostDocument
   page: PostPage
   selected: PostElement | undefined
+  /** Every selected element; with two or more the inspector offers align / distribute / group instead of single-element settings. */
+  selectedIds?: string[]
   dispatch: Dispatch<EditorAction>
 }
 
 /** Properties of the open slide (name, layout, background) and of the selected element (position, text, image, shape, layering). */
-export default function Inspector({ doc, page, selected, dispatch }: InspectorProps) {
+export default function Inspector({ doc, page, selected, selectedIds, dispatch }: InspectorProps) {
   const [layout, setLayout] = useState<LayoutId>('title_body')
+  const [manyPicker, setManyPicker] = useState(false)
+  const [alignTo, setAlignTo] = useState<AlignTo>('selection')
+  const count = selectedIds?.length ?? (selected ? 1 : 0)
   const [bgPicker, setBgPicker] = useState(false)
   const bg = page.background
   const solid = bg.kind === 'solid' ? hex(resolveColor(bg.color)) : '#1E4D2B'
@@ -85,10 +92,32 @@ export default function Inspector({ doc, page, selected, dispatch }: InspectorPr
         <div className="flex flex-wrap gap-1.5" data-testid="add-elements">
           <button type="button" className="h-8 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted" onClick={() => dispatch({ type: 'addElement', kind: 'text' })} data-testid="add-text">+ Text</button>
           <button type="button" className="h-8 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted" onClick={() => dispatch({ type: 'addElement', kind: 'image' })} data-testid="add-image">+ Image</button>
+          <button type="button" className="h-8 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted" aria-expanded={manyPicker} onClick={() => setManyPicker(v => !v)} data-testid="add-images">+ Pictures</button>
           <button type="button" className="h-8 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted" onClick={() => dispatch({ type: 'addElement', kind: 'shape' })} data-testid="add-shape">+ Shape</button>
         </div>
 
-        {selected && (
+        {manyPicker && <ImagePicker onPick={() => undefined} onPickMany={imgs => { dispatch({ type: 'addImages', items: imgs }); setManyPicker(false) }} />}
+
+        {count >= 2 && (
+          <div className="space-y-2 rounded-md border border-border p-2" data-testid="multi-panel">
+            <p className="text-xs font-medium">{count} elements selected</p>
+            <Row label="Align to"><select className={field} aria-label="Align relative to" value={alignTo} onChange={e => setAlignTo(e.target.value as AlignTo)} data-testid="align-to"><option value="selection">Each other</option><option value="canvas">The slide</option></select></Row>
+            <div className="flex flex-wrap gap-1.5" aria-label="Align">
+              {([['left', AlignStartVertical, 'Align left'], ['center', AlignCenterVertical, 'Align centres horizontally'], ['right', AlignEndVertical, 'Align right'], ['top', AlignStartHorizontal, 'Align top'], ['middle', AlignCenterHorizontal, 'Align middles vertically'], ['bottom', AlignEndHorizontal, 'Align bottom']] as [AlignMode, typeof AlignLeft, string][]).map(([mode, Icon, label]) => (
+                <button key={mode} type="button" className={tbtn} title={label} aria-label={label} onClick={() => dispatch({ type: 'align', mode, to: alignTo })} data-testid={`align-${mode}`}><Icon className="h-4 w-4" /></button>
+              ))}
+              <button type="button" className={tbtn} title="Space evenly across" aria-label="Distribute horizontally" disabled={count < 3} onClick={() => dispatch({ type: 'distribute', axis: 'horizontal' })} data-testid="distribute-h"><AlignHorizontalSpaceBetween className="h-4 w-4" /></button>
+              <button type="button" className={tbtn} title="Space evenly down" aria-label="Distribute vertically" disabled={count < 3} onClick={() => dispatch({ type: 'distribute', axis: 'vertical' })} data-testid="distribute-v"><AlignVerticalSpaceBetween className="h-4 w-4" /></button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" className="h-8 rounded-md border border-border px-2.5 text-xs font-medium hover:bg-muted" onClick={() => dispatch({ type: 'group' })} data-testid="multi-group">Group</button>
+              <button type="button" className="h-8 rounded-md border border-border px-2.5 text-xs font-medium text-destructive hover:bg-muted" onClick={() => dispatch({ type: 'deleteSelected' })} data-testid="multi-delete">Delete selected</button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Distribute needs three or more elements. Locked elements are never moved.</p>
+          </div>
+        )}
+
+        {selected && count <= 1 && (
           <>
             <div className="flex flex-wrap gap-1.5" aria-label="Element actions">
               <button type="button" className={tbtn} title="Bring to front" aria-label="Bring to front" onClick={() => dispatch({ type: 'layer', id: selected.id, move: 'front' })}><ChevronsUp className="h-4 w-4" /></button>
@@ -135,6 +164,15 @@ export default function Inspector({ doc, page, selected, dispatch }: InspectorPr
                 <Row label="Fit"><select className={field} aria-label="Image fit" value={selected.fit} onChange={e => upd({ fit: e.target.value })}><option value="cover">Fill (crop)</option><option value="contain">Fit inside</option></select></Row>
                 <Row label="Alt text"><input className={field} aria-label="Image description" value={selected.alt ?? ''} placeholder="Describe the picture" onChange={e => upd({ alt: e.target.value })} /></Row>
                 <Row label="Corners"><input type="range" aria-label="Corner radius" min={0} max={12} step={0.5} value={pctOf(selected.cornerRadius ?? 0)} onChange={e => upd({ cornerRadius: toFrac(e.target.value, 0, 0.5) })} className="w-full" /></Row>
+                <Row label="Shape"><select className={field} aria-label="Image mask" value={selected.mask ?? 'none'} onChange={e => upd({ mask: e.target.value })} data-testid="image-mask">{IMAGE_MASKS.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}</select></Row>
+                {selected.fit === 'cover' && (
+                  <>
+                    <Row label={`Zoom ${(selected.zoom ?? 1).toFixed(1)}x`}><input type="range" aria-label="Image zoom" min={1} max={4} step={0.1} value={selected.zoom ?? 1} onChange={e => upd({ zoom: Number(e.target.value) })} className="w-full" data-testid="image-zoom" /></Row>
+                    <Row label="Pan left-right"><input type="range" aria-label="Image focus horizontal" min={0} max={100} step={1} value={Math.round((selected.focal?.x ?? 0.5) * 100)} onChange={e => upd({ focal: { x: Number(e.target.value) / 100, y: selected.focal?.y ?? 0.5 } })} className="w-full" data-testid="image-focus-x" /></Row>
+                    <Row label="Pan up-down"><input type="range" aria-label="Image focus vertical" min={0} max={100} step={1} value={Math.round((selected.focal?.y ?? 0.5) * 100)} onChange={e => upd({ focal: { x: selected.focal?.x ?? 0.5, y: Number(e.target.value) / 100 } })} className="w-full" data-testid="image-focus-y" /></Row>
+                  </>
+                )}
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Replace this picture</p>
                 <ImagePicker onPick={img => upd({ source: { kind: 'asset', assetId: img.assetId, url: img.url }, alt: selected.alt || img.name })} />
               </>
             )}

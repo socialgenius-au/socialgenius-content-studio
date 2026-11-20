@@ -3,13 +3,14 @@
 // A carousel IS a PostDocument whose `pages` are the slides (array order = swipe order). Nothing here touches React, the DOM or storage; every function returns a NEW
 // document (the input is never mutated), bumps `revision` and `updatedAt`, and keeps the document valid (unique ids across the whole document, geometry in range).
 import type {
-  Background, DocumentFormat, ImageElement, PostDocument, PostElement, PostPage, ShapeElement, TextElement,
+  Background, DocumentFormat, GroupElement, ImageElement, PostDocument, PostElement, PostPage, ShapeElement, TextElement,
 } from '../postDocument'
+import { alignBoxes, distributeBoxes, elementBox, unionBox, type AlignMode, type AlignTo } from './geometry'
 
 export const MIN_SLIDES = 1
 
 export class CarouselError extends Error {
-  constructor(message: string, readonly code: 'last_slide' | 'not_found' | 'bad_order' | 'locked') {
+  constructor(message: string, readonly code: 'last_slide' | 'not_found' | 'bad_order' | 'locked' | 'bad_selection') {
     super(message)
     this.name = 'CarouselError'
   }
@@ -189,6 +190,167 @@ export function moveElementLayer(doc: PostDocument, pageId: string, elementId: s
     els.splice(to, 0, e)
     return { ...p, elements: els }
   }, ctx)
+}
+
+
+// ── several elements at once: align, distribute, nudge, delete, group ────────────────────────
+//
+// Each of these is ONE document change (one undo step). Locked elements are never moved, deleted or grouped; when everything chosen is locked the operation says so instead of
+// silently doing nothing.
+
+const chosen = (page: PostPage, ids: string[]) => page.elements.filter(e => ids.includes(e.id))
+
+function movable(page: PostPage, ids: string[]): PostElement[] {
+  const all = chosen(page, ids)
+  if (all.length === 0) throw new CarouselError('Nothing is selected on this slide', 'not_found')
+  const free = all.filter(e => !e.locked)
+  if (free.length === 0) throw new CarouselError('The selected elements are locked', 'locked')
+  return free
+}
+
+/** Applies a position patch (x and/or y) to each element in `patches` (a map of id -> patch). */
+function applyPositions(page: PostPage, patches: Map<string, { x?: number; y?: number }>): PostPage {
+  return { ...page, elements: page.elements.map(e => { const pt = patches.get(e.id); return pt ? normalizeGeometry({ ...e, ...pt } as PostElement) : e }) }
+}
+
+export function alignElements(doc: PostDocument, pageId: string, ids: string[], mode: AlignMode, to: AlignTo, ctx?: OpContext): PostDocument {
+  return replacePage(doc, pageId, p => {
+    const els = movable(p, ids)
+    const target = to === 'selection' && els.length < 2 ? 'canvas' : to          // a single element aligns to the canvas
+    const out = alignBoxes(els.map(e => elementBox(e, doc.format)), mode, target)
+    return applyPositions(p, new Map(els.map((e, i) => [e.id, out[i]])))
+  }, ctx)
+}
+
+export function distributeElements(doc: PostDocument, pageId: string, ids: string[], axis: 'horizontal' | 'vertical', ctx?: OpContext): PostDocument {
+  return replacePage(doc, pageId, p => {
+    const els = movable(p, ids)
+    if (els.length < 3) throw new CarouselError('Select at least three elements to distribute them evenly', 'bad_selection')
+    const out = distributeBoxes(els.map(e => elementBox(e, doc.format)), axis)
+    return applyPositions(p, new Map(els.map((e, i) => [e.id, out[i]])))
+  }, ctx)
+}
+
+export function nudgeElements(doc: PostDocument, pageId: string, ids: string[], dx: number, dy: number, ctx?: OpContext): PostDocument {
+  return replacePage(doc, pageId, p => {
+    const els = movable(p, ids)
+    return applyPositions(p, new Map(els.map(e => [e.id, { x: e.x + dx, y: e.y + dy }])))
+  }, ctx)
+}
+
+export function deleteElements(doc: PostDocument, pageId: string, ids: string[], ctx?: OpContext): PostDocument {
+  return replacePage(doc, pageId, p => {
+    const gone = new Set(movable(p, ids).map(e => e.id))
+    return { ...p, elements: p.elements.filter(e => !gone.has(e.id)) }
+  }, ctx)
+}
+
+/** Locks or unlocks several elements at once. */
+export function setLockedMany(doc: PostDocument, pageId: string, ids: string[], locked: boolean, ctx?: OpContext): PostDocument {
+  return replacePage(doc, pageId, p => {
+    if (chosen(p, ids).length === 0) throw new CarouselError('Nothing is selected on this slide', 'not_found')
+    return { ...p, elements: p.elements.map(e => (ids.includes(e.id) ? { ...e, locked } : e)) }
+  }, ctx)
+}
+
+/** Moves an element to an exact place in the paint order (0 = back). Used by drag-to-reorder in the Layers panel. */
+export function moveElementTo(doc: PostDocument, pageId: string, elementId: string, toIndex: number, ctx?: OpContext): PostDocument {
+  const page = getSlide(doc, pageId)
+  const from = findTop(page, elementId)
+  const to = clamp(Math.round(toIndex), 0, page.elements.length - 1)
+  if (to === from) return doc
+  return replacePage(doc, pageId, p => {
+    const els = p.elements.slice()
+    const [e] = els.splice(from, 1)
+    els.splice(to, 0, e)
+    return { ...p, elements: els }
+  }, ctx)
+}
+
+/**
+ * Groups two or more top-level elements. The group's box is the union of their boxes; each child keeps its place and size, now expressed relative to the group (the document
+ * model's rule for groups). The group sits where its front-most member was. Text keeps its size (typography is relative to the canvas, not to the group).
+ */
+export function groupElements(doc: PostDocument, pageId: string, ids: string[], ctx?: OpContext): { doc: PostDocument; groupId: string } {
+  let groupId = ''
+  const next = replacePage(doc, pageId, p => {
+    const members = chosen(p, ids)
+    if (members.length < 2) throw new CarouselError('Select at least two elements to group them', 'bad_selection')
+    if (members.some(m => m.locked)) throw new CarouselError('Unlock the selected elements before grouping them', 'locked')
+    const g = unionBox(members.map(m => elementBox(m, doc.format)))
+    const gw = Math.max(g.w, 0.01), gh = Math.max(g.h, 0.01)
+    const rel = (v: number) => Math.round(v * 1e6) / 1e6
+    const children = members.map(m => ({
+      ...m, x: rel(clamp((m.x - g.x) / gw, 0, 1)), y: rel(clamp((m.y - g.y) / gh, 0, 1)), width: rel(clamp(m.width / gw, 0.001, 1)),
+      height: m.height === 'auto' ? 'auto' as const : rel(clamp(m.height / gh, 0.001, 1)),
+    })) as PostElement[]
+    const group: GroupElement = {
+      id: idOf(ctx, 'grp'), type: 'group', role: 'decorative', name: 'Group', x: g.x, y: g.y, width: gw, height: gh, rotation: 0, opacity: 1, visible: true, locked: false, children, origin: 'manual',
+    }
+    groupId = group.id
+    const topIndex = Math.max(...members.map(m => p.elements.indexOf(m)))
+    const before = p.elements.slice(0, topIndex + 1).filter(e => !members.includes(e))
+    const after = p.elements.slice(topIndex + 1)
+    return { ...p, elements: [...before, group, ...after] }
+  }, ctx)
+  return { doc: next, groupId }
+}
+
+/** Dissolves a group: its children become top-level elements again at the same place on the canvas (a rotated group rotates its children into place). */
+export function ungroupElement(doc: PostDocument, pageId: string, groupId: string, ctx?: OpContext): { doc: PostDocument; ids: string[] } {
+  let ids: string[] = []
+  const next = replacePage(doc, pageId, p => {
+    const i = findTop(p, groupId)
+    const g = p.elements[i]
+    if (g.type !== 'group') throw new CarouselError('That element is not a group', 'bad_selection')
+    if (g.locked) throw new CarouselError('Unlock the group first', 'locked')
+    const W = doc.format.width, H = doc.format.height
+    const gh = g.height === 'auto' ? 0.1 : g.height
+    const theta = (g.rotation * Math.PI) / 180
+    const gcx = (g.x + g.width / 2) * W, gcy = (g.y + gh / 2) * H
+    const out = g.children.map(c => {
+      const absW = c.width * g.width
+      const absX = g.x + c.x * g.width
+      const absY = g.y + c.y * gh
+      const abs = { ...c, x: absX, y: absY, width: absW, height: c.height === 'auto' ? 'auto' as const : c.height * gh } as PostElement
+      const box = elementBox(abs, doc.format)
+      let x = absX, y = absY, rotation = c.rotation
+      if (g.rotation) {
+        const dx = (box.x + box.w / 2) * W - gcx, dy = (box.y + box.h / 2) * H - gcy
+        const rx = dx * Math.cos(theta) - dy * Math.sin(theta), ry = dx * Math.sin(theta) + dy * Math.cos(theta)
+        x = (gcx + rx) / W - box.w / 2
+        y = (gcy + ry) / H - box.h / 2
+        rotation = c.rotation + g.rotation
+      }
+      return normalizeGeometry({ ...abs, x, y, rotation, opacity: c.opacity * g.opacity, visible: c.visible && g.visible, locked: false } as PostElement)
+    })
+    ids = out.map(e => e.id)
+    return { ...p, elements: [...p.elements.slice(0, i), ...out, ...p.elements.slice(i + 1)] }
+  }, ctx)
+  return { doc: next, ids }
+}
+
+export interface ImageItem { assetId: number; url: string; name: string }
+
+/** Adds several pictures at once, laid out in a tidy grid (one picture: large and centred). Every picture is its own element, free to move, resize, overlap and reorder afterwards. */
+export function addImages(doc: PostDocument, pageId: string, items: ImageItem[], ctx?: OpContext): { doc: PostDocument; ids: string[] } {
+  if (items.length === 0) return { doc, ids: [] }
+  const W = doc.format.width, H = doc.format.height
+  const margin = 0.06, gap = 0.02
+  const n = items.length
+  const cols = n === 1 ? 1 : Math.ceil(Math.sqrt(n))
+  const rows = Math.ceil(n / cols)
+  const cellW = (1 - 2 * margin - gap * (cols - 1)) / cols
+  const cellH = n === 1 ? 0.5 : Math.min((cellW * W) / H, (1 - 2 * margin - gap * (rows - 1)) / rows)
+  const gridH = rows * cellH + (rows - 1) * gap
+  const top = n === 1 ? 0.12 : Math.max(margin, (1 - gridH) / 2)
+  const els = items.map((it, i) => makeImage({
+    name: it.name.slice(0, 80) || 'Image', source: { kind: 'asset', assetId: it.assetId, url: it.url }, alt: it.name.slice(0, 120),
+    x: margin + (i % cols) * (cellW + gap), y: top + Math.floor(i / cols) * (cellH + gap), width: cellW, height: cellH,
+  }, ctx))
+  let d = doc
+  for (const e of els) d = addElement(d, pageId, e, ctx)
+  return { doc: d, ids: els.map(e => e.id) }
 }
 
 // ── element factories (sensible defaults; all geometry canvas-relative) ──────────────────────

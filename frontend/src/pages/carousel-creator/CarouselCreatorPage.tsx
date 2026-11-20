@@ -30,6 +30,7 @@ function Editor({ opened, server, buffer, onExit, onReload }: { opened: Opened; 
   const [engine, setEngine] = useState<SyncEngine | null>(null)
   const [sync, setSync] = useState<SyncState>({ status: 'clean', version: opened.version, unsaved: false, attempts: 0 })
   const [resolving, setResolving] = useState(false)
+  const [snap, setSnap] = useState(true)
   const reloadRef = useRef(onReload)
   reloadRef.current = onReload
 
@@ -89,6 +90,7 @@ function Editor({ opened, server, buffer, onExit, onReload }: { opened: Opened; 
           <button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card hover:bg-muted disabled:opacity-40" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={state.past.length === 0} onClick={() => dispatch({ type: 'undo' })} data-testid="undo"><Undo2 className="h-4 w-4" /></button>
           <button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card hover:bg-muted disabled:opacity-40" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={state.future.length === 0} onClick={() => dispatch({ type: 'redo' })} data-testid="redo"><Redo2 className="h-4 w-4" /></button>
         </div>
+        <label className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-2 text-xs"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} data-testid="snap-toggle" />Snap</label>
         <SaveBadge state={sync} onRetry={engine ? () => engine.retryNow() : undefined} />
       </header>
 
@@ -98,11 +100,11 @@ function Editor({ opened, server, buffer, onExit, onReload }: { opened: Opened; 
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 xl:h-[calc(100vh-11rem)] xl:min-h-[560px] xl:grid-cols-[9.5rem_minmax(0,1fr)_21rem]">
         <div className="order-2 min-h-0 xl:order-none xl:h-full"><Filmstrip doc={state.doc} activeId={page.id} onSelect={id => dispatch({ type: 'selectSlide', id })} onAdd={layout => dispatch({ type: 'addSlide', layout })} onDuplicate={id => dispatch({ type: 'duplicateSlide', id })} onDelete={id => dispatch({ type: 'deleteSlide', id })} onMove={(id, to) => dispatch({ type: 'moveSlide', id, to })} /></div>
-        <div className="order-1 flex min-h-0 flex-col xl:order-none xl:h-full"><StageCanvas doc={state.doc} pageId={page.id} selectedId={state.selectedElementId} dispatch={dispatch} /></div>
+        <div className="order-1 flex min-h-0 flex-col xl:order-none xl:h-full"><StageCanvas doc={state.doc} pageId={page.id} selectedId={state.selectedElementId} selectedIds={state.selectedIds} snap={snap} dispatch={dispatch} /></div>
         <aside className="order-3 min-h-0 rounded-lg border border-border bg-card p-3 xl:h-full xl:overflow-y-auto" aria-label="Editor panels">
           <div role="tablist" aria-label="Panels" className="mb-3 flex gap-1 rounded-md bg-muted p-1">{tabBtn('edit', 'Edit')}{tabBtn('layers', 'Layers')}{tabBtn('export', 'Export')}</div>
-          {tab === 'edit' && <Inspector doc={state.doc} page={page} selected={selected} dispatch={dispatch} />}
-          {tab === 'layers' && <LayersPanel page={page} selectedId={state.selectedElementId} dispatch={dispatch} />}
+          {tab === 'edit' && <Inspector doc={state.doc} page={page} selected={selected} selectedIds={state.selectedIds} dispatch={dispatch} />}
+          {tab === 'layers' && <LayersPanel page={page} selectedId={state.selectedElementId} selectedIds={state.selectedIds} dispatch={dispatch} />}
           {tab === 'export' && <ExportPanel doc={state.doc} activeIndex={activeIndex} />}
         </aside>
       </div>

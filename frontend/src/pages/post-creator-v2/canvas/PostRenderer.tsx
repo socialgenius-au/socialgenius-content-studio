@@ -10,6 +10,7 @@ import {
   primaryPage, resolveColor, resolveFont,
   type Background, type BrandTokens, type Gradient, type ImageElement, type Paint, type PostDocument, type PostElement, type ShapeElement, type TextElement,
 } from '../../../lib/postDocument'
+import { maskClipPath } from '../../../lib/carousel/masks'
 
 /** Rounded so floating-point noise (7.000000000000001) never reaches the DOM. */
 const r4 = (n: number) => Math.round(n * 1e4) / 1e4
@@ -88,10 +89,17 @@ function renderText(el: TextElement, tokens?: BrandTokens): ReactNode {
 
 function renderImage(el: ImageElement, resolve: ResolveUrl = identity): ReactNode {
   const css: CSSProperties = { ...frameStyle(el), borderRadius: el.cornerRadius ? u(el.cornerRadius) : undefined, overflow: 'hidden' }
+  if (el.mask === 'circle') css.borderRadius = '50%'
+  else if (el.mask === 'rounded' && !el.cornerRadius) css.borderRadius = u(0.04)
+  const clip = maskClipPath(el.mask)
+  if (clip) css.clipPath = clip
   const src = el.source
   let inner: ReactNode = null
   if (src.kind === 'asset' && src.url) {
-    inner = <img src={resolve(src.url)} alt={el.alt ?? ''} draggable={false} style={{ width: '100%', height: '100%', objectFit: el.fit, objectPosition: `${(el.focal?.x ?? 0.5) * 100}% ${(el.focal?.y ?? 0.5) * 100}%`, display: 'block' }} />
+    const zoom = el.fit === 'cover' && el.zoom && el.zoom > 1 ? el.zoom : 1
+    const fx = (el.focal?.x ?? 0.5) * 100
+    const fy = (el.focal?.y ?? 0.5) * 100
+    inner = <img src={resolve(src.url)} alt={el.alt ?? ''} draggable={false} style={{ width: '100%', height: '100%', objectFit: el.fit, objectPosition: `${fx}% ${fy}%`, display: 'block', transform: zoom > 1 ? `scale(${zoom})` : undefined, transformOrigin: `${fx}% ${fy}%` }} />
   } else if (src.kind === 'placeholder' || src.kind === 'brand') {
     // No real image yet: a wordmark placeholder sized from the element's own box (never stretched; the content keeps its own proportions).
     const label = src.kind === 'placeholder' ? src.label : 'LOGO'

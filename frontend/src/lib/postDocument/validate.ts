@@ -109,6 +109,8 @@ function validateElement(el: unknown, path: string, errors: string[], ids: Set<s
       if (typeof e.lockAspect !== 'boolean') errors.push(`${path}.lockAspect: must be boolean`)
       if (e.role === 'brand_logo' && e.lockAspect !== true) errors.push(`${path}: a brand_logo must preserve its aspect ratio (lockAspect: true)`)
       if (e.focal !== undefined && !(isObj(e.focal) && unit(e.focal.x) && unit(e.focal.y))) errors.push(`${path}.focal: x/y must be 0..1`)
+      if (e.zoom !== undefined && !(isNum(e.zoom) && e.zoom >= 1 && e.zoom <= 8)) errors.push(`${path}.zoom: must be 1..8`)
+      if (e.mask !== undefined && !['none', 'circle', 'rounded', 'diamond', 'hexagon', 'triangle'].includes(e.mask as string)) errors.push(`${path}.mask: unknown`)
       if (e.crop !== undefined && !(isObj(e.crop) && unit(e.crop.x) && unit(e.crop.y) && unit(e.crop.width) && unit(e.crop.height))) errors.push(`${path}.crop: normalized rectangle required`)
       break
     }

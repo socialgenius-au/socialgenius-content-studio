@@ -156,6 +156,9 @@ export interface TextElement extends ElementBase {
   action?: ElementAction
 }
 
+/** Shape an image is clipped to. 'rounded' uses cornerRadius. */
+export type ImageMask = 'none' | 'circle' | 'rounded' | 'diamond' | 'hexagon' | 'triangle'
+
 export interface ImageElement extends ElementBase {
   type: 'image'
   source: ImageSource
@@ -165,6 +168,10 @@ export interface ImageElement extends ElementBase {
   crop?: Rect
   /** Focal point within the source, 0..1 each. */
   focal?: Point
+  /** Zoom into the picture (1 = fitted to the frame, up to 8), centred on the focal point. Only for fit 'cover'. */
+  zoom?: number
+  /** Clip the picture to a shape. */
+  mask?: ImageMask
   alt?: string
   /** Always true for a brand_logo. */
   lockAspect: boolean

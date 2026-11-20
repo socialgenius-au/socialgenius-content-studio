@@ -3,6 +3,7 @@
 // It follows the SAME rules as PostRenderer (the on-screen renderer): geometry is canvas-relative (a group's children are relative to the group's box), typography, strokes and
 // radii are fractions of the CANVAS's shorter side, paint order is array order, hidden elements are skipped, rotation is about the element's centre. It is written against a
 // minimal 2D-context interface so it runs unchanged on a real <canvas> in the browser and on a recording stub in tests.
+import { MASK_POLYGONS } from './masks'
 import {
   resolveColor, resolveFont, type BrandTokens, type Gradient, type ImageElement, type Paint, type PostDocument, type PostElement, type Point, type ShapeElement, type TextElement,
 } from '../postDocument'
@@ -22,6 +23,7 @@ export interface Ctx2D {
   save(): void
   restore(): void
   translate(x: number, y: number): void
+  scale(x: number, y: number): void
   rotate(rad: number): void
   beginPath(): void
   moveTo(x: number, y: number): void
@@ -239,9 +241,18 @@ function drawImageEl(ctx: Ctx2D, el: ImageElement, b: Box, S: number, images: Ma
   const img = url ? images.get(url) : null
   if (!img) return
   ctx.save()
-  roundedRectPath(ctx, b.x, b.y, b.w, b.h, (el.cornerRadius ?? 0) * S)
+  const poly = el.mask ? MASK_POLYGONS[el.mask] : undefined
+  if (poly) { ctx.beginPath(); poly.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(b.x + px * b.w, b.y + py * b.h) : ctx.lineTo(b.x + px * b.w, b.y + py * b.h))); ctx.closePath() }
+  else if (el.mask === 'circle') { ctx.beginPath(); ctx.ellipse(b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2, 0, 0, Math.PI * 2) }
+  else roundedRectPath(ctx, b.x, b.y, b.w, b.h, (el.mask === 'rounded' && !el.cornerRadius ? 0.04 : el.cornerRadius ?? 0) * S)
   ctx.clip()
   const r = fitRects(img.width, img.height, b.w, b.h, el.fit, el.focal)
+  const zoom = el.fit === 'cover' && el.zoom && el.zoom > 1 ? el.zoom : 1
+  if (zoom > 1) {            // zoom about the focal point of the frame, exactly like the on-screen transform-origin
+    const ox = b.x + (el.focal?.x ?? 0.5) * b.w
+    const oy = b.y + (el.focal?.y ?? 0.5) * b.h
+    ctx.translate(ox, oy); ctx.scale(zoom, zoom); ctx.translate(-ox, -oy)
+  }
   ctx.drawImage(img, r.sx, r.sy, r.sw, r.sh, b.x + r.dx, b.y + r.dy, r.dw, r.dh)
   ctx.restore()
 }
