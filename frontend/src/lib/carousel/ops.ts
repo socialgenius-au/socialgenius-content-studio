@@ -6,11 +6,10 @@ import type {
   Background, DocumentFormat, ImageElement, PostDocument, PostElement, PostPage, ShapeElement, TextElement,
 } from '../postDocument'
 
-export const MAX_SLIDES = 20      // Instagram's carousel limit; a hard stop so an export can never exceed what the platform accepts
 export const MIN_SLIDES = 1
 
 export class CarouselError extends Error {
-  constructor(message: string, readonly code: 'last_slide' | 'max_slides' | 'not_found' | 'bad_order' | 'locked') {
+  constructor(message: string, readonly code: 'last_slide' | 'not_found' | 'bad_order' | 'locked') {
     super(message)
     this.name = 'CarouselError'
   }
@@ -76,7 +75,6 @@ export function newSlide(background: Background, elements: PostElement[], name: 
 
 /** Inserts a prepared slide at `index` (default: the end). */
 export function insertSlide(doc: PostDocument, page: PostPage, index: number | undefined, ctx?: OpContext): PostDocument {
-  if (doc.pages.length >= MAX_SLIDES) throw new CarouselError(`A carousel can have at most ${MAX_SLIDES} slides`, 'max_slides')
   const at = index === undefined ? doc.pages.length : Math.max(0, Math.min(index, doc.pages.length))
   return touch({ ...doc, pages: [...doc.pages.slice(0, at), page, ...doc.pages.slice(at)] }, ctx)
 }
@@ -90,7 +88,6 @@ export function deleteSlide(doc: PostDocument, pageId: string, ctx?: OpContext):
 /** Duplicates a slide right after the original. Every element (and group child) gets a new id; the copy is independent. */
 export function duplicateSlide(doc: PostDocument, pageId: string, ctx?: OpContext): { doc: PostDocument; slideId: string } {
   const src = getSlide(doc, pageId)
-  if (doc.pages.length >= MAX_SLIDES) throw new CarouselError(`A carousel can have at most ${MAX_SLIDES} slides`, 'max_slides')
   const copy: PostPage = { ...structuredCloneSafe(src), id: idOf(ctx, 'slide'), name: src.name ? `${src.name} (copy)` : undefined, elements: src.elements.map(e => cloneElement(e, ctx)) }
   const at = slideIndex(doc, pageId) + 1
   return { doc: touch({ ...doc, pages: [...doc.pages.slice(0, at), copy, ...doc.pages.slice(at)] }, ctx), slideId: copy.id }

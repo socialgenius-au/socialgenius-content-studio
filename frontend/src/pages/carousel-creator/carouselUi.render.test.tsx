@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { MemoryRouter } from 'react-router-dom'
 import { createCarouselDocument } from '../../lib/carousel/document'
-import { MAX_SLIDES, addElement, insertSlide, makeImage, makeText, newSlide, type OpContext } from '../../lib/carousel/ops'
+import { addElement, insertSlide, makeImage, makeText, newSlide, type OpContext } from '../../lib/carousel/ops'
 import type { PostDocument } from '../../lib/postDocument'
 
 vi.mock('../../api/client', () => ({
@@ -35,7 +35,7 @@ describe('slide filmstrip', () => {
     const h = strip(d, d.pages[1].id)
     expect(h.match(/data-testid="slide-item"/g)).toHaveLength(3)
     expect([...h.matchAll(/data-testid="slide-number">(\d+)</g)].map(m => m[1])).toEqual(['1', '2', '3'])
-    expect(h).toContain('Slides <span data-testid="slide-count">3</span>/20')
+    expect(h).toContain('Slides <span data-testid="slide-count">3</span>')
     for (const p of d.pages) expect(h).toContain(`data-slide-id="${p.id}"`)
     expect(h).toMatch(/data-slide-id="slide_\d+" data-active="true"/)
     expect(h.match(/data-active="true"/g)).toHaveLength(1)
@@ -51,18 +51,20 @@ describe('slide filmstrip', () => {
     for (const l of ['Cover', 'Title + text', 'Big statement', 'List', 'Image + caption', 'Quote', 'Call to action']) expect(h).toContain(`>${l}</option>`)
   })
 
-  it('cannot delete the only slide, cannot move past the ends, and stops adding at the Instagram limit', () => {
+  it('cannot delete the only slide, cannot move past the ends, and never blocks adding slides', () => {
     const one = doc(['cover'])
     const h1 = strip(one)
     expect(h1).toMatch(/data-testid="slide-delete"[^>]*disabled|disabled=""[^>]*data-testid="slide-delete"/)
     expect(h1).toMatch(/disabled=""[^>]*data-testid="slide-move-earlier"|data-testid="slide-move-earlier"[^>]*disabled/)
     const c = ctx()
     let d = doc(['cover'], c)
-    while (d.pages.length < MAX_SLIDES) d = insertSlide(d, newSlide({ kind: 'solid', color: '#fff' }, [], undefined, c), undefined, c)
+    while (d.pages.length < 40) d = insertSlide(d, newSlide({ kind: 'solid', color: '#fff' }, [], undefined, c), undefined, c)
     const h = strip(d)
-    expect(h).toMatch(/disabled=""[^>]*data-testid="slide-add"|data-testid="slide-add"[^>]*disabled/)
-    expect(h).toMatch(/disabled=""[^>]*data-testid="slide-duplicate"|data-testid="slide-duplicate"[^>]*disabled/)
-    expect(h).toContain('Instagram allows at most 20 slides.')
+    expect(h).not.toMatch(/disabled=""[^>]*data-testid="slide-add"|data-testid="slide-add"[^>]*disabled/)    // adding is never blocked by a slide count
+    expect(h).not.toMatch(/disabled=""[^>]*data-testid="slide-duplicate"|data-testid="slide-duplicate"[^>]*disabled/)
+    expect(h).not.toContain('Instagram allows at most')
+    expect(h).toContain('<span data-testid="slide-count">40</span>')
+    expect(h.match(/data-testid="slide-item"/g)).toHaveLength(40)
   })
 
   it('is a horizontal scroller on phones and tablets and a vertical column at xl', () => {

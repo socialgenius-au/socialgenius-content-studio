@@ -1,7 +1,7 @@
 """Server-side checks for a Carousel Creator document before it is stored.
 
 The editor validates its own documents; the server must not trust that. What is enforced here, and why:
-  * shape: a multi-page PostDocument (kind "post", schemaVersion 1) with 1..20 slides, unique ids, known element types, bounded depth and counts, so a malformed or hostile body can
+  * shape: a multi-page PostDocument (kind "post", schemaVersion 1) with at least one slide and NO fixed slide-count limit (only the size bounds below), unique ids, known element types, bounded depth and counts, so a malformed or hostile body can
     never be stored and later crash a reader;
   * size: the whole document and every string are bounded, and inline image data (`data:` URLs) is refused - images live in the existing media storage and a document only REFERENCES
     them, so a document can never become a way to put large blobs in the database;
@@ -21,13 +21,14 @@ from app.models.asset import Asset
 from app.services.media_access import strip_media_tokens
 
 SCHEMA_VERSION = 1
-MAX_SLIDES = 20
-MAX_ELEMENTS_PER_SLIDE = 200
+# There is deliberately no maximum number of slides: a large carousel is bounded by its SIZE. These are safety bounds against hostile or runaway documents, not product limits.
+MAX_ELEMENTS_PER_SLIDE = 1000
 MAX_DEPTH = 6
-MAX_DOC_BYTES = 1_500_000
+MAX_DOC_BYTES = 25_000_000
+MAX_TOTAL_ELEMENTS = 200_000
 MAX_STRING = 20_000
 MAX_URL = 2048
-MAX_CAROUSELS_PER_USER = 200
+MAX_CAROUSELS_PER_USER = 1000
 ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 ELEMENT_TYPES = frozenset({"text", "image", "shape", "group"})
 BACKGROUND_KINDS = frozenset({"solid", "gradient", "image"})
@@ -131,8 +132,8 @@ def validate_document(doc, expected_doc_id: str | None = None) -> tuple[dict, se
     pages = doc.get("pages")
     ids: set[str] = set()
     assets: set[int] = set()
-    if not isinstance(pages, list) or not (1 <= len(pages) <= MAX_SLIDES):
-        errors.append(f"pages: a carousel needs between 1 and {MAX_SLIDES} slides")
+    if not isinstance(pages, list) or len(pages) < 1:
+        errors.append("pages: a carousel needs at least one slide")
     else:
         page_ids: set[str] = set()
         for i, p in enumerate(pages):
@@ -154,6 +155,8 @@ def validate_document(doc, expected_doc_id: str | None = None) -> tuple[dict, se
                 _collect_assets(bg.get("source"), assets, errors, f"{path}.background.source")
             _check_elements(p.get("elements"), f"{path}.elements", ids, assets, errors, 0)
 
+    if len(ids) > MAX_TOTAL_ELEMENTS:
+        errors.append(f"document: has {len(ids)} elements; the limit is {MAX_TOTAL_ELEMENTS}")
     _walk_strings(doc, "document", errors)
     if errors:
         raise CarouselValidationError(errors)

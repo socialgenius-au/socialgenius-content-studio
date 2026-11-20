@@ -218,8 +218,8 @@ async def test_a_save_for_one_id_cannot_smuggle_in_a_document_with_another_id(us
 @pytest.mark.parametrize("mutate,needle", [
     (lambda d: d.update(kind="page"), "kind"),
     (lambda d: d.update(schemaVersion=2), "schemaVersion"),
-    (lambda d: d.update(pages=[]), "between 1 and 20"),
-    (lambda d: d.update(pages=d["pages"] * 7), "between 1 and 20"),                    # 21 slides (and duplicate ids)
+    (lambda d: d.update(pages=[]), "at least one slide"),
+    (lambda d: d.update(pages=d["pages"] * 7), "duplicate"),                             # 21 slides, but the ids repeat
     (lambda d: d["pages"][0].update(background={"kind": "plasma"}), "background"),
     (lambda d: d["pages"][0]["elements"][0].update(type="script"), "unknown element type"),
     (lambda d: d["pages"][1]["elements"][0].update(id=d["pages"][0]["elements"][0]["id"]), "duplicate element id"),
@@ -250,7 +250,7 @@ async def test_inline_image_data_unsafe_urls_and_oversized_documents_are_refused
             d = await expect(422, "invalid_document", create(db, a, doc))
         assert any(needle in e for e in d["errors"]), (url, d["errors"])
     big = new_doc()
-    for i in range(100):                                                             # many long (but individually legal) strings: the whole document exceeds the cap
+    for i in range(1400):                                                            # many long (but individually legal) strings: the whole document exceeds the cap
         big["pages"][0]["elements"].append({**img, "id": f"big{i}", "alt": "z" * 19_000, "source": {"kind": "placeholder", "label": "x"}})
     async with Session() as db:
         d = await expect(422, "invalid_document", create(db, a, big))
@@ -383,7 +383,7 @@ async def test_every_endpoint_requires_a_valid_session_and_isolates_users_over_h
 async def test_an_oversized_request_is_refused_before_it_is_read(users):
     a, _ = users
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=http_app()), base_url="http://t") as c:
-        r = await c.post("/carousels/", content=b"{}", headers={**bearer(a), "content-length": str(5_000_000), "content-type": "application/json"})
+        r = await c.post("/carousels/", content=b"{}", headers={**bearer(a), "content-length": str(30_000_000), "content-type": "application/json"})
         assert r.status_code == 413
 
 
@@ -419,3 +419,32 @@ def test_extract_metadata_and_validation_are_pure_and_do_not_mutate_the_input():
     assert cv.extract_metadata(cleaned)["slide_count"] == 3
     with pytest.raises(cv.CarouselValidationError):
         cv.validate_document("not a dict")
+
+
+# ── no slide-count limit ─────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("slides", [21, 100, 400])
+async def test_there_is_no_slide_count_limit_only_a_size_bound(users, slides):
+    a, _ = users
+    async with Session() as db:
+        doc = new_doc(slides=slides)
+        created = await create(db, a, doc)
+        assert created.slide_count == slides
+        got = await car.get_carousel(doc["id"], db=db, user=a)
+        assert [p["id"] for p in got.document["pages"]] == [p["id"] for p in doc["pages"]]
+        ack = await update(db, a, doc["id"], dict(doc, title="Still saves"), 1)
+        assert ack.version == 2 and ack.slide_count == slides
+
+
+async def test_a_carousel_must_still_have_at_least_one_slide_and_an_unreasonable_size_is_still_refused(users):
+    a, _ = users
+    async with Session() as db:
+        with pytest.raises(HTTPException) as e:
+            await create(db, a, dict(new_doc(), pages=[]))
+        assert e.value.status_code == 422
+        huge = new_doc(slides=3)
+        huge["pages"][0]["elements"][0]["content"] = "x" * 19_000
+        huge["pages"] = huge["pages"] + [dict(copy.deepcopy(huge["pages"][0]), id=f"huge_{i}", elements=[dict(copy.deepcopy(huge["pages"][0]["elements"][0]), id=f"huge_{i}_t") ]) for i in range(1400)]
+        with pytest.raises(HTTPException) as e:
+            await create(db, a, huge)
+        assert e.value.status_code == 422

@@ -28,6 +28,24 @@ export interface ExportOptions {
   quality?: number
   resolveUrl?: (url: string) => string
   now?: () => Date
+  /** Which slides (0-based indices, in the order given). Default: every slide. */
+  indices?: number[]
+  /** Called after each slide is drawn and encoded: (done, total). */
+  onProgress?: (done: number, total: number) => void
+  /** Aborting stops before the next slide and rejects with an AbortError. */
+  signal?: AbortSignal
+}
+
+export class ExportCancelled extends Error {
+  constructor() { super('Export cancelled'); this.name = 'AbortError' }
+}
+
+const pickIndices = (doc: PostDocument, o: ExportOptions) => (o.indices ?? doc.pages.map((_, i) => i)).filter(i => i >= 0 && i < doc.pages.length)
+/** Lets the browser paint and handle input between slides, and stops promptly when cancelled. */
+async function beforeSlide(o: ExportOptions): Promise<void> {
+  if (o.signal?.aborted) throw new ExportCancelled()
+  await new Promise<void>(r => setTimeout(r, 0))
+  if (o.signal?.aborted) throw new ExportCancelled()
 }
 
 export interface ExportFile { name: string; mime: string; bytes: Uint8Array }
@@ -55,10 +73,15 @@ export async function exportSlide(doc: PostDocument, index: number, kind: ImageK
   return { name: slideFileName(doc, index, kind), mime: MIME[kind], bytes: await surface.toBytes(MIME[kind], kind === 'jpeg' ? o.quality ?? 0.92 : undefined) }
 }
 
-/** Every slide as an image, in slide order. */
+/** Every (selected) slide as an image, in slide order. */
 export async function exportAllSlides(doc: PostDocument, kind: ImageKind, backend: RasterBackend, o: ExportOptions = {}): Promise<ExportFile[]> {
   const files: ExportFile[] = []
-  for (let i = 0; i < doc.pages.length; i++) files.push(await exportSlide(doc, i, kind, backend, o))      // sequential: one canvas of memory at a time
+  const idx = pickIndices(doc, o)
+  for (const i of idx) {                                                   // sequential: one canvas of memory at a time
+    await beforeSlide(o)
+    files.push(await exportSlide(doc, i, kind, backend, o))
+    o.onProgress?.(files.length, idx.length)
+  }
   return files
 }
 
@@ -70,9 +93,12 @@ export async function exportAllSlidesZip(doc: PostDocument, kind: ImageKind, bac
 /** One page per slide, in slide order. Pages are JPEG-encoded (a PDF page image), at the export scale. */
 export async function exportPdf(doc: PostDocument, backend: RasterBackend, o: ExportOptions = {}): Promise<ExportFile> {
   const pages: PdfPage[] = []
-  for (let i = 0; i < doc.pages.length; i++) {
+  const idx = pickIndices(doc, o)
+  for (const i of idx) {
+    await beforeSlide(o)
     const { surface, width, height } = await drawToSurface(doc, i, backend, o)
     pages.push({ jpeg: await surface.toBytes(MIME.jpeg, o.quality ?? 0.92), width, height })
+    o.onProgress?.(pages.length, idx.length)
   }
   return { name: `${slug(doc.title)}.pdf`, mime: 'application/pdf', bytes: buildPdf(pages, { title: doc.title, now: o.now }) }
 }

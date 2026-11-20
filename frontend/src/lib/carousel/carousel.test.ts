@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { assertValidPostDocument, validatePostDocument, elementIds, type PostDocument } from '../postDocument'
 import {
-  CarouselError, MAX_SLIDES, addElement, deleteElement, deleteSlide, duplicateElement, duplicateSlide, insertSlide, makeImage, makeShape, makeText, moveElementLayer, moveSlide,
+  CarouselError, addElement, deleteElement, deleteSlide, duplicateElement, duplicateSlide, insertSlide, makeImage, makeShape, makeText, moveElementLayer, moveSlide,
   newSlide, reorderSlides, renameSlide, setSlideBackground, setSlideElements, updateElement, type OpContext,
 } from './ops'
 import { createCarouselDocument } from './document'
@@ -141,13 +141,15 @@ describe('slide operations', () => {
     expect(() => reorderSlides(d, [a, b, cc, 'x'], c)).toThrow(CarouselError)
   })
 
-  it('stops at the Instagram limit of 20 slides', () => {
+  it('has no slide cap: a carousel can grow far past 20 slides and stays valid, ordered and uniquely identified', () => {
     const c = ctx()
     let d = createCarouselDocument({ layouts: ['cover'] }, c)
-    while (d.pages.length < MAX_SLIDES) d = insertSlide(d, newSlide({ kind: 'solid', color: '#fff' }, [], undefined, c), undefined, c)
-    expect(d.pages).toHaveLength(20)
-    expect(() => insertSlide(d, newSlide({ kind: 'solid', color: '#fff' }, [], undefined, c), undefined, c)).toThrow(/at most 20/)
-    expect(() => duplicateSlide(d, d.pages[0].id, c)).toThrow(/at most 20/)
+    while (d.pages.length < 120) d = insertSlide(d, newSlide({ kind: 'solid', color: '#fff' }, [], undefined, c), undefined, c)
+    d = duplicateSlide(d, d.pages[0].id, c).doc
+    expect(d.pages).toHaveLength(121)
+    expect(new Set(d.pages.map(p => p.id)).size).toBe(121)
+    assertValidPostDocument(d)
+    expect(deleteSlide(d, d.pages[60].id, c).pages).toHaveLength(120)
   })
 
   it('renames a slide and changes its background', () => {
