@@ -451,7 +451,7 @@ describe('Design panel and element controls', () => {
     const { d, page, t } = mkDoc()
     const h = html(<Inspector doc={d} page={page} selected={t} selectedIds={[t.id]} dispatch={noop} />)
     for (const id of ['typography-extras', 'text-italic', 'text-spacing', 'text-outline', 'text-shadow', 'dynamic-controls', 'dynamic-kind', 'link-controls', 'link-to-map', 'opacity', 'rotation']) expect(h, id).toContain(`data-testid="${id}"`)
-    expect(h).toContain('Links stay clickable only in a PDF export')
+    expect(h).toContain('Links are clickable in a PDF export, and in an SVG export when it is opened in a web browser')
     expect(h).toContain('>900</option>')
   })
 
