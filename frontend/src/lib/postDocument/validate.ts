@@ -44,6 +44,49 @@ function backgroundOk(v: unknown): boolean {
 
 const unit = (v: unknown): v is number => isNum(v) && v >= 0 && v <= 1
 
+const EASINGS = ['linear', 'ease-in', 'ease-out', 'ease-in-out', 'back', 'bounce']
+const DIRECTIONS = ['left', 'right', 'up', 'down']
+const ANIM_KINDS: Record<string, string[]> = { entrance: ['fade', 'slide', 'pop', 'zoom', 'bounce', 'rotate', 'typewriter'], exit: ['fade', 'slide', 'pop', 'zoom', 'bounce', 'rotate'], emphasis: ['pulse', 'bounce', 'rotate', 'zoom', 'fade'] }
+const TRANSITIONS = ['none', 'fade', 'dissolve', 'slide', 'push', 'wipe', 'zoom', 'flip']
+export const MAX_MOTION_MS = 60_000
+
+function validateAnimations(v: unknown, path: string, errors: string[]): void {
+  if (!Array.isArray(v)) { errors.push(`${path}.animations: must be a list`); return }
+  if (v.length > 3) errors.push(`${path}.animations: at most one entrance, one exit and one emphasis`)
+  const seen = new Set<string>()
+  v.forEach((a, i) => {
+    const p = `${path}.animations[${i}]`
+    if (!isObj(a)) { errors.push(`${p}: not an object`); return }
+    if (!isStr(a.id) || !a.id) errors.push(`${p}.id: missing`)
+    if (!isStr(a.phase) || !(a.phase in ANIM_KINDS)) { errors.push(`${p}.phase: must be entrance, exit or emphasis`); return }
+    if (seen.has(a.phase)) errors.push(`${p}.phase: only one ${a.phase} per element`)
+    seen.add(a.phase)
+    if (!isStr(a.kind) || !ANIM_KINDS[a.phase].includes(a.kind)) errors.push(`${p}.kind: not available for ${a.phase}`)
+    if (!(isNum(a.durationMs) && a.durationMs >= 50 && a.durationMs <= MAX_MOTION_MS)) errors.push(`${p}.durationMs: 50..${MAX_MOTION_MS}`)
+    if (!(isNum(a.delayMs) && a.delayMs >= 0 && a.delayMs <= MAX_MOTION_MS)) errors.push(`${p}.delayMs: 0..${MAX_MOTION_MS}`)
+    if (!EASINGS.includes(a.easing as string)) errors.push(`${p}.easing: unknown`)
+    if (a.direction !== undefined && !DIRECTIONS.includes(a.direction as string)) errors.push(`${p}.direction: unknown`)
+    if (a.repeat !== undefined && !(isNum(a.repeat) && Number.isInteger(a.repeat) && a.repeat >= 1 && a.repeat <= 20)) errors.push(`${p}.repeat: 1..20`)
+  })
+}
+
+function validatePageMotion(p: Record<string, unknown>, path: string, errors: string[]): void {
+  if (p.durationMs !== undefined && !(isNum(p.durationMs) && p.durationMs >= 500 && p.durationMs <= MAX_MOTION_MS)) errors.push(`${path}.durationMs: 500..${MAX_MOTION_MS}`)
+  if (p.transition !== undefined) {
+    const t = p.transition
+    if (!isObj(t) || !TRANSITIONS.includes(t.kind as string)) errors.push(`${path}.transition.kind: unknown`)
+    else {
+      if (!(isNum(t.durationMs) && t.durationMs >= 0 && t.durationMs <= 10_000)) errors.push(`${path}.transition.durationMs: 0..10000`)
+      if (!EASINGS.includes(t.easing as string)) errors.push(`${path}.transition.easing: unknown`)
+      if (t.direction !== undefined && !DIRECTIONS.includes(t.direction as string)) errors.push(`${path}.transition.direction: unknown`)
+    }
+  }
+  if (p.sequence !== undefined) {
+    const s = p.sequence
+    if (!isObj(s) || !['together', 'stagger', 'one-by-one'].includes(s.mode as string) || !(isNum(s.staggerMs) && s.staggerMs >= 0 && s.staggerMs <= 10_000)) errors.push(`${path}.sequence: invalid`)
+  }
+}
+
 function validateElement(el: unknown, path: string, errors: string[], ids: Set<string>): void {
   if (!isObj(el)) { errors.push(`${path}: not an object`); return }
   const e = el as Record<string, unknown>
@@ -64,6 +107,7 @@ function validateElement(el: unknown, path: string, errors: string[], ids: Set<s
   if (typeof e.visible !== 'boolean') errors.push(`${path}.visible: must be boolean`)
   if (typeof e.locked !== 'boolean') errors.push(`${path}.locked: must be boolean`)
   if (e.origin !== undefined && !ORIGINS.includes(e.origin as string)) errors.push(`${path}.origin: unknown`)
+  if (e.animations !== undefined) validateAnimations(e.animations, path, errors)
   if (e.adapt !== undefined) {
     const a = e.adapt
     if (!isObj(a)) errors.push(`${path}.adapt: not an object`)
@@ -162,6 +206,7 @@ export function validatePostDocument(doc: unknown): ValidationResult {
     else if (pageIds.has(p.id)) errors.push(`${path}.id: duplicate page id "${p.id}"`)
     else pageIds.add(p.id)
     if (!backgroundOk(p.background)) errors.push(`${path}.background: invalid`)
+    validatePageMotion(p, path, errors)
     if (!Array.isArray(p.elements)) errors.push(`${path}.elements: must be an array`)
     else p.elements.forEach((el, j) => validateElement(el, `${path}.elements[${j}]`, errors, elementIds))
   })

@@ -4,6 +4,8 @@
 // radii are fractions of the CANVAS's shorter side, paint order is array order, hidden elements are skipped, rotation is about the element's centre. It is written against a
 // minimal 2D-context interface so it runs unchanged on a real <canvas> in the browser and on a recording stub in tests.
 import { MASK_POLYGONS } from './masks'
+import { elementBox } from './geometry'
+import type { MotionState } from './animation'
 import {
   resolveColor, resolveFont, type BrandTokens, type Gradient, type ImageElement, type Paint, type PostDocument, type PostElement, type Point, type ShapeElement, type TextElement,
 } from '../postDocument'
@@ -52,6 +54,10 @@ export interface RasterOptions {
   resolveUrl?: (url: string) => string
   /** Loads an image; null if it cannot be loaded. Provided by the caller so tests need no network. */
   loadImage: (url: string) => Promise<DrawableImage | null>
+  /** Images already loaded (keyed by stored URL). When given, nothing is loaded again: animated video draws hundreds of frames from one set of pictures. */
+  images?: Map<string, DrawableImage | null>
+  /** Motion applied on top of an element's static look at this moment (animated video only). Static exports never set it. */
+  motion?: (el: PostElement) => MotionState | null
 }
 
 // ── geometry helpers (pure; exported for tests) ──────────────────────────────────────────────
@@ -153,8 +159,8 @@ export async function drawSlide(ctx: Ctx2D, doc: PostDocument, pageIndex: number
   const W = opts.width
   const H = opts.height
   const S = Math.min(W, H)
-  const images = new Map<string, DrawableImage | null>()
-  await Promise.all(collectImageUrls(doc, pageIndex).map(async u => { images.set(u, await opts.loadImage(opts.resolveUrl ? opts.resolveUrl(u) : u).catch(() => null)) }))
+  const images = opts.images ?? new Map<string, DrawableImage | null>()
+  if (!opts.images) await Promise.all(collectImageUrls(doc, pageIndex).map(async u => { images.set(u, await opts.loadImage(opts.resolveUrl ? opts.resolveUrl(u) : u).catch(() => null)) }))
 
   // background
   ctx.save()
@@ -168,21 +174,30 @@ export async function drawSlide(ctx: Ctx2D, doc: PostDocument, pageIndex: number
   }
   ctx.restore()
 
-  const drawEl = (el: PostElement, parent: Box) => {
+  const drawEl = (el: PostElement, parent: Box, motion: MotionState | null = null) => {
     if (!el.visible) return
     const x = parent.x + el.x * parent.w
     const y = parent.y + el.y * parent.h
     const w = el.width * parent.w
     ctx.save()
-    ctx.globalAlpha = ctx.globalAlpha * el.opacity
+    ctx.globalAlpha = ctx.globalAlpha * el.opacity * (motion ? Math.max(0, Math.min(1, motion.opacity)) : 1)
     const heightPx = el.height === 'auto' ? 0 : el.height * parent.h
+    if (motion && (motion.dx || motion.dy || motion.scale !== 1 || motion.rotation)) {
+      const ebox = elementBox(el, doc.format)                    // an automatic-height text box has no stored height: use its estimated one to find the centre
+      const mcx = x + w / 2, mcy = y + (el.height === 'auto' ? ebox.h * parent.h : heightPx) / 2
+      ctx.translate(motion.dx * W, motion.dy * H)
+      ctx.translate(mcx, mcy)
+      if (motion.rotation) ctx.rotate((motion.rotation * Math.PI) / 180)
+      if (motion.scale !== 1) ctx.scale(motion.scale, motion.scale)
+      ctx.translate(-mcx, -mcy)
+    }
     if (el.rotation) {
       const cx = x + w / 2
       const cy = y + (el.height === 'auto' ? 0 : heightPx / 2)
       ctx.translate(cx, cy); ctx.rotate((el.rotation * Math.PI) / 180); ctx.translate(-cx, -cy)
     }
     switch (el.type) {
-      case 'text': drawText(ctx, el, x, y, w, heightPx, S, opts.tokens); break
+      case 'text': drawText(ctx, el, x, y, w, heightPx, S, opts.tokens, motion?.reveal ?? null); break
       case 'shape': drawShape(ctx, el, { x, y, w, h: heightPx }, S, opts.tokens); break
       case 'image': drawImageEl(ctx, el, { x, y, w, h: heightPx }, S, images); break
       case 'group': {
@@ -194,10 +209,10 @@ export async function drawSlide(ctx: Ctx2D, doc: PostDocument, pageIndex: number
     }
     ctx.restore()
   }
-  for (const el of page.elements) drawEl(el, { x: 0, y: 0, w: W, h: H })
+  for (const el of page.elements) drawEl(el, { x: 0, y: 0, w: W, h: H }, opts.motion?.(el) ?? null)
 }
 
-function drawText(ctx: Ctx2D, el: TextElement, x: number, y: number, boxW: number, boxH: number, S: number, tokens?: BrandTokens) {
+function drawText(ctx: Ctx2D, el: TextElement, x: number, y: number, boxW: number, boxH: number, S: number, tokens?: BrandTokens, reveal: number | null = null) {
   const st = el.style
   const px = st.fontSize * S
   const lh = px * st.lineHeight
@@ -220,10 +235,14 @@ function drawText(ctx: Ctx2D, el: TextElement, x: number, y: number, boxW: numbe
     if (box.stroke && box.stroke.width > 0) { ctx.strokeStyle = resolveColor(box.stroke.color, tokens); ctx.lineWidth = box.stroke.width * S; ctx.stroke() }
   }
   ctx.fillStyle = resolveColor(st.color, tokens)
+  // Typewriter: the text is laid out in full (so lines never jump as it grows) and only the first `reveal` fraction of its characters is drawn.
+  let remaining = reveal === null ? Infinity : Math.ceil(Math.max(0, Math.min(1, reveal)) * lines.reduce((n, l) => n + l.length, 0))
   lines.forEach((line, i) => {
     const lineW = measure(line)
     const lx = st.align === 'center' ? x + (w - lineW) / 2 : st.align === 'right' ? x + w - padX - lineW : x + padX
-    ctx.fillText(line, lx, y + padY + lh * (i + 0.5))
+    const shown = remaining >= line.length ? line : line.slice(0, Math.max(0, remaining))
+    remaining -= line.length
+    if (shown) ctx.fillText(shown, lx, y + padY + lh * (i + 0.5))
   })
 }
 

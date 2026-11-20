@@ -86,6 +86,36 @@ export interface Provenance {
   note?: string
 }
 
+// ── motion (used by animated video export; static exports ignore all of it) ──────────────────
+
+export type EasingName = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'back' | 'bounce'
+export type MotionDirection = 'left' | 'right' | 'up' | 'down'
+export type AnimationPhase = 'entrance' | 'exit' | 'emphasis'
+export type EntranceKind = 'fade' | 'slide' | 'pop' | 'zoom' | 'bounce' | 'rotate' | 'typewriter'
+export type EmphasisKind = 'pulse' | 'bounce' | 'rotate' | 'zoom' | 'fade'
+
+/** One animation of an element. An element has at most one entrance, one exit and one emphasis. Times are milliseconds from the start of the slide (entrance, emphasis) or back from its end (exit). */
+export interface ElementAnimation {
+  id: string
+  phase: AnimationPhase
+  kind: EntranceKind | EmphasisKind
+  durationMs: number
+  /** entrance / emphasis: wait after the slide (or its sequence slot) starts. exit: finish this much EARLIER than the slide's end. */
+  delayMs: number
+  easing: EasingName
+  direction?: MotionDirection
+  /** emphasis only: how many times it plays. */
+  repeat?: number
+}
+
+export type TransitionKind = 'none' | 'fade' | 'dissolve' | 'slide' | 'push' | 'wipe' | 'zoom' | 'flip'
+
+/** How a slide arrives from the previous one. The first slide's transition is ignored. */
+export interface SlideTransition { kind: TransitionKind; durationMs: number; easing: EasingName; direction?: MotionDirection }
+
+/** How a slide's element entrances are timed: together (each uses its own delay), staggered (each starts `staggerMs` after the previous layer), or one by one (each waits for the previous to finish). */
+export interface SlideSequence { mode: 'together' | 'stagger' | 'one-by-one'; staggerMs: number }
+
 // ── elements ─────────────────────────────────────────────────────────────────────────────────
 
 /** Common to every element. */
@@ -109,6 +139,8 @@ export interface ElementBase {
   adapt?: AdaptHints
   /** Who made this element (lets AI Select distinguish hand-made from generated elements). */
   origin?: ProvenanceOrigin
+  /** Entrance / exit / emphasis animations, played only in the animated video export and the motion preview. */
+  animations?: ElementAnimation[]
 }
 
 export interface TextStyle {
@@ -208,6 +240,10 @@ export interface PostPage {
   background: Background
   /** PAINT ORDER, back -> front. The single authority for layering. */
   elements: PostElement[]
+  /** Motion: how this slide arrives, how long it is held, and how its element animations are sequenced. */
+  transition?: SlideTransition
+  durationMs?: number
+  sequence?: SlideSequence
 }
 
 /** Snapshot of the registry choice this document was designed for (export pixels). Stored, so a reopened post never shifts if the registry changes. */

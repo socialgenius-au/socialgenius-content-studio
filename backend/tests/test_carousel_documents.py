@@ -448,3 +448,41 @@ async def test_a_carousel_must_still_have_at_least_one_slide_and_an_unreasonable
         with pytest.raises(HTTPException) as e:
             await create(db, a, huge)
         assert e.value.status_code == 422
+
+
+# ── motion settings are stored with the document and bounded ─────────────────────────────────
+
+async def test_animation_and_transition_settings_round_trip_and_hostile_values_are_refused(users):
+    a, _ = users
+    doc = new_doc(slides=2)
+    doc["pages"][0]["elements"][0]["animations"] = [
+        {"id": "a1", "phase": "entrance", "kind": "typewriter", "durationMs": 900, "delayMs": 100, "easing": "linear"},
+        {"id": "a2", "phase": "emphasis", "kind": "pulse", "durationMs": 800, "delayMs": 1200, "easing": "ease-in-out", "repeat": 3},
+    ]
+    doc["pages"][1]["transition"] = {"kind": "push", "durationMs": 700, "easing": "ease-in-out", "direction": "left"}
+    doc["pages"][1]["durationMs"] = 4500
+    doc["pages"][1]["sequence"] = {"mode": "stagger", "staggerMs": 200}
+    async with Session() as db:
+        created = await create(db, a, doc)
+        opened = await car.get_carousel(doc["id"], db=db, user=a)
+    assert opened.document == doc and created.version == 1
+    bad_cases = [
+        (lambda d: d["pages"][0]["elements"][0]["animations"][0].update(kind="spin"), "kind"),
+        (lambda d: d["pages"][0]["elements"][0]["animations"][0].update(phase="exit", kind="typewriter"), "not available for exit"),
+        (lambda d: d["pages"][0]["elements"][0]["animations"].append({"id": "x", "phase": "entrance", "kind": "fade", "durationMs": 100, "delayMs": 0, "easing": "linear"}), "only one entrance"),
+        (lambda d: d["pages"][0]["elements"][0]["animations"][0].update(durationMs=10 ** 9), "durationMs"),
+        (lambda d: d["pages"][0]["elements"][0]["animations"][1].update(repeat=999), "repeat"),
+        (lambda d: d["pages"][0]["elements"][0].update(animations="fast"), "animations"),
+        (lambda d: d["pages"][0]["elements"][0].update(animations=[{}] * 4), "at most three"),
+        (lambda d: d["pages"][1]["transition"].update(kind="teleport"), "transition.kind"),
+        (lambda d: d["pages"][1]["transition"].update(durationMs=-5), "transition.durationMs"),
+        (lambda d: d["pages"][1].update(durationMs=3), "durationMs"),
+        (lambda d: d["pages"][1].update(sequence={"mode": "chaos", "staggerMs": 1}), "sequence"),
+    ]
+    for mutate, needle in bad_cases:
+        d2 = copy.deepcopy(doc)
+        d2["id"] = f"car_{secrets.token_hex(6)}"
+        mutate(d2)
+        async with Session() as db:
+            d = await expect(422, "invalid_document", create(db, a, d2))
+        assert any(needle in e for e in d["errors"]), (needle, d["errors"])

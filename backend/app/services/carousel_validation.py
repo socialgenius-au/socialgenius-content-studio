@@ -34,6 +34,71 @@ ELEMENT_TYPES = frozenset({"text", "image", "shape", "group"})
 BACKGROUND_KINDS = frozenset({"solid", "gradient", "image"})
 URL_OK = re.compile(r"^(?:/(?!/)|https?://)", re.IGNORECASE)
 
+# Motion (animated video export): bounded so a hostile document cannot ask for an absurd render. Static exports ignore all of it.
+MAX_MOTION_MS = 60_000
+EASINGS = frozenset({"linear", "ease-in", "ease-out", "ease-in-out", "back", "bounce"})
+DIRECTIONS = frozenset({"left", "right", "up", "down"})
+ANIMATION_KINDS = {
+    "entrance": frozenset({"fade", "slide", "pop", "zoom", "bounce", "rotate", "typewriter"}),
+    "exit": frozenset({"fade", "slide", "pop", "zoom", "bounce", "rotate"}),
+    "emphasis": frozenset({"pulse", "bounce", "rotate", "zoom", "fade"}),
+}
+TRANSITION_KINDS = frozenset({"none", "fade", "dissolve", "slide", "push", "wipe", "zoom", "flip"})
+
+
+def _num(v, lo, hi) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi
+
+
+def _check_animations(anims, path: str, errors: list[str]) -> None:
+    if not isinstance(anims, list) or len(anims) > 3:
+        errors.append(f"{path}.animations: a list of at most three (entrance, exit, emphasis)")
+        return
+    seen: set[str] = set()
+    for i, a in enumerate(anims):
+        p = f"{path}.animations[{i}]"
+        if not isinstance(a, dict):
+            errors.append(f"{p}: not an object")
+            continue
+        phase = a.get("phase")
+        if phase not in ANIMATION_KINDS:
+            errors.append(f"{p}.phase: must be entrance, exit or emphasis")
+            continue
+        if phase in seen:
+            errors.append(f"{p}.phase: only one {phase} per element")
+        seen.add(phase)
+        if a.get("kind") not in ANIMATION_KINDS[phase]:
+            errors.append(f"{p}.kind: not available for {phase}")
+        if not _num(a.get("durationMs"), 50, MAX_MOTION_MS):
+            errors.append(f"{p}.durationMs: 50 to {MAX_MOTION_MS}")
+        if not _num(a.get("delayMs"), 0, MAX_MOTION_MS):
+            errors.append(f"{p}.delayMs: 0 to {MAX_MOTION_MS}")
+        if a.get("easing") not in EASINGS:
+            errors.append(f"{p}.easing: unknown")
+        if a.get("direction") is not None and a.get("direction") not in DIRECTIONS:
+            errors.append(f"{p}.direction: unknown")
+        if a.get("repeat") is not None and not (isinstance(a["repeat"], int) and not isinstance(a["repeat"], bool) and 1 <= a["repeat"] <= 20):
+            errors.append(f"{p}.repeat: 1 to 20")
+
+
+def _check_page_motion(p: dict, path: str, errors: list[str]) -> None:
+    if p.get("durationMs") is not None and not _num(p["durationMs"], 500, MAX_MOTION_MS):
+        errors.append(f"{path}.durationMs: 500 to {MAX_MOTION_MS}")
+    t = p.get("transition")
+    if t is not None:
+        if not isinstance(t, dict) or t.get("kind") not in TRANSITION_KINDS:
+            errors.append(f"{path}.transition.kind: unknown")
+        else:
+            if not _num(t.get("durationMs"), 0, 10_000):
+                errors.append(f"{path}.transition.durationMs: 0 to 10000")
+            if t.get("easing") not in EASINGS:
+                errors.append(f"{path}.transition.easing: unknown")
+            if t.get("direction") is not None and t.get("direction") not in DIRECTIONS:
+                errors.append(f"{path}.transition.direction: unknown")
+    sq = p.get("sequence")
+    if sq is not None and (not isinstance(sq, dict) or sq.get("mode") not in {"together", "stagger", "one-by-one"} or not _num(sq.get("staggerMs"), 0, 10_000)):
+        errors.append(f"{path}.sequence: invalid")
+
 
 class CarouselValidationError(ValueError):
     def __init__(self, errors: list[str]):
@@ -95,6 +160,8 @@ def _check_elements(elements, path: str, ids: set[str], assets: set[int], errors
         if el.get("type") not in ELEMENT_TYPES:
             errors.append(f"{p}.type: unknown element type")
             continue
+        if el.get("animations") is not None:
+            _check_animations(el["animations"], p, errors)
         if el["type"] == "image":
             _collect_assets(el.get("source"), assets, errors, f"{p}.source")
         elif el["type"] == "group":
@@ -153,6 +220,7 @@ def validate_document(doc, expected_doc_id: str | None = None) -> tuple[dict, se
                 errors.append(f"{path}.background: invalid")
             elif bg.get("kind") == "image":
                 _collect_assets(bg.get("source"), assets, errors, f"{path}.background.source")
+            _check_page_motion(p, path, errors)
             _check_elements(p.get("elements"), f"{path}.elements", ids, assets, errors, 0)
 
     if len(ids) > MAX_TOTAL_ELEMENTS:

@@ -12,6 +12,7 @@ export function browserBackend(): RasterBackend {
       if (!ctx) throw new Error('This browser cannot draw on a canvas, so slides cannot be exported.')
       return {
         ctx: ctx as unknown as Ctx2D,
+        image: canvas,
         toBytes: (mime, quality) => new Promise((resolve, reject) => {
           canvas.toBlob(blob => {
             if (!blob) { reject(new Error('The slide could not be encoded. If an image comes from another site, its server must allow cross-origin use.')); return }

@@ -12,6 +12,8 @@ export const EXT: Record<ImageKind, string> = { png: 'png', jpeg: 'jpg' }
 
 export interface RasterSurface {
   ctx: Ctx2D
+  /** The drawn surface itself (a canvas in the browser), so it can be drawn onto another surface. Needed only for animated video. */
+  image?: unknown
   /** Encodes the drawn pixels. */
   toBytes(mime: string, quality?: number): Promise<Uint8Array>
 }
