@@ -6,8 +6,9 @@ import { createCarouselDocument } from './document'
 import { addElement, makeImage, setSlideBackground, type OpContext } from './ops'
 import { buildPdf } from './pdf'
 import { addPicturesAsSlides, extractPdfPictures, importKindOf, inspectSvg, svgRasterSize, validateImportFile } from './importers'
-import { buildProjectFile, collectMediaUrls, parseProjectFile, prepareImportedProject, projectFileName, remapMedia, ProjectFileError, MAX_EMBEDDED_BYTES } from './projectFile'
+import { asNewDocument, buildProjectFile, collectMediaUrls, parseProjectFile, prepareImportedProject, projectFileName, remapMedia, ProjectFileError, MAX_EMBEDDED_BYTES } from './projectFile'
 import { newTrack } from './audio'
+import { fetchMediaBlob } from './browserBackend'
 
 vi.mock('../../api/client', () => ({
   assetsApi: { list: async () => ({ data: [] }), previewUrl: (p: string) => p },
@@ -118,6 +119,16 @@ describe('project files', () => {
     expect(prepared.doc.pages.map(p => p.elements.length)).toEqual(d.pages.map(p => p.elements.length))   // every layer survived
     expect(prepared.themeId).toBe('forest')
   })
+  it('never writes an access token into the file, in the document or in the embedded media list', async () => {
+    const tokened = (await import('./projectFile')).mapMediaUrls(mediaDoc(), u => `${u}?mt=SECRET.TOKEN.VALUE`)
+    expect(collectMediaUrls(tokened).every(u => u.includes('mt='))).toBe(true)
+    const strip = (u: string) => u.replace(/\?mt=[^&]*/, '')
+    const seen: string[] = []
+    const built = await buildProjectFile(tokened, 'forest', { includeMedia: true, cleanUrl: strip, fetchMedia: async u => { seen.push(u); return fetchMedia(u) } })
+    expect(built.text).not.toContain('SECRET'); expect(built.text).not.toContain('mt='); expect(seen.some(u => u.includes('mt='))).toBe(false); expect(built.embedded).toBe(4)
+    const prepared = await prepareImportedProject(parseProjectFile(built.text), upload)
+    expect(prepared.warnings).toEqual([])
+  })
   it('without media the pictures become empty slots, the music is removed, the background falls back to a solid colour, and the person is told', async () => {
     const built = await buildProjectFile(mediaDoc(), 'forest', { includeMedia: false, fetchMedia })
     expect(built.embedded).toBe(0); expect(built.warnings.join(' ')).toMatch(/not inside this project file/)
@@ -125,7 +136,7 @@ describe('project files', () => {
     assertValidPostDocument(prepared.doc)
     expect(collectMediaUrls(prepared.doc)).toEqual([])
     expect(prepared.doc.pages[0].background.kind).toBe('solid'); expect(prepared.doc.audio).toBeUndefined()
-    expect(prepared.warnings.join(' ')).toMatch(/3 pictures could not be brought over/); expect(prepared.warnings.join(' ')).toMatch(/music was not included/)
+    expect(prepared.warnings.join(' ')).toMatch(/3 pictures could not be brought over and are now empty picture slots/); expect(prepared.warnings.join(' ')).toMatch(/music was not included/)
   })
   it('leaves out media that cannot be read or would make the file too big, and says which', async () => {
     const big = async (url: string) => ({ ...(await fetchMedia(url)), bytes: MAX_EMBEDDED_BYTES - 1 })
@@ -152,10 +163,31 @@ describe('project files', () => {
     const text = JSON.stringify({ format: 'socialgenius-carousel', version: 1, title: 'x', themeId: 'forest', document: d, assets: { '/a.png': { name: 'a.png', mime: 'image/png', dataUrl: 'data:image/png;base64,QUJD' }, '/b': { name: 'b', mime: 'text/html', dataUrl: 'data:text/html;base64,PGI+' }, '/c': { name: 'c', mime: 'x', dataUrl: 'javascript:alert(1)' } } })
     expect(Object.keys(parseProjectFile(text).assets)).toEqual(['/a.png'])
   })
+  it('Save As and opening a file make a NEW document: fresh id and timestamps, same content', () => {
+    const d = mediaDoc()
+    const copy = asNewDocument({ ...d, title: 'Copy' }, ids())
+    expect(copy.id).not.toBe(d.id); expect(copy.id).toMatch(/^car_/); expect(copy.revision).toBe(0); expect(copy.createdAt).toBe('2026-11-21T09:00:00.000Z')
+    expect(copy.pages).toEqual(d.pages); expect(copy.title).toBe('Copy'); assertValidPostDocument(copy)
+  })
   it('remapMedia leaves a document without media untouched', () => {
     const d = createCarouselDocument({ title: 'T', layouts: ['statement'] }, ids())
     const r = remapMedia(d, () => null)
     expect(r.missingPictures).toBe(0); expect(r.musicRemoved).toBe(false); expect(r.doc.pages).toEqual(d.pages)
+  })
+})
+
+describe('fetching media for export', () => {
+  const ok = (body = 'x') => ({ ok: true, status: 200, blob: async () => new Blob([body]) }) as unknown as Response
+  it('bypasses the browser cache, retries once after a dropped connection, and gives up on a refusal', async () => {
+    const calls: RequestInit[] = []
+    let n = 0
+    const flaky = (async (_u: string, init: RequestInit) => { calls.push(init); if (n++ === 0) throw new TypeError('Failed to fetch'); return ok('data') }) as unknown as typeof fetch
+    expect(await (await fetchMediaBlob('/a.png', flaky))!.text()).toBe('data')
+    expect(calls).toHaveLength(2); expect(calls.every(c => c.cache === 'reload' && c.credentials === 'omit')).toBe(true)
+    const refused = vi.fn(async () => ({ ok: false, status: 403 }) as unknown as Response)
+    expect(await fetchMediaBlob('/a.png', refused as unknown as typeof fetch)).toBeNull(); expect(refused).toHaveBeenCalledTimes(1)
+    const down = vi.fn(async () => { throw new TypeError('Failed to fetch') })
+    expect(await fetchMediaBlob('/a.png', down as unknown as typeof fetch)).toBeNull(); expect(down).toHaveBeenCalledTimes(2)
   })
 })
 

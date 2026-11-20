@@ -4,6 +4,7 @@
 import type { AudioTrack, Background, ImageSource, PostDocument, PostElement, PostPage } from '../postDocument'
 import { validatePostDocument } from '../postDocument'
 import { detachBrandKit } from './brandKit'
+import { defaultId, type OpContext } from './ops'
 
 export const PROJECT_FORMAT = 'socialgenius-carousel'
 export const PROJECT_VERSION = 1
@@ -32,6 +33,15 @@ export function collectMediaUrls(doc: PostDocument): string[] {
 }
 
 export interface MediaTarget { assetId: number; url: string }
+
+/** The same document with every media address passed through `f` (used to remove access tokens before a file leaves the account). */
+export function mapMediaUrls(doc: PostDocument, f: (url: string) => string): PostDocument {
+  const source = (s: ImageSource): ImageSource => (s.kind === 'asset' && s.url ? { ...s, url: f(s.url) } : s)
+  const els = (list: PostElement[]): PostElement[] => list.map(e => (e.type === 'image' ? { ...e, source: source(e.source) } : e.type === 'group' ? { ...e, children: els(e.children) } : e))
+  const out: PostDocument = { ...doc, pages: doc.pages.map(p => ({ ...p, background: p.background.kind === 'image' ? { ...p.background, source: source(p.background.source) } : p.background, elements: els(p.elements) })) }
+  if (doc.audio) out.audio = doc.audio.url ? { ...doc.audio, url: f(doc.audio.url) } : doc.audio
+  return out
+}
 
 /** Re-points every picture and the music at new addresses. `pick` returns the new target, or null when that media is not available (the layer becomes an empty picture slot, the music is removed). */
 export function remapMedia(doc: PostDocument, pick: (url: string) => MediaTarget | null): { doc: PostDocument; missingPictures: number; musicRemoved: boolean } {
@@ -64,9 +74,10 @@ export function remapMedia(doc: PostDocument, pick: (url: string) => MediaTarget
 // ── writing ──────────────────────────────────────────────────────────────────────────────────
 
 export interface FetchedMedia { name: string; mime: string; dataUrl: string; bytes: number }
-export interface BuildOptions { includeMedia: boolean; fetchMedia: (url: string) => Promise<FetchedMedia | null>; now?: () => Date }
+export interface BuildOptions { includeMedia: boolean; /** Removes access tokens from media addresses so a project file never carries a credential. */ cleanUrl?: (url: string) => string; fetchMedia: (url: string) => Promise<FetchedMedia | null>; now?: () => Date }
 
-export async function buildProjectFile(doc: PostDocument, themeId: string, o: BuildOptions): Promise<{ text: string; warnings: string[]; embedded: number }> {
+export async function buildProjectFile(input: PostDocument, themeId: string, o: BuildOptions): Promise<{ text: string; warnings: string[]; embedded: number }> {
+  const doc = o.cleanUrl ? mapMediaUrls(input, o.cleanUrl) : input
   const warnings: string[] = []
   const assets: Record<string, EmbeddedAsset> = {}
   let total = 0
@@ -130,9 +141,15 @@ export async function prepareImportedProject(p: ParsedProject, upload: (name: st
     } catch { warnings.push(`"${a.name}" could not be uploaded to your library.`) }
   }
   const r = remapMedia(p.document, u => mapped.get(u) ?? null)
-  if (r.missingPictures > 0) warnings.push(`${r.missingPictures} picture${r.missingPictures === 1 ? '' : 's'} could not be brought over and ${r.missingPictures === 1 ? 'is' : 'are'} now empty picture slots. Add the pictures again.`)
+  if (r.missingPictures > 0) warnings.push(`${r.missingPictures} picture${r.missingPictures === 1 ? '' : 's'} could not be brought over and ${r.missingPictures === 1 ? 'is now an empty picture slot' : 'are now empty picture slots'}. Add ${r.missingPictures === 1 ? 'it' : 'them'} again.`)
   if (r.musicRemoved) warnings.push('The background music was not included in the file, so it was removed. Add music again in the Animate tab.')
   let doc = r.doc
   if (doc.context.brand?.brandKitId) { doc = detachBrandKit(doc); warnings.push('The Brand Kit link was removed because kits belong to an account. The colours and fonts on the layers are unchanged.') }
   return { doc: { ...doc, title: p.title || doc.title }, themeId: p.themeId, warnings }
+}
+
+/** The same carousel as a brand-new document: a fresh id (an account never accepts two documents with one id) and fresh timestamps, so Save As and opening a project file create a copy. */
+export function asNewDocument(doc: PostDocument, ctx?: OpContext): PostDocument {
+  const now = (ctx?.now ?? (() => new Date()))().toISOString()
+  return { ...doc, id: (ctx?.newId ?? defaultId)('car'), revision: 0, createdAt: now, updatedAt: now }
 }

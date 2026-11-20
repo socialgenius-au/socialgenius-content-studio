@@ -1,10 +1,10 @@
 import { useRef, useState, type Dispatch } from 'react'
 import { AlertTriangle, FileDown, FilePlus2, FileUp, FolderOpen, Loader2, Save, Shapes } from 'lucide-react'
 import { assetsApi, uploadApi } from '../../../api/client'
-import { withMediaToken } from '../../../api/mediaAccess'
+import { stripMediaToken, withMediaToken } from '../../../api/mediaAccess'
 import type { Asset } from '../../../types'
 import type { PostDocument } from '../../../lib/postDocument'
-import { downloadBytes } from '../../../lib/carousel/browserBackend'
+import { downloadBytes, fetchMediaBlob } from '../../../lib/carousel/browserBackend'
 import { svgFileToPng } from '../../../lib/carousel/importersBrowser'
 import { addPicturesAsSlides, extractPdfPictures, importKindOf, validateImportFile, type UploadedPicture } from '../../../lib/carousel/importers'
 import { buildProjectFile, parseProjectFile, prepareImportedProject, projectFileName, MAX_PROJECT_BYTES, type FetchedMedia, type MediaTarget } from '../../../lib/carousel/projectFile'
@@ -16,9 +16,8 @@ export type FetchMediaFn = (url: string) => Promise<FetchedMedia | null>
 
 const defaultUpload: UploadFn = async file => { const a = (await uploadApi.upload(file)).data as Asset; return { assetId: a.id, url: storedUrlFor(a), name: a.original_filename } }
 const defaultFetch: FetchMediaFn = async url => {
-  const res = await fetch(withMediaToken(url), { credentials: 'omit' })
-  if (!res.ok) return null
-  const blob = await res.blob()
+  const blob = await fetchMediaBlob(withMediaToken(url))
+  if (!blob) return null
   const dataUrl = await new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(r.error); r.readAsDataURL(blob) })
   return { name: decodeURIComponent(url.split('?')[0].split('/').pop() ?? 'media'), mime: blob.type || 'application/octet-stream', dataUrl, bytes: blob.size }
 }
@@ -66,7 +65,7 @@ export default function ProjectPanel({ doc, themeId, dispatch, onSaveNow, onCrea
     if (err) throw new Error(err)
   })
   const download = () => run('download', async () => {
-    const r = await buildProjectFile(doc, themeId, { includeMedia, fetchMedia })
+    const r = await buildProjectFile(doc, themeId, { includeMedia, fetchMedia, cleanUrl: stripMediaToken })
     downloadBytes(projectFileName(doc), 'application/json', new TextEncoder().encode(r.text))
     setNotes(r.warnings)
     return `Downloaded ${projectFileName(doc)}${r.embedded ? ` with ${r.embedded} picture or music file${r.embedded === 1 ? '' : 's'} inside` : ''}.`

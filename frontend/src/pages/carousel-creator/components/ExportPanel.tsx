@@ -140,7 +140,7 @@ export default function ExportPanel({ doc, activeIndex }: { doc: PostDocument; a
           </div>
         </div>
       )}
-      {svgNotes.length > 0 && <ul className="list-disc space-y-0.5 pl-4 text-xs text-amber-900 dark:text-amber-100" data-testid="export-svg-notes">{svgNotes.map((m, i) => <li key={i}>{m}</li>)}</ul>}
+      {svgNotes.length > 0 && <ul className="list-disc space-y-0.5 pl-4 text-xs text-amber-900 dark:text-amber-100" data-testid="export-svg-notes">{svgNotes.slice(0, 8).map((m, i) => <li key={i}>{m}</li>)}{svgNotes.length > 8 && <li>…and {svgNotes.length - 8} more like these for other slides.</li>}</ul>}
       {message && <p role={message.tone === 'error' ? 'alert' : 'status'} className={message.tone === 'error' ? 'text-xs text-destructive' : 'text-xs text-emerald-700 dark:text-emerald-400'} data-testid="export-message">{message.text}</p>}
     </section>
   )

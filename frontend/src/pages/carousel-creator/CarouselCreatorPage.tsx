@@ -13,6 +13,7 @@ import { BrandTokensContext } from '../../lib/carousel/brandContext'
 import { createHttpBrandKitStore, createHttpTemplateStore, type BrandKitStore, type TemplateStore } from '../../lib/carousel/assetsStore'
 import { applyTemplateSlides, carouselFromTemplate, templateDocumentFrom, type InsertMode, type TemplateSummary } from '../../lib/carousel/templates'
 import { themeById } from '../../lib/carousel/layouts'
+import { asNewDocument } from '../../lib/carousel/projectFile'
 import type { VideoSink } from '../../lib/carousel/videoRender'
 import { createHttpLibraryStore, type LibraryStore } from '../../lib/carousel/libraryStore'
 import { cn } from '@/lib/utils'
@@ -283,7 +284,7 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
   }
   /** Saves a document as a NEW carousel and opens it (Save As, opening a project file). Resolves with an error message, or null on success. */
   const createFrom = async (doc: PostDocument, themeId: string, openNotices: string[]): Promise<string | null> => {
-    try { const made = await server.create(doc, { themeId }); setNotices(openNotices); openCarousel(made); void loadList(); return null }
+    try { const made = await server.create(asNewDocument(doc), { themeId }); setNotices(openNotices); openCarousel(made); void loadList(); return null }
     catch (e) { return `Could not create the new carousel: ${messageOf(e)}` }
   }
   const duplicate = async (id: string) => {

@@ -46,6 +46,21 @@ export function downloadBytes(name: string, mime: string, bytes: Uint8Array): vo
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
+/**
+ * Fetches a picture or audio file as a Blob. The cache is bypassed because the browser may already hold this address from a plain <img> load, without the cross-origin permission
+ * headers, and would hand that copy to a cross-origin fetch, which then fails. One retry covers a dropped connection.
+ */
+export async function fetchMediaBlob(url: string, fetcher: typeof fetch = fetch): Promise<Blob | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetcher(url, { credentials: 'omit', cache: 'reload' })
+      if (res.ok) return await res.blob()
+      if (res.status >= 400 && res.status < 500) return null
+    } catch { /* try once more */ }
+  }
+  return null
+}
+
 const blobToDataUrl = (b: Blob) => new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(r.error); r.readAsDataURL(b) })
 
 /** The browser's help for SVG export: pictures are fetched and embedded as data addresses; text is measured with a scratch canvas so it wraps exactly as in the other exports. */
@@ -54,9 +69,9 @@ export function svgBackend(): SvgBackend {
   return {
     async loadImage(url: string) {
       try {
-        const res = await fetch(url, { credentials: 'omit' })
-        if (!res.ok) return null
-        const href = await blobToDataUrl(await res.blob())
+        const blob = await fetchMediaBlob(url)
+        if (!blob) return null
+        const href = await blobToDataUrl(blob)
         return await new Promise<(DrawableImage & { href: string }) | null>(resolve => {
           const img = new Image()
           img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight, href })
