@@ -1,925 +1,900 @@
 {
- "schema": "creative-intelligence-v1",
- "status": "ready",
- "reference": {
-  "reference_video_id": 7,
-  "video_analysis_id": 70,
-  "duration": 10.03
- },
- "pins": {
-  "anatomy_fingerprint": "8b72c1b2db7ca2c080f3503f77b9482415b8df1f11bd9e4f8c6bd04942331e1b",
-  "mechanism_attempt_id": 15953,
-  "mechanisms_status": "current"
- },
- "hook": {
-  "schema": "hook-profile-v1",
-  "window": {
-   "start_time": 0.0,
-   "end_time": 2.0,
-   "derived_from": null
+  "schema": "creative-intelligence-v1",
+  "status": "ready",
+  "reference": {
+    "reference_video_id": 7,
+    "video_analysis_id": 70,
+    "duration": 10.03
   },
-  "classification": {
-   "primary_type": "bold_claim",
-   "secondary_types": [
-    "demonstration"
-   ],
-   "probable_intent": "provoke_attention",
-   "confidence": null,
-   "certainty": "INFERRED",
-   "model": null
+  "pins": {
+    "anatomy_fingerprint": "8b72c1b2db7ca2c080f3503f77b9482415b8df1f11bd9e4f8c6bd04942331e1b",
+    "mechanism_attempt_id": 15953,
+    "mechanisms_status": "current"
   },
-  "attention_mechanism": "The classifier reads the opening as an absolute claim stated up front, apparently designed to capture attention. This is an AI interpretation of apparent design, not an effect on viewers.",
-  "channels": {
-   "spoken": {
-    "present": true,
-    "element_count": 1,
-    "reliable": false,
-    "first_seen": 0.0
-   },
-   "on_screen_text": {
-    "present": true,
-    "element_count": 1,
-    "reliable": false,
-    "first_seen": 0.5
-   },
-   "visual": {
-    "present": true,
-    "element_count": 1,
-    "reliable": true,
-    "first_seen": 0.0
-   },
-   "editing_or_framing": {
-    "present": true,
-    "element_count": 1,
-    "reliable": true,
-    "first_seen": 0.0
-   }
+  "hook": {
+    "schema": "hook-profile-v1",
+    "window": {
+      "start_time": 0.0,
+      "end_time": 2.0,
+      "derived_from": null
+    },
+    "classification": {
+      "primary_type": "bold_claim",
+      "secondary_types": [
+        "demonstration"
+      ],
+      "probable_intent": "provoke_attention",
+      "confidence": null,
+      "certainty": "INFERRED",
+      "model": null
+    },
+    "attention_mechanism": "The classifier reads the opening as an absolute claim stated up front, apparently designed to capture attention. This is an AI interpretation of apparent design, not an effect on viewers.",
+    "channels": {
+      "spoken": {
+        "present": true,
+        "element_count": 1,
+        "reliable": false,
+        "first_seen": 0.0
+      },
+      "on_screen_text": {
+        "present": true,
+        "element_count": 1,
+        "reliable": false,
+        "first_seen": 0.5
+      },
+      "visual": {
+        "present": true,
+        "element_count": 1,
+        "reliable": true,
+        "first_seen": 0.0
+      },
+      "editing_or_framing": {
+        "present": true,
+        "element_count": 1,
+        "reliable": true,
+        "first_seen": 0.0
+      }
+    },
+    "elements": [
+      {
+        "element_type": "spoken_purity_claim",
+        "channels": [
+          "spoken"
+        ],
+        "start_time": 0.0,
+        "end_time": 4.0,
+        "evidence": {
+          "supporting_speech_segment_ids": [
+            721
+          ]
+        },
+        "evidence_class": {
+          "presence": "observed",
+          "label": "ai_interpretation"
+        },
+        "reliability": "unverified",
+        "reliability_note": "the speech is machine-transcribed and unverified"
+      },
+      {
+        "element_type": "on_screen_product_labeling",
+        "channels": [
+          "on_screen_text"
+        ],
+        "start_time": 0.5,
+        "end_time": 0.5,
+        "evidence": {
+          "supporting_text_element_ids": [
+            1435,
+            1447,
+            1467
+          ]
+        },
+        "evidence_class": {
+          "presence": "observed",
+          "label": "ai_interpretation"
+        },
+        "reliability": "unverified",
+        "reliability_note": "the on-screen text is low-confidence or possibly a rendering artefact"
+      },
+      {
+        "element_type": "visual_product_subject",
+        "channels": [
+          "visual"
+        ],
+        "start_time": 0.0,
+        "end_time": 2.0,
+        "evidence": {
+          "supporting_visual_object_ids": [
+            2616,
+            2617
+          ],
+          "supporting_scene_ids": [
+            900
+          ]
+        },
+        "evidence_class": {
+          "presence": "observed",
+          "label": "ai_interpretation"
+        },
+        "reliability": "established",
+        "reliability_note": null
+      },
+      {
+        "element_type": "single_uninterrupted_opening_shot",
+        "channels": [
+          "editing_or_framing"
+        ],
+        "start_time": 0.0,
+        "end_time": 2.0,
+        "evidence": {
+          "supporting_shot_ids": [
+            3914
+          ]
+        },
+        "evidence_class": {
+          "presence": "observed",
+          "label": "ai_interpretation"
+        },
+        "reliability": "established",
+        "reliability_note": null
+      }
+    ],
+    "visual_reading": [
+      {
+        "finding_id": 15929,
+        "start_time": 0.0,
+        "end_time": 2.0,
+        "confidence": "medium",
+        "mechanism_hint": "hook_curiosity",
+        "statement": "The opening appears designed to establish the product and brand straight away.",
+        "certainty": "INFERRED",
+        "basis": "ai_vision",
+        "contains_reference_content": true
+      }
+    ],
+    "relationships": [
+      "Spoken, on screen text, visual, editing or framing occur together in 0–2 s; the hook is the combination, not one element.",
+      "An absolute claim stated up front is the dominant construction and demonstrating the subject supports it. They are not alternatives: both were identified in the same opening.",
+      "The text-only hook classification rests partly on speech that is unverified. The visual reading of the opening is: The opening appears designed to establish the product and brand straight away. Treat the visual structure of the opening as observed and the spoken-claim part of the hook type as unverified."
+    ],
+    "contradictions": [
+      {
+        "topic": "spoken part of the hook",
+        "status": "unverified",
+        "note": "The classification of the spoken part rests on unverified machine transcription. The visual and on-screen-text channels are better established."
+      }
+    ],
+    "evidence_classes": {
+      "observed": "Which channels are present in the opening and when, and which stored evidence each cites (measured from the stored analysis).",
+      "ai_interpretation": "The hook type, the intent, the names given to elements and the visual reading: conclusions an AI drew, shown as inferred.",
+      "unsupported": "Anything about audience behaviour: not measured and not claimed."
+    },
+    "unsupported": [
+      "Whether the opening captured or held anyone's attention.",
+      "Whether viewers kept watching because of any element of the opening.",
+      "How the opening compares with other videos' openings."
+    ]
   },
-  "elements": [
-   {
-    "element_type": "spoken_purity_claim",
-    "channels": [
-     "spoken"
-    ],
-    "start_time": 0.0,
-    "end_time": 4.0,
-    "evidence": {
-     "supporting_speech_segment_ids": [
-      721
-     ]
-    },
-    "evidence_class": {
-     "presence": "observed",
-     "label": "ai_interpretation"
-    },
-    "reliability": "unverified",
-    "reliability_note": "the speech is machine-transcribed and unverified"
-   },
-   {
-    "element_type": "on_screen_product_labeling",
-    "channels": [
-     "on_screen_text"
-    ],
-    "start_time": 0.5,
-    "end_time": 0.5,
-    "evidence": {
-     "supporting_text_element_ids": [
-      1435,
-      1447,
-      1467
-     ]
-    },
-    "evidence_class": {
-     "presence": "observed",
-     "label": "ai_interpretation"
-    },
-    "reliability": "unverified",
-    "reliability_note": "the on-screen text is low-confidence or possibly a rendering artefact"
-   },
-   {
-    "element_type": "visual_product_subject",
-    "channels": [
-     "visual"
-    ],
-    "start_time": 0.0,
-    "end_time": 2.0,
-    "evidence": {
-     "supporting_visual_object_ids": [
-      2616,
-      2617
-     ],
-     "supporting_scene_ids": [
-      900
-     ]
-    },
-    "evidence_class": {
-     "presence": "observed",
-     "label": "ai_interpretation"
-    },
-    "reliability": "established",
-    "reliability_note": null
-   },
-   {
-    "element_type": "single_uninterrupted_opening_shot",
-    "channels": [
-     "editing_or_framing"
-    ],
-    "start_time": 0.0,
-    "end_time": 2.0,
-    "evidence": {
-     "supporting_shot_ids": [
-      3914
-     ]
-    },
-    "evidence_class": {
-     "presence": "observed",
-     "label": "ai_interpretation"
-    },
-    "reliability": "established",
-    "reliability_note": null
-   }
-  ],
-  "visual_reading": [
-   {
-    "finding_id": 15929,
-    "start_time": 0.0,
-    "end_time": 2.0,
-    "confidence": "medium",
-    "mechanism_hint": "hook_curiosity",
-    "statement": "The opening appears designed to establish the product and brand straight away.",
+  "narrative": {
+    "schema": "narrative-progression-v1",
+    "status": "assembled_from_creative_read",
     "certainty": "INFERRED",
-    "basis": "ai_vision",
-    "contains_reference_content": true
-   }
-  ],
-  "relationships": [
-   "Spoken, on screen text, visual, editing or framing occur together in 0–2 s; the hook is the combination, not one element.",
-   "An absolute claim stated up front is the dominant construction and demonstrating the subject supports it. They are not alternatives: both were identified in the same opening.",
-   "The text-only hook classification rests partly on speech that is unverified. The visual reading of the opening is: The opening appears designed to establish the product and brand straight away. Treat the visual structure of the opening as observed and the spoken-claim part of the hook type as unverified."
+    "sections": [
+      {
+        "section": 1,
+        "start_time": 0.0,
+        "end_time": 2.0,
+        "role": "opening_hook",
+        "role_label": "Opening / hook",
+        "basis": "ai_vision (inferred)",
+        "finding_ids": [
+          15929
+        ],
+        "confidence": "medium",
+        "channels": {
+          "visual": true,
+          "spoken": true,
+          "on_screen_text": true
+        },
+        "also": [],
+        "is_opening": true,
+        "overlaps_hook_window": true
+      },
+      {
+        "section": 2,
+        "start_time": 2.0,
+        "end_time": 3.958333,
+        "role": "demonstration",
+        "role_label": "Demonstration",
+        "basis": "ai_vision (inferred)",
+        "finding_ids": [
+          15931
+        ],
+        "confidence": "medium",
+        "channels": {
+          "visual": true,
+          "spoken": true,
+          "on_screen_text": false
+        },
+        "also": [],
+        "is_opening": false,
+        "overlaps_hook_window": false
+      },
+      {
+        "section": 3,
+        "start_time": 3.958333,
+        "end_time": 6.0,
+        "role": null,
+        "role_label": null,
+        "basis": "not established",
+        "finding_ids": [],
+        "confidence": null,
+        "channels": {
+          "visual": true,
+          "spoken": true,
+          "on_screen_text": false
+        },
+        "also": [],
+        "is_opening": false,
+        "overlaps_hook_window": false
+      },
+      {
+        "section": 4,
+        "start_time": 6.0,
+        "end_time": 10.03,
+        "role": "emotional_shift",
+        "role_label": "Human or emotional shift",
+        "basis": "ai_vision (inferred)",
+        "finding_ids": [
+          15933
+        ],
+        "confidence": "medium",
+        "channels": {
+          "visual": true,
+          "spoken": true,
+          "on_screen_text": true
+        },
+        "also": [],
+        "is_opening": false,
+        "overlaps_hook_window": false
+      }
+    ],
+    "arc": [
+      {
+        "label": "Opening / hook",
+        "sections": [
+          1
+        ]
+      },
+      {
+        "label": "Demonstration",
+        "sections": [
+          2
+        ]
+      },
+      {
+        "label": "Human or emotional shift",
+        "sections": [
+          4
+        ]
+      }
+    ],
+    "arc_text": "Opening / hook (section 1) → Demonstration (section 2) → Human or emotional shift (section 4)",
+    "uncertainty": [
+      "None of the 7 scene boundary candidates was accepted (7 judged not to be a boundary). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal scene structure.",
+      "None of the 7 story-beat boundary candidates was accepted (4 judged not to be a boundary; 3 left undecided). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal story-beat structure.",
+      "A single whole-video scene or story beat carries no partition information, so the section structure is built from the measured shots instead.",
+      "1 of 4 sections have no visual reading, so their role in the progression is unknown."
+    ],
+    "unsupported": [
+      "Why the order was chosen, or whether it worked on an audience, is not known."
+    ]
+  },
+  "structure": {
+    "scene_count": 1,
+    "beat_count": 1,
+    "shot_count": 4,
+    "partition": {
+      "scenes": "single_whole_video",
+      "beats": "single_whole_video",
+      "shots": 4
+    },
+    "scene_to_shots": [
+      {
+        "scene_id": 900,
+        "start": 0.0,
+        "end": 10.03,
+        "shot_ids": [
+          3914,
+          3915,
+          3916,
+          3917
+        ]
+      }
+    ],
+    "beat_to_shots": [
+      {
+        "beat_id": 15952,
+        "scene_id": 900,
+        "start": 0.0,
+        "end": 10.03,
+        "shot_ids": [
+          3914,
+          3915,
+          3916,
+          3917
+        ],
+        "boundary_status": "no_accepted_boundary"
+      }
+    ],
+    "reasoning": {
+      "scene": {
+        "examined": 7,
+        "accepted": 0,
+        "rejected": 7,
+        "undecided": 0,
+        "boundary_but_low_confidence": 0,
+        "candidates": [
+          {
+            "id": 100,
+            "time": 0.1,
+            "decision": false,
+            "confidence": "medium",
+            "evidence": {
+              "supporting_shot_ids": 1
+            }
+          },
+          {
+            "id": 101,
+            "time": 1.0,
+            "decision": false,
+            "confidence": "medium",
+            "evidence": {
+              "supporting_shot_ids": 1
+            }
+          },
+          {
+            "id": 102,
+            "time": 1.94,
+            "decision": false,
+            "confidence": "medium",
+            "evidence": {
+              "supporting_shot_ids": 1
+            }
+          },
+          {
+            "id": 103,
+            "time": 2.98,
+            "decision": false,
+            "confidence": "medium",
+            "evidence": {
+              "supporting_shot_ids": 1
+            }
+          },
+          {
+            "id": 104,
+            "time": 3.96,
+            "decision": false,
+            "confidence": "medium",
+            "evidence": {
+              "supporting_shot_ids": 1
+            }
+          },
+          {
+            "id": 105,
+            "time": 5.0,
+            "decision": false,
+            "confidence": "medium",
+            "evidence": {
+              "supporting_shot_ids": 1
+            }
+          },
+          {
+            "id": 106,
+            "time": 6.08,
+            "decision": false,
+            "confidence": "medium",
+            "evidence": {
+              "supporting_shot_ids": 1
+            }
+          }
+        ]
+      },
+      "beat": {
+        "examined": 7,
+        "accepted": 0,
+        "rejected": 4,
+        "undecided": 3,
+        "boundary_but_low_confidence": 0,
+        "candidates": [
+          {
+            "id": 15930,
+            "time": 0.1,
+            "decision": false,
+            "confidence": "medium",
+            "evidence": {
+              "supporting_shot_ids": 1,
+              "supporting_speech_segment_ids": 1
+            }
+          },
+          {
+            "id": 15931,
+            "time": 1.0,
+            "decision": false,
+            "confidence": "medium",
+            "evidence": {
+              "supporting_shot_ids": 1,
+              "supporting_speech_segment_ids": 1
+            }
+          },
+          {
+            "id": 15932,
+            "time": 1.94,
+            "decision": false,
+            "confidence": "medium",
+            "evidence": {
+              "supporting_shot_ids": 1,
+              "supporting_speech_segment_ids": 1
+            }
+          },
+          {
+            "id": 15933,
+            "time": 2.98,
+            "decision": false,
+            "confidence": "low",
+            "evidence": {
+              "supporting_shot_ids": 1,
+              "supporting_speech_segment_ids": 1
+            }
+          },
+          {
+            "id": 15934,
+            "time": 3.96,
+            "decision": null,
+            "confidence": "low",
+            "evidence": {
+              "supporting_shot_ids": 1,
+              "supporting_speech_segment_ids": 1
+            }
+          },
+          {
+            "id": 15935,
+            "time": 5.0,
+            "decision": null,
+            "confidence": "low",
+            "evidence": {
+              "supporting_shot_ids": 1,
+              "supporting_speech_segment_ids": 1
+            }
+          },
+          {
+            "id": 15936,
+            "time": 6.08,
+            "decision": null,
+            "confidence": "low",
+            "evidence": {
+              "supporting_shot_ids": 1,
+              "supporting_speech_segment_ids": 1
+            }
+          }
+        ]
+      }
+    },
+    "issues": [],
+    "consistent": true,
+    "uncertainty": [
+      "None of the 7 scene boundary candidates was accepted (7 judged not to be a boundary). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal scene structure.",
+      "None of the 7 story-beat boundary candidates was accepted (4 judged not to be a boundary; 3 left undecided). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal story-beat structure.",
+      "A single whole-video scene or story beat carries no partition information, so the section structure is built from the measured shots instead."
+    ]
+  },
+  "mechanisms": [
+    {
+      "mechanism_id": "M01",
+      "type": "hook_curiosity",
+      "other_label": null,
+      "purpose": "Appears designed to make the opening raise a question or hold something back, so the viewer has a reason to keep watching.",
+      "scope": "sections",
+      "sections": [
+        {
+          "number": 1,
+          "start_time": 0.0,
+          "end_time": 2.0
+        }
+      ],
+      "position": "opening",
+      "evidence": {
+        "visual": [
+          {
+            "kind": "creative_findings",
+            "id": 15929,
+            "section": 1,
+            "start_time": 0.0,
+            "end_time": 2.0,
+            "reliable": null,
+            "finding_kind": "hook_visual",
+            "finding_confidence": "medium"
+          },
+          {
+            "kind": "shots",
+            "id": 3914,
+            "section": 1,
+            "start_time": 0.0,
+            "end_time": 2.0,
+            "reliable": null
+          }
+        ],
+        "audio": [
+          {
+            "kind": "speech_segments",
+            "id": 721,
+            "section": 3,
+            "start_time": 0.0,
+            "end_time": 4.0,
+            "reliable": false
+          }
+        ],
+        "text": [],
+        "editing": []
+      },
+      "evidence_channels": {
+        "audio": 1,
+        "text": 0,
+        "visual": 2,
+        "editing": 0
+      },
+      "unreliable_channels": [
+        "audio"
+      ],
+      "evidence_classes": {
+        "observed": [
+          "audio: 1 stored item(s)",
+          "visual: 2 stored item(s)"
+        ],
+        "ai_interpretation": [
+          "The mechanism itself (type and statement) and any visual findings it cites are AI interpretations of the evidence."
+        ],
+        "unsupported": [
+          "Whether this mechanism affected any audience: not measured, not claimed."
+        ]
+      },
+      "reference_description": {
+        "text": "The opening centres the product with a hand poised, establishing it before any demonstration.",
+        "contains_reference_content": true,
+        "certainty": "INFERRED",
+        "note": "Describes the reference itself. Shown for review; never given to the planner."
+      },
+      "confidence": "medium",
+      "limitations": [
+        "Hook classification partly rests on unverified speech.",
+        "Scene.narrative_role is not populated by any upstream stage"
+      ],
+      "transferable_principle": "Open on a clean shot of the subject itself with a small human gesture suggesting imminent use, rather than starting with action or narration.",
+      "conditions": {
+        "applies_when": [
+          "The new subject has something that can be shown or stated in the opening without giving the answer away.",
+          "The objective is awareness or interest rather than an immediate transaction."
+        ],
+        "avoid_when": [
+          "The brief requires the opening to carry a fixed statement (legal, safety, price or offer).",
+          "There is nothing to reveal later in the video."
+        ],
+        "source": "taxonomy rule (general guidance for this kind of mechanism; not AI, not measured on any audience)"
+      },
+      "adaptation_guidance": [
+        "Choose the new subject's own unresolved element; do not reuse the reference's object, setting or people.",
+        "Keep the opening short enough to take in within its first seconds.",
+        "Part of the evidence is speech that was only machine-transcribed and is unverified: adapt the structural role, not what the speech appeared to say.",
+        "In the reference it works in the opening of the video; the blueprint may place it elsewhere if the brief requires."
+      ],
+      "reuse_vs_copy": {
+        "reuse": "Open on a clean shot of the subject itself with a small human gesture suggesting imminent use, rather than starting with action or narration.",
+        "never_copy": [
+          {
+            "kind": "brand_or_name",
+            "description": "Specific packaging text shown in the opening shot."
+          },
+          {
+            "kind": "audio_specific",
+            "description": "Garbled, unverified spoken claim accompanying the opening."
+          }
+        ]
+      }
+    },
+    {
+      "mechanism_id": "M02",
+      "type": "demonstration",
+      "other_label": null,
+      "purpose": "Appears designed to show the subject being used, or its result, rather than describing it.",
+      "scope": "sections",
+      "sections": [
+        {
+          "number": 2,
+          "start_time": 2.0,
+          "end_time": 3.958333
+        },
+        {
+          "number": 3,
+          "start_time": 3.958333,
+          "end_time": 6.0
+        }
+      ],
+      "position": "middle",
+      "evidence": {
+        "visual": [
+          {
+            "kind": "creative_findings",
+            "id": 15931,
+            "section": 2,
+            "start_time": 2.0,
+            "end_time": 3.96,
+            "reliable": null,
+            "finding_kind": "visual_pattern",
+            "finding_confidence": "medium"
+          },
+          {
+            "kind": "shots",
+            "id": 3915,
+            "section": 2,
+            "start_time": 2.0,
+            "end_time": 3.958333,
+            "reliable": null
+          },
+          {
+            "kind": "shots",
+            "id": 3916,
+            "section": 3,
+            "start_time": 3.958333,
+            "end_time": 6.0,
+            "reliable": null
+          }
+        ],
+        "audio": [],
+        "text": [],
+        "editing": []
+      },
+      "evidence_channels": {
+        "audio": 0,
+        "text": 0,
+        "visual": 3,
+        "editing": 0
+      },
+      "unreliable_channels": [],
+      "evidence_classes": {
+        "observed": [
+          "visual: 3 stored item(s)"
+        ],
+        "ai_interpretation": [
+          "The mechanism itself (type and statement) and any visual findings it cites are AI interpretations of the evidence."
+        ],
+        "unsupported": [
+          "Whether this mechanism affected any audience: not measured, not claimed."
+        ]
+      },
+      "reference_description": {
+        "text": "A tight close-up of texture followed by use in cooking.",
+        "contains_reference_content": true,
+        "certainty": "INFERRED",
+        "note": "Describes the reference itself. Shown for review; never given to the planner."
+      },
+      "confidence": "medium",
+      "limitations": [
+        "Based on a few frames, not continuous motion."
+      ],
+      "transferable_principle": "Sequence a close-up of the material followed by a shot of it in use, before introducing a spokesperson.",
+      "conditions": {
+        "applies_when": [
+          "The new offering has an action or result that can be shown on screen."
+        ],
+        "avoid_when": [
+          "The offering is intangible and nothing about it can be shown.",
+          "The subject cannot be filmed or screen-recorded."
+        ],
+        "source": "taxonomy rule (general guidance for this kind of mechanism; not AI, not measured on any audience)"
+      },
+      "adaptation_guidance": [
+        "Show the new subject's own use or result; do not reproduce the reference's objects, props or setting.",
+        "Observed in the visuals only, so it can be adapted without a voice-over or on-screen words.",
+        "In the reference it works in the middle of the video; the blueprint may place it elsewhere if the brief requires."
+      ],
+      "reuse_vs_copy": {
+        "reuse": "Sequence a close-up of the material followed by a shot of it in use, before introducing a spokesperson.",
+        "never_copy": [
+          {
+            "kind": "subject_matter",
+            "description": "The specific product category and cooking context."
+          }
+        ]
+      }
+    },
+    {
+      "mechanism_id": "M03",
+      "type": "emotional_progression",
+      "other_label": null,
+      "purpose": "Appears designed to shift the emotional tone of the video from one state to another.",
+      "scope": "sections",
+      "sections": [
+        {
+          "number": 4,
+          "start_time": 6.0,
+          "end_time": 10.03
+        }
+      ],
+      "position": "closing",
+      "evidence": {
+        "visual": [
+          {
+            "kind": "creative_findings",
+            "id": 15933,
+            "section": 4,
+            "start_time": 6.0,
+            "end_time": 10.03,
+            "reliable": null,
+            "finding_kind": "emotional_register",
+            "finding_confidence": "medium"
+          },
+          {
+            "kind": "shots",
+            "id": 3917,
+            "section": 4,
+            "start_time": 6.0,
+            "end_time": 10.03,
+            "reliable": null
+          }
+        ],
+        "audio": [],
+        "text": [],
+        "editing": []
+      },
+      "evidence_channels": {
+        "audio": 0,
+        "text": 0,
+        "visual": 2,
+        "editing": 0
+      },
+      "unreliable_channels": [],
+      "evidence_classes": {
+        "observed": [
+          "visual: 2 stored item(s)"
+        ],
+        "ai_interpretation": [
+          "The mechanism itself (type and statement) and any visual findings it cites are AI interpretations of the evidence."
+        ],
+        "unsupported": [
+          "Whether this mechanism affected any audience: not measured, not claimed."
+        ]
+      },
+      "reference_description": {
+        "text": "The final shot shifts to a smiling presenter.",
+        "contains_reference_content": true,
+        "certainty": "INFERRED",
+        "note": "Describes the reference itself. Shown for review; never given to the planner."
+      },
+      "confidence": "low",
+      "limitations": [
+        "Emotional role is not established upstream."
+      ],
+      "transferable_principle": "Close a product-focused sequence with a warm human presence facing the camera.",
+      "conditions": {
+        "applies_when": [
+          "A person can appear on screen and the brand's tone allows a personal register."
+        ],
+        "avoid_when": [
+          "No person can appear, or the brief requires a neutral or formal tone."
+        ],
+        "source": "taxonomy rule (general guidance for this kind of mechanism; not AI, not measured on any audience)"
+      },
+      "adaptation_guidance": [
+        "Derive the tone shift from the brief's own tone constraints; do not copy the reference's people or setting.",
+        "Observed in the visuals only, so it can be adapted without a voice-over or on-screen words.",
+        "In the reference it works in the closing of the video; the blueprint may place it elsewhere if the brief requires."
+      ],
+      "reuse_vs_copy": {
+        "reuse": "Close a product-focused sequence with a warm human presence facing the camera.",
+        "never_copy": [
+          {
+            "kind": "visual_specific",
+            "description": "The presenter's appearance and setting."
+          }
+        ]
+      }
+    }
   ],
   "contradictions": [
-   {
-    "topic": "spoken part of the hook",
-    "status": "unverified",
-    "note": "The classification of the spoken part rests on unverified machine transcription. The visual and on-screen-text channels are better established."
-   }
+    {
+      "topic": "spoken wording",
+      "status": "unverified",
+      "sections": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "notes": [
+        "The transcript for this section is machine output that is unverified (no recognition confidence was recorded; the text mixes arabic and latin characters, typical of misrecognised or code-switched speech). Do not quote it, and do not rest a high-confidence mechanism on what it appears to say.",
+        "The transcript for this section is machine output that is unverified (no recognition confidence was recorded; the text mixes cyrillic and latin characters, typical of misrecognised or code-switched speech). Do not quote it, and do not rest a high-confidence mechanism on what it appears to say."
+      ],
+      "authority": "none",
+      "note": "The transcript for this section is machine output that is unverified (no recognition confidence was recorded; the text mixes arabic and latin characters, typical of misrecognised or code-switched speech). Do not quote it, and do not rest a high-confidence mechanism on what it appears to say."
+    },
+    {
+      "topic": "on-screen text",
+      "status": "unverified",
+      "sections": [
+        1,
+        4
+      ],
+      "notes": [
+        "3 recognised text item(s) are unverified: low recognition confidence (< 0.7), or not corroborated by the frames while the visual reading reported garbled text. In AI-generated video these are often rendering artefacts rather than readable words; only text the visual reading itself cites is treated as legible.",
+        "1 recognised text item(s) are unverified: low recognition confidence (< 0.7), or not corroborated by the frames while the visual reading reported garbled text. In AI-generated video these are often rendering artefacts rather than readable words; only text the visual reading itself cites is treated as legible."
+      ],
+      "authority": "ocr (unverified)",
+      "note": "3 recognised text item(s) are unverified: low recognition confidence (< 0.7), or not corroborated by the frames while the visual reading reported garbled text. In AI-generated video these are often rendering artefacts rather than readable words; only text the visual reading itself cites is treated as legible."
+    },
+    {
+      "topic": "object identity",
+      "status": "partly_corroborated",
+      "sections": [
+        2,
+        3,
+        4
+      ],
+      "notes": [
+        "Shot 1: the visual description corroborates donut but not bowl, spoon; treat the uncorroborated detector labels as low authority and the visual description as the primary reading.",
+        "Shot 2: the visual description corroborates bowl but not spoon; treat the uncorroborated detector labels as low authority and the visual description as the primary reading.",
+        "Shot 3: the visual description corroborates person but not chair; treat the uncorroborated detector labels as low authority and the visual description as the primary reading."
+      ],
+      "authority": "ai_vision",
+      "note": "Shot 1: the visual description corroborates donut but not bowl, spoon; treat the uncorroborated detector labels as low authority and the visual description as the primary reading."
+    },
+    {
+      "topic": "opening hook",
+      "status": "two_views",
+      "sections": [
+        1
+      ],
+      "notes": [
+        "The text-only hook classification rests partly on speech that is unverified. The visual reading of the opening is: The opening appears designed to establish the product and brand straight away. Treat the visual structure of the opening as observed and the spoken-claim part of the hook type as unverified."
+      ],
+      "authority": "ai_vision",
+      "note": "The text-only hook classification rests partly on speech that is unverified. The visual reading of the opening is: The opening appears designed to establish the product and brand straight away. Treat the visual structure of the opening as observed and the spoken-claim part of the hook type as unverified."
+    },
+    {
+      "topic": "spoken part of the hook",
+      "status": "unverified",
+      "sections": [
+        1
+      ],
+      "notes": [
+        "The classification of the spoken part rests on unverified machine transcription. The visual and on-screen-text channels are better established."
+      ],
+      "authority": "hook profile",
+      "note": "The classification of the spoken part rests on unverified machine transcription. The visual and on-screen-text channels are better established."
+    }
   ],
+  "audience_effects": {
+    "status": "not_established",
+    "statement": "not established: there is no viewer data; every reading here describes apparent design only"
+  },
   "evidence_classes": {
-   "observed": "Which channels are present in the opening and when, and which stored evidence each cites (measured from the stored analysis).",
-   "ai_interpretation": "The hook type, the intent, the names given to elements and the visual reading: conclusions an AI drew, shown as inferred.",
-   "unsupported": "Anything about audience behaviour: not measured and not claimed."
+    "observed": "Which channels are present in the opening and when, and which stored evidence each cites (measured from the stored analysis).",
+    "ai_interpretation": "The hook type, the intent, the names given to elements and the visual reading: conclusions an AI drew, shown as inferred.",
+    "unsupported": "Anything about audience behaviour: not measured and not claimed."
   },
   "unsupported": [
-   "Whether the opening captured or held anyone's attention.",
-   "Whether viewers kept watching because of any element of the opening.",
-   "How the opening compares with other videos' openings."
-  ]
- },
- "narrative": {
-  "schema": "narrative-progression-v1",
-  "status": "assembled_from_creative_read",
-  "certainty": "INFERRED",
-  "sections": [
-   {
-    "section": 1,
-    "start_time": 0.0,
-    "end_time": 2.0,
-    "role": "opening_hook",
-    "role_label": "Opening / hook",
-    "basis": "ai_vision (inferred)",
-    "finding_ids": [
-     15929
-    ],
-    "confidence": "medium",
-    "channels": {
-     "visual": true,
-     "spoken": true,
-     "on_screen_text": true
-    },
-    "is_opening": true,
-    "overlaps_hook_window": true
-   },
-   {
-    "section": 2,
-    "start_time": 2.0,
-    "end_time": 3.958333,
-    "role": "demonstration",
-    "role_label": "Demonstration",
-    "basis": "ai_vision (inferred)",
-    "finding_ids": [
-     15931
-    ],
-    "confidence": "medium",
-    "channels": {
-     "visual": true,
-     "spoken": true,
-     "on_screen_text": false
-    },
-    "is_opening": false,
-    "overlaps_hook_window": false
-   },
-   {
-    "section": 3,
-    "start_time": 3.958333,
-    "end_time": 6.0,
-    "role": null,
-    "role_label": null,
-    "basis": "not established",
-    "finding_ids": [],
-    "confidence": null,
-    "channels": {
-     "visual": true,
-     "spoken": true,
-     "on_screen_text": false
-    },
-    "is_opening": false,
-    "overlaps_hook_window": false
-   },
-   {
-    "section": 4,
-    "start_time": 6.0,
-    "end_time": 10.03,
-    "role": "emotional_shift",
-    "role_label": "Human or emotional shift",
-    "basis": "ai_vision (inferred)",
-    "finding_ids": [
-     15933
-    ],
-    "confidence": "medium",
-    "channels": {
-     "visual": true,
-     "spoken": true,
-     "on_screen_text": true
-    },
-    "is_opening": false,
-    "overlaps_hook_window": false
-   }
+    "Whether the opening captured or held anyone's attention.",
+    "Whether viewers kept watching because of any element of the opening.",
+    "How the opening compares with other videos' openings."
   ],
-  "arc": [
-   {
-    "label": "Opening / hook",
-    "sections": [
-     1
-    ]
-   },
-   {
-    "label": "Demonstration",
-    "sections": [
-     2
-    ]
-   },
-   {
-    "label": "Human or emotional shift",
-    "sections": [
-     4
-    ]
-   }
+  "reuse_policy": {
+    "reuse": "The mechanism: the transferable principle, the conditions under which it applies, and how it is adapted to a different business, audience, product or objective.",
+    "never_copy": "The reference's content: its wording, brand, people, products, setting, visuals, audio and story. Each mechanism lists what must not be carried over."
+  },
+  "limitations": [
+    "All spoken content is unverified machine transcription.",
+    "None of the 7 scene boundary candidates was accepted (7 judged not to be a boundary). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal scene structure.",
+    "None of the 7 story-beat boundary candidates was accepted (4 judged not to be a boundary; 3 left undecided). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal story-beat structure.",
+    "A single whole-video scene or story beat carries no partition information, so the section structure is built from the measured shots instead."
   ],
-  "arc_text": "Opening / hook (section 1) → Demonstration (section 2) → Human or emotional shift (section 4)",
-  "uncertainty": [
-   "None of the 7 scene boundary candidates was accepted (7 judged not to be a boundary). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal scene structure.",
-   "None of the 7 story-beat boundary candidates was accepted (4 judged not to be a boundary; 3 left undecided). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal story-beat structure.",
-   "A single whole-video scene or story beat carries no partition information, so the section structure is built from the measured shots instead.",
-   "1 of 4 sections have no visual reading, so their role in the progression is unknown."
-  ],
-  "unsupported": [
-   "Why the order was chosen, or whether it worked on an audience, is not known."
-  ]
- },
- "structure": {
-  "scene_count": 1,
-  "beat_count": 1,
-  "shot_count": 4,
-  "partition": {
-   "scenes": "single_whole_video",
-   "beats": "single_whole_video",
-   "shots": 4
-  },
-  "scene_to_shots": [
-   {
-    "scene_id": 900,
-    "start": 0.0,
-    "end": 10.03,
-    "shot_ids": [
-     3914,
-     3915,
-     3916,
-     3917
-    ]
-   }
-  ],
-  "beat_to_shots": [
-   {
-    "beat_id": 15952,
-    "scene_id": 900,
-    "start": 0.0,
-    "end": 10.03,
-    "shot_ids": [
-     3914,
-     3915,
-     3916,
-     3917
-    ],
-    "boundary_status": "no_accepted_boundary"
-   }
-  ],
-  "reasoning": {
-   "scene": {
-    "examined": 7,
-    "accepted": 0,
-    "rejected": 7,
-    "undecided": 0,
-    "boundary_but_low_confidence": 0,
-    "candidates": [
-     {
-      "id": 100,
-      "time": 0.1,
-      "decision": false,
-      "confidence": "medium",
-      "evidence": {
-       "supporting_shot_ids": 1
-      }
-     },
-     {
-      "id": 101,
-      "time": 1.0,
-      "decision": false,
-      "confidence": "medium",
-      "evidence": {
-       "supporting_shot_ids": 1
-      }
-     },
-     {
-      "id": 102,
-      "time": 1.94,
-      "decision": false,
-      "confidence": "medium",
-      "evidence": {
-       "supporting_shot_ids": 1
-      }
-     },
-     {
-      "id": 103,
-      "time": 2.98,
-      "decision": false,
-      "confidence": "medium",
-      "evidence": {
-       "supporting_shot_ids": 1
-      }
-     },
-     {
-      "id": 104,
-      "time": 3.96,
-      "decision": false,
-      "confidence": "medium",
-      "evidence": {
-       "supporting_shot_ids": 1
-      }
-     },
-     {
-      "id": 105,
-      "time": 5.0,
-      "decision": false,
-      "confidence": "medium",
-      "evidence": {
-       "supporting_shot_ids": 1
-      }
-     },
-     {
-      "id": 106,
-      "time": 6.08,
-      "decision": false,
-      "confidence": "medium",
-      "evidence": {
-       "supporting_shot_ids": 1
-      }
-     }
-    ]
-   },
-   "beat": {
-    "examined": 7,
-    "accepted": 0,
-    "rejected": 4,
-    "undecided": 3,
-    "boundary_but_low_confidence": 0,
-    "candidates": [
-     {
-      "id": 15930,
-      "time": 0.1,
-      "decision": false,
-      "confidence": "medium",
-      "evidence": {
-       "supporting_shot_ids": 1,
-       "supporting_speech_segment_ids": 1
-      }
-     },
-     {
-      "id": 15931,
-      "time": 1.0,
-      "decision": false,
-      "confidence": "medium",
-      "evidence": {
-       "supporting_shot_ids": 1,
-       "supporting_speech_segment_ids": 1
-      }
-     },
-     {
-      "id": 15932,
-      "time": 1.94,
-      "decision": false,
-      "confidence": "medium",
-      "evidence": {
-       "supporting_shot_ids": 1,
-       "supporting_speech_segment_ids": 1
-      }
-     },
-     {
-      "id": 15933,
-      "time": 2.98,
-      "decision": false,
-      "confidence": "low",
-      "evidence": {
-       "supporting_shot_ids": 1,
-       "supporting_speech_segment_ids": 1
-      }
-     },
-     {
-      "id": 15934,
-      "time": 3.96,
-      "decision": null,
-      "confidence": "low",
-      "evidence": {
-       "supporting_shot_ids": 1,
-       "supporting_speech_segment_ids": 1
-      }
-     },
-     {
-      "id": 15935,
-      "time": 5.0,
-      "decision": null,
-      "confidence": "low",
-      "evidence": {
-       "supporting_shot_ids": 1,
-       "supporting_speech_segment_ids": 1
-      }
-     },
-     {
-      "id": 15936,
-      "time": 6.08,
-      "decision": null,
-      "confidence": "low",
-      "evidence": {
-       "supporting_shot_ids": 1,
-       "supporting_speech_segment_ids": 1
-      }
-     }
-    ]
-   }
-  },
-  "issues": [],
-  "consistent": true,
-  "uncertainty": [
-   "None of the 7 scene boundary candidates was accepted (7 judged not to be a boundary). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal scene structure.",
-   "None of the 7 story-beat boundary candidates was accepted (4 judged not to be a boundary; 3 left undecided). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal story-beat structure.",
-   "A single whole-video scene or story beat carries no partition information, so the section structure is built from the measured shots instead."
-  ]
- },
- "mechanisms": [
-  {
-   "mechanism_id": "M01",
-   "type": "hook_curiosity",
-   "other_label": null,
-   "purpose": "Appears designed to make the opening raise a question or hold something back, so the viewer has a reason to keep watching.",
-   "scope": "sections",
-   "sections": [
-    {
-     "number": 1,
-     "start_time": 0.0,
-     "end_time": 2.0
-    }
-   ],
-   "position": "opening",
-   "evidence": {
-    "visual": [
-     {
-      "kind": "creative_findings",
-      "id": 15929,
-      "section": 1,
-      "start_time": 0.0,
-      "end_time": 2.0,
-      "reliable": null,
-      "finding_kind": "hook_visual",
-      "finding_confidence": "medium"
-     },
-     {
-      "kind": "shots",
-      "id": 3914,
-      "section": 1,
-      "start_time": 0.0,
-      "end_time": 2.0,
-      "reliable": null
-     }
-    ],
-    "audio": [
-     {
-      "kind": "speech_segments",
-      "id": 721,
-      "section": 3,
-      "start_time": 0.0,
-      "end_time": 4.0,
-      "reliable": false
-     }
-    ],
-    "text": [],
-    "editing": []
-   },
-   "evidence_channels": {
-    "audio": 1,
-    "text": 0,
-    "visual": 2,
-    "editing": 0
-   },
-   "unreliable_channels": [
-    "audio"
-   ],
-   "evidence_classes": {
-    "observed": [
-     "audio: 1 stored item(s)",
-     "visual: 2 stored item(s)"
-    ],
-    "ai_interpretation": [
-     "The mechanism itself (type and statement) and any visual findings it cites are AI interpretations of the evidence."
-    ],
-    "unsupported": [
-     "Whether this mechanism affected any audience: not measured, not claimed."
-    ]
-   },
-   "reference_description": {
-    "text": "The opening centres the product with a hand poised, establishing it before any demonstration.",
-    "contains_reference_content": true,
-    "certainty": "INFERRED",
-    "note": "Describes the reference itself. Shown for review; never given to the planner."
-   },
-   "confidence": "medium",
-   "limitations": [
-    "Hook classification partly rests on unverified speech.",
-    "Scene.narrative_role is not populated by any upstream stage"
-   ],
-   "transferable_principle": "Open on a clean shot of the subject itself with a small human gesture suggesting imminent use, rather than starting with action or narration.",
-   "conditions": {
-    "applies_when": [
-     "The new subject has something that can be shown or stated in the opening without giving the answer away.",
-     "The objective is awareness or interest rather than an immediate transaction."
-    ],
-    "avoid_when": [
-     "The brief requires the opening to carry a fixed statement (legal, safety, price or offer).",
-     "There is nothing to reveal later in the video."
-    ],
-    "source": "taxonomy rule (general guidance for this kind of mechanism; not AI, not measured on any audience)"
-   },
-   "adaptation_guidance": [
-    "Choose the new subject's own unresolved element; do not reuse the reference's object, setting or people.",
-    "Keep the opening short enough to take in within its first seconds.",
-    "Part of the evidence is speech that was only machine-transcribed and is unverified: adapt the structural role, not what the speech appeared to say.",
-    "In the reference it works in the opening of the video; the blueprint may place it elsewhere if the brief requires."
-   ],
-   "reuse_vs_copy": {
-    "reuse": "Open on a clean shot of the subject itself with a small human gesture suggesting imminent use, rather than starting with action or narration.",
-    "never_copy": [
-     {
-      "kind": "brand_or_name",
-      "description": "Specific packaging text shown in the opening shot."
-     },
-     {
-      "kind": "audio_specific",
-      "description": "Garbled, unverified spoken claim accompanying the opening."
-     }
-    ]
-   }
-  },
-  {
-   "mechanism_id": "M02",
-   "type": "demonstration",
-   "other_label": null,
-   "purpose": "Appears designed to show the subject being used, or its result, rather than describing it.",
-   "scope": "sections",
-   "sections": [
-    {
-     "number": 2,
-     "start_time": 2.0,
-     "end_time": 3.958333
-    },
-    {
-     "number": 3,
-     "start_time": 3.958333,
-     "end_time": 6.0
-    }
-   ],
-   "position": "middle",
-   "evidence": {
-    "visual": [
-     {
-      "kind": "creative_findings",
-      "id": 15931,
-      "section": 2,
-      "start_time": 2.0,
-      "end_time": 3.96,
-      "reliable": null,
-      "finding_kind": "visual_pattern",
-      "finding_confidence": "medium"
-     },
-     {
-      "kind": "shots",
-      "id": 3915,
-      "section": 2,
-      "start_time": 2.0,
-      "end_time": 3.958333,
-      "reliable": null
-     },
-     {
-      "kind": "shots",
-      "id": 3916,
-      "section": 3,
-      "start_time": 3.958333,
-      "end_time": 6.0,
-      "reliable": null
-     }
-    ],
-    "audio": [],
-    "text": [],
-    "editing": []
-   },
-   "evidence_channels": {
-    "audio": 0,
-    "text": 0,
-    "visual": 3,
-    "editing": 0
-   },
-   "unreliable_channels": [],
-   "evidence_classes": {
-    "observed": [
-     "visual: 3 stored item(s)"
-    ],
-    "ai_interpretation": [
-     "The mechanism itself (type and statement) and any visual findings it cites are AI interpretations of the evidence."
-    ],
-    "unsupported": [
-     "Whether this mechanism affected any audience: not measured, not claimed."
-    ]
-   },
-   "reference_description": {
-    "text": "A tight close-up of texture followed by use in cooking.",
-    "contains_reference_content": true,
-    "certainty": "INFERRED",
-    "note": "Describes the reference itself. Shown for review; never given to the planner."
-   },
-   "confidence": "medium",
-   "limitations": [
-    "Based on a few frames, not continuous motion."
-   ],
-   "transferable_principle": "Sequence a close-up of the material followed by a shot of it in use, before introducing a spokesperson.",
-   "conditions": {
-    "applies_when": [
-     "The new offering has an action or result that can be shown on screen."
-    ],
-    "avoid_when": [
-     "The offering is intangible and nothing about it can be shown.",
-     "The subject cannot be filmed or screen-recorded."
-    ],
-    "source": "taxonomy rule (general guidance for this kind of mechanism; not AI, not measured on any audience)"
-   },
-   "adaptation_guidance": [
-    "Show the new subject's own use or result; do not reproduce the reference's objects, props or setting.",
-    "Observed in the visuals only, so it can be adapted without a voice-over or on-screen words.",
-    "In the reference it works in the middle of the video; the blueprint may place it elsewhere if the brief requires."
-   ],
-   "reuse_vs_copy": {
-    "reuse": "Sequence a close-up of the material followed by a shot of it in use, before introducing a spokesperson.",
-    "never_copy": [
-     {
-      "kind": "subject_matter",
-      "description": "The specific product category and cooking context."
-     }
-    ]
-   }
-  },
-  {
-   "mechanism_id": "M03",
-   "type": "emotional_progression",
-   "other_label": null,
-   "purpose": "Appears designed to shift the emotional tone of the video from one state to another.",
-   "scope": "sections",
-   "sections": [
-    {
-     "number": 4,
-     "start_time": 6.0,
-     "end_time": 10.03
-    }
-   ],
-   "position": "closing",
-   "evidence": {
-    "visual": [
-     {
-      "kind": "creative_findings",
-      "id": 15933,
-      "section": 4,
-      "start_time": 6.0,
-      "end_time": 10.03,
-      "reliable": null,
-      "finding_kind": "emotional_register",
-      "finding_confidence": "medium"
-     },
-     {
-      "kind": "shots",
-      "id": 3917,
-      "section": 4,
-      "start_time": 6.0,
-      "end_time": 10.03,
-      "reliable": null
-     }
-    ],
-    "audio": [],
-    "text": [],
-    "editing": []
-   },
-   "evidence_channels": {
-    "audio": 0,
-    "text": 0,
-    "visual": 2,
-    "editing": 0
-   },
-   "unreliable_channels": [],
-   "evidence_classes": {
-    "observed": [
-     "visual: 2 stored item(s)"
-    ],
-    "ai_interpretation": [
-     "The mechanism itself (type and statement) and any visual findings it cites are AI interpretations of the evidence."
-    ],
-    "unsupported": [
-     "Whether this mechanism affected any audience: not measured, not claimed."
-    ]
-   },
-   "reference_description": {
-    "text": "The final shot shifts to a smiling presenter.",
-    "contains_reference_content": true,
-    "certainty": "INFERRED",
-    "note": "Describes the reference itself. Shown for review; never given to the planner."
-   },
-   "confidence": "low",
-   "limitations": [
-    "Emotional role is not established upstream."
-   ],
-   "transferable_principle": "Close a product-focused sequence with a warm human presence facing the camera.",
-   "conditions": {
-    "applies_when": [
-     "A person can appear on screen and the brand's tone allows a personal register."
-    ],
-    "avoid_when": [
-     "No person can appear, or the brief requires a neutral or formal tone."
-    ],
-    "source": "taxonomy rule (general guidance for this kind of mechanism; not AI, not measured on any audience)"
-   },
-   "adaptation_guidance": [
-    "Derive the tone shift from the brief's own tone constraints; do not copy the reference's people or setting.",
-    "Observed in the visuals only, so it can be adapted without a voice-over or on-screen words.",
-    "In the reference it works in the closing of the video; the blueprint may place it elsewhere if the brief requires."
-   ],
-   "reuse_vs_copy": {
-    "reuse": "Close a product-focused sequence with a warm human presence facing the camera.",
-    "never_copy": [
-     {
-      "kind": "visual_specific",
-      "description": "The presenter's appearance and setting."
-     }
-    ]
-   }
-  }
- ],
- "contradictions": [
-  {
-   "topic": "spoken wording",
-   "status": "unverified",
-   "sections": [
-    1
-   ],
-   "note": "The transcript for this section is machine output that is unverified (no recognition confidence was recorded; the text mixes arabic and latin characters, typical of misrecognised or code-switched speech). Do not quote it, and do not rest a high-confidence mechanism on what it appears to say.",
-   "authority": "none"
-  },
-  {
-   "topic": "on-screen text",
-   "status": "unverified",
-   "sections": [
-    1
-   ],
-   "note": "3 recognised text item(s) are unverified: low recognition confidence (< 0.7), or not corroborated by the frames while the visual reading reported garbled text. In AI-generated video these are often rendering artefacts rather than readable words; only text the visual reading itself cites is treated as legible.",
-   "authority": "ocr (unverified)"
-  },
-  {
-   "topic": "object identity",
-   "status": "partly_corroborated",
-   "sections": [
-    2
-   ],
-   "note": "Shot 1: the visual description corroborates donut but not bowl, spoon; treat the uncorroborated detector labels as low authority and the visual description as the primary reading.",
-   "authority": "ai_vision"
-  },
-  {
-   "topic": "spoken wording",
-   "status": "unverified",
-   "sections": [
-    2
-   ],
-   "note": "The transcript for this section is machine output that is unverified (no recognition confidence was recorded; the text mixes arabic and latin characters, typical of misrecognised or code-switched speech). Do not quote it, and do not rest a high-confidence mechanism on what it appears to say.",
-   "authority": "none"
-  },
-  {
-   "topic": "object identity",
-   "status": "partly_corroborated",
-   "sections": [
-    3
-   ],
-   "note": "Shot 2: the visual description corroborates bowl but not spoon; treat the uncorroborated detector labels as low authority and the visual description as the primary reading.",
-   "authority": "ai_vision"
-  },
-  {
-   "topic": "spoken wording",
-   "status": "unverified",
-   "sections": [
-    3
-   ],
-   "note": "The transcript for this section is machine output that is unverified (no recognition confidence was recorded; the text mixes arabic and latin characters, typical of misrecognised or code-switched speech). Do not quote it, and do not rest a high-confidence mechanism on what it appears to say.",
-   "authority": "none"
-  },
-  {
-   "topic": "object identity",
-   "status": "partly_corroborated",
-   "sections": [
-    4
-   ],
-   "note": "Shot 3: the visual description corroborates person but not chair; treat the uncorroborated detector labels as low authority and the visual description as the primary reading.",
-   "authority": "ai_vision"
-  },
-  {
-   "topic": "spoken wording",
-   "status": "unverified",
-   "sections": [
-    4
-   ],
-   "note": "The transcript for this section is machine output that is unverified (no recognition confidence was recorded; the text mixes cyrillic and latin characters, typical of misrecognised or code-switched speech). Do not quote it, and do not rest a high-confidence mechanism on what it appears to say.",
-   "authority": "none"
-  },
-  {
-   "topic": "on-screen text",
-   "status": "unverified",
-   "sections": [
-    4
-   ],
-   "note": "1 recognised text item(s) are unverified: low recognition confidence (< 0.7), or not corroborated by the frames while the visual reading reported garbled text. In AI-generated video these are often rendering artefacts rather than readable words; only text the visual reading itself cites is treated as legible.",
-   "authority": "ocr (unverified)"
-  },
-  {
-   "topic": "opening hook",
-   "status": "two_views",
-   "sections": [
-    1
-   ],
-   "note": "The text-only hook classification rests partly on speech that is unverified. The visual reading of the opening is: The opening appears designed to establish the product and brand straight away. Treat the visual structure of the opening as observed and the spoken-claim part of the hook type as unverified.",
-   "authority": "ai_vision"
-  },
-  {
-   "topic": "spoken part of the hook",
-   "status": "unverified",
-   "sections": [
-    1
-   ],
-   "note": "The classification of the spoken part rests on unverified machine transcription. The visual and on-screen-text channels are better established.",
-   "authority": "hook profile"
-  }
- ],
- "audience_effects": {
-  "status": "not_established",
-  "statement": "not established: there is no viewer data; every reading here describes apparent design only"
- },
- "evidence_classes": {
-  "observed": "Which channels are present in the opening and when, and which stored evidence each cites (measured from the stored analysis).",
-  "ai_interpretation": "The hook type, the intent, the names given to elements and the visual reading: conclusions an AI drew, shown as inferred.",
-  "unsupported": "Anything about audience behaviour: not measured and not claimed."
- },
- "unsupported": [
-  "Whether the opening captured or held anyone's attention.",
-  "Whether viewers kept watching because of any element of the opening.",
-  "How the opening compares with other videos' openings."
- ],
- "reuse_policy": {
-  "reuse": "The mechanism: the transferable principle, the conditions under which it applies, and how it is adapted to a different business, audience, product or objective.",
-  "never_copy": "The reference's content: its wording, brand, people, products, setting, visuals, audio and story. Each mechanism lists what must not be carried over."
- },
- "limitations": [
-  "All spoken content is unverified machine transcription.",
-  "None of the 7 scene boundary candidates was accepted (7 judged not to be a boundary). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal scene structure.",
-  "None of the 7 story-beat boundary candidates was accepted (4 judged not to be a boundary; 3 left undecided). This is the judgement of a text-only reasoner working from the speech and text evidence; it is not evidence that the video has no internal story-beat structure.",
-  "A single whole-video scene or story beat carries no partition information, so the section structure is built from the measured shots instead."
- ],
- "certainty": "INFERRED"
+  "certainty": "INFERRED"
 }

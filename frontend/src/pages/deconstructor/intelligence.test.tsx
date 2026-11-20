@@ -64,6 +64,15 @@ describe('New Content: what this reference teaches', () => {
     expect(h).toContain('What the scene and story-beat analysis could not establish')
   })
 
+  it('shows a disagreement that affects several sections once, with its sections and how many further notes exist', () => {
+    const h = panel()
+    const keys = intel().contradictions.map(c => `${c.topic}|${c.status}`)
+    expect(new Set(keys).size).toBe(keys.length)
+    expect(h.split('<strong>spoken wording</strong>').length - 1).toBe(1)
+    expect(h).toContain('+1 more note; sections 1, 2, 3, 4')
+    expect(h).toContain('+2 more notes; sections 2, 3, 4')
+  })
+
   it('handles each status honestly and never shows a mechanism it does not have', () => {
     const notRun = { ...intel(), status: 'mechanisms_not_run' as const, mechanisms: [] }
     const h = panel({ intel: notRun })

@@ -31,7 +31,7 @@ export interface HookProfile {
   contradictions: { topic: string; status: string; note: string }[]
   unsupported: string[]
 }
-export interface NarrativeProgression { status: string; arc_text: string | null; sections: { section: number; role_label: string | null; basis: string }[]; uncertainty: string[]; unsupported: string[] }
+export interface NarrativeProgression { status: string; arc_text: string | null; sections: { section: number; role_label: string | null; also?: string[]; basis: string }[]; uncertainty: string[]; unsupported: string[] }
 export interface StructureCheck { partition: { scenes: string; beats: string; shots: number }; issues: { code: string; message: string }[]; uncertainty: string[]; reasoning: { beat: { examined: number; accepted: number; rejected: number; undecided: number }; scene: { examined: number; accepted: number; rejected: number; undecided: number } } }
 export interface CreativeIntelligence {
   schema: string
@@ -40,7 +40,7 @@ export interface CreativeIntelligence {
   narrative: NarrativeProgression | null
   structure: StructureCheck | null
   mechanisms: IntelligenceMechanism[]
-  contradictions: { topic: string; status: string; note: string; sections: number[] | null }[]
+  contradictions: { topic: string; status: string; note: string | null; notes?: string[]; sections: number[] | null }[]
   audience_effects: { status: string; statement: string }
   reuse_policy: { reuse: string; never_copy: string }
   limitations: string[]

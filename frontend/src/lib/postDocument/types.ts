@@ -41,11 +41,20 @@ export type ImageSource =
   | { kind: 'brand'; slot: 'logo' | 'mark' }
   /** No real image yet (e.g. the mock logo wordmark, or an AI-generated image still to come). */
   | { kind: 'placeholder'; label: string; glyph?: 'sparkles' | 'none' }
+  /** A QR code drawn from `data` (a web address or other link). It is generated, not uploaded, so the destination stays editable. */
+  | { kind: 'qr'; data: string; fg?: string; bg?: string }
+
+/** Brightness / contrast / colour changes applied to a picture. 100 = unchanged for the percentages. `blur` is a fraction of the shorter canvas side. */
+export interface ImageAdjust { brightness?: number; contrast?: number; saturation?: number; blur?: number; grayscale?: number; sepia?: number; hue?: number }
+
+export type PatternKind = 'dots' | 'dots-fine' | 'stripes' | 'diagonal' | 'grid' | 'checker' | 'zigzag' | 'plus' | 'crosshatch' | 'grain'
 
 export type Background =
   | { kind: 'solid'; color: ColorRef }
   | Gradient
-  | { kind: 'image'; source: ImageSource; fit: 'cover' | 'contain'; focal?: Point }
+  | { kind: 'image'; source: ImageSource; fit: 'cover' | 'contain'; focal?: Point; adjust?: ImageAdjust; overlay?: { color: ColorRef; opacity: number } }
+  /** A repeating pattern or texture: `color` drawn on `background`; `scale` 1 = the pattern's default tile size. */
+  | { kind: 'pattern'; pattern: PatternKind; color: ColorRef; background: ColorRef; scale: number }
 
 // ── reserved: platform adaptation hints (schema only — no behaviour in P2) ───────────────────
 
@@ -86,6 +95,36 @@ export interface Provenance {
   note?: string
 }
 
+// ── motion (used by animated video export; static exports ignore all of it) ──────────────────
+
+export type EasingName = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'back' | 'bounce'
+export type MotionDirection = 'left' | 'right' | 'up' | 'down'
+export type AnimationPhase = 'entrance' | 'exit' | 'emphasis'
+export type EntranceKind = 'fade' | 'slide' | 'pop' | 'zoom' | 'bounce' | 'rotate' | 'typewriter'
+export type EmphasisKind = 'pulse' | 'bounce' | 'rotate' | 'zoom' | 'fade'
+
+/** One animation of an element. An element has at most one entrance, one exit and one emphasis. Times are milliseconds from the start of the slide (entrance, emphasis) or back from its end (exit). */
+export interface ElementAnimation {
+  id: string
+  phase: AnimationPhase
+  kind: EntranceKind | EmphasisKind
+  durationMs: number
+  /** entrance / emphasis: wait after the slide (or its sequence slot) starts. exit: finish this much EARLIER than the slide's end. */
+  delayMs: number
+  easing: EasingName
+  direction?: MotionDirection
+  /** emphasis only: how many times it plays. */
+  repeat?: number
+}
+
+export type TransitionKind = 'none' | 'fade' | 'dissolve' | 'slide' | 'push' | 'wipe' | 'zoom' | 'flip'
+
+/** How a slide arrives from the previous one. The first slide's transition is ignored. */
+export interface SlideTransition { kind: TransitionKind; durationMs: number; easing: EasingName; direction?: MotionDirection }
+
+/** How a slide's element entrances are timed: together (each uses its own delay), staggered (each starts `staggerMs` after the previous layer), or one by one (each waits for the previous to finish). */
+export interface SlideSequence { mode: 'together' | 'stagger' | 'one-by-one'; staggerMs: number }
+
 // ── elements ─────────────────────────────────────────────────────────────────────────────────
 
 /** Common to every element. */
@@ -109,7 +148,13 @@ export interface ElementBase {
   adapt?: AdaptHints
   /** Who made this element (lets AI Select distinguish hand-made from generated elements). */
   origin?: ProvenanceOrigin
+  /** Entrance / exit / emphasis animations, played only in the animated video export and the motion preview. */
+  animations?: ElementAnimation[]
+  /** A link attached to the element. Clickable only in PDF exports (and wherever the finished design is shared as a web page); image and video exports cannot contain clickable links. */
+  link?: ElementLink
 }
+
+export interface ElementLink { url: string; label?: string }
 
 export interface TextStyle {
   fontFamily: FontRef
@@ -123,6 +168,10 @@ export interface TextStyle {
   letterSpacing?: number
   align: 'left' | 'center' | 'right'
   color: ColorRef
+  /** Outline around each letter (width: fraction of the shorter side). */
+  stroke?: { color: ColorRef; width: number }
+  /** Drop shadow (blur and offsets: fractions of the shorter side). */
+  shadow?: { color: ColorRef; blur: number; offsetX: number; offsetY: number }
 }
 
 /** Optional chip/pill behind the text — this is how a CTA or badge is modelled (a text element with a box). All lengths: shorter-side fractions. */
@@ -154,7 +203,20 @@ export interface TextElement extends ElementBase {
   maxLines?: number
   box?: TextBox
   action?: ElementAction
+  /** A date, time, countdown or timer: the text shown is computed (see lib/carousel/dynamicText.ts); `content` is the fallback. */
+  dynamic?: DynamicText
 }
+
+export type DynamicKind = 'date' | 'time' | 'datetime' | 'countdown' | 'timer'
+/**
+ * date / time / datetime: show `iso` (a local date-time such as 2026-12-31T18:30) in the chosen style. countdown: time left until `iso`, counting down during an animated export. timer: a
+ * stopwatch from `seconds` that counts down (or up) across the slide in an animated export. Static exports show the value at the start of the slide.
+ */
+export interface DynamicText { kind: DynamicKind; iso?: string; style?: 'long' | 'medium' | 'short' | 'numeric' | '12h' | '24h'; seconds?: number; direction?: 'down' | 'up'; format?: 'auto' | 'mm:ss' | 'hh:mm:ss' | 'ss'; label?: string }
+
+/** Shape an image is clipped to. 'rounded' uses cornerRadius. */
+export type PolygonShapeKind = 'triangle' | 'right-triangle' | 'diamond' | 'parallelogram' | 'trapezoid' | 'cross' | 'heart' | 'pentagon' | 'hexagon' | 'octagon' | 'star-4' | 'star-5' | 'star-6' | 'burst' | 'arrow-right' | 'arrow-left' | 'arrow-up' | 'arrow-down' | 'arrow-double' | 'chevron' | 'bubble' | 'bubble-round' | 'line-arrow' | 'line-arrow-double'
+export type ImageMask = 'none' | 'circle' | 'rounded' | PolygonShapeKind
 
 export interface ImageElement extends ElementBase {
   type: 'image'
@@ -165,6 +227,15 @@ export interface ImageElement extends ElementBase {
   crop?: Rect
   /** Focal point within the source, 0..1 each. */
   focal?: Point
+  /** Zoom into the picture (1 = fitted to the frame, up to 8), centred on the focal point. Only for fit 'cover'. */
+  zoom?: number
+  adjust?: ImageAdjust
+  flipX?: boolean
+  flipY?: boolean
+  /** Crop: hide this fraction of the picture from each edge (0..0.9). */
+  trim?: { top: number; right: number; bottom: number; left: number }
+  /** Clip the picture to a shape. */
+  mask?: ImageMask
   alt?: string
   /** Always true for a brand_logo. */
   lockAspect: boolean
@@ -176,7 +247,9 @@ export interface ImageElement extends ElementBase {
 
 export interface ShapeElement extends ElementBase {
   type: 'shape'
-  shape: 'rect' | 'ellipse' | 'line'
+  shape: 'rect' | 'ellipse' | 'line' | PolygonShapeKind
+  /** Text shown inside the shape, centred. */
+  text?: { content: string; style: TextStyle }
   fill?: Paint
   stroke?: { color: ColorRef; width: number }
   cornerRadius?: number
@@ -201,6 +274,10 @@ export interface PostPage {
   background: Background
   /** PAINT ORDER, back -> front. The single authority for layering. */
   elements: PostElement[]
+  /** Motion: how this slide arrives, how long it is held, and how its element animations are sequenced. */
+  transition?: SlideTransition
+  durationMs?: number
+  sequence?: SlideSequence
 }
 
 /** Snapshot of the registry choice this document was designed for (export pixels). Stored, so a reopened post never shifts if the registry changes. */
@@ -238,6 +315,26 @@ export interface PostVariant {
   addedElements?: Record<string, PostElement[]>
 }
 
+/** One background music track, taken from the user's media library. Times are milliseconds. */
+export interface AudioTrack {
+  assetId: number
+  url: string
+  name: string
+  /** Length of the source file. */
+  sourceMs: number
+  /** Play from this point of the file... */
+  trimStartMs: number
+  /** ...to this point (0 = to the end of the file). */
+  trimEndMs: number
+  /** Where on the video's timeline the music starts. */
+  offsetMs: number
+  /** 0..2 (1 = as recorded). */
+  volume: number
+  fadeInMs: number
+  fadeOutMs: number
+  muted: boolean
+}
+
 export interface PostDocument {
   kind: 'post'
   schemaVersion: typeof POST_DOCUMENT_SCHEMA_VERSION
@@ -254,6 +351,8 @@ export interface PostDocument {
   }
   provenance: Provenance
   variants?: Record<string, PostVariant>
+  /** Background music for the animated video export (MP4). GIFs are silent. */
+  audio?: AudioTrack
   createdAt: string
   updatedAt: string
 }
