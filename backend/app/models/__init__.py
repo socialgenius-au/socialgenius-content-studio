@@ -25,9 +25,11 @@ from app.models.speech_segment import SpeechSegment
 from app.models.ai_call_ledger import AiCallLedger
 from app.models.learning_record import LearningRecord
 from app.models.carousel_document import CarouselDocument
+from app.models.brand_kit import BrandKit
+from app.models.carousel_template import CarouselTemplate
 
 __all__ = [
     "User", "Brand", "Job", "Asset", "Transcript", "Template", "VideoStudioDraft",
     "ReferenceVideo", "VideoAnalysis", "Scene", "Shot", "TextElement", "VisualObject",
-    "AnalysisAnnotation", "StrategicInsight", "ShotFrame", "SpeechSegment", "AiCallLedger", "LearningRecord", "CarouselDocument",
+    "AnalysisAnnotation", "StrategicInsight", "ShotFrame", "SpeechSegment", "AiCallLedger", "LearningRecord", "CarouselDocument", "BrandKit", "CarouselTemplate",
 ]
