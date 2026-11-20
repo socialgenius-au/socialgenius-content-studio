@@ -47,7 +47,7 @@ export default function Filmstrip({ doc, activeId, onSelect, onAdd, onDuplicate,
   const only = doc.pages.length <= 1
 
   return (
-    <section aria-label="Slides" data-testid="filmstrip" className="flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-2 xl:h-full">
+    <section aria-label="Slides" data-testid="filmstrip" className="flex min-h-0 flex-col gap-2 rounded-lg border border-border bg-card p-2 xl:flex-1">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Slides <span data-testid="slide-count">{doc.pages.length}</span></h2>
         <div className="flex items-center gap-1">
@@ -58,7 +58,7 @@ export default function Filmstrip({ doc, activeId, onSelect, onAdd, onDuplicate,
         </div>
       </div>
 
-      <ol className="flex min-h-0 flex-1 gap-2 overflow-x-auto pb-1 xl:flex-col xl:overflow-x-hidden xl:overflow-y-auto xl:pb-0" data-testid="slide-list">
+      <ol className="flex min-h-0 flex-1 gap-2 overflow-x-auto pb-1 xl:flex-col xl:overflow-x-hidden xl:overflow-y-auto xl:overscroll-contain xl:pb-0" data-testid="slide-list">
         {doc.pages.map((p, i) => (
           <li
             key={p.id}
