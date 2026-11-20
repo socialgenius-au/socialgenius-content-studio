@@ -3,7 +3,7 @@
 import { parsePostDocument, type PostDocument } from '../postDocument'
 import { stripMediaToken } from '../../api/mediaAccess'
 import type { BrandKit, BrandKitData, BrandKitSummary } from './brandKit'
-import { emptyKit } from './brandKit'
+import { absoluteUploadUrl, emptyKit } from './brandKit'
 import { CarouselServerError, toServerError } from './serverStore'
 import { stripTokens } from './storage'
 import type { Template, TemplateSummary } from './templates'
@@ -44,7 +44,7 @@ export function createHttpBrandKitStore(api: { list(): Promise<{ data: unknown }
     update: (id, name, kit) => wrap(async () => kitFrom((await api.update(id, { name, kit })).data as never)),
     duplicate: id => wrap(async () => kitFrom((await api.duplicate(id)).data as never)),
     remove: id => wrap(async () => { await api.delete(id) }),
-    uploadFont: file => wrap(async () => { const r = (await api.uploadFont(file)).data as { asset_id: number; url: string; filename: string; family_guess: string }; return { assetId: r.asset_id, url: stripMediaToken(r.url), filename: r.filename, familyGuess: r.family_guess } }),
+    uploadFont: file => wrap(async () => { const r = (await api.uploadFont(file)).data as { asset_id: number; url: string; filename: string; family_guess: string }; return { assetId: r.asset_id, url: absoluteUploadUrl(stripMediaToken(r.url)), filename: r.filename, familyGuess: r.family_guess } }),
   }
 }
 

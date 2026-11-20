@@ -3,7 +3,7 @@ import { assertValidPostDocument, resolveColor, resolveFont, type PostDocument, 
 import { createCarouselDocument } from './document'
 import { themeById } from './layouts'
 import { updateElement, type OpContext } from './ops'
-import { BRAND, applyBrandKit, contrastRatio, detachBrandKit, emptyKit, kitFontFamilies, kitIdOf, kitSwatches, kitTokens, loadKitFonts, makeBrandLogo, makeBrandName, mixHex, readableOn, type BrandKit } from './brandKit'
+import { BRAND, absoluteUploadUrl, applyBrandKit, contrastRatio, detachBrandKit, emptyKit, kitFontFamilies, kitIdOf, kitSwatches, kitTokens, loadKitFonts, makeBrandLogo, makeBrandName, mixHex, readableOn, type BrandKit } from './brandKit'
 import { applyTemplateSlides, carouselFromTemplate, templateDocumentFrom, type Template } from './templates'
 import { createHttpBrandKitStore, createHttpTemplateStore } from './assetsStore'
 import { drawSlide, type Ctx2D } from './rasterize'
@@ -136,7 +136,10 @@ describe('custom fonts', () => {
   it('loads every font of the kit through the page font set and skips one that fails', async () => {
     const added: string[] = []
     class FakeFace { constructor(public family: string, public src: string, public d?: Record<string, string>) {} async load() { if (this.family === 'Acme Serif') throw new Error('bad font'); return this } }
-    const loaded = await loadKitFonts(acme().kit, u => `${u}?mt=T`, { add: (f: unknown) => added.push((f as FakeFace).family) }, FakeFace as never)
+    const srcs: string[] = []
+    class SpyFace extends FakeFace { constructor(family: string, src: string, d?: Record<string, string>) { super(family, src, d); srcs.push(src) } }
+    const loaded = await loadKitFonts(acme().kit, u => `${u}?mt=T`, { add: (f: unknown) => added.push((f as FakeFace).family) }, SpyFace as never)
+    expect(srcs[0]).toContain('/uploads/1/a.ttf?mt=T')
     expect(loaded).toEqual(['Acme Sans']); expect(added).toEqual(['Acme Sans'])
     expect(await loadKitFonts(acme().kit, u => u, undefined, undefined)).toEqual([])      // no FontFace support: nothing happens, nothing throws
   })
@@ -207,7 +210,10 @@ describe('HTTP stores map the server JSON and never send media tokens', () => {
     expect(await store.list()).toEqual([{ id: 1, name: 'A', primary: '#112233', logoCount: 2, fontCount: 1, updatedAt: 't' }])
     const k = await store.get(1)
     expect(k.kit.logos).toEqual([]); expect(k.kit.colors.primary).toBe('#112233')              // sections the server omitted exist as empty lists
-    expect((await store.uploadFont(new File(['x'], 'f.ttf'))).url).toBe('/uploads/1/f.ttf')
+    expect((await store.uploadFont(new File(['x'], 'f.ttf'))).url).toMatch(/\/uploads\/1\/f\.ttf$/)                       // token removed; absolute when the API lives at another address
+    expect(absoluteUploadUrl('/uploads/1/f.ttf', 'https://api.example.com/')).toBe('https://api.example.com/uploads/1/f.ttf')
+    expect(absoluteUploadUrl('https://cdn.example.com/a.ttf', 'https://api.example.com')).toBe('https://cdn.example.com/a.ttf')
+    expect(absoluteUploadUrl('/uploads/1/f.ttf', '')).toBe('/uploads/1/f.ttf')
     await store.create('B', emptyKit()); expect(sent[0]).toMatchObject({ name: 'B', kit: { logos: [] } })
   })
 

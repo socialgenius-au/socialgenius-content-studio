@@ -180,6 +180,9 @@ export function makeBrandName(name: KitName, format: PostDocument['format'], the
 
 // ── custom fonts ─────────────────────────────────────────────────────────────────────────────
 
+/** A stored upload URL as a loadable one: the API serves /uploads from its own address, which is not the page's address when the app and the API are hosted separately. */
+export const absoluteUploadUrl = (url: string, base: string = (import.meta.env?.VITE_API_URL as string | undefined) ?? ''): string => (url.startsWith('/') && !url.startsWith('//') ? `${base.replace(/\/$/, '')}${url}` : url)
+
 export interface FontFaceSpec { family: string; url: string; weight: number; italic: boolean }
 export const fontFaceSpecs = (kit: BrandKitData): FontFaceSpec[] => kit.fonts.map(f => ({ family: f.family, url: f.url, weight: f.weight, italic: f.italic }))
 
@@ -193,7 +196,7 @@ export async function loadKitFonts(kit: BrandKitData, resolveUrl: (u: string) =>
   const loaded: string[] = []
   await Promise.all(fontFaceSpecs(kit).map(async s => {
     try {
-      const face = new FontFaceCtor(s.family, `url(${JSON.stringify(resolveUrl(s.url))})`, { weight: String(s.weight), style: s.italic ? 'italic' : 'normal' })
+      const face = new FontFaceCtor(s.family, `url(${JSON.stringify(resolveUrl(absoluteUploadUrl(s.url)))})`, { weight: String(s.weight), style: s.italic ? 'italic' : 'normal' })
       await face.load()
       fonts.add(face)
       loaded.push(s.family)
