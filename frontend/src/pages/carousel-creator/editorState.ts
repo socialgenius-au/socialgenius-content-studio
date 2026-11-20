@@ -5,11 +5,11 @@
 //
 // SELECTION: `selectedIds` is the set of selected top-level elements on the open slide (in the order they were picked); `selectedElementId` is the primary one (the last picked), which the
 // inspector edits. Operations on several elements (align, distribute, group, nudge, delete, drag) apply to the whole set.
-import type { Background, PostDocument, PostElement } from '../../lib/postDocument'
+import type { Background, ElementAnimation, PostDocument, PostElement, SlideTransition } from '../../lib/postDocument'
 import {
   CarouselError, addElement, addImages, alignElements, deleteElement, deleteElements, deleteSlide, distributeElements, duplicateElement, duplicateSlide, groupElements, insertSlide, makeImage, makeShape,
-  makeText, moveElementLayer, moveElementTo, moveSlide, newSlide, nudgeElements, renameSlide, setLockedMany, setSlideBackground, setSlideElements, slideIndex, ungroupElement, updateElement,
-  type ElementPatch, type ImageItem, type LayerMove, type OpContext,
+  makeText, moveElementLayer, moveElementTo, moveSlide, newSlide, nudgeElements, animateAllEntrances, clearSlideAnimations, setElementAnimation, setSlideMotion, setTransitionForAll, renameSlide, setLockedMany, setSlideBackground, setSlideElements, slideIndex, ungroupElement, updateElement,
+  type ElementPatch, type ImageItem, type LayerMove, type OpContext, type SlideMotionPatch,
 } from '../../lib/carousel/ops'
 import type { AlignMode, AlignTo } from '../../lib/carousel/geometry'
 import { buildLayout, themeById, type LayoutId } from '../../lib/carousel/layouts'
@@ -53,6 +53,11 @@ export type EditorAction =
   /** Replaces the document with a prepared one (applying a Brand Kit or a template) as ONE undo step; optionally opens a slide and selects elements. */
   | { type: 'commitDoc'; doc: PostDocument; activeSlideId?: string; selectIds?: string[] }
   | { type: 'addPrepared'; element: PostElement }
+  | { type: 'slideMotion'; id: string; patch: SlideMotionPatch }
+  | { type: 'transitionForAll'; transition: SlideTransition | null }
+  | { type: 'elementAnimation'; id: string; phase: ElementAnimation['phase']; anim: ElementAnimation | null }
+  | { type: 'animateAll'; kind: string; staggerMs?: number; direction?: ElementAnimation['direction'] }
+  | { type: 'clearAnimations' }
   | { type: 'updateElement'; id: string; patch: ElementPatch }
   | { type: 'deleteElement'; id: string }
   | { type: 'deleteSelected' }
@@ -150,6 +155,11 @@ function reduce(s: EditorState, a: EditorAction, ctx?: OpContext): EditorState {
       const open = a.activeSlideId && a.doc.pages.some(p => p.id === a.activeSlideId) ? a.activeSlideId : (a.doc.pages.some(p => p.id === active) ? active : a.doc.pages[0].id)
       return commit(s, a.doc, { activeSlideId: open, ...sel(cleanIds(a.doc, open, a.selectIds ?? [])) })
     }
+    case 'slideMotion': return commit(s, setSlideMotion(s.doc, a.id, a.patch, ctx))
+    case 'transitionForAll': return commit(s, setTransitionForAll(s.doc, a.transition, ctx))
+    case 'elementAnimation': return commit(s, setElementAnimation(s.doc, active, a.id, a.phase, a.anim, ctx))
+    case 'animateAll': return commit(s, animateAllEntrances(s.doc, active, a.kind, { staggerMs: a.staggerMs, direction: a.direction }, ctx))
+    case 'clearAnimations': return commit(s, clearSlideAnimations(s.doc, active, ctx))
     case 'addPrepared': return commit(s, addElement(s.doc, active, a.element, ctx), { ...sel([a.element.id]) })
     case 'updateElement': return commit(s, updateElement(s.doc, active, a.id, a.patch, ctx))
     case 'deleteElement': return commit(s, deleteElement(s.doc, active, a.id, ctx), { ...sel(s.selectedIds.filter(i => i !== a.id)) })

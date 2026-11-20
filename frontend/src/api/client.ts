@@ -241,6 +241,15 @@ export const carouselsApi = {
   delete:    (docId: string)                               => api.delete(`/carousels/${encodeURIComponent(docId)}`),
 }
 
+// Carousel Creator: animated video export. The browser renders every frame; the server encodes them with FFmpeg (see backend/app/routers/carousel_video.py).
+export const carouselVideoApi = {
+  createJob:  (body: Record<string, unknown>) => api.post('/carousel-video/jobs', body),
+  putFrames:  (jobId: string, start: number, data: ArrayBuffer) => api.put(`/carousel-video/jobs/${jobId}/frames`, data, { params: { start }, headers: { 'Content-Type': 'application/octet-stream' }, maxBodyLength: Infinity }),
+  render:     (jobId: string) => api.post(`/carousel-video/jobs/${jobId}/render`, null, { timeout: 15 * 60 * 1000 }),
+  download:   (jobId: string) => api.get(`/carousel-video/jobs/${jobId}/download`, { responseType: 'arraybuffer', timeout: 5 * 60 * 1000 }),
+  delete:     (jobId: string) => api.delete(`/carousel-video/jobs/${jobId}`),
+}
+
 // Carousel Creator: Brand Kits (account-owned brand names, colours, logos, fonts, assets) and reusable carousel templates. Pictures and fonts live in the existing media storage.
 export const brandKitsApi = {
   list:      ()                                              => api.get('/brand-kits/'),

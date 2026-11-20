@@ -13,6 +13,7 @@ import { BrandTokensContext } from '../../lib/carousel/brandContext'
 import { createHttpBrandKitStore, createHttpTemplateStore, type BrandKitStore, type TemplateStore } from '../../lib/carousel/assetsStore'
 import { applyTemplateSlides, carouselFromTemplate, templateDocumentFrom, type InsertMode, type TemplateSummary } from '../../lib/carousel/templates'
 import { themeById } from '../../lib/carousel/layouts'
+import type { VideoSink } from '../../lib/carousel/videoRender'
 import { cn } from '@/lib/utils'
 import { editorReducer, initialState } from './editorState'
 import StartScreen from './components/StartScreen'
@@ -24,16 +25,17 @@ import ExportPanel from './components/ExportPanel'
 import BrandPanel from './components/BrandPanel'
 import TemplatesPanel from './components/TemplatesPanel'
 import BrandKitManager from './components/BrandKitManager'
+import AnimatePanel from './components/AnimatePanel'
 import { AuthBanner, ConflictBanner, RecoveryPrompt, SaveBadge } from './components/SyncStatus'
 
-type PanelTab = 'edit' | 'layers' | 'brand' | 'templates' | 'export'
+type PanelTab = 'edit' | 'layers' | 'brand' | 'templates' | 'animate' | 'export'
 
 /** A carousel handed to the editor. `nonce` changes when the editor must start over from a different base (e.g. after loading the saved version). */
 interface Opened { id: string; doc: PostDocument; themeId: string; activeSlideId?: string; version: number; startDirty?: boolean; nonce: number }
 
 const messageOf = (e: unknown) => (e instanceof CarouselServerError ? e.message : e instanceof Error ? e.message : String(e))
 
-function Editor({ opened, server, buffer, brandStore, templateStore, onExit, onReload, onManageKits, kitsRefresh }: { opened: Opened; server: CarouselServer; buffer: KeyValueStorage | null; brandStore: BrandKitStore; templateStore: TemplateStore; onExit: () => void; onReload: (c: ServerCarousel) => void; onManageKits: () => void; kitsRefresh: number }) {
+function Editor({ opened, server, buffer, brandStore, templateStore, videoSink, onExit, onReload, onManageKits, kitsRefresh }: { opened: Opened; server: CarouselServer; buffer: KeyValueStorage | null; brandStore: BrandKitStore; templateStore: TemplateStore; videoSink?: VideoSink; onExit: () => void; onReload: (c: ServerCarousel) => void; onManageKits: () => void; kitsRefresh: number }) {
   const [state, dispatch] = useReducer((s: ReturnType<typeof initialState>, a: Parameters<typeof editorReducer>[1]) => editorReducer(s, a), undefined, () => initialState(opened.doc, opened.themeId, opened.activeSlideId))
   const [tab, setTab] = useState<PanelTab>('edit')
   const [engine, setEngine] = useState<SyncEngine | null>(null)
@@ -131,7 +133,7 @@ function Editor({ opened, server, buffer, brandStore, templateStore, onExit, onR
   const selected = state.selectedElementId ? page.elements.find(e => e.id === state.selectedElementId) : undefined
 
   const tabBtn = (id: PanelTab, label: string) => (
-    <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn('flex-1 rounded px-2 py-1.5 text-sm font-medium', tab === id ? 'bg-card shadow-sm' : 'text-muted-foreground')} data-testid={`tab-${id}`}>{label}</button>
+    <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cn('flex-1 shrink-0 rounded px-2 py-1.5 text-sm font-medium', tab === id ? 'bg-card shadow-sm' : 'text-muted-foreground')} data-testid={`tab-${id}`}>{label}</button>
   )
 
   return (
@@ -156,7 +158,7 @@ function Editor({ opened, server, buffer, brandStore, templateStore, onExit, onR
         <div className="order-2 min-h-0 xl:order-none xl:h-full"><Filmstrip doc={state.doc} activeId={page.id} onSelect={id => dispatch({ type: 'selectSlide', id })} onAdd={layout => dispatch({ type: 'addSlide', layout })} onDuplicate={id => dispatch({ type: 'duplicateSlide', id })} onDelete={id => dispatch({ type: 'deleteSlide', id })} onMove={(id, to) => dispatch({ type: 'moveSlide', id, to })} /></div>
         <div className="order-1 flex min-h-0 flex-col xl:order-none xl:h-full"><StageCanvas doc={state.doc} pageId={page.id} selectedId={state.selectedElementId} selectedIds={state.selectedIds} snap={snap} dispatch={dispatch} /></div>
         <aside className="order-3 min-h-0 rounded-lg border border-border bg-card p-3 xl:h-full xl:overflow-y-auto" aria-label="Editor panels">
-          <div role="tablist" aria-label="Panels" className="mb-3 flex gap-1 rounded-md bg-muted p-1">{tabBtn('edit', 'Edit')}{tabBtn('layers', 'Layers')}{tabBtn('brand', 'Brand')}{tabBtn('templates', 'Templates')}{tabBtn('export', 'Export')}</div>
+          <div role="tablist" aria-label="Panels" className="mb-3 flex gap-1 overflow-x-auto rounded-md bg-muted p-1">{tabBtn('edit', 'Edit')}{tabBtn('layers', 'Layers')}{tabBtn('brand', 'Brand')}{tabBtn('templates', 'Templates')}{tabBtn('animate', 'Animate')}{tabBtn('export', 'Export')}</div>
           {tab === 'edit' && <Inspector doc={state.doc} page={page} selected={selected} selectedIds={state.selectedIds} swatches={kit ? kitSwatches(kit.kit) : []} kitFonts={kit ? kitFontFamilies(kit.kit) : []} dispatch={dispatch} />}
           {tab === 'layers' && <LayersPanel page={page} selectedId={state.selectedElementId} selectedIds={state.selectedIds} dispatch={dispatch} />}
           {tab === 'brand' && (
@@ -172,6 +174,7 @@ function Editor({ opened, server, buffer, brandStore, templateStore, onExit, onR
               onUpdateFrom={(id, scope) => void tplRun(async () => { await templateStore.update(id, { document: scopeDoc(scope) }); await loadTemplates(); return 'Template updated.' })}
               onDelete={id => void tplRun(async () => { await templateStore.remove(id); await loadTemplates(); return 'Deleted.' })} />
           )}
+          {tab === 'animate' && <AnimatePanel doc={state.doc} page={page} pageIndex={activeIndex} selected={state.selectedIds.length === 1 ? selected : undefined} dispatch={dispatch} videoSink={videoSink} />}
           {tab === 'export' && <ExportPanel doc={state.doc} activeIndex={activeIndex} />}
         </aside>
       </div>
@@ -184,13 +187,15 @@ export interface CarouselCreatorPageProps {
   /** Brand Kit and template storage (account-owned, server-backed). Defaults to the real APIs; tests pass in-memory stores. */
   brandStore?: BrandKitStore
   templateStore?: TemplateStore
+  /** Where animated-video frames are encoded. Defaults to the server; tests pass a fake. */
+  videoSink?: VideoSink
   /** Where carousels are stored. Defaults to the signed-in account's server storage; tests pass an in-memory server. */
   server?: CarouselServer
   /** Browser storage used ONLY for (a) carousels saved before accounts stored them and (b) the unsynced-edits safety copy. `null` = unavailable. */
   storage?: KeyValueStorage | null
 }
 
-export default function CarouselCreatorPage({ server: serverProp, storage: storageProp, brandStore: brandProp, templateStore: templateProp }: CarouselCreatorPageProps = {}) {
+export default function CarouselCreatorPage({ server: serverProp, storage: storageProp, brandStore: brandProp, templateStore: templateProp, videoSink }: CarouselCreatorPageProps = {}) {
   const [params, setParams] = useSearchParams()
   const server = useMemo(() => serverProp ?? createHttpCarouselServer(carouselsApi), [serverProp])
   const storage = useMemo(() => (storageProp === undefined ? browserStorage() : storageProp), [storageProp])
@@ -299,7 +304,7 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
       <div className="space-y-3">
         {manager}
         <div hidden={managing}>
-          <Editor key={`${open.id}:${open.nonce}`} opened={open} server={server} buffer={storage} brandStore={brandStore} templateStore={templateStore} onExit={exit} kitsRefresh={kitsRefresh} onManageKits={() => setManaging(true)}
+          <Editor key={`${open.id}:${open.nonce}`} opened={open} server={server} buffer={storage} brandStore={brandStore} templateStore={templateStore} videoSink={videoSink} onExit={exit} kitsRefresh={kitsRefresh} onManageKits={() => setManaging(true)}
             onReload={c => { discardUnsynced(storage, c.id); openCarousel(c) }} />
         </div>
       </div>

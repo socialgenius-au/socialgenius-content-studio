@@ -3,9 +3,10 @@
 // A carousel IS a PostDocument whose `pages` are the slides (array order = swipe order). Nothing here touches React, the DOM or storage; every function returns a NEW
 // document (the input is never mutated), bumps `revision` and `updatedAt`, and keeps the document valid (unique ids across the whole document, geometry in range).
 import type {
-  Background, DocumentFormat, GroupElement, ImageElement, PostDocument, PostElement, PostPage, ShapeElement, TextElement,
+  Background, DocumentFormat, ElementAnimation, GroupElement, ImageElement, PostDocument, PostElement, PostPage, ShapeElement, SlideSequence, SlideTransition, TextElement,
 } from '../postDocument'
 import { alignBoxes, distributeBoxes, elementBox, unionBox, type AlignMode, type AlignTo } from './geometry'
+import { defaultAnimation, withAnimation, DEFAULT_SEQUENCE } from './animation'
 
 export const MIN_SLIDES = 1
 
@@ -328,6 +329,59 @@ export function ungroupElement(doc: PostDocument, pageId: string, groupId: strin
     return { ...p, elements: [...p.elements.slice(0, i), ...out, ...p.elements.slice(i + 1)] }
   }, ctx)
   return { doc: next, ids }
+}
+
+// ── motion settings (stored with the slide / element; static exports ignore them) ───────────
+
+export interface SlideMotionPatch { transition?: SlideTransition | null; durationMs?: number | null; sequence?: SlideSequence | null }
+
+/** Sets (or, with null, clears) a slide's transition, hold time and sequencing. Fields not mentioned are left alone. */
+export function setSlideMotion(doc: PostDocument, pageId: string, patch: SlideMotionPatch, ctx?: OpContext): PostDocument {
+  return replacePage(doc, pageId, p => {
+    const next: PostPage = { ...p }
+    for (const key of ['transition', 'durationMs', 'sequence'] as const) {
+      if (!(key in patch)) continue
+      const v = patch[key]
+      if (v === null || v === undefined) delete next[key]
+      else (next as unknown as Record<string, unknown>)[key] = v
+    }
+    return next
+  }, ctx)
+}
+
+/** Gives every slide after the first the same transition (the first slide has nothing to arrive from). */
+export function setTransitionForAll(doc: PostDocument, transition: SlideTransition | null, ctx?: OpContext): PostDocument {
+  const pages = doc.pages.map((p, i) => {
+    if (i === 0) return p
+    const next: PostPage = { ...p }
+    if (transition) next.transition = transition; else delete next.transition
+    return next
+  })
+  return touch({ ...doc, pages }, ctx)
+}
+
+/** Sets (or, with null, removes) one phase (entrance / exit / emphasis) of an element's animation. Other phases are kept. */
+export function setElementAnimation(doc: PostDocument, pageId: string, elementId: string, phase: ElementAnimation['phase'], anim: ElementAnimation | null, ctx?: OpContext): PostDocument {
+  return replacePage(doc, pageId, p => {
+    const i = findTop(p, elementId)
+    const els = p.elements.slice()
+    els[i] = withAnimation(els[i], phase, anim)
+    return { ...p, elements: els }
+  }, ctx)
+}
+
+/** Gives every visible, unlocked element on the slide the same entrance, played one after another (staggered) in layer order. Replaces any existing entrance; keeps exits and emphasis. */
+export function animateAllEntrances(doc: PostDocument, pageId: string, kind: string, opts: { staggerMs?: number; direction?: ElementAnimation['direction'] } = {}, ctx?: OpContext): PostDocument {
+  return replacePage(doc, pageId, p => ({
+    ...p,
+    sequence: { ...(p.sequence ?? DEFAULT_SEQUENCE), mode: 'stagger', staggerMs: opts.staggerMs ?? 150 },
+    elements: p.elements.map(e => (e.visible && !e.locked ? withAnimation(e, 'entrance', { ...defaultAnimation('entrance', kind, idOf(ctx, 'anim')), ...(opts.direction ? { direction: opts.direction } : {}) }) : e)),
+  }), ctx)
+}
+
+/** Removes every animation from every element on the slide. */
+export function clearSlideAnimations(doc: PostDocument, pageId: string, ctx?: OpContext): PostDocument {
+  return replacePage(doc, pageId, p => ({ ...p, elements: p.elements.map(e => (e.animations ? { ...e, animations: undefined } : e)) }), ctx)
 }
 
 export interface ImageItem { assetId: number; url: string; name: string }

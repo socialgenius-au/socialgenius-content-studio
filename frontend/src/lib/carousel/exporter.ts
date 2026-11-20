@@ -54,7 +54,7 @@ async function beforeSlide(o: ExportOptions): Promise<void> {
 
 export interface ExportFile { name: string; mime: string; bytes: Uint8Array }
 
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'carousel'
+export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'carousel'
 
 /** "my-carousel-slide-03.png" — numbers are zero-padded to the width of the slide count, so files sort in swipe order. */
 export function slideFileName(doc: PostDocument, index: number, kind: ImageKind): string {

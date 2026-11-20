@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { MemoryRouter } from 'react-router-dom'
 import { createCarouselDocument } from '../../lib/carousel/document'
-import { addElement, insertSlide, makeImage, makeText, newSlide, type OpContext } from '../../lib/carousel/ops'
+import { addElement, insertSlide, makeImage, makeText, newSlide, setElementAnimation, type OpContext } from '../../lib/carousel/ops'
 import type { PostDocument } from '../../lib/postDocument'
 
 vi.mock('../../api/client', () => ({
@@ -20,6 +20,8 @@ import LayersPanel from './components/LayersPanel'
 import ExportPanel from './components/ExportPanel'
 import SlideView from './components/SlideView'
 import { ConflictBanner, RecoveryPrompt, SaveBadge } from './components/SyncStatus'
+import AnimatePanel from './components/AnimatePanel'
+import { defaultAnimation } from '../../lib/carousel/animation'
 import BrandPanel from './components/BrandPanel'
 import TemplatesPanel from './components/TemplatesPanel'
 import BrandKitManager, { validateFontFile } from './components/BrandKitManager'
@@ -373,5 +375,55 @@ describe('Brand Kit and template panels', () => {
     expect(none).not.toContain('data-testid="brand-swatches"')
     const mgr = html(<BrandKitManager store={{} as never} onClose={noop} />)
     expect(mgr).toContain('data-testid="brand-manager"'); expect(mgr).toContain('data-testid="new-kit"'); expect(mgr).toContain('Choose a Brand Kit to edit')
+  })
+})
+
+describe('Animate panel', () => {
+  const mk = (selectedIdx: number | null, pageIndex = 1) => {
+    const c = ctx()
+    const d = doc(['cover', 'title_body', 'cta'], c)
+    const page = d.pages[pageIndex]
+    const sel = selectedIdx === null ? undefined : page.elements[selectedIdx]
+    return html(<AnimatePanel doc={d} page={page} pageIndex={pageIndex} selected={sel} dispatch={noop} videoSink={{} as never} />)
+  }
+
+  it('offers every transition and slide settings (duration, easing, direction, sequencing) and the animation controls for a selected element', () => {
+    const h = mk(0)
+    for (const t of ['None (cut)', 'Dissolve', 'Fade', 'Slide', 'Push', 'Wipe', 'Zoom', 'Flip']) expect(h).toContain(t)
+    expect(h).toContain('data-testid="transition-kind"'); expect(h).toContain('data-testid="slide-duration"'); expect(h).toContain('data-testid="sequence-mode"')
+    expect(h).toContain('data-testid="animate-all"'); expect(h).toContain('data-testid="clear-animations"')
+    for (const ph of ['entrance', 'exit', 'emphasis']) expect(h).toContain(`data-testid="phase-${ph}"`)
+    for (const k of ['Fade', 'Slide', 'Pop', 'Zoom', 'Bounce', 'Rotate', 'Typewriter', 'Pulse']) expect(h).toContain(`>${k}</option>`)
+    expect(h).toContain('data-testid="motion-preview"'); expect(h).toContain('data-testid="preview-play"'); expect(h).toContain('data-testid="preview-scrub"')
+  })
+
+  it('an element with an animation shows its duration, delay, easing and direction; an exit says it leaves earlier', () => {
+    const c = ctx()
+    let d = doc(['cover', 'title_body', 'cta'], c)
+    const page = d.pages[1]
+    const el = page.elements[0]
+    d = setElementAnimation(d, page.id, el.id, 'entrance', defaultAnimation('entrance', 'slide', 'a1'), c)
+    d = setElementAnimation(d, page.id, el.id, 'exit', defaultAnimation('exit', 'fade', 'a2'), c)
+    d = setElementAnimation(d, page.id, el.id, 'emphasis', defaultAnimation('emphasis', 'pulse', 'a3'), c)
+    const h = html(<AnimatePanel doc={d} page={d.pages[1]} pageIndex={1} selected={d.pages[1].elements[0]} dispatch={noop} videoSink={{} as never} />)
+    for (const t of ['entrance-duration', 'entrance-delay', 'exit-duration', 'exit-delay', 'emphasis-duration']) expect(h).toContain(`data-testid="${t}"`)
+    expect(h).toContain('Leave earlier (s)'); expect(h).toContain('Comes from'); expect(h).toContain('Repeats'); expect(h).toContain('Overshoot')
+    expect(h).not.toContain('data-testid="video-no-motion"')                                  // there is motion now
+  })
+
+  it('without a selection it asks for one; the first slide explains it has no transition', () => {
+    expect(mk(null)).toContain('data-testid="no-motion-selection"')
+    const first = mk(null, 0)
+    expect(first).toContain('The first slide has nothing to arrive from')
+    expect(first).toMatch(/disabled=""[^>]*data-testid="transition-kind"|data-testid="transition-kind"[^>]*disabled/)
+  })
+
+  it('the video export section reports length, size and frames, warns when nothing is animated, and says static exports are unaffected', () => {
+    const h = mk(null)
+    expect(h).toContain('data-testid="video-export"')
+    expect(h).toContain('9.0 seconds'); expect(h).toContain('540 × 676 px'); expect(h).toContain('216 frames')
+    expect(h).toContain('Static PNG, JPEG and PDF exports are not affected')
+    expect(h).toContain('data-testid="video-no-motion"')
+    expect(h).toContain('MP4 video'); expect(h).toContain('>GIF<'); expect(h).toContain('data-testid="export-video"')
   })
 })
