@@ -1,33 +1,21 @@
 
-import React, { useState } from "react";
-import { reviewCriteria } from "../data/videoStudioMock";
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { assessProject } from "../learn/assessment";
+import { buildRecommendations } from "../learn/recommendations";
 import { useStudio } from "../../../contexts/StudioContext";
 import { fitCanvasBox } from "../data/canvasFormats";
 import { findActiveClip } from "../../../components/studio/videoPreviewUtils";
 import { videoExportApi } from "../../../api/client";
 import { checkReconstructionExport } from "../blueprint/exportGuard";
+import { useBlueprintPlan } from "../blueprint/blueprintPlanStore";
 import { buildExportTextOverlays } from "../export/textOverlayExport";
 import { validCanvasBackground } from "../export/canvasBackground";
 import { validCanvasBackdrop } from "../export/canvasBackdrop";
 import { buildExportInserts, buildExportLowerThirds, buildExportShapes, buildExportSubtitles, buildExportSubtitleStyle, exportNotices, missingInsertSources } from "../export/layerExport";
 
-const PLATFORMS = [
-  { key: "instagram", glyph: "◎", label: "Instagram" },
-  { key: "facebook", glyph: "f", label: "Facebook" },
-  { key: "tiktok", glyph: "♪", label: "TikTok" },
-  { key: "youtube", glyph: "▶", label: "YouTube" },
-  { key: "linkedin", glyph: "in", label: "LinkedIn" },
-];
-
-const RECOMMENDATIONS = [
-  "Great hook! Strong attention in the first 2 seconds.",
-  "Message is clear and benefit-focused.",
-  "Add urgency in CTA: “Visit today” or “Stock limited”.",
-  "Try bolder text on key message for mobile view.",
-  "Consider adding customer testimonial in scene 4.",
-];
-
 export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onBack?: () => void }) {
+  const navigate = useNavigate();
   const { canvasFormat, videoClips, additionalVideoClips, textOverlays, mediaOverlays, shapes, lowerThirds, subtitles, subtitleStyle, audioTracks, timeline } = useStudio();
   const activeClip = findActiveClip(videoClips, timeline.currentTime);
   const hasRealSrc = !!activeClip?.url;
@@ -35,15 +23,7 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
   const canvasBox = fitCanvasBox(canvasFormat.width, canvasFormat.height, 300, 420);
 
   const [notes, setNotes] = useState("");
-  const [applied, setApplied] = useState(false);
-  const [platforms, setPlatforms] = useState<string[]>(["instagram", "facebook", "tiktok"]);
-  const [date, setDate] = useState("2026-08-20");
-  const [time, setTime] = useState("10:00");
-  const [activeThumb, setActiveThumb] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
-
-  const togglePlatform = (key: string) =>
-    setPlatforms(p => (p.includes(key) ? p.filter(x => x !== key) : [...p, key]));
 
   const flash = (msg: string, ms = 2000) => { setStatus(msg); setTimeout(() => setStatus(null), ms); };
 
@@ -55,6 +35,38 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
   // Opt-in (default: the exporter's existing behaviour). Applies to the next export only; it is not saved in the draft.
   const [edgePolicy, setEdgePolicy] = useState<"shorten" | "hold_incoming">("shorten");
   const [exportError, setExportError] = useState<string | null>(null);
+  const blueprintPlan = useBlueprintPlan();                                  // null unless this project came from a blueprint
+  const [exportSeconds, setExportSeconds] = useState(0);
+  const assessment = assessProject({
+    canvas: { width: canvasFormat.width, height: canvasFormat.height },
+    clips: videoClips.map(c => ({ startTime: c.startTime, endTime: c.endTime, assetId: c.assetId ?? null, muted: c.muted })),
+    texts: textOverlays.map(t => ({ text: t.text, startTime: t.startTime, endTime: t.endTime, fontSize: t.fontSize, color: t.color, bgColor: t.bgColor, bgOpacity: t.bgOpacity })),
+    audioTrackCount: audioTracks.length, plan: blueprintPlan,
+  });
+  const recommendations = buildRecommendations(assessment);
+  // Group only identical scene-specific recommendations; preserve distinct advice and caveats.
+  const groupedRecommendations = recommendations.reduce<Array<{ key: string; basis: string; text: string; caveat: string; scenes: number[] }>>((groups, recommendation) => {
+    const match = recommendation.text.match(/\bscene\s+(\d+)\b/i);
+    const scene = match ? Number(match[1]) : null;
+    const normalized = scene == null ? recommendation.text : recommendation.text.replace(/\bscene\s+\d+\b/gi, "the affected scene");
+    const group = scene == null ? undefined : groups.find(item => item.text === normalized && item.basis === recommendation.basis && item.caveat === recommendation.caveat);
+    if (group && scene != null) {
+      if (!group.scenes.includes(scene)) group.scenes.push(scene);
+    } else {
+      groups.push({ key: recommendation.key, basis: recommendation.basis, text: normalized, caveat: recommendation.caveat, scenes: scene == null ? [] : [scene] });
+    }
+    return groups;
+  }, []);
+  const readiness = checkReconstructionExport(textOverlays, videoClips, blueprintPlan?.scenes ?? []);
+  const missingAssets = videoClips.filter(c => c.assetId == null).length;
+  const missingInserts = missingInsertSources(additionalVideoClips);
+  const canExport = videoClips.length > 0 && missingAssets === 0 && missingInserts === 0 && readiness.ok;
+  useEffect(() => {
+    if (exportState !== "exporting") return;
+    setExportSeconds(0);
+    const t = window.setInterval(() => setExportSeconds(n => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [exportState]);
 
   const handleExportVideo = async () => {
     const clipsWithoutAsset = videoClips.filter(c => c.assetId == null);
@@ -75,7 +87,7 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
     }
     // M1 (Reconstructor): a reconstruction project must not export placeholder wording, and its clips must not leave gaps the exporter would silently collapse.
     // Projects that did not come from a blueprint are never affected (the check returns ok before looking at them).
-    const blocked = checkReconstructionExport(textOverlays, videoClips);
+    const blocked = checkReconstructionExport(textOverlays, videoClips, blueprintPlan?.scenes ?? []);
     if (!blocked.ok) {
       setExportState("error");
       setExportError(blocked.message);
@@ -166,16 +178,21 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
   return (
     <div className="stage-page review-page">
       <h2>Review your video and optimize for maximum impact.</h2>
-      <div className="review-grid">
-        <section className="card quality">
-          <h3>AI Quality Score</h3>
-          <div className="ring-score large"><b>92</b><span>/100</span><small>Excellent</small></div>
-          {reviewCriteria.map(([a, b]) => (
-            <div className="criteria" key={a}><span>✓ {a}</span><b>{b}/10</b></div>
-          ))}
+      <div className="review-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", alignItems: "start", gap: 16 }}>
+        <section className="card quality" style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+          <h3>Production Readiness — Measured Checks</h3>
+          <p><strong>{canExport ? "Ready for export checks" : "Not ready to export"}</strong></p>
+          <p>No AI quality or audience performance score is available. These checks use this project's actual timeline and export safeguards.</p>
+          <ul><li>{videoClips.length} timeline clips; {missingAssets} missing source assets</li><li>{missingInserts} B-roll inserts without sources</li><li>{textOverlays.length} text overlays; {audioTracks.length} separate audio tracks</li><li>{readiness.ok ? "Reconstruction export checks passed" : readiness.message}</li></ul>
+          {blueprintPlan && !readiness.ok && (
+            <button type="button" className="secondary" onClick={() => navigate(`/deconstructor/${blueprintPlan.referenceVideoId}`)}>
+              Return to Reconstructor — Fix Scene Footage
+            </button>
+          )}
+          <h4>Project observations</h4>
+          {assessment.findings.map(f => <div className="criteria" key={f.id} style={{ display: "block", overflowWrap: "anywhere", marginBottom: 12 }}><strong>{f.title} ({f.kind})</strong><p>{f.finding}</p><small>{f.reasoning}</small></div>)}
         </section>
-
-        <section className="card review-preview">
+        <section className="card review-preview" style={{ minWidth: 0 }}>
           <h3>Video Preview</h3>
           {hasRealSrc ? (
             <div className="video-preview review real" style={{ width: canvasBox.w, height: canvasBox.h }}>
@@ -183,54 +200,23 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
             </div>
           ) : (
             <div className="video-preview review" style={{ width: canvasBox.w, height: canvasBox.h }}>
-              <div className="preview-copy">WHY BUILDERS<br />CHOOSE US<br /><strong>EVERY TIME</strong></div>
-              <div className="preview-badge">STOCK • SERVICE • SOLUTIONS</div>
+              <div className="preview-copy">No source clip at this playhead. Open Create / Edit to inspect the timeline.</div>
             </div>
           )}
           <div className="canvas-dims">{canvasFormat.label} — {canvasFormat.width}×{canvasFormat.height} ({canvasFormat.ratio})</div>
-          <div className="review-transport">▶ 00:05 / 0:15 🔊 ⛶</div>
-          <div className="story-strip">
-            {[1, 2, 3, 4, 5].map((x, i) => (
-              <div className={`story-thumb ${activeThumb === i ? "active" : ""}`} key={x} onClick={() => setActiveThumb(i)} />
-            ))}
-          </div>
+          <p>This preview shows the current source clip, not a rendered composite. Export the MP4 to inspect final overlays and audio.</p>
         </section>
 
-        <section className="mid-stack">
+        <section className="mid-stack" style={{ minWidth: 0 }}>
           <section className="card">
-            <h3>AI Recommendations</h3>
-            <ul className={`check-list ${applied ? "applied" : ""}`}>
-              {RECOMMENDATIONS.map(r => <li key={r}>{r}</li>)}
-            </ul>
-            <button className="secondary wide" type="button" onClick={() => setApplied(true)}>
-              {applied ? "✓ Suggestions Applied" : "Apply All Suggestions"}
-            </button>
+            <h3>Recommendations — Not Performance Predictions</h3>
+            {groupedRecommendations.length ? <ul className="check-list">{groupedRecommendations.map(r => <li key={r.key}><strong>{r.basis === "evidence" ? "Production observation" : "Hypothesis to test"}:</strong> {r.text}{r.scenes.length > 0 && <span> (Scene{r.scenes.length > 1 ? "s" : ""} {r.scenes.sort((a, b) => a - b).join(", ")})</span>}<p><small>{r.caveat}</small></p></li>)}</ul> : <p>No specific recommendations from the available checks.</p>}
+            <p>Suggestions are advisory; nothing is automatically applied. Make changes in Create / Edit.</p>
           </section>
-          <section className="card">
-            <h3>Publishing Options</h3>
-            <p>Select Platforms</p>
-            <div className="platform-pills big">
-              {PLATFORMS.map(p => (
-                <button key={p.key} className={platforms.includes(p.key) ? "active" : ""} type="button" onClick={() => togglePlatform(p.key)}>
-                  {p.glyph}<small>{p.label}</small>
-                </button>
-              ))}
-            </div>
-            <div className="row">
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} />
-              <input type="time" value={time} onChange={e => setTime(e.target.value)} />
-            </div>
-          </section>
+          <section className="card"><h3>Publishing</h3><p>Social publishing and scheduling are not connected here. Export the video to publish through your chosen platform.</p></section>
         </section>
-
-        <aside className="right-stack">
-          <section className="card">
-            <h3>Content Scorecard</h3>
-            <div className="ring-score"><b>86</b><span>/100</span><small>Very Good</small></div>
-            {[["Clarity", 8.5], ["Relevance", 8.5], ["Engagement", 8.5], ["Emotional Pull", 8], ["Shareability", 8.5], ["Brand Fit", 9], ["CTA Strength", 8], ["Overall Impact", 8.5]].map(([a, b]) => (
-              <div className="score-line" key={a as string}><span>{a}</span><b>{b}/10</b><i><u style={{ width: `${Number(b) * 10}%` }} /></i></div>
-            ))}
-          </section>
+        <aside className="right-stack" style={{ minWidth: 0 }}>
+          <section className="card"><h3>Not yet measured</h3><p>Viewer retention, engagement, conversion, emotional impact and brand fit have not been measured. No numerical scores are shown.</p></section>
           <section className="card">
             <h3>Review Notes</h3>
             <textarea
@@ -245,6 +231,12 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
       </div>
 
       {status && <div className="inline-status">{status}</div>}
+      {exportState === "exporting" && (
+        <div className="inline-status" role="status" data-testid="export-progress">
+          Rendering your video… {Math.floor(exportSeconds / 60)}:{String(exportSeconds % 60).padStart(2, "0")} elapsed.
+          {" "}It is built on the server and the download starts by itself when it is ready — keep this page open. Long or high-resolution videos can take several minutes.
+        </div>
+      )}
       {exportState === "error" && exportError && (
         <div className="inline-status error">{exportError}</div>
       )}
@@ -267,9 +259,9 @@ export default function ReviewTab({ onNext, onBack }: { onNext?: () => void; onB
             onClick={() => void handleExportVideo()}
             disabled={exportState === "exporting"}
           >
-            {exportState === "exporting" ? "Exporting…" : "Export Video ↓"}
+            {exportState === "exporting" ? `Exporting… ${Math.floor(exportSeconds / 60)}:${String(exportSeconds % 60).padStart(2, "0")}` : "Export Video ↓"}
           </button>
-          <button className="secondary" type="button" onClick={() => flash("Draft saved.")}>Save as Draft</button>
+          <span>Save drafts in Create / Edit.</span>
         </div>
         <button className="primary" onClick={onNext} type="button">Next: Learn →</button>
       </div>

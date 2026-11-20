@@ -1,0 +1,308 @@
+name: Deconstructor Reconstructor acceptance
+on:
+  push:
+    branches: [work/deconstructor-reconstructor-next]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Typecheck and production build
+        run: npm run build
+      - name: Frontend unit tests
+        run: npm test -- --reporter=default
+
+  backend-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install runtime and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-asyncio numpy
+      - name: Install FFprobe for MP4 container and stream verification
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          ffprobe -version
+      - name: Actual FFmpeg MP4 and reconstruction regression
+        run: |
+          python -m pytest -q tests/test_timeline_render.py tests/test_behind_footage.py
+
+  reconstruction-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Real VA5368 blueprint to editable draft and persistence integration
+        run: |
+          npx vitest run \
+            src/pages/deconstructor/assembly/assembleDraft.test.ts \
+            src/pages/deconstructor/integration.test.ts \
+            src/pages/video-studio-v2/blueprint/exportGuard.test.ts \
+            src/pages/video-studio-v2/blueprint/exportGuard.wiring.test.ts
+
+  draft-persistence-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: socialgenius
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d socialgenius"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/socialgenius
+      SECRET_KEY: ci-only-draft-acceptance-key-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest pytest-asyncio httpx
+      - name: Real PostgreSQL save, reopen, resave and provenance acceptance
+        run: |
+          python -m pytest -q -rs tests/test_assembled_draft_compat.py tests/test_text_layers_draft_compat.py tests/test_image_layers_draft_compat.py
+
+  reference-anatomy-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify redacted real-reference anatomy structure without paid AI calls
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('frontend/src/pages/deconstructor/__fixtures__/va5368.c2-anatomy.redacted.json')
+          anatomy = json.loads(p.read_text())
+          video, sections, provenance = anatomy['video'], anatomy['sections'], anatomy['provenance']
+          assert video['duration'] > 0
+          assert video['section_count'] == len(sections) > 0
+          assert provenance['reference_video_id'] is not None
+          assert provenance['video_analysis_id'] is not None
+          assert provenance['fingerprint']
+          for index, section in enumerate(sections, 1):
+              assert section['number'] == index, (index, section['number'])
+              assert 0 <= section['start_time'] < section['end_time'] <= video['duration'] + 0.1
+              assert abs(section['duration'] - (section['end_time'] - section['start_time'])) < 0.2
+          print('Real-reference anatomy contract verified:', len(sections), 'sections,', video['duration'], 'seconds')
+          PY
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Install isolated browser automation
+        run: |
+          npm install --no-save --package-lock=false playwright
+          npx playwright install --with-deps chromium
+      - name: Build frontend and start preview
+        run: |
+          npm run build
+          npx serve -s dist -l tcp://127.0.0.1:4173 > /tmp/studio-preview.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:4173/login > /dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:4173/login > /tmp/studio-index.html
+          node --input-type=module <<'EOF'
+          import { readFileSync } from 'node:fs';
+          const html = readFileSync('/tmp/studio-index.html','utf8');
+          const files = html.split('"').filter(value => value.startsWith('/assets/'));
+          if (!files.length) throw new Error('No built assets found in preview HTML');
+          for (const file of files) {
+            const response = await fetch('http://127.0.0.1:4173' + file);
+            if (!response.ok) throw new Error(file + ': HTTP ' + response.status);
+            const type = response.headers.get('content-type') || '';
+            if (type.includes('text/html')) throw new Error(file + ': HTML fallback instead of asset');
+            console.log('Asset OK', file, response.status, type);
+          }
+          EOF
+      - name: Chromium smoke test for protected editor routes
+        run: |
+          node --input-type=module <<'EOF'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({headless:true});
+          const page = await browser.newPage();
+          const errors = [];
+          const failures = [];
+          const responses = [];
+          page.on('pageerror', error => errors.push(error.message));
+          page.on('console', message => { if (message.type() === 'error') errors.push('console: ' + message.text()); });
+          page.on('requestfailed', request => failures.push(request.url() + ': ' + request.failure()?.errorText));
+          page.on('response', response => { if (response.status() >= 400) responses.push(response.status() + ' ' + response.url()); });
+          for (const route of ['/video-studio-v2', '/deconstructor']) {
+            const response = await page.goto('http://127.0.0.1:4173' + route, {waitUntil:'domcontentloaded'});
+            try {
+              await page.waitForURL(url => url.pathname === '/login', {timeout:15000});
+              const body = await page.locator('body').innerText();
+              if (!body.trim()) throw new Error(route + ': blank login page');
+              console.log(route + ': unauthenticated route correctly redirects to login');
+            } catch (error) {
+              console.error('FAILED ROUTE', route, 'HTTP', response?.status(), 'URL', page.url());
+              console.error('BODY', (await page.locator('body').innerText().catch(()=>'unavailable')).slice(0,2000));
+              console.error('JS ERRORS', errors);
+              console.error('FAILED REQUESTS', failures);
+              console.error('HTTP ERRORS', responses);
+              console.error('DOCUMENT HTML', (await page.content()).slice(0,2500));
+              console.error('ROOT HTML', await page.locator('#root').innerHTML().catch(()=>'missing'));
+              console.error('SCRIPT RESOURCES', await page.locator('script[src]').evaluateAll(nodes => nodes.map(n=>n.src)));
+              console.error('RESOURCE ENTRIES', await page.evaluate(() => performance.getEntriesByType('resource').map(e=>e.name).slice(0,25)));
+              await page.screenshot({path:'/tmp/browser-failure.png', fullPage:true});
+              throw error;
+            }
+          }
+          if (errors.length) throw new Error('Browser runtime errors: ' + errors.join(' | '));
+          await browser.close();
+          EOF
+      - name: Authenticated route smoke with isolated mock identity
+        run: |
+          node --input-type=module <<'EOF'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({headless:true});
+          try {
+            for (const route of ['/video-studio-v2', '/deconstructor']) {
+              const context = await browser.newContext();
+              await context.addInitScript(() => localStorage.setItem('token', 'ci-isolated-mock-token'));
+              await context.route('**/auth/me', async request => {
+                await request.fulfill({status:200, contentType:'application/json', body:JSON.stringify({id:1,username:'ci-acceptance',email:'',role:'admin'})});
+              });
+              await context.route('**/reference-videos/', async request => {
+                await request.fulfill({status:200, contentType:'application/json', body:'[]'});
+              });
+              const page = await context.newPage();
+              const errors = [];
+              page.on('pageerror', error => errors.push(error.message));
+              await page.goto('http://127.0.0.1:4173' + route);
+              await page.waitForTimeout(2000);
+              if (new URL(page.url()).pathname === '/login') throw new Error(route + ': mock-authenticated session redirected to login');
+              const content = (await page.locator('body').innerText()).trim();
+              if (!content || content === 'Loading…') throw new Error(route + ': authenticated page blank or stuck loading');
+              if (errors.length) throw new Error(route + ': ' + errors.join(' | '));
+              console.log('Authenticated route renders:', route, 'body chars:', content.length);
+              await context.close();
+            }
+          } finally { await browser.close(); }
+          EOF
+      - name: Milestone 18 authenticated Deconstructor to Video Studio browser navigation
+        run: |
+          node --input-type=module <<'EOF'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({headless: true});
+          const context = await browser.newContext();
+          const page = await context.newPage();
+          const runtimeErrors = [];
+          page.on('pageerror', error => runtimeErrors.push(error.message));
+          try {
+            await context.addInitScript(() => localStorage.setItem('token', 'ci-isolated-mock-token'));
+            await context.route('**/auth/me', route => route.fulfill({
+              status: 200, contentType: 'application/json',
+              body: JSON.stringify({id: 1, username: 'ci-acceptance', email: '', role: 'admin'})
+            }));
+            await context.route('**/reference-videos/**', route => route.fulfill({
+              status: 200, contentType: 'application/json', body: '[]'
+            }));
+            const origin = 'http://127.0.0.1:4173';
+            for (const route of ['/deconstructor', '/video-studio-v2', '/deconstructor']) {
+              const response = await page.goto(origin + route, {waitUntil: 'domcontentloaded'});
+              if (response?.status() !== 200) throw new Error(route + ': HTTP ' + response?.status());
+              if (route === '/deconstructor') {
+                await page.getByText('Reconstruct from a reference', {exact: true}).waitFor({state: 'visible', timeout: 15000});
+                await page.getByText('1. Reference', {exact: true}).waitFor({state: 'visible', timeout: 15000});
+                await page.getByText('6. Create', {exact: true}).waitFor({state: 'visible', timeout: 15000});
+              } else {
+                await page.waitForFunction(() => document.body.innerText.includes('Video Studio'), {timeout: 15000});
+              }
+              if (new URL(page.url()).pathname !== route) {
+                throw new Error(route + ': unexpected redirect to ' + page.url());
+              }
+              const body = await page.locator('body').innerText();
+              if (route === '/deconstructor') {
+                for (const stage of ['Reference', 'Anatomy', 'Mechanisms', 'Blueprint', 'Create']) {
+                  if (!body.includes(stage)) throw new Error('Missing Deconstructor stage: ' + stage);
+                }
+              } else {
+                if (!body.includes('Video Studio')) throw new Error('Video Studio heading missing');
+              }
+              if (runtimeErrors.length) throw new Error(route + ': ' + runtimeErrors.join(' | '));
+              console.log('M18 browser navigation passed:', route, body.length, 'characters');
+            }
+          } catch (error) {
+            await page.screenshot({path: '/tmp/browser-failure.png', fullPage: true}).catch(() => {});
+            console.error('M18 browser failure URL:', page.url());
+            console.error('M18 browser failure body:', (await page.locator('body').innerText().catch(() => '')).slice(0, 2500));
+            throw error;
+          } finally {
+            await browser.close();
+          }
+          EOF
+      - name: Upload browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-preview-log
+          path: |
+            /tmp/studio-preview.log
+            /tmp/browser-failure.png

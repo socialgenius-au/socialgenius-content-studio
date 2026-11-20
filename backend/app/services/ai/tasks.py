@@ -44,7 +44,23 @@ no "Here is your prompt:" preamble."""
 
 TASK_CONFIGS: dict[str, TaskConfig] = {
     "prompt_generation": TaskConfig(system_prompt=PROMPT_GENERATION_SYSTEM, max_tokens=1024),
-    # Not yet implemented — no AI Tools card calls these yet, so no TaskConfig for them until
-    # each one is actually built (an unused entry here would just be dead configuration):
-    #   "hook_generation", "script_generation", "caption_generation", "thumbnail_ideas"
+    "hook_generation": TaskConfig(system_prompt=(
+        "Generate three original short-video hooks for the target business. For each provide "
+        "spoken/on-screen words, a specific first shot, and the mechanism used. "
+        "Keep within scene timing. Never copy source-business claims or footage, or invent results."
+    ), max_tokens=900),
+    "script_generation": TaskConfig(system_prompt=(
+        "Write a production-ready, original scene-by-scene short-video script for the target "
+        "business. Include timestamps, voiceover, on-screen text, visual directions and CTA. "
+        "Preserve source structural mechanisms but not source wording, visuals, claims or sensory "
+        "cues. Never invent facts or performance. Flag missing facts. Respect scene durations."
+    ), max_tokens=1600),
+    "caption_generation": TaskConfig(system_prompt=(
+        "Write an original platform-specific caption, call to action and relevant hashtags. "
+        "Use only provided business facts. Return ready-to-edit text, no invented claims."
+    ), max_tokens=900),
+    "thumbnail_ideas": TaskConfig(system_prompt=(
+        "Provide three practical thumbnail concepts, each with short headline, composition "
+        "and legibility guidance. Never fabricate results, endorsements or brand assets."
+    ), max_tokens=900),
 }

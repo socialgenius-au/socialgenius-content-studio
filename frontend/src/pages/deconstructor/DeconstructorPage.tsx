@@ -1,13 +1,17 @@
 // C5 -- Deconstructor -> Reconstructor workspace: ONE page, six steps (Reference / Anatomy / Mechanisms / New content / Blueprint / Create).
 // It reuses the existing reference-video, deconstruction, anatomy, mechanism and blueprint APIs and hands the finished blueprint to the
 // EXISTING Video Studio V2 (route /video-studio-v2) -- there is no parallel editor here.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/common/PageHeader'
 import { buildBlueprintPlan, checkBlueprintUsable } from '../video-studio-v2/blueprint/blueprintPlan'
 import { createStudioDraftFromBlueprint } from '../video-studio-v2/blueprint/createStudioDraft'
 import { emptyIntentForm, validateIntentForm, type IntentErrors, type IntentForm } from './intentForm'
 import { useDeconstructor } from './useDeconstructor'
+import { learningApi } from '../../api/client'
+import LessonsPanel from './LessonsPanel'
+import IntelligencePanel from './IntelligencePanel'
+import { briefFromForm, briefKey, idsToSend, prune, suggestedIds, toggle, type LessonCandidate } from './lessons'
 import { anatomyReady, mechanismsView } from './viewModel'
 import { AnatomyStage, BlueprintStage, CreateStage, IntentStage, MechanismsStage, ReferenceStage } from './stages'
 import { FootageAssignment } from './footage'
@@ -40,6 +44,7 @@ const STEPS: { id: Step; label: string; caption: string }[] = [
 
 const AI_CONFIRM = {
   deconstruct: 'Deconstruct this reference video?\n\nThis runs the analysis pipeline. Where an AI provider is configured, some steps use AI and may incur usage cost. Steps already completed are skipped.',
+  frames: 'Add an AI visual reading?\n\nThis sends up to 11 selected frames of this reference, plus its measured speech, text and timing, to an AI provider. It is capped at the per-reference spending limit (about five cents has been typical) and works only while AI spending is switched on for this environment. An unchanged re-run uses the stored result at no cost.',
   mechanisms: 'Derive mechanisms with AI?\n\nThis sends the reference video’s analysed structure to an AI provider and may incur usage cost.',
   blueprint: 'Build a NEW reconstruction blueprint with AI?\n\nThis sends your new-content details and the learned mechanisms to an AI provider and may incur usage cost. The existing blueprint (if any) is kept in history.',
 }
@@ -54,6 +59,11 @@ export default function DeconstructorPage() {
   const [form, setForm] = useState<IntentForm>(emptyIntentForm)
   const [errors, setErrors] = useState<IntentErrors>({})
   const [using, setUsing] = useState(false)
+  // M7: the person's accepted lessons, ranked for the brief being written. Opt-in per lesson; the master switch turns them all off.
+  const [lessonList, setLessonList] = useState<LessonCandidate[]>([])
+  const [lessonStatus, setLessonStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [useLessons, setUseLessons] = useState(true)
+  const [selectedLessons, setSelectedLessons] = useState<Set<number>>(new Set())
   // Preview panels are switched on by the address: ?m2=<name> for one, or a comma-separated list (?m2=text-layers,image-layers,background) to use several in one draft.
   // Without ?m2 the approved page is unchanged for everyone else.
   const m2Param = useSearchParams()[0].get('m2') ?? ''
@@ -95,14 +105,31 @@ export default function DeconstructorPage() {
   const select = (id: number) => { setUseMessage(null); navigate(`/deconstructor/${id}`) }
 
   const onDeconstruct = () => { if (window.confirm(AI_CONFIRM.deconstruct)) void d.deconstruct() }
+  const onReadFrames = () => { if (window.confirm(AI_CONFIRM.frames)) void d.readFrames() }
   const onDerive = () => { if (window.confirm(AI_CONFIRM.mechanisms)) void d.deriveMechanisms() }
+
+  // Re-rank the person's accepted lessons whenever the brief changes (debounced). Read-only: nothing is applied until lessons are selected AND a blueprint is built.
+  const briefSig = briefKey(briefFromForm(form))
+  useEffect(() => {
+    if (step !== 'intent') return
+    let live = true
+    const t = setTimeout(() => {
+      learningApi.relevant(briefFromForm(form))
+        .then(r => { if (!live) return; const ls = (r.data as { lessons: LessonCandidate[] }).lessons; setLessonList(ls); setSelectedLessons(sel => prune(sel, ls)); setLessonStatus('ready') })
+        .catch(() => { if (live) setLessonStatus('error') })
+    }, 400)
+    return () => { live = false; clearTimeout(t) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, briefSig])
 
   const onBuild = async () => {
     const v = validateIntentForm(form)
     setErrors(v.errors)
     if (!v.ok || !v.intent) return
-    if (!window.confirm(AI_CONFIRM.blueprint)) return
-    const r = await d.buildBlueprint(v.intent)
+    const lessonIds = idsToSend(useLessons, selectedLessons)
+    const note = lessonIds.length ? `\n\nIt will also send the ${lessonIds.length} ${lessonIds.length === 1 ? 'lesson' : 'lessons'} you selected from earlier videos as guidance. They are your own accepted recommendations, not verified performance results.` : ''
+    if (!window.confirm(AI_CONFIRM.blueprint + note)) return
+    const r = await d.buildBlueprint(v.intent, lessonIds)
     if (r) { setUseMessage(null); setStep('blueprint') }
   }
 
@@ -156,16 +183,24 @@ export default function DeconstructorPage() {
           {step === 'reference' && (
             <ReferenceStage
               references={d.references} selectedId={routeId} onSelect={select} progress={d.progress} busy={d.busy} anatomyAvailable={anatomyAvailable}
-              onDeconstruct={onDeconstruct} onRetry={() => window.location.reload()}
+              onDeconstruct={onDeconstruct} onRefresh={() => void d.refreshStatus()} onRetry={() => window.location.reload()}
               onAdd={async f => { const id = await d.addReference(f); if (id != null) select(id) }}
             />
           )}
-          {step === 'anatomy' && <AnatomyStage anatomy={d.anatomy} />}
+          {step === 'anatomy' && <AnatomyStage anatomy={d.anatomy} busy={d.busy} onReadFrames={onReadFrames} onRereadSpeech={() => void d.rereadSpeech()} />}
           {step === 'mechanisms' && <MechanismsStage mechanisms={d.mechanisms} anatomyAvailable={anatomyAvailable} busy={d.busy} onDerive={onDerive} />}
           {step === 'intent' && (
             <IntentStage
               form={form} errors={errors} set={(k, v) => { setForm(f => ({ ...f, [k]: v })); if (errors[k]) setErrors(e => ({ ...e, [k]: undefined })) }}
               mechanismsReady={mechanismsReady} busy={d.busy} onBuild={() => void onBuild()} hasExistingBlueprint={!!d.blueprint.data?.blueprint}
+              intelligencePanel={<IntelligencePanel status={d.intelligence.loading ? 'loading' : d.intelligence.error ? 'error' : 'ready'} intel={d.intelligence.data} error={d.intelligence.error} />}
+              lessonsPanel={
+                <LessonsPanel
+                  status={lessonStatus} lessons={lessonList} useLessons={useLessons} selected={selectedLessons}
+                  onUseLessons={setUseLessons} onToggle={id => setSelectedLessons(s => toggle(s, id))}
+                  onSelectSuggested={() => setSelectedLessons(new Set(suggestedIds(lessonList)))} onClear={() => setSelectedLessons(new Set())}
+                />
+              }
             />
           )}
           {step === 'blueprint' && <BlueprintStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} onNew={() => setStep('intent')} useMessage={useMessage} />}

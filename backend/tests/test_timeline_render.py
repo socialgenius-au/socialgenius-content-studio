@@ -205,7 +205,7 @@ async def test_render_project_single_clip_with_text_and_audio(clips, custom_audi
             "has_separated_audio": True,  # this clip's own 440Hz tone must NOT survive
         }],
         "text_overlays": [
-            {"text": "HELLO", "start": 0.2, "end": 1.5, "x": 20, "y": 20, "font_size": 30, "font_color": "white"},
+            {"text": "HELLO", "start_time": 0.2, "end_time": 1.5, "x": 6.25, "y": 11.11, "font_size": 30, "color": "#FFFFFF"},
         ],
         "media_overlays": [],
         "audio_tracks": [
@@ -215,6 +215,23 @@ async def test_render_project_single_clip_with_text_and_audio(clips, custom_audi
     out = await ffmpeg_svc.render_project(project, USER_ID)
     assert _decode_error_count(str(out)) == 0
     assert await ffmpeg_svc._get_video_dimensions(str(out)) == (320, 180)
+    # Final MP4 acceptance: verify actual muxed container, streams, and timing
+    # rather than treating successful FFmpeg process exit as proof of usable output.
+    import json
+    import subprocess
+    assert Path(out).is_file() and Path(out).stat().st_size > 1024
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_format", "-show_streams",
+         "-of", "json", str(out)],
+        capture_output=True, text=True, check=True,
+    )
+    metadata = json.loads(probe.stdout)
+    streams = metadata["streams"]
+    assert "mp4" in metadata["format"]["format_name"]
+    assert any(s["codec_type"] == "video" for s in streams), "MP4 must contain video"
+    assert any(s["codec_type"] == "audio" for s in streams), "MP4 must contain audio"
+    assert float(metadata["format"]["duration"]) == pytest.approx(3.0, abs=0.25)
+    assert float(metadata["format"]["size"]) > 1024
 
     # text burned in during its window
     r, g, b = _frame_pixel(str(out), 0.8, 30, 30, tmp_path)
@@ -226,6 +243,131 @@ async def test_render_project_single_clip_with_text_and_audio(clips, custom_audi
     noise_floor = float(np.median(mag))
     assert _band_energy(freqs, mag, 220.0) > 10 * noise_floor, "A1 custom audio track should be audible"
     assert _band_energy(freqs, mag, 440.0) < 10 * noise_floor, "clip's own audio should be muted once separated to A1"
+
+
+
+async def test_reconstructed_multiscene_mp4_timeline_audio_and_overlays(clips, custom_audio, tmp_path):
+    """Real two-scene reconstruction export: verify scene order, timed overlay,
+    separate replacement audio, source audio, and decodable MP4 duration.
+    Uses generated footage, never copies reference-video frames.
+    """
+    import json
+    import subprocess
+
+    project = {
+        "canvas_width": 320, "canvas_height": 180,
+        "video_clips": [
+            {"path": clips[0], "trim_in": 0, "start_time": 0, "end_time": 3,
+             "speed": 1, "color_grade": "none", "brightness": 0, "contrast": 0,
+             "saturation": 0, "transition": "cut", "transition_duration": 0.5,
+             "has_separated_audio": True},
+            {"path": clips[1], "trim_in": 0, "start_time": 3, "end_time": 6,
+             "speed": 1, "color_grade": "none", "brightness": 0, "contrast": 0,
+             "saturation": 0, "transition": "cut", "transition_duration": 0.5,
+             "has_separated_audio": False},
+        ],
+        "text_overlays": [
+            {"text": "SCENE ONE", "start_time": 0.2, "end_time": 1.5,
+             "x": 6.25, "y": 11.11, "font_size": 30, "color": "#FFFFFF"},
+        ],
+        "media_overlays": [],
+        "audio_tracks": [
+            {"path": custom_audio, "trim_in": 0, "start_time": 0,
+             "end_time": 3, "volume": 1.0},
+        ],
+    }
+    output = await ffmpeg_svc.render_project(project, USER_ID)
+    assert _decode_error_count(str(output)) == 0
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_format", "-show_streams",
+         "-of", "json", str(output)],
+        capture_output=True, text=True, check=True,
+    )
+    metadata = json.loads(probe.stdout)
+    assert float(metadata["format"]["duration"]) == pytest.approx(6.0, abs=0.3)
+    assert {"audio", "video"}.issubset(
+        {stream["codec_type"] for stream in metadata["streams"]}
+    )
+    assert await ffmpeg_svc._get_video_dimensions(str(output)) == (320, 180)
+
+    # Sample pixels away from text to verify source order and a clean cut.
+    first = _frame_pixel(str(output), 2.2, 250, 130, tmp_path)
+    second = _frame_pixel(str(output), 4.2, 250, 130, tmp_path)
+    assert first[0] > first[1] * 1.5, f"scene one should be red: {first}"
+    assert second[1] > second[0] * 1.5, f"scene two should be green: {second}"
+
+    # Overlay must affect pixels during its interval and disappear afterward.
+    during = _frame_pixel(str(output), 0.8, 30, 30, tmp_path)
+    after = _frame_pixel(str(output), 2.2, 30, 30, tmp_path)
+    assert during != after, "timed text overlay should alter the first scene"
+
+    wav = _extract_audio_wav(str(output), tmp_path)
+    freqs1, mag1 = _spectrum(wav, 1.0, 2.0)
+    floor1 = max(float(np.median(mag1)), 1e-6)
+    assert _band_energy(freqs1, mag1, 220.0) > 10 * floor1
+    assert _band_energy(freqs1, mag1, 440.0) < 10 * floor1
+    freqs2, mag2 = _spectrum(wav, 4.0, 5.0)
+    floor2 = max(float(np.median(mag2)), 1e-6)
+    assert _band_energy(freqs2, mag2, 550.0) > 10 * floor2
+    assert _band_energy(freqs2, mag2, 220.0) < 10 * floor2
+
+
+async def test_reconstructed_timeline_json_roundtrip_exports_same_scene_order(clips, custom_audio, tmp_path):
+    """A persisted-style JSON timeline must remain renderable after reload.
+
+    This exercises the export contract after serialization, not the database
+    save/reopen API; database persistence has separate integration coverage.
+    Synthetic footage is used instead of any reference-video frames.
+    """
+    import json
+
+    timeline = {
+        "canvas_width": 320,
+        "canvas_height": 180,
+        "video_clips": [
+            {"path": clips[0], "trim_in": 0, "start_time": 0, "end_time": 3,
+             "speed": 1, "color_grade": "none", "brightness": 0, "contrast": 0,
+             "saturation": 0, "transition": "cut", "transition_duration": 0.5,
+             "has_separated_audio": True},
+            {"path": clips[1], "trim_in": 0, "start_time": 3, "end_time": 6,
+             "speed": 1, "color_grade": "none", "brightness": 0, "contrast": 0,
+             "saturation": 0, "transition": "cut", "transition_duration": 0.5,
+             "has_separated_audio": False},
+        ],
+        "text_overlays": [
+            {"text": "EDITABLE SCENE", "start_time": 0.2, "end_time": 1.5,
+             "x": 6.25, "y": 11.11, "font_size": 30, "color": "#FFFFFF"},
+        ],
+        "media_overlays": [],
+        "audio_tracks": [
+            {"path": custom_audio, "trim_in": 0, "start_time": 0,
+             "end_time": 3, "volume": 1.0},
+        ],
+    }
+
+    draft_path = tmp_path / "reconstructed_timeline.json"
+    draft_path.write_text(json.dumps(timeline), encoding="utf-8")
+    restored = json.loads(draft_path.read_text(encoding="utf-8"))
+    assert restored == timeline
+    assert len(restored["video_clips"]) == 2
+    assert restored["text_overlays"][0]["text"] == "EDITABLE SCENE"
+    assert restored["audio_tracks"][0]["start_time"] == 0
+
+    output = await ffmpeg_svc.render_project(restored, USER_ID)
+    assert _decode_error_count(str(output)) == 0
+    assert await ffmpeg_svc._get_duration(str(output)) == pytest.approx(6.0, abs=0.3)
+    assert await ffmpeg_svc._get_video_dimensions(str(output)) == (320, 180)
+
+    first = _frame_pixel(str(output), 2.2, 250, 130, tmp_path)
+    second = _frame_pixel(str(output), 4.2, 250, 130, tmp_path)
+    assert first[0] > first[1] * 1.5, f"restored first scene should be red: {first}"
+    assert second[1] > second[0] * 1.5, f"restored second scene should be green: {second}"
+
+    wav = _extract_audio_wav(str(output), tmp_path)
+    freqs1, mag1 = _spectrum(wav, 1.0, 2.0)
+    freqs2, mag2 = _spectrum(wav, 4.0, 5.0)
+    assert _band_energy(freqs1, mag1, 220.0) > 10 * max(float(np.median(mag1)), 1e-6)
+    assert _band_energy(freqs2, mag2, 550.0) > 10 * max(float(np.median(mag2)), 1e-6)
 
 
 def _content_column_range(path: str, t: float, tmp_path: Path, threshold: int = 15):

@@ -409,3 +409,101 @@
   .editor-shell > .preview-area { min-height:360px; }
   .editor-shell > .ai-tools-panel { grid-template-columns:minmax(0,1fr); }
 }
+
+
+/* Compact AI Tools: preserve the approved Preview -> Timeline -> AI Tools -> Assistant order.
+   Tool actions use a responsive grid instead of full-width stacked buttons. */
+.editor-shell > .ai-tools-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+.editor-shell > .ai-tools-panel > h3,
+.editor-shell > .ai-tools-panel > .empty-hint,
+.editor-shell > .ai-tools-panel > .stack-field,
+.editor-shell > .ai-tools-panel > .inline-status,
+.editor-shell > .ai-tools-panel > section[aria-label="Creative AI tools"] {
+  grid-column: 1 / -1;
+}
+.editor-shell > .ai-tools-panel > button {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 9px 11px;
+}
+.editor-shell > .ai-tools-panel > button b {
+  font-size: 12px;
+  line-height: 1.3;
+}
+.editor-shell > .ai-tools-panel > button small {
+  font-size: 11px;
+}
+.editor-shell > .ai-tools-panel > section[aria-label="Creative AI tools"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid var(--v-line);
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 0;
+}
+.editor-shell > .ai-tools-panel > section[aria-label="Creative AI tools"] textarea,
+.editor-shell > .ai-tools-panel > section[aria-label="Creative AI tools"] select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+  .editor-shell > .ai-tools-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .editor-shell > .ai-tools-panel { grid-template-columns: minmax(0, 1fr); }
+}
+
+
+/* Creative tools: use theme-aware inputs and accessible focus indicators. */
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] select,
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] textarea {
+  background: #0d1b1f;
+  color: #f1fafb;
+  border: 1px solid #34525a;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font: inherit;
+  line-height: 1.45;
+}
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] textarea::placeholder {
+  color: #9cb8bf;
+  opacity: 1;
+}
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] select:focus-visible,
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] textarea:focus-visible {
+  outline: 2px solid #36d7dc;
+  outline-offset: 2px;
+}
+.editor-shell .ai-tools-panel section[aria-label="Creative AI tools"] option {
+  background: #0d1b1f;
+  color: #f1fafb;
+}
+
+/* Image generation uses the same legible dark controls as creative text tools. */
+.editor-shell .ai-tools-panel section[aria-label="AI image generator"] textarea {
+  display: block;
+  width: 100%;
+  min-height: 90px;
+  box-sizing: border-box;
+  background: #0d1b1f;
+  color: #f1fafb;
+  border: 1px solid #34525a;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font: inherit;
+}
+.editor-shell .ai-tools-panel section[aria-label="AI image generator"] textarea::placeholder {
+  color: #9cb8bf;
+}
+.editor-shell .ai-tools-panel section[aria-label="AI image generator"] textarea:focus-visible {
+  outline: 2px solid #36d7dc;
+  outline-offset: 2px;
+}

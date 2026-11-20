@@ -156,6 +156,8 @@ interface StudioState {
   // (see CanvasItemPosition above). Keyed by the element's canvasItem id.
   canvasItemPositions: Record<string, CanvasItemPosition>
   setCanvasItemPosition: (id: string, pos: CanvasItemPosition) => void
+  /** Forget every dragged canvas-item position (used when another project is opened, so one project's drags never follow into the next). */
+  resetCanvasItemPositions: () => void
 
   // Icon-rail: which tool panel is expanded (null = collapsed, canvas gets full width)
   activeRailTool: RailTool | null
@@ -307,6 +309,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const setCanvasItemPosition = useCallback((id: string, pos: CanvasItemPosition) =>
     setCanvasItemPositions(p => ({ ...p, [id]: pos })), [])
+  const resetCanvasItemPositions = useCallback(() => setCanvasItemPositions({}), [])
 
   const msgIdRef = useRef(1)
   const nextId = () => String(msgIdRef.current++)
@@ -495,7 +498,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     templates,
     mediaAssets, addMediaAsset, removeMediaAsset,
     canvasFormat, setCanvasFormat, canvasVersions, addCanvasVersion,
-    canvasItemPositions, setCanvasItemPosition,
+    canvasItemPositions, setCanvasItemPosition, resetCanvasItemPositions,
     activeRailTool, selectedElement,
     uploadProgress,
     pendingApproval,

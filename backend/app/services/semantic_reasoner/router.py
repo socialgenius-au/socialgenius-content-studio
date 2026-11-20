@@ -16,6 +16,7 @@ discipline the Stage 10.2B architecture audit required (Section 6/7), now with a
 implementation behind it instead of an empty registry.
 """
 from app.config import settings
+from app.services.ai_metering import run_reasoner_call
 
 from .contract import ReasonerResult, SemanticReasoningError
 from .providers.anthropic_provider import AnthropicSemanticReasoner
@@ -64,7 +65,7 @@ async def reason_about_boundary(evidence_bundle: dict) -> ReasonerResult:
         )
 
     candidate_timestamp = evidence_bundle["candidate_timestamp"]
-    decision = await provider.reason_about_boundary(evidence_bundle, model=settings.SEMANTIC_REASONER_MODEL)
+    decision = await run_reasoner_call(lambda: provider.reason_about_boundary(evidence_bundle, model=settings.SEMANTIC_REASONER_MODEL))
     return ReasonerResult(
         decision=decision,
         provider=provider.name,

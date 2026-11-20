@@ -16,6 +16,7 @@ import CreateEditTab from "./components/CreateEditTab";
 import ReviewTab from "./components/ReviewTab";
 import LearnTab from "./components/LearnTab";
 import BlueprintPlanPanel from "./blueprint/BlueprintPlanPanel";
+import ProjectIdentityCard from "./identity/ProjectIdentityCard";
 
 // Step 7.1 (second persistence defect): the active workflow stage and the entire project
 // (video/audio/text/overlays/timeline positions/canvas format/placeholder positions) were pure
@@ -181,9 +182,8 @@ export default function VideoStudioV2() {
 
         <div className="vsv2-project-card">
           <div className="pc-head"><FolderOpen size={15} /><span>Current Project</span></div>
-          <strong>ABC Tiles</strong>
-          <span>Builders Footfall Campaign</span>
-          <button>Change Project</button>
+          <ProjectIdentityCard />
+          <button type="button" onClick={() => setStage("create")} title="Open Create / Edit to load or save a named draft">Open / Save Project</button>
         </div>
       </aside>
 

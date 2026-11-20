@@ -37,7 +37,8 @@ BLUEPRINT_EFFORT = "low"
 
 # Explicit, stable reasoning-contract version for SYSTEM_PROMPT; bumped by hand whenever its meaning changes and recorded on
 # every durable attempt.
-BLUEPRINT_PROMPT_VERSION = "v4"
+BLUEPRINT_PROMPT_VERSION = "v5"
+# v5: mechanisms carry `reuse_guidance` (conditions of use, adaptation guidance, evidence strength) and the input carries `reference_hook` (the opening's structure only).
 # v2 (before the first real call): forbidden source words may not be mentioned even to say they are being avoided.
 
 _TEMPLATE = """You are a content-construction planner. You are given: (1) a NEW CONTENT INTENT (what the new piece is for), (2) \
@@ -74,6 +75,11 @@ whether any two sections could be combined without losing structural meaning; if
 open, establish a controlled comparison, explain why the right choice changes with context, demonstrate a mismatch or its consequence, \
 derive a practical selection principle, resolve, then give the next step. That is an EXAMPLE of progression, not a template: choose the \
 structure the intent and mechanisms actually need.
+
+REUSE GUIDANCE. Each mechanism carries `reuse_guidance`: `applies_when` and `avoid_when` are general conditions of use for that kind of mechanism, `adaptation_guidance` says how to adapt (never copy) it, \
+and `evidence_channels` / `unreliable_channels` say how strongly it was observed and where the evidence is weak. Check applies_when and avoid_when against the new intent: if an avoid_when condition holds for this intent, \
+mark the mechanism NOT_USED and say which condition holds. `reference_hook` (when present) describes only the STRUCTURE of the reference's opening (which channels are combined, their timing, the construction type, \
+which channels are reliable): reuse the construction for the caller's own subject, never the reference's subject or wording, and do not depend on a channel marked unreliable.
 
 DO NOT CARRY OVER: every entry in `do_not_carry_over` and every word in `blocked_source_terms` is forbidden in your output \
 (the words are checked). Do not reuse the reference's subject matter, people, story, names, wording, visuals or audio. Do not \
@@ -126,6 +132,27 @@ SYSTEM_PROMPT = (_TEMPLATE
                  .replace("<<STRUCTURAL_ROLES>>", ", ".join(sorted(STRUCTURAL_ROLES)))
                  .replace("<<MAX_SECTIONS>>", str(MAX_SECTIONS))
                  .replace("<<MAX_FIELD_CHARS>>", str(MAX_FIELD_CHARS)))
+
+
+LESSON_ADDENDUM = """LEARNING GUIDANCE (this input contains `learning_guidance`). These are lessons the person chose to keep from THEIR OWN earlier \
+videos. They are guidance for design decisions, NOT verified performance improvements: never say or imply that a lesson increases \
+reach, engagement, retention or conversions. Each lesson has a `kind` (measured production observation, rule of thumb, untested \
+hypothesis ...) and a `confidence`: weigh it accordingly -- a hypothesis or low-confidence lesson is a suggestion, not a rule. For EVERY \
+lesson (use its exact lesson_id) decide whether it fits THIS brief. If it fits, mark it APPLIED, name the NEW section numbers it shapes in \
+applied_in_sections (those sections' own instructions must actually reflect it), and say in how_or_why, in one or two sentences (at most \
+400 characters), HOW it is applied. If it conflicts with the brief (see `conflicts_with_this_brief`, the objective, the mandatory points or \
+the prohibited elements) or does not suit it, mark it NOT_APPLIED with applied_in_sections [] and say WHY in how_or_why. Never apply a \
+lesson that conflicts with the brief; never ignore a lesson silently. Lessons may shape the opening, scene structure, on-screen text and \
+reading time, visuals, pacing and the call to action, but they never override the mechanisms' defining structure or the brief. Do not name \
+the earlier video.
+OUTPUT ADDITION (this overrides "no others" above for this one field): add ONE more top-level field \
+"lesson_dispositions":[{"lesson_id":<id>,"decision":"APPLIED" or "NOT_APPLIED","applied_in_sections":[<new section numbers>] or [],\
+"how_or_why":"<...>"}] with exactly one entry per lesson in `learning_guidance`."""
+
+
+def system_prompt_for(reasoner_input: dict) -> str:
+    """The base prompt, unchanged, unless the person brought lessons (then the learning addendum is appended)."""
+    return SYSTEM_PROMPT + "\n\n" + LESSON_ADDENDUM if reasoner_input.get("learning_guidance") else SYSTEM_PROMPT
 
 
 def serialize_input(reasoner_input: dict) -> str:
@@ -187,7 +214,7 @@ class AnthropicBlueprintReasoner(BlueprintReasonerProvider):
                 "set it in backend/.env.")
         try:
             message = await get_client().messages.create(
-                model=model, max_tokens=MAX_RESPONSE_TOKENS, system=SYSTEM_PROMPT, output_config={"effort": BLUEPRINT_EFFORT},
+                model=model, max_tokens=MAX_RESPONSE_TOKENS, system=system_prompt_for(reasoner_input), output_config={"effort": BLUEPRINT_EFFORT},
                 messages=[{"role": "user", "content": build_user_prompt(reasoner_input)}],
             )
         except anthropic.AnthropicError as exc:

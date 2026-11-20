@@ -62,6 +62,7 @@ CERTAINTY_INFERRED = "INFERRED"
 EVIDENCE_ID_KEYS = frozenset({
     "story_beats", "scenes", "shots", "speech_segments", "text_elements", "visual_objects", "silence_intervals",
     "transition_evidence", "pacing_phases", "retention_devices", "retention_attempts",
+    "creative_findings",          # stored Creative Read findings (an AI looked at keyframes): present only when that read exists
 })
 
 # The bounded vocabulary of anatomy features a mechanism may say it used. Each is checked against the
@@ -69,7 +70,7 @@ EVIDENCE_ID_KEYS = frozenset({
 ANATOMY_FEATURE_KEYS = frozenset({
     # section-level (section scope: present in a cited section; video scope: present anywhere in the video)
     "transcript", "speech", "on_screen_text", "visual_objects", "silence", "cuts", "pacing", "transitions",
-    "motion", "hook_window", "accepted_retention_device",
+    "motion", "hook_window", "accepted_retention_device", "creative_read",
     # video-level (must be present at video level)
     "hook_classification", "structural_pattern", "progression", "pacing_profile",
 })

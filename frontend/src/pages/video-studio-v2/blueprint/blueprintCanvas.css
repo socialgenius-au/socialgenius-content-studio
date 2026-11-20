@@ -1,0 +1,9 @@
+/* A blueprint draft has placeholders but no footage yet, so the editor draws its built-in demo canvas ("ABC Tiles" logo, headline, badge, icons and call to action) behind them. That demo belongs to the original prototype,
+   not to the reconstruction. While a blueprint draft is open, hide ONLY those demo elements; footage, the person's text layers and everything else are untouched. (BlueprintPlanPanel sets the attribute.) */
+html[data-sg-blueprint-draft] .video-preview:not(.real) .preview-brand,
+html[data-sg-blueprint-draft] .video-preview:not(.real) .preview-copy,
+html[data-sg-blueprint-draft] .video-preview:not(.real) .preview-badge,
+html[data-sg-blueprint-draft] .video-preview:not(.real) .preview-icons,
+html[data-sg-blueprint-draft] .video-preview:not(.real) .preview-cta {
+  display: none;
+}

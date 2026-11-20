@@ -5,6 +5,7 @@ import { blendPreviewAt, planBlendWindows, sourceTimeAt } from "../export/dissol
 import { previewBlurPx, validCanvasBackdrop } from "../export/canvasBackdrop";
 import { durationCorrection } from "../export/measuredDuration";
 import { draftExtrasForSave, emptyExtras, extrasNote, pickDraftExtras, type DraftExtras } from "../export/draftExtras";
+import { EDITOR_DEFAULT_CANVAS_FORMAT, EDITOR_DEFAULT_SUBTITLE_STYLE } from "../blueprint/projectDefaults";
 import BehindFootageLayer from "../export/BehindFootageLayer";
 import { behindFootageRects } from "../export/behindFootagePreview";
 import { isBehindFootage } from "../export/footageGeometry";
@@ -24,7 +25,10 @@ import {
 import type { CanvasFormatState, CanvasItemPosition } from "../../../contexts/StudioContext";
 import type { Asset, VideoClip, TextOverlay, MediaOverlay, AudioTrack, LowerThird, Shape, SubtitleSegment, SubtitleStyle, ReferenceVideo } from "../../../types";
 // C6 (Blueprint -> Video Studio V2): the active blueprint plan travels with every saved draft and is restored when one is opened.
+import CreativeToolsPanel, { type CreativeTask } from "./CreativeToolsPanel";
 import { getBlueprintPlan, setBlueprintPlan } from "../blueprint/blueprintPlanStore";
+import { defaultDraftNameFor, identityForSave, isStoredIdentity, resolveProjectIdentity } from "../identity/projectIdentity";
+import { getProjectContext, setProjectContext } from "../identity/projectContextStore";
 import { isBlueprintPlan, type BlueprintPlan } from "../blueprint/blueprintPlan";
 import { consumeOpenDraftHint } from "../blueprint/openDraftHint";
 import {
@@ -51,13 +55,8 @@ const DRAGGABLE_CANVAS_ITEM_IDS = new Set(["ph-headline", "ph-badge"]);
 // the only requirement, not a specific value.
 const MIN_CLIP_DURATION = 0.2;
 
-// STEP 7.9's own client/project identity label, extracted to a shared constant so buildProjectSnapshot
-// (below) and the AI Prompt Generator's project context (Task 3) reference the exact same value
-// instead of two copies that could drift. This project has no real, structured Brand Kit record
-// wired into Video Studio V2 yet (Brief/Intelligence tabs are local, unpersisted mock state, and
-// no `Brand` row exists for this client) — this is the one genuine, already-established piece of
-// "who this project is for" identity this editor has, not a fabricated stand-in for a real Brand Kit.
-const PROJECT_CLIENT_IDENTITY = { client: "ABC Tiles", campaign: "Builders Footfall Campaign" };
+// Project identity is no longer a constant: it comes from the project itself (identity/projectIdentity.ts) -- the open draft, else the blueprint it was built from, else a neutral fallback.
+const currentIdentityInput = () => ({ plan: getBlueprintPlan(), stored: getProjectContext().storedIdentity });
 
 // Step 5 follow-up (Defect 2): the one shared canvas-resize floor — a Text/Overlay element can
 // never be resized down to (near) zero, same "keep a sensible minimum" principle as
@@ -267,7 +266,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     // alongside this phase) — same "raw + history-wrapped" pattern as every other lane.
     subtitles, addSubtitle: rawAddSubtitle, updateSubtitle: rawUpdateSubtitle, removeSubtitle: rawRemoveSubtitle,
     subtitleStyle, setSubtitleStyle,
-    mediaAssets, addMediaAsset, removeMediaAsset, uploadAsset,
+    mediaAssets, addMediaAsset, removeMediaAsset, uploadAsset, resetCanvasItemPositions,
     timeline, setTimeline,
     selectedElement, setSelectedElement,
     chatMessages, chatLoading, sendChatMessage,
@@ -449,6 +448,12 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   const [promptGenResult, setPromptGenResult] = useState<string | null>(null);
   const [promptGenError, setPromptGenError] = useState<string | null>(null);
   const [promptGenCopied, setPromptGenCopied] = useState(false);
+  // Four creative tools share one editor-side panel; no draft mutation or automatic AI calls.
+  const [activeCreativeTask, setActiveCreativeTask] = useState<CreativeTask | null>(null);
+  const [enhanceAssetId, setEnhanceAssetId] = useState<number | null>(null);
+  const [enhanceBusy, setEnhanceBusy] = useState(false);
+  const [enhanceError, setEnhanceError] = useState<string | null>(null);
+  const [enhanceSuccess, setEnhanceSuccess] = useState<string | null>(null);
 
   // Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Wires up "Import External"
   // — previously a dead creation-mode button; `mode` (see the comment above `draftId` below)
@@ -582,7 +587,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     ...draftExtrasForSave(draftExtrasRef.current, { textOverlays, mediaOverlays, shapes }),
     videoClips, additionalVideoClips, textOverlays, mediaOverlays, audioTracks, lowerThirds, shapes, subtitles, subtitleStyle, mediaAssets,
     canvasFormat, timeline, canvasItemPositions,
-    clientIdentity: PROJECT_CLIENT_IDENTITY,
+    clientIdentity: identityForSave({ ...currentIdentityInput(), draftName }),
     blueprintPlan: getBlueprintPlan(),
   });
 
@@ -618,15 +623,19 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     (snap.lowerThirds ?? []).forEach(l => rawAddLowerThird(l));
     (snap.shapes ?? []).forEach(s => rawAddShape(s));
     (snap.subtitles ?? []).forEach(s => rawAddSubtitle(s));
-    if (snap.subtitleStyle) setSubtitleStyle(snap.subtitleStyle);
+    // A draft that carries no subtitle style / canvas format (Reconstructor and blueprint drafts) starts from the editor's own, never from the project that happened to be open before it.
+    setSubtitleStyle(snap.subtitleStyle ?? { ...EDITOR_DEFAULT_SUBTITLE_STYLE });
     // mediaAssets only has an additive action (no bulk replace) — skip any id already present
     // rather than duplicate entries already in the Media panel.
+    const wantedAssetIds = new Set((snap.mediaAssets ?? []).map(a => a.id));
+    mediaAssets.forEach(a => { if (!wantedAssetIds.has(a.id)) removeMediaAsset(a.id); });          // the previous project's media library does not follow into this one
     const existingAssetIds = new Set(mediaAssets.map(a => a.id));
     (snap.mediaAssets ?? []).forEach(a => { if (!existingAssetIds.has(a.id)) addMediaAsset(a); });
-    if (snap.canvasFormat) setCanvasFormat(snap.canvasFormat);
+    setCanvasFormat(snap.canvasFormat ?? { ...EDITOR_DEFAULT_CANVAS_FORMAT });
     const reconstructorColour = validCanvasBackground(snap.canvasBackground);
-    if (reconstructorColour) setCanvasFormat({ ...(snap.canvasFormat ?? canvasFormat), background: reconstructorColour });
+    if (reconstructorColour) setCanvasFormat({ ...(snap.canvasFormat ?? EDITOR_DEFAULT_CANVAS_FORMAT), background: reconstructorColour });
     if (snap.timeline) setTimeline(snap.timeline);
+    resetCanvasItemPositions();
     Object.entries(snap.canvasItemPositions ?? {}).forEach(([id, pos]) => setCanvasItemPosition(id, pos));
     setBlueprintPlan(isBlueprintPlan(snap.blueprintPlan) ? snap.blueprintPlan : null);
   };
@@ -644,12 +653,10 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setDraftId(null);
     setDraftName("");
     setDraftStatus(null);
+    setProjectContext(null);
   };
 
-  const defaultDraftName = () => {
-    const d = new Date();
-    return `ABC Tiles — Builders Footfall Campaign (${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })})`;
-  };
+  const defaultDraftName = () => defaultDraftNameFor(resolveProjectIdentity(currentIdentityInput()));
 
   const openSaveDraft = () => {
     setSaveNameInput(draftName || defaultDraftName());
@@ -667,13 +674,16 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     setDraftStatus(null);
     try {
       const project_json = buildProjectSnapshot();
+      let savedId = draftId;
       if (draftId != null) {
         await videoStudioDraftsApi.update(draftId, { name, project_json });
       } else {
         const { data } = await videoStudioDraftsApi.create({ name, project_json });
-        setDraftId((data as { id: number }).id);
+        savedId = (data as { id: number }).id;
+        setDraftId(savedId);
       }
       setDraftName(name);
+      setProjectContext({ draftId: savedId, draftName: name, storedIdentity: project_json.clientIdentity });
       setDraftStatus(`Saved "${name}"${extrasNote(draftExtrasRef.current)}`);
       return true;
     } catch {
@@ -723,6 +733,7 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
       applyDraftSnapshot(full.project_json);
       setDraftId(full.id);
       setDraftName(full.name);
+      setProjectContext({ draftId: full.id, draftName: full.name, storedIdentity: isStoredIdentity(full.project_json?.clientIdentity) ? full.project_json.clientIdentity : null });
       setDraftStatus(`Opened "${full.name}"${extrasNote(draftExtrasRef.current)}`);
       setShowMyDrafts(false);
     } catch {
@@ -5483,12 +5494,13 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
   // nothing is invented. Deliberately excludes a Brand Kit lookup: no `Brand` row exists for
   // this client in this environment (confirmed by inspection), and Video Studio V2 has no
   // brand_id anywhere in its own data model to look one up by, so sending one would mean
-  // guessing which brand this project belongs to — PROJECT_CLIENT_IDENTITY's plain client/
+  // guessing which brand this project belongs to — the project identity's plain client/
   // campaign label is the one real "who this is for" fact this editor actually has.
   const buildAiPromptContext = () => {
+    const identity = resolveProjectIdentity(currentIdentityInput());
     const ctx: Record<string, unknown> = {
-      client: PROJECT_CLIENT_IDENTITY.client,
-      campaign: PROJECT_CLIENT_IDENTITY.campaign,
+      // a project with no identity sends none (never a placeholder or a demo client)
+      ...(identity.source === "neutral" ? {} : { client: identity.client, campaign: identity.campaign }),
       platform_format: canvasFormat.label,
       aspect_ratio: canvasFormat.ratio,
       canvas_width: canvasFormat.width,
@@ -5545,29 +5557,181 @@ export default function CreateEditTab({ onNext, onBack }: { onNext?: () => void;
     }
   };
 
+  const processImageAsset = async (operation: "enhance" | "background" | "complex") => {
+    if (enhanceBusy || enhanceAssetId === null) return;
+    const source = mediaAssets.find(asset => asset.id === enhanceAssetId && asset.file_type === "image");
+    if (!source) {
+      setEnhanceError("Select an uploaded image first.");
+      return;
+    }
+    setEnhanceBusy(true);
+    setEnhanceError(null);
+    setEnhanceSuccess(null);
+    try {
+      const response = operation === "enhance"
+        ? await assetsApi.autoEnhance(source.id)
+        : operation === "complex" ? await assetsApi.removeComplexBackground(source.id)
+        : await assetsApi.removeFlatBackground(source.id);
+      const blob = new Blob([response.data], { type: "image/png" });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `${operation === "enhance" ? "enhanced" : operation === "complex" ? "foreground" : "no-background"}-${source.id}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Give the browser time to begin the download before revoking the URL.
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      setEnhanceSuccess(operation === "enhance"
+        ? "Enhanced PNG downloaded. Your original image and draft are unchanged."
+        : operation === "complex"
+          ? "Foreground PNG downloaded. This is an approximate offline cutout; review its edges before use."
+          : "Flat-colour background removal downloaded. Review the result; complex backgrounds are not supported.");
+    } catch (error) {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      setEnhanceError(typeof detail === "string" ? detail : "Enhancement failed. Your original image was not changed.");
+    } finally {
+      setEnhanceBusy(false);
+    }
+  };
+
+  // Generated suggestions are never applied automatically. The user explicitly
+  // chooses "Use in editor"; insert one editable title at the current playhead.
+  // Long scripts remain in the editable tool output rather than being dumped
+  // wholesale over the video preview.
+  const useCreativeTextInEditor = (content: string, _task: CreativeTask) => {
+    const firstLine = content.split(/\r?\n/).map(line => line.trim())
+      .find(line => line.length > 0 && !/^[-*#]+$/.test(line));
+    if (!firstLine) return;
+    const title = firstLine.replace(/^[-*#\d.)\s]+/, "").slice(0, 140).trim();
+    if (!title) return;
+    const startTime = Math.max(0, timeline.currentTime);
+    const remaining = effectiveDuration > startTime ? effectiveDuration - startTime : 5;
+    const endTime = startTime + Math.min(5, remaining);
+    const overlay: TextOverlay = {
+      id: crypto.randomUUID(),
+      text: title,
+      x: 5, y: 80, width: 90,
+      startTime,
+      endTime,
+      fontFamily: "Inter", fontSize: 48, bold: true, italic: false,
+      color: "#FFFFFF", bgColor: "transparent", bgOpacity: 0.7, animation: "fade_in",
+    };
+    addTextOverlay(overlay);
+    setSelectedElement({ type: "text", id: overlay.id });
+  };
+
+  const [imagePromptOpen, setImagePromptOpen] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState("");
+  const [imageStatus, setImageStatus] = useState("");
+  const requestGeneratedImage = async () => {
+    if (!imagePrompt.trim() || imageBusy) return;
+    setImageBusy(true);
+    setImageError("");
+    setImageStatus("");
+    try {
+      const response = await generateApi.image(imagePrompt.trim());
+      const url = URL.createObjectURL(response.data as Blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "socialgenius-generated-image.png";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setImageStatus("Generated PNG downloaded. Upload it to your media library to use it in the video.");
+    } catch (error) {
+      const response = (error as { response?: { data?: unknown } })?.response;
+      const blob = response?.data;
+      if (blob instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await blob.text()) as { detail?: string };
+          setImageError(parsed.detail || "Image generation failed.");
+        } catch {
+          setImageError("Image generation failed. No image was saved.");
+        }
+      } else {
+        setImageError("Image generation failed. No image was saved.");
+      }
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
   const aiToolsPanelBody = (
     <>
       <h3>✦ AI Tools</h3>
-      {[
-        ["AI Prompt Generator", "Generate on-brand prompts"],
-        ["AI Image Generator", "Create custom images"],
-        ["AI Hook Suggestion", "Get better hooks"],
-        ["AI Script Writer", "Write engaging scripts"],
-        ["AI Caption Generator", "Create captions & hashtags"],
-        ["AI Thumbnail Ideas", "Generate thumbnails"],
-      ].map(([t, d]) =>
-        // AI Prompt Generator only, first of these six — the other five stay exactly as they
-        // were (dead, honestly labeled) until each is implemented and approved individually.
-        t === "AI Prompt Generator" ? (
-          <button key={t} type="button" onClick={() => setPromptGenOpen(true)}><b>{t}</b><small>{d}</small></button>
-        ) : (
-          <button key={t} type="button" title="Not yet connected to a generation backend"><b>{t}</b><small>{d}</small></button>
-        )
+      <button type="button" onClick={() => setPromptGenOpen(true)}>
+        <b>AI Prompt Generator</b><small>Generate on-brand prompts</small>
+      </button>
+      {([
+        ["hook_generation", "AI Hook Suggestion", "Get better hooks"],
+        ["script_generation", "AI Script Writer", "Write engaging scripts"],
+        ["caption_generation", "AI Caption Generator", "Create captions & hashtags"],
+        ["thumbnail_ideas", "AI Thumbnail Ideas", "Generate thumbnail concepts"],
+      ] as const).map(([task, title, description]) => (
+        <button key={task} type="button" aria-expanded={activeCreativeTask === task}
+          onClick={() => setActiveCreativeTask(current => current === task ? null : task)}>
+          <b>{title}</b><small>{description}</small>
+        </button>
+      ))}
+      <button type="button" aria-expanded={imagePromptOpen} onClick={() => setImagePromptOpen(open => !open)}>
+        <b>AI Image Generator</b><small>Generate a PNG when paid AI is authorised</small>
+      </button>
+      {imagePromptOpen && (
+        <section aria-label="AI image generator">
+          <label htmlFor="ai-image-prompt">Describe the image</label>
+          <textarea id="ai-image-prompt" rows={3} maxLength={4000} value={imagePrompt}
+            onChange={event => setImagePrompt(event.target.value)}
+            placeholder="Subject, composition, style, colours and intended audience" />
+          <p>One 1024×1024 PNG per request. Requires an image provider and explicit AI spending authorisation. No automatic charges or changes to your draft.</p>
+          <button type="button" disabled={!imagePrompt.trim() || imageBusy}
+            onClick={() => void requestGeneratedImage()}>
+            {imageBusy ? "Generating…" : "Generate Image — Download PNG"}
+          </button>
+          {imageError && <p role="alert">{imageError}</p>}
+          {imageStatus && <p role="status">{imageStatus}</p>}
+        </section>
+      )}
+      {activeCreativeTask && (
+        <CreativeToolsPanel key={activeCreativeTask} initialTask={activeCreativeTask}
+          context={buildAiPromptContext()} onUseText={useCreativeTextInEditor} />
       )}
       <h3>Quick Actions</h3>
-      {["Remove Background", "Auto Enhance"].map(x => (
-        <button key={x} type="button" title="Not yet connected to a generation backend">{x}</button>
-      ))}
+      <label className="stack-field">
+        <span>Image to process</span>
+        <select value={enhanceAssetId ?? ""} disabled={enhanceBusy}
+          onChange={event => {
+            setEnhanceAssetId(event.target.value ? Number(event.target.value) : null);
+            setEnhanceError(null);
+            setEnhanceSuccess(null);
+          }}>
+          <option value="">Select an uploaded image</option>
+          {mediaAssets.filter(asset => asset.file_type === "image").map(asset => (
+            <option key={asset.id} value={asset.id}>{asset.original_filename}</option>
+          ))}
+        </select>
+      </label>
+      <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
+        title="Removes only a near-uniform background connected to the image corners; not AI subject segmentation"
+        onClick={() => void processImageAsset("background")}>
+        Remove Flat Background — Download PNG
+      </button>
+      <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
+        title="Offline approximate foreground extraction for centrally positioned subjects; not AI semantic segmentation"
+        onClick={() => void processImageAsset("complex")}>
+        Remove Complex Background — Download PNG
+      </button>
+      <p className="empty-hint">Flat removal is best for solid backgrounds. Complex removal estimates a central foreground using offline GrabCut; review cutout edges. Originals are preserved.</p>
+
+      <button type="button" disabled={enhanceBusy || enhanceAssetId === null}
+        onClick={() => void processImageAsset("enhance")}>
+        {enhanceBusy ? "Enhancing…" : "Auto Enhance — Download PNG"}
+      </button>
+      {enhanceError && <p role="alert" className="inline-status error">{enhanceError}</p>}
+      {enhanceSuccess && <p role="status" className="inline-status">{enhanceSuccess}</p>}
       <button type="button" onClick={() => setResizePicker(v => !v)}>Resize for Platforms</button>
       {resizePicker && (
         <div className="resize-picker">
