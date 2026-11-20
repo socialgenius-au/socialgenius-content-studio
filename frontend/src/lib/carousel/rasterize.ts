@@ -5,9 +5,14 @@
 // minimal 2D-context interface so it runs unchanged on a real <canvas> in the browser and on a recording stub in tests.
 import { MASK_POLYGONS } from './masks'
 import { elementBox } from './geometry'
+import { polygonOf } from './shapes'
+import { PATTERN_BY_ID, tilePx } from './patterns'
+import { canvasFilter, hasAdjust } from './adjust'
+import { displayText } from './dynamicText'
+import { qrFor, QrError } from './qr'
 import type { MotionState } from './animation'
 import {
-  resolveColor, resolveFont, type BrandTokens, type Gradient, type ImageElement, type Paint, type PostDocument, type PostElement, type Point, type ShapeElement, type TextElement,
+  resolveColor, resolveFont, type Background, type BrandTokens, type Gradient, type ImageElement, type Paint, type PostDocument, type PostElement, type Point, type ShapeElement, type TextElement,
 } from '../postDocument'
 
 export interface GradientLike { addColorStop(offset: number, color: string): void }
@@ -39,6 +44,15 @@ export interface Ctx2D {
   clip(): void
   fillRect(x: number, y: number, w: number, h: number): void
   fillText(text: string, x: number, y: number): void
+  strokeText(text: string, x: number, y: number): void
+  lineJoin?: string
+  lineCap?: string
+  shadowColor?: string
+  shadowBlur?: number
+  shadowOffsetX?: number
+  shadowOffsetY?: number
+  /** CSS filter string (brightness, blur ...). Not supported by every browser; where it is missing the picture is drawn unadjusted. */
+  filter?: string
   measureText(text: string): { width: number }
   drawImage(img: unknown, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number): void
   createLinearGradient(x0: number, y0: number, x1: number, y1: number): GradientLike
@@ -58,6 +72,10 @@ export interface RasterOptions {
   images?: Map<string, DrawableImage | null>
   /** Motion applied on top of an element's static look at this moment (animated video only). Static exports never set it. */
   motion?: (el: PostElement) => MotionState | null
+  /** Milliseconds into the slide, for timers and countdowns (animated video). */
+  timeMs?: number
+  /** When the export started: countdowns run from it. */
+  now?: Date
 }
 
 // ── geometry helpers (pure; exported for tests) ──────────────────────────────────────────────
@@ -167,10 +185,17 @@ export async function drawSlide(ctx: Ctx2D, doc: PostDocument, pageIndex: number
   const bg = page.background
   if (bg.kind === 'solid') { ctx.fillStyle = resolveColor(bg.color, opts.tokens); ctx.fillRect(0, 0, W, H) }
   else if (bg.kind === 'gradient') { ctx.fillStyle = paintStyle(ctx, bg, 0, 0, W, H, opts.tokens); ctx.fillRect(0, 0, W, H) }
+  else if (bg.kind === 'pattern') drawPattern(ctx, bg, W, H, S, opts.tokens)
   else {
     ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, W, H)
     const img = bg.source.kind === 'asset' && bg.source.url ? images.get(bg.source.url) : null
-    if (img) { const r = fitRects(img.width, img.height, W, H, bg.fit, bg.focal); ctx.drawImage(img, r.sx, r.sy, r.sw, r.sh, r.dx, r.dy, r.dw, r.dh) }
+    if (img) {
+      const r = fitRects(img.width, img.height, W, H, bg.fit, bg.focal)
+      if (hasAdjust(bg.adjust)) ctx.filter = canvasFilter(bg.adjust, S)
+      ctx.drawImage(img, r.sx, r.sy, r.sw, r.sh, r.dx, r.dy, r.dw, r.dh)
+      if (hasAdjust(bg.adjust)) ctx.filter = 'none'
+    }
+    if (bg.overlay && bg.overlay.opacity > 0) { ctx.globalAlpha = bg.overlay.opacity; ctx.fillStyle = resolveColor(bg.overlay.color, opts.tokens); ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1 }
   }
   ctx.restore()
 
@@ -197,7 +222,7 @@ export async function drawSlide(ctx: Ctx2D, doc: PostDocument, pageIndex: number
       ctx.translate(cx, cy); ctx.rotate((el.rotation * Math.PI) / 180); ctx.translate(-cx, -cy)
     }
     switch (el.type) {
-      case 'text': drawText(ctx, el, x, y, w, heightPx, S, opts.tokens, motion?.reveal ?? null); break
+      case 'text': drawText(ctx, el, x, y, w, heightPx, S, opts.tokens, motion?.reveal ?? null, displayText(el, opts.timeMs ?? 0, opts.now)); break
       case 'shape': drawShape(ctx, el, { x, y, w, h: heightPx }, S, opts.tokens); break
       case 'image': drawImageEl(ctx, el, { x, y, w, h: heightPx }, S, images); break
       case 'group': {
@@ -212,7 +237,7 @@ export async function drawSlide(ctx: Ctx2D, doc: PostDocument, pageIndex: number
   for (const el of page.elements) drawEl(el, { x: 0, y: 0, w: W, h: H }, opts.motion?.(el) ?? null)
 }
 
-function drawText(ctx: Ctx2D, el: TextElement, x: number, y: number, boxW: number, boxH: number, S: number, tokens?: BrandTokens, reveal: number | null = null) {
+function drawText(ctx: Ctx2D, el: Pick<TextElement, 'style' | 'box' | 'autoSize' | 'height' | 'maxLines'> & { content: string }, x: number, y: number, boxW: number, boxH: number, S: number, tokens?: BrandTokens, reveal: number | null = null, text?: string, vMiddle = false) {
   const st = el.style
   const px = st.fontSize * S
   const lh = px * st.lineHeight
@@ -224,7 +249,7 @@ function drawText(ctx: Ctx2D, el: TextElement, x: number, y: number, boxW: numbe
   if (st.letterSpacing && 'letterSpacing' in ctx) ctx.letterSpacing = `${st.letterSpacing * S}px`
   const measure = (s: string) => ctx.measureText(s).width
   const maxLines = el.maxLines
-  const lines = wrapText(el.content, Math.max(1, boxW - 2 * padX), measure, maxLines)
+  const lines = wrapText(text ?? el.content, Math.max(1, boxW - 2 * padX), measure, maxLines)
   const widest = Math.max(0, ...lines.map(measure))
   const w = el.autoSize === 'auto-width' ? Math.min(boxW, widest + 2 * padX) : boxW
   const h = el.autoSize === 'fixed' || el.height !== 'auto' ? boxH : lines.length * lh + 2 * padY
@@ -237,34 +262,93 @@ function drawText(ctx: Ctx2D, el: TextElement, x: number, y: number, boxW: numbe
   ctx.fillStyle = resolveColor(st.color, tokens)
   // Typewriter: the text is laid out in full (so lines never jump as it grows) and only the first `reveal` fraction of its characters is drawn.
   let remaining = reveal === null ? Infinity : Math.ceil(Math.max(0, Math.min(1, reveal)) * lines.reduce((n, l) => n + l.length, 0))
+  const top = vMiddle ? y + (boxH - lines.length * lh) / 2 : y + padY
   lines.forEach((line, i) => {
     const lineW = measure(line)
     const lx = st.align === 'center' ? x + (w - lineW) / 2 : st.align === 'right' ? x + w - padX - lineW : x + padX
     const shown = remaining >= line.length ? line : line.slice(0, Math.max(0, remaining))
     remaining -= line.length
-    if (shown) ctx.fillText(shown, lx, y + padY + lh * (i + 0.5))
+    if (!shown) return
+    const ty = top + lh * (i + 0.5)
+    if (st.shadow) { ctx.shadowColor = resolveColor(st.shadow.color, tokens); ctx.shadowBlur = st.shadow.blur * S; ctx.shadowOffsetX = st.shadow.offsetX * S; ctx.shadowOffsetY = st.shadow.offsetY * S }
+    if (st.stroke && st.stroke.width > 0) {          // outline first, so the fill sits on top (matches the screen: paint-order stroke fill)
+      ctx.strokeStyle = resolveColor(st.stroke.color, tokens); ctx.lineWidth = st.stroke.width * S; ctx.lineJoin = 'round'
+      ctx.strokeText(shown, lx, ty)
+      ctx.shadowColor = 'rgba(0,0,0,0)'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0
+      if (st.shadow) { ctx.shadowColor = resolveColor(st.shadow.color, tokens); ctx.shadowBlur = st.shadow.blur * S; ctx.shadowOffsetX = st.shadow.offsetX * S; ctx.shadowOffsetY = st.shadow.offsetY * S }
+    }
+    ctx.fillText(shown, lx, ty)
+    if (st.shadow) { ctx.shadowColor = 'rgba(0,0,0,0)'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0 }
   })
 }
 
+function polygonPath(ctx: Ctx2D, pts: [number, number][], b: Box) {
+  ctx.beginPath()
+  pts.forEach(([px, py], k) => (k === 0 ? ctx.moveTo(b.x + px * b.w, b.y + py * b.h) : ctx.lineTo(b.x + px * b.w, b.y + py * b.h)))
+  ctx.closePath()
+}
+
 function drawShape(ctx: Ctx2D, el: ShapeElement, b: Box, S: number, tokens?: BrandTokens) {
-  if (el.shape === 'ellipse') {
-    ctx.beginPath(); ctx.ellipse(b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2, 0, 0, Math.PI * 2)
-  } else roundedRectPath(ctx, b.x, b.y, b.w, b.h, (el.cornerRadius ?? 0) * S)
+  const poly = polygonOf(el.shape)
+  if (poly) polygonPath(ctx, poly, b)
+  else if (el.shape === 'ellipse') { ctx.beginPath(); ctx.ellipse(b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2, 0, 0, Math.PI * 2) }
+  else roundedRectPath(ctx, b.x, b.y, b.w, b.h, (el.cornerRadius ?? 0) * S)
   if (el.fill) { ctx.fillStyle = paintStyle(ctx, el.fill, b.x, b.y, b.w, b.h, tokens); ctx.fill() }
-  if (el.stroke && el.stroke.width > 0) { ctx.strokeStyle = resolveColor(el.stroke.color, tokens); ctx.lineWidth = el.stroke.width * S; ctx.stroke() }
+  if (el.stroke && el.stroke.width > 0) { ctx.strokeStyle = resolveColor(el.stroke.color, tokens); ctx.lineWidth = el.stroke.width * S; ctx.lineJoin = 'round'; ctx.stroke() }
+  if (el.text && el.text.content !== '') {
+    const box = { style: { ...el.text.style, align: el.text.style.align }, box: undefined, autoSize: 'fixed' as const, height: 1, maxLines: undefined, content: el.text.content }
+    drawText(ctx, box, b.x + b.w * 0.05, b.y, b.w * 0.9, b.h, S, tokens, null, el.text.content, true)
+  }
+}
+
+function drawPattern(ctx: Ctx2D, bg: Extract<Background, { kind: 'pattern' }>, W: number, H: number, S: number, tokens?: BrandTokens) {
+  const def = PATTERN_BY_ID[bg.pattern]
+  const back = resolveColor(bg.background, tokens), fg = resolveColor(bg.color, tokens)
+  ctx.fillStyle = back; ctx.fillRect(0, 0, W, H)
+  if (!def) return
+  const size = tilePx(def, bg.scale, S)
+  const k = size / def.tile.w
+  ctx.fillStyle = fg; ctx.strokeStyle = fg
+  for (let ty = 0; ty * size < H + size; ty++) for (let tx = 0; tx * size < W + size; tx++) {
+    const ox = tx * size, oy = ty * size
+    for (const it of def.tile.items) {
+      if (it.t === 'rect') ctx.fillRect(ox + it.x * k, oy + it.y * k, it.w * k, it.h * k)
+      else if (it.t === 'circle') { ctx.beginPath(); ctx.ellipse(ox + it.cx * k, oy + it.cy * k, it.r * k, it.r * k, 0, 0, Math.PI * 2); ctx.fill() }
+      else { ctx.lineWidth = it.w * k; ctx.beginPath(); ctx.moveTo(ox + it.x1 * k, oy + it.y1 * k); ctx.lineTo(ox + it.x2 * k, oy + it.y2 * k); ctx.stroke() }
+    }
+  }
 }
 
 function drawImageEl(ctx: Ctx2D, el: ImageElement, b: Box, S: number, images: Map<string, DrawableImage | null>) {
+  const clipToMask = () => {
+    const poly = el.mask ? MASK_POLYGONS[el.mask] : undefined
+    if (poly) polygonPath(ctx, poly, b)
+    else if (el.mask === 'circle') { ctx.beginPath(); ctx.ellipse(b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2, 0, 0, Math.PI * 2) }
+    else roundedRectPath(ctx, b.x, b.y, b.w, b.h, (el.mask === 'rounded' && !el.cornerRadius ? 0.04 : el.cornerRadius ?? 0) * S)
+    ctx.clip()
+  }
+  if (el.source.kind === 'qr') {                                   // a QR code is generated, never loaded
+    const q = qrFor(el.source.data)
+    if (q instanceof QrError) return
+    ctx.save(); clipToMask()
+    const n = q.size + 4
+    const cell = Math.min(b.w, b.h) / n
+    const ox = b.x + (b.w - cell * n) / 2, oy = b.y + (b.h - cell * n) / 2
+    ctx.fillStyle = el.source.bg ?? '#FFFFFF'; ctx.fillRect(ox, oy, cell * n, cell * n)
+    ctx.fillStyle = el.source.fg ?? '#000000'
+    q.modules.forEach((row, y) => { let x = 0; while (x < q.size) { if (row[x]) { let end = x; while (end < q.size && row[end]) end++; ctx.fillRect(ox + (x + 2) * cell, oy + (y + 2) * cell, (end - x) * cell, cell); x = end } else x++ } })
+    ctx.restore()
+    return
+  }
   // Only real images are exported: an empty placeholder is a slot for the user's picture and must not appear in the finished slide (see exportWarnings).
   const url = el.source.kind === 'asset' ? el.source.url : undefined
   const img = url ? images.get(url) : null
   if (!img) return
   ctx.save()
-  const poly = el.mask ? MASK_POLYGONS[el.mask] : undefined
-  if (poly) { ctx.beginPath(); poly.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(b.x + px * b.w, b.y + py * b.h) : ctx.lineTo(b.x + px * b.w, b.y + py * b.h))); ctx.closePath() }
-  else if (el.mask === 'circle') { ctx.beginPath(); ctx.ellipse(b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2, 0, 0, Math.PI * 2) }
-  else roundedRectPath(ctx, b.x, b.y, b.w, b.h, (el.mask === 'rounded' && !el.cornerRadius ? 0.04 : el.cornerRadius ?? 0) * S)
-  ctx.clip()
+  clipToMask()
+  const t = el.trim
+  if (t && (t.top || t.right || t.bottom || t.left)) { ctx.beginPath(); ctx.rect(b.x + t.left * b.w, b.y + t.top * b.h, b.w * (1 - t.left - t.right), b.h * (1 - t.top - t.bottom)); ctx.clip() }
+  if (el.flipX || el.flipY) { const cx = b.x + b.w / 2, cy = b.y + b.h / 2; ctx.translate(cx, cy); ctx.scale(el.flipX ? -1 : 1, el.flipY ? -1 : 1); ctx.translate(-cx, -cy) }
   const r = fitRects(img.width, img.height, b.w, b.h, el.fit, el.focal)
   const zoom = el.fit === 'cover' && el.zoom && el.zoom > 1 ? el.zoom : 1
   if (zoom > 1) {            // zoom about the focal point of the frame, exactly like the on-screen transform-origin
@@ -272,6 +356,8 @@ function drawImageEl(ctx: Ctx2D, el: ImageElement, b: Box, S: number, images: Ma
     const oy = b.y + (el.focal?.y ?? 0.5) * b.h
     ctx.translate(ox, oy); ctx.scale(zoom, zoom); ctx.translate(-ox, -oy)
   }
+  if (hasAdjust(el.adjust)) ctx.filter = canvasFilter(el.adjust, S)
   ctx.drawImage(img, r.sx, r.sy, r.sw, r.sh, b.x + r.dx, b.y + r.dy, r.dw, r.dh)
+  if (hasAdjust(el.adjust)) ctx.filter = 'none'
   ctx.restore()
 }

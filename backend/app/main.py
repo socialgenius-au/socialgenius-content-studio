@@ -20,7 +20,7 @@ from app.limiter import limiter
 from app.schema_patches import apply_additive_schema_patches
 from app.services.media_access import MediaAuthMiddleware
 from app.startup_security import CORS_ENV_VAR, build_allowed_origins, check_secret_key, plan_seed_users
-from app.routers import auth, auth_recovery, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos, ai_usage, media, learning, carousels, brand_kits, carousel_templates, carousel_video
+from app.routers import auth, auth_recovery, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos, ai_usage, media, learning, carousels, brand_kits, carousel_templates, carousel_video, library_items
 
 # Import all models so Base.metadata is fully populated before create_all
 from app.models import (  # noqa: F401
@@ -167,6 +167,7 @@ app.include_router(carousels.router, prefix="/carousels", tags=["carousels"])
 app.include_router(brand_kits.router, prefix="/brand-kits", tags=["brand-kits"])
 app.include_router(carousel_templates.router, prefix="/carousel-templates", tags=["carousel-templates"])
 app.include_router(carousel_video.router, prefix="/carousel-video", tags=["carousel-video"])
+app.include_router(library_items.router, prefix="/library-items", tags=["library-items"])
 # Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. See reference_videos.py's own
 # module docstring for exact scope.
 app.include_router(reference_videos.router, prefix="/reference-videos", tags=["reference-videos"])

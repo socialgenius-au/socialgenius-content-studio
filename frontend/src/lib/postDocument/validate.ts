@@ -1,6 +1,7 @@
 // Post Document — validation. Returns every problem found (with a path), never throws.
 import { walkElements } from './helpers'
 import { isPostElementRole } from './roles'
+import { isSafeLinkUrl } from './links'
 import { POST_DOCUMENT_SCHEMA_VERSION, type PostDocument, type PostElement } from './types'
 
 export interface ValidationResult { ok: boolean; errors: string[] }
@@ -30,15 +31,32 @@ function sourceOk(v: unknown): boolean {
   if (!isObj(v)) return false
   if (v.kind === 'asset') return isStr(v.url) || isNum(v.assetId)
   if (v.kind === 'brand') return v.slot === 'logo' || v.slot === 'mark'
+  if (v.kind === 'qr') return isStr(v.data) && v.data.length > 0 && isSafeLinkUrl(v.data) && (v.fg === undefined || (isStr(v.fg) && HEX.test(v.fg))) && (v.bg === undefined || (isStr(v.bg) && HEX.test(v.bg)))
   if (v.kind === 'placeholder') return isStr(v.label) && (v.glyph === undefined || v.glyph === 'sparkles' || v.glyph === 'none')
   return false
+}
+
+const PATTERN_KINDS = ['dots', 'dots-fine', 'stripes', 'diagonal', 'grid', 'checker', 'zigzag', 'plus', 'crosshatch', 'grain']
+const POLYGON_SHAPES = ['triangle', 'right-triangle', 'diamond', 'parallelogram', 'trapezoid', 'cross', 'heart', 'pentagon', 'hexagon', 'octagon', 'star-4', 'star-5', 'star-6', 'burst', 'arrow-right', 'arrow-left', 'arrow-up', 'arrow-down', 'arrow-double', 'chevron', 'bubble', 'bubble-round', 'line-arrow', 'line-arrow-double']
+const unitNum = (v: unknown): v is number => isNum(v) && v >= 0 && v <= 1
+function trimOk(t: unknown): boolean {
+  if (!isObj(t)) return false
+  const v = (k: string) => (isNum(t[k]) && (t[k] as number) >= 0 && (t[k] as number) <= 0.9 ? (t[k] as number) : NaN)
+  const [a, b, c, d] = [v('top'), v('right'), v('bottom'), v('left')]
+  return [a, b, c, d].every(n => !Number.isNaN(n)) && d + b < 0.95 && a + c < 0.95
+}
+function adjustOk(a: unknown): boolean {
+  if (!isObj(a)) return false
+  const rng = (k: string, lo: number, hi: number) => a[k] === undefined || (isNum(a[k]) && (a[k] as number) >= lo && (a[k] as number) <= hi)
+  return rng('brightness', 0, 300) && rng('contrast', 0, 300) && rng('saturation', 0, 300) && rng('blur', 0, 0.1) && rng('grayscale', 0, 100) && rng('sepia', 0, 100) && rng('hue', -360, 360)
 }
 
 function backgroundOk(v: unknown): boolean {
   if (!isObj(v)) return false
   if (v.kind === 'solid') return colorOk(v.color)
   if (v.kind === 'gradient') return gradientOk(v)
-  if (v.kind === 'image') return sourceOk(v.source) && (v.fit === 'cover' || v.fit === 'contain')
+  if (v.kind === 'image') return sourceOk(v.source) && (v.fit === 'cover' || v.fit === 'contain') && (v.adjust === undefined || adjustOk(v.adjust)) && (v.overlay === undefined || (isObj(v.overlay) && colorOk(v.overlay.color) && unitNum(v.overlay.opacity)))
+  if (v.kind === 'pattern') return PATTERN_KINDS.includes(v.pattern as string) && colorOk(v.color) && colorOk(v.background) && isNum(v.scale) && v.scale >= 0.25 && v.scale <= 6
   return false
 }
 
@@ -108,6 +126,7 @@ function validateElement(el: unknown, path: string, errors: string[], ids: Set<s
   if (typeof e.locked !== 'boolean') errors.push(`${path}.locked: must be boolean`)
   if (e.origin !== undefined && !ORIGINS.includes(e.origin as string)) errors.push(`${path}.origin: unknown`)
   if (e.animations !== undefined) validateAnimations(e.animations, path, errors)
+  if (e.link !== undefined && !(isObj(e.link) && isStr(e.link.url) && isSafeLinkUrl(e.link.url) && (e.link.label === undefined || (isStr(e.link.label) && e.link.label.length <= 200)))) errors.push(`${path}.link: not a valid, allowed link`)
   if (e.adapt !== undefined) {
     const a = e.adapt
     if (!isObj(a)) errors.push(`${path}.adapt: not an object`)
@@ -131,6 +150,8 @@ function validateElement(el: unknown, path: string, errors: string[], ids: Set<s
         if (s.letterSpacing !== undefined && !isNum(s.letterSpacing)) errors.push(`${path}.style.letterSpacing: must be a number`)
         if (!['left', 'center', 'right'].includes(s.align as string)) errors.push(`${path}.style.align: invalid`)
         if (!colorOk(s.color)) errors.push(`${path}.style.color: must be a hex colour or a brand token with a hex fallback`)
+        if (s.stroke !== undefined && !(isObj(s.stroke) && colorOk(s.stroke.color) && isNum(s.stroke.width) && s.stroke.width >= 0 && s.stroke.width <= 0.1)) errors.push(`${path}.style.stroke: invalid outline`)
+        if (s.shadow !== undefined && !(isObj(s.shadow) && colorOk(s.shadow.color) && isNum(s.shadow.blur) && s.shadow.blur >= 0 && s.shadow.blur <= 0.2 && isNum(s.shadow.offsetX) && isNum(s.shadow.offsetY) && Math.abs(s.shadow.offsetX) <= 0.2 && Math.abs(s.shadow.offsetY) <= 0.2)) errors.push(`${path}.style.shadow: invalid shadow`)
       }
       if (!['fixed', 'auto-height', 'auto-width', 'shrink-to-fit'].includes(e.autoSize as string)) errors.push(`${path}.autoSize: invalid`)
       if (e.autoSize === 'fixed' && e.height === 'auto') errors.push(`${path}: a fixed text box needs a numeric height`)
@@ -144,6 +165,17 @@ function validateElement(el: unknown, path: string, errors: string[], ids: Set<s
           for (const k of ['radius', 'paddingX', 'paddingY'] as const) if (b[k] !== undefined && !(isNum(b[k]) && (b[k] as number) >= 0)) errors.push(`${path}.box.${k}: must be >= 0 (shorter-side fraction)`)
         }
       }
+      if (e.dynamic !== undefined) {
+        const d = e.dynamic
+        if (!isObj(d) || !['date', 'time', 'datetime', 'countdown', 'timer'].includes(d.kind as string)) errors.push(`${path}.dynamic.kind: unknown`)
+        else {
+          if (d.iso !== undefined && !(isStr(d.iso) && !Number.isNaN(Date.parse(d.iso)))) errors.push(`${path}.dynamic.iso: must be a date and time`)
+          if (d.seconds !== undefined && !(isNum(d.seconds) && d.seconds >= 0 && d.seconds <= 359999)) errors.push(`${path}.dynamic.seconds: 0..359999`)
+          if (d.direction !== undefined && d.direction !== 'down' && d.direction !== 'up') errors.push(`${path}.dynamic.direction: unknown`)
+          if (d.style !== undefined && !['long', 'medium', 'short', 'numeric', '12h', '24h'].includes(d.style as string)) errors.push(`${path}.dynamic.style: unknown`)
+          if (d.format !== undefined && !['auto', 'mm:ss', 'hh:mm:ss', 'ss'].includes(d.format as string)) errors.push(`${path}.dynamic.format: unknown`)
+        }
+      }
       if (e.action !== undefined && !(isObj(e.action) && ['link', 'call', 'message', 'none'].includes(e.action.kind as string))) errors.push(`${path}.action: invalid`)
       break
     }
@@ -154,12 +186,17 @@ function validateElement(el: unknown, path: string, errors: string[], ids: Set<s
       if (e.role === 'brand_logo' && e.lockAspect !== true) errors.push(`${path}: a brand_logo must preserve its aspect ratio (lockAspect: true)`)
       if (e.focal !== undefined && !(isObj(e.focal) && unit(e.focal.x) && unit(e.focal.y))) errors.push(`${path}.focal: x/y must be 0..1`)
       if (e.zoom !== undefined && !(isNum(e.zoom) && e.zoom >= 1 && e.zoom <= 8)) errors.push(`${path}.zoom: must be 1..8`)
-      if (e.mask !== undefined && !['none', 'circle', 'rounded', 'diamond', 'hexagon', 'triangle'].includes(e.mask as string)) errors.push(`${path}.mask: unknown`)
+      if (e.mask !== undefined && !['none', 'circle', 'rounded', ...POLYGON_SHAPES].includes(e.mask as string)) errors.push(`${path}.mask: unknown`)
+      if (e.adjust !== undefined && !adjustOk(e.adjust)) errors.push(`${path}.adjust: values out of range`)
+      if (e.flipX !== undefined && typeof e.flipX !== 'boolean') errors.push(`${path}.flipX: must be boolean`)
+      if (e.flipY !== undefined && typeof e.flipY !== 'boolean') errors.push(`${path}.flipY: must be boolean`)
+      if (e.trim !== undefined && !(trimOk(e.trim))) errors.push(`${path}.trim: each edge 0..0.9 and the two opposite edges together under 0.95`)
       if (e.crop !== undefined && !(isObj(e.crop) && unit(e.crop.x) && unit(e.crop.y) && unit(e.crop.width) && unit(e.crop.height))) errors.push(`${path}.crop: normalized rectangle required`)
       break
     }
     case 'shape': {
-      if (!['rect', 'ellipse', 'line'].includes(e.shape as string)) errors.push(`${path}.shape: invalid`)
+      if (!['rect', 'ellipse', 'line', ...POLYGON_SHAPES].includes(e.shape as string)) errors.push(`${path}.shape: invalid`)
+      if (e.text !== undefined && !(isObj(e.text) && isStr(e.text.content) && e.text.content.length <= 2000 && isObj(e.text.style) && isNum(e.text.style.fontSize) && e.text.style.fontSize > 0 && e.text.style.fontSize <= 1 && colorOk(e.text.style.color))) errors.push(`${path}.text: invalid text inside the shape`)
       if (e.fill !== undefined && !paintOk(e.fill)) errors.push(`${path}.fill: invalid paint`)
       if (e.stroke !== undefined && !(isObj(e.stroke) && colorOk(e.stroke.color) && isNum(e.stroke.width) && e.stroke.width >= 0)) errors.push(`${path}.stroke: invalid`)
       break
@@ -211,6 +248,12 @@ export function validatePostDocument(doc: unknown): ValidationResult {
     else p.elements.forEach((el, j) => validateElement(el, `${path}.elements[${j}]`, errors, elementIds))
   })
 
+  if (doc.audio !== undefined) {
+    const a = doc.audio
+    const ms = (k: string, hi: number) => isObj(a) && isNum(a[k]) && (a[k] as number) >= 0 && (a[k] as number) <= hi
+    if (!isObj(a) || !(isNum(a.assetId) && Number.isInteger(a.assetId) && a.assetId > 0) || !isStr(a.url) || !isStr(a.name) || !ms('sourceMs', 86_400_000) || !ms('trimStartMs', 86_400_000) || !ms('trimEndMs', 86_400_000) || !ms('offsetMs', 3_600_000) || !ms('fadeInMs', 600_000) || !ms('fadeOutMs', 600_000) || !(isNum(a.volume) && a.volume >= 0 && a.volume <= 2) || typeof a.muted !== 'boolean') errors.push('audio: invalid background music settings')
+    else if ((a.trimEndMs as number) !== 0 && (a.trimEndMs as number) <= (a.trimStartMs as number)) errors.push('audio: the end of the trim must be after its start')
+  }
   if (doc.variants !== undefined) {
     if (!isObj(doc.variants)) errors.push('variants: must be an object')
     else for (const [k, v] of Object.entries(doc.variants)) {

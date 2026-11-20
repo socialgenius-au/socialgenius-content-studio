@@ -161,7 +161,7 @@ describe('image zoom, masks and focus', () => {
     expect(fitRects(2000, 1000, 500, 500, 'cover', { x: 0.5, y: 0.5 })).toMatchObject({ sw: 1000, sh: 1000 })
     expect(maskClipPath('diamond')).toBe('polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)')
     expect(maskClipPath('circle')).toBeUndefined()
-    expect(Object.keys(MASK_POLYGONS).sort()).toEqual(['diamond', 'hexagon', 'triangle'])
+    expect(Object.keys(MASK_POLYGONS)).toEqual(expect.arrayContaining(['diamond', 'hexagon', 'triangle', 'star-5', 'heart', 'bubble', 'arrow-right']))
   })
 
   it('the exporter clips masked pictures and applies the zoom about the focal point, in this order', async () => {

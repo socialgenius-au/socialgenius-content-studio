@@ -27,9 +27,10 @@ from app.models.learning_record import LearningRecord
 from app.models.carousel_document import CarouselDocument
 from app.models.brand_kit import BrandKit
 from app.models.carousel_template import CarouselTemplate
+from app.models.library_item import LibraryItem
 
 __all__ = [
     "User", "Brand", "Job", "Asset", "Transcript", "Template", "VideoStudioDraft",
     "ReferenceVideo", "VideoAnalysis", "Scene", "Shot", "TextElement", "VisualObject",
-    "AnalysisAnnotation", "StrategicInsight", "ShotFrame", "SpeechSegment", "AiCallLedger", "LearningRecord", "CarouselDocument", "BrandKit", "CarouselTemplate",
+    "AnalysisAnnotation", "StrategicInsight", "ShotFrame", "SpeechSegment", "AiCallLedger", "LearningRecord", "CarouselDocument", "BrandKit", "CarouselTemplate", "LibraryItem",
 ]

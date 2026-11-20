@@ -8,6 +8,7 @@ import { BRAND } from '../../../lib/carousel/brandKit'
 import type { AlignMode, AlignTo } from '../../../lib/carousel/geometry'
 import type { EditorAction } from '../editorState'
 import ImagePicker from './ImagePicker'
+import { ImageExtras, ShapeExtras, ShapeSelect, TypographyExtras } from './ElementControls'
 
 export const FONT_STACKS: { label: string; value: string }[] = [
   { label: 'Inter', value: 'Inter, ui-sans-serif, system-ui, sans-serif' },
@@ -159,7 +160,7 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
                   {typeof selected.style.fontFamily === 'string' && !FONT_STACKS.some(f => f.value === selected.style.fontFamily) && <option value={selected.style.fontFamily}>Custom</option>}
                   {FONT_STACKS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}</select></Row>
                 <Row label={`Size (≈${Math.round(selected.style.fontSize * S)}px)`}><input type="range" aria-label="Text size" min={2} max={24} step={0.5} value={pctOf(selected.style.fontSize)} onChange={e => upd({ style: { fontSize: toFrac(e.target.value, 0.01, 0.4) } })} className="w-full" data-testid="text-size" /></Row>
-                <Row label="Weight"><select className={field} aria-label="Font weight" value={selected.style.fontWeight} onChange={e => upd({ style: { fontWeight: Number(e.target.value) } })}>{[400, 500, 600, 700, 800].map(w => <option key={w} value={w}>{w}</option>)}</select></Row>
+                <Row label="Weight"><select className={field} aria-label="Font weight" value={selected.style.fontWeight} onChange={e => upd({ style: { fontWeight: Number(e.target.value) } })}>{[300, 400, 500, 600, 700, 800, 900].map(w => <option key={w} value={w}>{w}</option>)}</select></Row>
                 <Row label="Align">
                   <span className="flex gap-1.5">
                     {(['left', 'center', 'right'] as const).map(a => {
@@ -170,6 +171,7 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
                 </Row>
                 <Row label="Colour"><span className="flex flex-wrap items-center gap-1.5"><input type="color" aria-label="Text colour" value={hex(rc(selected.style.color))} onChange={e => upd({ style: { color: e.target.value } })} className="h-8 w-14 rounded border border-border p-0.5" data-testid="text-color" /><SwatchRow swatches={swatches} label="Brand colours for the text" onPick={ref => upd({ style: { color: ref } })} /></span></Row>
                 <Row label="Line height"><input type="range" aria-label="Line height" min={0.9} max={2} step={0.05} value={selected.style.lineHeight} onChange={e => upd({ style: { lineHeight: Number(e.target.value) } })} className="w-full" /></Row>
+                <TypographyExtras el={selected} upd={upd} rc={rc} />
                 <Row label="Button style">
                   <span className="flex items-center gap-1.5">
                     <input type="checkbox" aria-label="Give the text a filled background" checked={!!selected.box?.fill} onChange={e => upd({ box: e.target.checked ? { fill: '#E8B04A', radius: 0.03, paddingX: 0.04, paddingY: 0.02 } : undefined, autoSize: e.target.checked ? 'auto-width' : 'auto-height' })} />
@@ -192,6 +194,7 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
                     <Row label="Pan up-down"><input type="range" aria-label="Image focus vertical" min={0} max={100} step={1} value={Math.round((selected.focal?.y ?? 0.5) * 100)} onChange={e => upd({ focal: { x: selected.focal?.x ?? 0.5, y: Number(e.target.value) / 100 } })} className="w-full" data-testid="image-focus-y" /></Row>
                   </>
                 )}
+                <ImageExtras el={selected} upd={upd} />
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Replace this picture</p>
                 <ImagePicker onPick={img => upd({ source: { kind: 'asset', assetId: img.assetId, url: img.url }, alt: selected.alt || img.name })} />
               </>
@@ -199,9 +202,10 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
 
             {selected.type === 'shape' && (
               <>
-                <Row label="Shape"><select className={field} aria-label="Shape type" value={selected.shape} onChange={e => upd({ shape: e.target.value })}><option value="rect">Rectangle</option><option value="ellipse">Ellipse</option></select></Row>
+                <Row label="Shape"><ShapeSelect value={selected.shape} onChange={v => upd({ shape: v })} /></Row>
                 <Row label="Fill"><span className="flex flex-wrap items-center gap-1.5"><input type="color" aria-label="Fill colour" value={hex(typeof selected.fill === 'string' ? selected.fill : selected.fill && 'token' in (selected.fill as object) ? rc(selected.fill as ColorRef) : '#1E8A55')} onChange={e => upd({ fill: e.target.value })} className="h-8 w-14 rounded border border-border p-0.5" data-testid="shape-fill" /><SwatchRow swatches={swatches} label="Brand colours for the fill" onPick={ref => upd({ fill: ref })} /></span></Row>
                 <Row label="Corners"><input type="range" aria-label="Corner radius" min={0} max={20} step={0.5} value={pctOf(selected.cornerRadius ?? 0)} onChange={e => upd({ cornerRadius: toFrac(e.target.value, 0, 0.5) })} className="w-full" /></Row>
+                <ShapeExtras el={selected} upd={upd} rc={rc} />
               </>
             )}
 
@@ -210,8 +214,8 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
               <Row label="Y %"><NumField label="Y position percent" value={pctOf(selected.y)} onChange={v => upd({ y: v / 100 })} /></Row>
               <Row label="Width %"><NumField label="Width percent" value={pctOf(selected.width)} min={1} onChange={v => upd({ width: v / 100 })} /></Row>
               <Row label="Height %">{selected.height === 'auto' ? <span className="text-xs text-muted-foreground">auto</span> : <NumField label="Height percent" value={pctOf(selected.height)} min={1} onChange={v => upd({ height: v / 100 })} />}</Row>
-              <Row label="Rotate °"><NumField label="Rotation degrees" value={selected.rotation} min={-180} max={180} step={1} onChange={v => upd({ rotation: v })} /></Row>
-              <Row label="Opacity"><input type="range" aria-label="Opacity" min={0} max={100} step={5} value={Math.round(selected.opacity * 100)} onChange={e => upd({ opacity: Number(e.target.value) / 100 })} className="w-full" /></Row>
+              <Row label="Rotate °"><span className="flex items-center gap-1.5"><input type="range" aria-label="Rotation slider" min={-180} max={180} step={1} value={selected.rotation} onChange={e => upd({ rotation: Number(e.target.value) })} className="min-w-0 flex-1" data-testid="rotation" /><NumField label="Rotation degrees" value={selected.rotation} min={-180} max={180} step={1} onChange={v => upd({ rotation: v })} /></span></Row>
+              <Row label={`Opacity ${Math.round(selected.opacity * 100)}%`}><input type="range" aria-label="Opacity" min={0} max={100} step={1} value={Math.round(selected.opacity * 100)} onChange={e => upd({ opacity: Number(e.target.value) / 100 })} className="w-full" data-testid="opacity" /></Row>
             </div>
           </>
         )}

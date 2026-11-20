@@ -26,7 +26,7 @@ from app.models.carousel_document import CarouselDocument
 from app.models.user import User
 from app.schemas.carousel import CarouselCreate, CarouselFull, CarouselSaved, CarouselSummary, CarouselUpdate
 from app.services.carousel_validation import (
-    MAX_CAROUSELS_PER_USER, MAX_DOC_BYTES, CarouselValidationError, check_asset_ownership, extract_metadata, validate_document,
+    MAX_CAROUSELS_PER_USER, MAX_DOC_BYTES, CarouselValidationError, check_asset_ownership, check_audio_asset, extract_metadata, validate_document,
 )
 from app.services.media_access import create_media_token, rewrite_media_urls
 
@@ -100,6 +100,7 @@ async def create_carousel(body: CarouselCreate, db: AsyncSession = Depends(get_d
     try:
         doc, assets = validate_document(body.document)
         await check_asset_ownership(db, user.id, assets)
+        await check_audio_asset(db, user.id, doc)
     except CarouselValidationError as exc:
         raise _invalid(exc)
     doc_id = doc["id"]
@@ -130,6 +131,7 @@ async def update_carousel(doc_id: str, body: CarouselUpdate, db: AsyncSession = 
     try:
         doc, assets = validate_document(body.document, expected_doc_id=doc_id)
         await check_asset_ownership(db, user.id, assets)
+        await check_audio_asset(db, user.id, doc)
     except CarouselValidationError as exc:
         raise _invalid(exc)
     row = await _get_owned(db, user, doc_id, lock=True)           # row lock: two overlapping saves are applied one after the other, each checked against the version it sees

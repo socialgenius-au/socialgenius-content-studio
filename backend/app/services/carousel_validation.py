@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import re
 
+from urllib.parse import urlsplit
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,7 +33,7 @@ MAX_URL = 2048
 MAX_CAROUSELS_PER_USER = 1000
 ID_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 ELEMENT_TYPES = frozenset({"text", "image", "shape", "group"})
-BACKGROUND_KINDS = frozenset({"solid", "gradient", "image"})
+BACKGROUND_KINDS = frozenset({"solid", "gradient", "image", "pattern"})
 URL_OK = re.compile(r"^(?:/(?!/)|https?://)", re.IGNORECASE)
 
 # Motion (animated video export): bounded so a hostile document cannot ask for an absurd render. Static exports ignore all of it.
@@ -106,6 +108,40 @@ class CarouselValidationError(ValueError):
         self.errors = errors
 
 
+# Links and QR destinations (mirrors frontend lib/postDocument/links.ts): web addresses, mailto:, tel:, sms: and app deep links; never scripts, embedded data, files or blobs.
+MAX_LINK = 2048
+BLOCKED_SCHEMES = frozenset({"javascript", "data", "vbscript", "file", "blob", "about", "chrome", "chrome-extension", "view-source", "ftp", "ws", "wss", "jar"})
+_SCHEME = re.compile(r"^([a-z][a-z0-9+.-]{0,30}):", re.IGNORECASE)
+_CONTROL = re.compile(r"[\s\x00-\x1f\x7f]")
+
+
+def link_ok(url) -> bool:
+    if not isinstance(url, str):
+        return False
+    url = url.strip()
+    if not url or len(url) > MAX_LINK or _CONTROL.search(url):
+        return False
+    m = _SCHEME.match(url)
+    if not m:
+        return False
+    scheme = m.group(1).lower()
+    if scheme in BLOCKED_SCHEMES:
+        return False
+    rest = url[m.end():]
+    if scheme in ("http", "https"):
+        try:
+            u = urlsplit(url)
+            host = u.hostname
+        except ValueError:
+            return False
+        return bool(host) and ("." in host or host == "localhost") and not u.username and not u.password
+    if scheme == "mailto":
+        return re.match(r"^[^@/\s]+@[^@/\s]+\.[^@/\s]+", rest) is not None
+    if scheme in ("tel", "sms"):
+        return re.match(r"^\+?[0-9][0-9\-().;=,a-zA-Z]{2,}$", rest) is not None
+    return rest.startswith("//") and len(rest) >= 3
+
+
 def _walk_strings(obj, path: str, errors: list[str], depth: int = 0) -> None:
     if depth > 24:
         errors.append(f"{path}: nested too deeply")
@@ -117,6 +153,16 @@ def _walk_strings(obj, path: str, errors: list[str], depth: int = 0) -> None:
             errors.append(f"{path}: inline image data is not stored; upload the picture instead")
     elif isinstance(obj, dict):
         for k, v in obj.items():
+            if k == "link" and isinstance(v, dict):                      # an element's link: any allowed link scheme, not only http(s)
+                if not link_ok(v.get("url")):
+                    errors.append(f"{path}.link.url: not a valid, allowed link")
+                if isinstance(v.get("label"), str) and len(v["label"]) > 200:
+                    errors.append(f"{path}.link.label: too long")
+                continue
+            if k == "data" and obj.get("kind") == "qr":                  # a QR code's destination
+                if not link_ok(v):
+                    errors.append(f"{path}.data: not a valid, allowed link for a QR code")
+                continue
             if k == "url" and isinstance(v, str) and v != "":
                 if len(v) > MAX_URL or not URL_OK.match(v):
                     errors.append(f"{path}.url: must be a relative path or an http(s) address of at most {MAX_URL} characters")
@@ -199,6 +245,19 @@ def validate_document(doc, expected_doc_id: str | None = None) -> tuple[dict, se
     pages = doc.get("pages")
     ids: set[str] = set()
     assets: set[int] = set()
+    audio = doc.get("audio")
+    if audio is not None:
+        if not isinstance(audio, dict) or isinstance(audio.get("assetId"), bool) or not isinstance(audio.get("assetId"), int) or audio["assetId"] <= 0:
+            errors.append("audio: needs the id of an audio file in your media library")
+        else:
+            assets.add(audio["assetId"])
+            for key, hi in (("sourceMs", 86_400_000), ("trimStartMs", 86_400_000), ("trimEndMs", 86_400_000), ("offsetMs", 3_600_000), ("fadeInMs", 600_000), ("fadeOutMs", 600_000)):
+                if not _num(audio.get(key), 0, hi):
+                    errors.append(f"audio.{key}: 0 to {hi}")
+            if not _num(audio.get("volume"), 0, 2):
+                errors.append("audio.volume: 0 to 2")
+            if audio.get("trimEndMs") and _num(audio.get("trimEndMs"), 0, 86_400_000) and audio["trimEndMs"] <= audio.get("trimStartMs", 0):
+                errors.append("audio: the end of the trim must be after its start")
     if not isinstance(pages, list) or len(pages) < 1:
         errors.append("pages: a carousel needs at least one slide")
     else:
@@ -260,3 +319,13 @@ def extract_metadata(doc: dict) -> dict:
         "blueprint_id": blueprint[len("blueprint:"):][:64] if isinstance(blueprint, str) and blueprint.startswith("blueprint:") else None,
         "reference_video_id": ref_id,
     }
+
+
+async def check_audio_asset(db: AsyncSession, user_id: int, doc: dict) -> None:
+    """The background music must be an AUDIO file of this user's (ownership alone is checked with the other assets)."""
+    audio = doc.get("audio")
+    if not isinstance(audio, dict):
+        return
+    kind = (await db.execute(select(Asset.file_type).where(Asset.id == audio.get("assetId"), Asset.user_id == user_id))).scalar_one_or_none()
+    if kind != "audio":
+        raise CarouselValidationError(["audio: choose an audio file (MP3, WAV, M4A or AAC) from your media library"])
