@@ -234,6 +234,58 @@ export const videoExportApi = {
     api.post('/video-export/export', body, { responseType: 'blob' }),
 }
 
+// Carousel Creator: authenticated, per-user server storage (see backend/app/routers/carousels.py). Nothing here touches browser storage.
+export const carouselsApi = {
+  list:      ()                                            => api.get('/carousels/'),
+  get:       (docId: string)                               => api.get(`/carousels/${encodeURIComponent(docId)}`),
+  create:    (body: Record<string, unknown>)               => api.post('/carousels/', body),
+  update:    (docId: string, body: Record<string, unknown>) => api.put(`/carousels/${encodeURIComponent(docId)}`, body),
+  duplicate: (docId: string)                               => api.post(`/carousels/${encodeURIComponent(docId)}/duplicate`),
+  delete:    (docId: string)                               => api.delete(`/carousels/${encodeURIComponent(docId)}`),
+}
+
+// Carousel Creator: the design library (reusable elements and backgrounds saved by the user).
+export const libraryItemsApi = {
+  list:   ()                                          => api.get('/library-items/'),
+  get:    (id: number)                                => api.get(`/library-items/${id}`),
+  create: (body: Record<string, unknown>)             => api.post('/library-items/', body),
+  rename: (id: number, name: string)                  => api.put(`/library-items/${id}`, { name }),
+  delete: (id: number)                                => api.delete(`/library-items/${id}`),
+}
+
+// Carousel Creator: animated video export. The browser renders every frame; the server encodes them with FFmpeg (see backend/app/routers/carousel_video.py).
+export const carouselVideoApi = {
+  createJob:  (body: Record<string, unknown>) => api.post('/carousel-video/jobs', body),
+  putFrames:  (jobId: string, start: number, data: ArrayBuffer) => api.put(`/carousel-video/jobs/${jobId}/frames`, data, { params: { start }, headers: { 'Content-Type': 'application/octet-stream' }, maxBodyLength: Infinity }),
+  render:     (jobId: string) => api.post(`/carousel-video/jobs/${jobId}/render`, null, { timeout: 15 * 60 * 1000 }),
+  download:   (jobId: string) => api.get(`/carousel-video/jobs/${jobId}/download`, { responseType: 'arraybuffer', timeout: 5 * 60 * 1000 }),
+  delete:     (jobId: string) => api.delete(`/carousel-video/jobs/${jobId}`),
+}
+
+// Carousel Creator: Brand Kits (account-owned brand names, colours, logos, fonts, assets) and reusable carousel templates. Pictures and fonts live in the existing media storage.
+export const brandKitsApi = {
+  list:      ()                                              => api.get('/brand-kits/'),
+  get:       (id: number)                                    => api.get(`/brand-kits/${id}`),
+  create:    (body: Record<string, unknown>)                 => api.post('/brand-kits/', body),
+  update:    (id: number, body: Record<string, unknown>)     => api.put(`/brand-kits/${id}`, body),
+  duplicate: (id: number)                                    => api.post(`/brand-kits/${id}/duplicate`),
+  delete:    (id: number)                                    => api.delete(`/brand-kits/${id}`),
+  uploadFont: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/brand-kits/fonts', form, { headers: { 'Content-Type': undefined as unknown as string } })
+  },
+}
+
+export const carouselTemplatesApi = {
+  list:      ()                                              => api.get('/carousel-templates/'),
+  get:       (id: number)                                    => api.get(`/carousel-templates/${id}`),
+  create:    (body: Record<string, unknown>)                 => api.post('/carousel-templates/', body),
+  update:    (id: number, body: Record<string, unknown>)     => api.put(`/carousel-templates/${id}`, body),
+  duplicate: (id: number)                                    => api.post(`/carousel-templates/${id}/duplicate`),
+  delete:    (id: number)                                    => api.delete(`/carousel-templates/${id}`),
+}
+
 export const uploadApi = {
   upload: (file: File, job_id?: number) => {
     const form = new FormData()

@@ -41,6 +41,10 @@ _ROLE_BY_KIND = {"hook_visual": ("opening_hook", "Opening / hook"), "emotional_r
                  "text_use": ("text_focus", "Text focus")}
 
 
+_ROLE_PRIORITY = ["opening_hook", "demonstration", "emotional_shift", "proof", "contrast", "problem", "reveal", "progression", "payoff", "call_to_action", "interruption", "rhythm", "visual_build",
+                  "persuasion", "audio_visual", "visual_focus", "audio_focus", "text_focus"]
+
+
 def _num(x):
     return float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else None
 
@@ -151,23 +155,20 @@ def narrative_progression(sections: list[dict], hook_profile: dict | None, struc
     for s in sections:
         cre = s.get("creative") or {}
         findings = cre.get("findings") or []
-        roles = []
+        # every finding contributes a role (the mechanism the AI named is the richer label; the finding kind is the fallback); the MOST SPECIFIC narrative role leads, the others are kept as secondary roles
+        cands = []
         for f in findings:
-            candidate = _ROLE.get(f.get("mechanism_hint")) or _ROLE_BY_KIND.get(f.get("kind"))
-            if candidate and candidate not in roles:
-                roles.append(candidate)
-        if s.get("is_opening") or s.get("overlaps_hook_window"):
-            opening = next((r for r in roles if r[0] == "opening_hook"), None)
-            if opening:
-                roles.remove(opening)
-                roles.insert(0, opening)
-        role = roles[0] if roles else None
+            r = _ROLE.get(f.get("mechanism_hint")) or _ROLE_BY_KIND.get(f.get("kind"))
+            if r and r not in cands:
+                cands.append(r)
+        cands.sort(key=lambda r: _ROLE_PRIORITY.index(r[0]) if r[0] in _ROLE_PRIORITY else len(_ROLE_PRIORITY))
+        role = cands[0] if cands else None
         confs = [f.get("confidence") for f in findings if f.get("confidence")]
         out.append({
-            "section": s["number"], "start_time": s["start_time"], "end_time": s["end_time"], "role": role[0] if role else None, "role_label": role[1] if role else None, "secondary_roles": [{"role": r[0], "label": r[1]} for r in roles[1:]],
+            "section": s["number"], "start_time": s["start_time"], "end_time": s["end_time"], "role": role[0] if role else None, "role_label": role[1] if role else None,
             "basis": "ai_vision (inferred)" if role else "not established", "finding_ids": [f.get("id") for f in findings], "confidence": min(confs, key=["low", "medium", "high"].index) if confs else None,
             "channels": {"visual": bool(cre.get("shot_reads") or findings), "spoken": bool(s.get("speech")), "on_screen_text": bool(s.get("on_screen_text"))},
-            "is_opening": bool(s.get("is_opening")), "overlaps_hook_window": bool(s.get("overlaps_hook_window")),
+            "also": [r[1] for r in cands[1:]], "is_opening": bool(s.get("is_opening")), "overlaps_hook_window": bool(s.get("overlaps_hook_window")),
         })
     known = [x for x in out if x["role"]]
     arc = []

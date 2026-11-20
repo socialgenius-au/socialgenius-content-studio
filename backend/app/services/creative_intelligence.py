@@ -91,20 +91,16 @@ def build_creative_intelligence(anatomy: dict, mechanisms: dict | None) -> dict:
     status = mech.get("status") or "not_run"
     entries = [mechanism_entry(m, anatomy) for m in (mech.get("mechanisms") or [])] if status in ("current", "stale") else []
     rec = video.get("reconciliation") or {}
-    contradictions_by_key = {}
-    sources = [{"topic": i.get("topic"), "status": i.get("status"), "sections": i.get("sections"), "note": i.get("note"), "authority": i.get("authority")} for i in rec.get("items") or [] if i.get("status") != "established"]
+    grouped: dict[tuple, dict] = {}
     hp = video.get("hook_profile")
-    sources += [{"topic": c["topic"], "status": c["status"], "sections": [1], "note": c["note"], "authority": "hook profile"} for c in (hp or {}).get("contradictions") or []]
-    for item in sources:
-        key = (item.get("topic"), item.get("status"), item.get("note"), item.get("authority"))
-        if key not in contradictions_by_key:
-            contradictions_by_key[key] = {**item, "sections": list(item.get("sections") or [])}
-        else:
-            existing = contradictions_by_key[key]["sections"]
-            for section in item.get("sections") or []:
-                if section not in existing:
-                    existing.append(section)
-    contradictions = list(contradictions_by_key.values())
+    raw = [{"topic": i.get("topic"), "status": i.get("status"), "sections": i.get("sections") or [], "note": i.get("note"), "authority": i.get("authority")} for i in rec.get("items") or [] if i.get("status") != "established"]
+    raw += [{"topic": c["topic"], "status": c["status"], "sections": [1], "note": c["note"], "authority": "hook profile"} for c in (hp or {}).get("contradictions") or []]
+    for c in raw:                                   # the same disagreement reported for four sections is ONE disagreement across four sections
+        g = grouped.setdefault((c["topic"], c["status"]), {"topic": c["topic"], "status": c["status"], "sections": [], "notes": [], "authority": c["authority"]})
+        g["sections"] = sorted(set(g["sections"]) | set(c["sections"]))
+        if c["note"] and c["note"] not in g["notes"]:
+            g["notes"].append(c["note"])
+    contradictions = [{**g, "note": g["notes"][0] if g["notes"] else None} for g in grouped.values()]
     limitations = list(mech.get("overall_limitations") or []) + list((video.get("structure") or {}).get("uncertainty") or [])
     prov = anatomy.get("provenance") or {}
     return {
