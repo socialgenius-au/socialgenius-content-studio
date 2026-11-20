@@ -34,7 +34,7 @@ export function createHttpVideoSink(api: CarouselVideoApiLike): VideoSink {
   const wrap = async <T,>(fn: () => Promise<T>): Promise<T> => { try { return await fn() } catch (e) { throw explain(e) } }
   return {
     start: meta => wrap(async () => {
-      const r = (await api.createJob({ fps: meta.fps, width: meta.width, height: meta.height, frames: meta.frames, format: meta.format })).data as { job_id: string }
+      const r = (await api.createJob({ fps: meta.fps, width: meta.width, height: meta.height, frames: meta.frames, format: meta.format, ...(meta.audio ? { audio: meta.audio } : {}) })).data as { job_id: string }
       formats.set(r.job_id, meta.format)
       return r.job_id
     }),

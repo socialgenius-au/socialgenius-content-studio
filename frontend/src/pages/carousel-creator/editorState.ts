@@ -5,7 +5,7 @@
 //
 // SELECTION: `selectedIds` is the set of selected top-level elements on the open slide (in the order they were picked); `selectedElementId` is the primary one (the last picked), which the
 // inspector edits. Operations on several elements (align, distribute, group, nudge, delete, drag) apply to the whole set.
-import type { Background, ElementAnimation, PostDocument, PostElement, SlideTransition } from '../../lib/postDocument'
+import type { AudioTrack, Background, ElementAnimation, PostDocument, PostElement, SlideTransition } from '../../lib/postDocument'
 import {
   CarouselError, addElement, addImages, alignElements, deleteElement, deleteElements, deleteSlide, distributeElements, duplicateElement, duplicateSlide, groupElements, insertSlide, makeImage, makeShape,
   makeText, moveElementLayer, moveElementTo, moveSlide, newSlide, nudgeElements, animateAllEntrances, clearSlideAnimations, setElementAnimation, setSlideMotion, setTransitionForAll, renameSlide, setLockedMany, setSlideBackground, setSlideElements, slideIndex, ungroupElement, updateElement,
@@ -54,6 +54,8 @@ export type EditorAction =
   | { type: 'commitDoc'; doc: PostDocument; activeSlideId?: string; selectIds?: string[] }
   | { type: 'addPrepared'; element: PostElement }
   | { type: 'addPreparedMany'; elements: PostElement[] }
+  /** Sets (or, with null, removes) the carousel's background music. */
+  | { type: 'setAudio'; audio: AudioTrack | null }
   | { type: 'slideMotion'; id: string; patch: SlideMotionPatch }
   | { type: 'transitionForAll'; transition: SlideTransition | null }
   | { type: 'elementAnimation'; id: string; phase: ElementAnimation['phase']; anim: ElementAnimation | null }
@@ -161,6 +163,11 @@ function reduce(s: EditorState, a: EditorAction, ctx?: OpContext): EditorState {
     case 'elementAnimation': return commit(s, setElementAnimation(s.doc, active, a.id, a.phase, a.anim, ctx))
     case 'animateAll': return commit(s, animateAllEntrances(s.doc, active, a.kind, { staggerMs: a.staggerMs, direction: a.direction }, ctx))
     case 'clearAnimations': return commit(s, clearSlideAnimations(s.doc, active, ctx))
+    case 'setAudio': {
+      const { audio: _old, ...rest } = s.doc
+      void _old
+      return commit(s, { ...(a.audio ? { ...rest, audio: a.audio } : rest), revision: s.doc.revision + 1, updatedAt: (ctx?.now ?? (() => new Date()))().toISOString() } as PostDocument)
+    }
     case 'addPreparedMany': {
       let next = s.doc
       for (const e of a.elements) next = addElement(next, active, e, ctx)

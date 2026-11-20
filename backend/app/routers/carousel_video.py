@@ -27,11 +27,16 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from app.database import get_db
 from app.deps import current_user
+from app.models.asset import Asset
 from app.models.user import User
+from app.routers.video_export import _resolve_asset_path
 from app.services import ffmpeg_svc
 
 router = APIRouter()
@@ -49,12 +54,24 @@ JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _encode_lock = asyncio.Semaphore(1)
 
 
+class AudioSpec(BaseModel):
+    """Background music for an MP4. Times are milliseconds. The file must be one of the signed-in user's own AUDIO assets."""
+    asset_id: int = Field(gt=0)
+    trim_start_ms: int = Field(default=0, ge=0, le=86_400_000)
+    trim_end_ms: int = Field(default=0, ge=0, le=86_400_000)        # 0 = to the end of the file
+    offset_ms: int = Field(default=0, ge=0, le=3_600_000)           # where on the video's timeline the music starts
+    volume: float = Field(default=1.0, ge=0.0, le=2.0)
+    fade_in_ms: int = Field(default=0, ge=0, le=600_000)
+    fade_out_ms: int = Field(default=0, ge=0, le=600_000)
+
+
 class JobCreate(BaseModel):
     fps: int = Field(ge=1, le=MAX_FPS)
     width: int = Field(ge=2, le=MAX_DIMENSION)
     height: int = Field(ge=2, le=MAX_DIMENSION)
     frames: int = Field(ge=1, le=MAX_FRAMES)
     format: Literal["mp4", "gif"] = "mp4"
+    audio: AudioSpec | None = None                                   # ignored for GIF (a GIF has no sound)
 
 
 class JobCreated(BaseModel):
@@ -114,9 +131,20 @@ def _prune(root: Path) -> list[Path]:
 
 
 @router.post("/jobs", response_model=JobCreated, status_code=status.HTTP_201_CREATED)
-async def create_job(body: JobCreate, user: User = Depends(current_user)):
+async def create_job(body: JobCreate, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     if body.width % 2 or body.height % 2:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Video width and height must be even numbers.")
+    audio_meta = None
+    if body.audio is not None and body.format == "mp4":
+        if body.audio.trim_end_ms and body.audio.trim_end_ms <= body.audio.trim_start_ms:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The end of the music trim must be after its start.")
+        kind = (await db.execute(select(Asset.file_type).where(Asset.id == body.audio.asset_id, Asset.user_id == user.id))).scalar_one_or_none()
+        if kind != "audio":                                           # somebody else's file, a missing one and a non-audio file all look the same
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Choose an audio file (MP3, WAV, M4A or AAC) from your media library.")
+        path = await _resolve_asset_path(db, body.audio.asset_id, user.id)
+        if not await _has_audio_stream(path):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="That file has no audio the server can read. Try an MP3, WAV, M4A or AAC file.")
+        audio_meta = {**body.audio.model_dump(), "path": path}
     root = _root(user)
     root.mkdir(parents=True, exist_ok=True)
     if len(_prune(root)) >= MAX_ACTIVE_JOBS:
@@ -124,7 +152,7 @@ async def create_job(body: JobCreate, user: User = Depends(current_user)):
     job_id = uuid.uuid4().hex
     d = root / job_id
     d.mkdir()
-    _write(d, {"fps": body.fps, "width": body.width, "height": body.height, "frames": body.frames, "format": body.format, "next": 0, "bytes": 0, "state": "receiving"})
+    _write(d, {"fps": body.fps, "width": body.width, "height": body.height, "frames": body.frames, "format": body.format, "next": 0, "bytes": 0, "state": "receiving", "audio": audio_meta})
     return JobCreated(job_id=job_id)
 
 
@@ -169,11 +197,48 @@ async def put_frames(job_id: str, request: Request, start: int, user: User = Dep
     return FramesAccepted(received=len(pending), next_frame=n)
 
 
+async def _has_audio_stream(path: str) -> bool:
+    """True when FFmpeg can read at least one audio stream from the file (also proves the file is decodable)."""
+    try:
+        proc = await asyncio.create_subprocess_exec(ffmpeg_svc.FFMPEG_BIN, "-hide_banner", "-i", path, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        _, err = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except (OSError, asyncio.TimeoutError):
+        return False
+    return b"Audio:" in err
+
+
+def _audio_filter(a: dict, total_s: float) -> str:
+    """Trim, level, fade and place the music on the video's timeline, padded or cut to the video's length. Fades are measured on the part that is actually heard."""
+    start = a["trim_start_ms"] / 1000
+    end = a["trim_end_ms"] / 1000
+    offset = a["offset_ms"] / 1000
+    heard = max(0.0, total_s - offset)
+    if end:
+        heard = min(heard, end - start)
+    parts = [f"atrim=start={start:.3f}" + (f":end={end:.3f}" if end else ""), "asetpts=PTS-STARTPTS", f"volume={a['volume']:.3f}"]
+    fi = min(a["fade_in_ms"] / 1000, heard)
+    fo = min(a["fade_out_ms"] / 1000, heard)
+    if fi > 0:
+        parts.append(f"afade=t=in:st=0:d={fi:.3f}")
+    if fo > 0:
+        parts.append(f"afade=t=out:st={max(0.0, heard - fo):.3f}:d={fo:.3f}")
+    if a["offset_ms"] > 0:
+        parts.append(f"adelay={a['offset_ms']}:all=1")
+    parts.append(f"apad=whole_dur={total_s:.3f}")
+    return ",".join(parts)
+
+
 def _encode_args(meta: dict, d: Path, out: Path) -> list[str]:
     src = str(d / "frame_%06d.jpg")
     if meta["format"] == "gif":
         fps = min(meta["fps"], 15)
         return [ffmpeg_svc.FFMPEG_BIN, "-y", "-framerate", str(meta["fps"]), "-i", src, "-vf", f"fps={fps},split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=4", "-loop", "0", str(out)]
+    audio = meta.get("audio")
+    if audio:
+        total_s = meta["frames"] / meta["fps"]
+        graph = f"[0:v]scale=in_range=pc:in_color_matrix=bt601:out_range=tv:out_color_matrix=bt709,format=yuv420p[v];[1:a]{_audio_filter(audio, total_s)}[a]"
+        return [ffmpeg_svc.FFMPEG_BIN, "-y", "-framerate", str(meta["fps"]), "-i", src, "-i", audio["path"], "-filter_complex", graph, "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-c:a", "aac", "-b:a", "160k", "-t", f"{total_s:.3f}", "-movflags", "+faststart", str(out)]
     return [ffmpeg_svc.FFMPEG_BIN, "-y", "-framerate", str(meta["fps"]), "-i", src, "-vf", "scale=in_range=pc:in_color_matrix=bt601:out_range=tv:out_color_matrix=bt709,format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-movflags", "+faststart", str(out)]   # JPEG frames are full-range: convert to the standard limited-range yuv420p every player expects
 
 

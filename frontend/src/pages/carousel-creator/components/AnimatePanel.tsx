@@ -13,7 +13,10 @@ import { useBrandTokens } from '../../../lib/carousel/brandContext'
 import { withMediaToken } from '../../../api/mediaAccess'
 import { carouselVideoApi } from '../../../api/client'
 import type { EditorAction } from '../editorState'
-import MotionPreview from './MotionPreview'
+import MotionPreview, { type PreviewScope } from './MotionPreview'
+import TimelineBar from './TimelineBar'
+import AudioPanel from './AudioPanel'
+import { checkLimits } from '../../../lib/carousel/platformLimits'
 
 const field = 'h-8 w-full rounded-md border border-border bg-background px-2 text-sm'
 const btn = 'inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium hover:bg-muted disabled:opacity-50'
@@ -78,6 +81,9 @@ export default function AnimatePanel({ doc, page, pageIndex, selected, dispatch,
   const [fmt, setFmt] = useState<VideoFormat>('mp4')
   const [scale, setScale] = useState(0.5)
   const [fps, setFps] = useState<number>(24)
+  const [scope, setScope] = useState<PreviewScope>('all')
+  const [playhead, setPlayhead] = useState(0)
+  const [playing, setPlaying] = useState(false)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<{ stage: string; done: number; total: number } | null>(null)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
@@ -90,6 +96,7 @@ export default function AnimatePanel({ doc, page, pageIndex, selected, dispatch,
   const frames = frameCount(timeline, fps)
   const advice = videoAdvice(timeline.totalMs / 1000, size.width, size.height, fps)
   const animated = hasMotion(doc)
+  const limitWarnings = useMemo(() => checkLimits(doc, { kind: fmt === 'gif' ? 'gif' : 'video', slideCount: doc.pages.length, videoSeconds: timeline.totalMs / 1000 }), [doc, fmt, timeline.totalMs])
   const patchSlide = (patch: { transition?: SlideTransition | null; durationMs?: number | null; sequence?: SlideSequence | null }) => dispatch({ type: 'slideMotion', id: page.id, patch })
   const setTransition = (p: Partial<SlideTransition>) => patchSlide({ transition: { ...tr, ...p } })
 
@@ -99,7 +106,7 @@ export default function AnimatePanel({ doc, page, pageIndex, selected, dispatch,
     abort.current = ctl
     try {
       if (typeof document !== 'undefined' && document.fonts?.ready) await document.fonts.ready
-      const file = await exportAnimatedVideo(doc, browserBackend(), sink, { fps, scale, format: fmt, tokens, resolveUrl: withMediaToken, signal: ctl.signal, onProgress: (stage, done, total) => setProgress({ stage, done, total }) })
+      const file = await exportAnimatedVideo(doc, browserBackend(), sink, { fps, scale, format: fmt, audio: doc.audio, tokens, resolveUrl: withMediaToken, signal: ctl.signal, onProgress: (stage, done, total) => setProgress({ stage, done, total }) })
       downloadBytes(`${slug(doc.title)}-animated.${fmt}`, file.mime, file.bytes)
       setMessage({ tone: 'ok', text: `Downloaded ${slug(doc.title)}-animated.${fmt} (${(file.bytes.length / 1024 / 1024).toFixed(2)} MB, ${size.width} × ${size.height}, ${(timeline.totalMs / 1000).toFixed(1)} s).` })
     } catch (e) {
@@ -110,7 +117,8 @@ export default function AnimatePanel({ doc, page, pageIndex, selected, dispatch,
 
   return (
     <div className="space-y-4" data-testid="animate-panel">
-      <MotionPreview doc={doc} activePageId={page.id} />
+      <MotionPreview doc={doc} activePageId={page.id} scope={scope} onScope={setScope} t={playhead} onT={setPlayhead} playing={playing} onPlaying={setPlaying} audio={doc.audio} />
+      <TimelineBar doc={doc} scope={scope} activePageId={page.id} t={playhead} onSeek={ms => { setPlaying(false); setPlayhead(ms) }} onSelectSlide={id => dispatch({ type: 'selectSlide', id })} audio={doc.audio} />
 
       <section aria-label="Slide motion" className="space-y-2 border-t border-border pt-3" data-testid="slide-motion">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Slide {pageIndex + 1}</h3>
@@ -149,6 +157,8 @@ export default function AnimatePanel({ doc, page, pageIndex, selected, dispatch,
         {selected && (['entrance', 'emphasis', 'exit'] as const).map(ph => <PhaseEditor key={`${selected.id}:${ph}`} phase={ph} el={selected} idFor={newAnimId} onChange={a => dispatch({ type: 'elementAnimation', id: selected.id, phase: ph, anim: a })} />)}
       </section>
 
+      <AudioPanel doc={doc} dispatch={dispatch} />
+
       <section aria-label="Animated export" className="space-y-2 border-t border-border pt-3" data-testid="video-export">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Animated video</h3>
         <div className="grid grid-cols-3 gap-2 text-xs">
@@ -157,6 +167,9 @@ export default function AnimatePanel({ doc, page, pageIndex, selected, dispatch,
           <label className="space-y-1"><span className="text-muted-foreground">Frames/s</span><select className={field} value={fps} onChange={e => setFps(Number(e.target.value))} data-testid="video-fps">{VIDEO_FPS_CHOICES.map(f => <option key={f} value={f}>{f}</option>)}</select></label>
         </div>
         <p className="text-xs text-muted-foreground" data-testid="video-summary">{(timeline.totalMs / 1000).toFixed(1)} seconds · {size.width} × {size.height} px · {frames.toLocaleString()} frames{fmt === 'gif' ? ' (GIF plays at up to 15 frames/s)' : ''}. Static PNG, JPEG and PDF exports are not affected.</p>
+        {fmt === 'mp4' && doc.audio && !doc.audio.muted && <p className="text-xs text-muted-foreground" data-testid="video-music-note">The music “{doc.audio.name}” will be mixed into the MP4.</p>}
+        {fmt === 'gif' && doc.audio && <p className="text-xs text-amber-800 dark:text-amber-200" role="status" data-testid="video-gif-silent">A GIF cannot have sound, so the music is left out of GIF exports. Choose MP4 to include it.</p>}
+        {limitWarnings.length > 0 && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100" data-testid="video-platform-limits"><p className="mb-1 flex items-center gap-1 font-semibold"><AlertTriangle className="h-3.5 w-3.5" />Platform limits</p><ul className="list-disc pl-4">{limitWarnings.map((m, i) => <li key={i}>{m}</li>)}</ul></div>}
         {!animated && <p className="text-xs text-amber-800 dark:text-amber-200" role="status" data-testid="video-no-motion">This carousel has no transitions or animations yet, so the video would just show each slide for its time. Add some above.</p>}
         {advice.messages.length > 0 && <div role="status" className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100" data-testid="video-advice" data-level={advice.level}><p className="mb-1 flex items-center gap-1 font-semibold"><AlertTriangle className="h-3.5 w-3.5" />Large export</p><ul className="list-disc pl-4">{advice.messages.map((m, i) => <li key={i}>{m}</li>)}</ul></div>}
         <button type="button" className={`${btn} w-full`} disabled={busy} onClick={() => void exportVideo()} data-testid="export-video">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />}Export animated {fmt.toUpperCase()}</button>

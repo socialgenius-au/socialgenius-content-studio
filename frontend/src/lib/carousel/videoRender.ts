@@ -3,7 +3,8 @@
 // `drawFrame` paints ONE frame of the carousel's timeline: a slide on its own, or two slides composited while a transition runs, with every element's entrance / exit / emphasis applied.
 // The preview calls it for the frame under the playhead; the export calls it for every frame, encodes each as a JPEG and hands it to a `VideoSink` (the server turns the frames into an
 // MP4 or GIF with FFmpeg). Because both use this one function, what you preview is what is exported.
-import type { BrandTokens, PostDocument } from '../postDocument'
+import type { AudioTrack, BrandTokens, PostDocument } from '../postDocument'
+import { trackToSpec } from './audio'
 import { buildTimeline, elementMotion, planFrame, sequenceOffsets, transitionLayers, type Timeline, type TransitionLayer } from './animation'
 import { ExportCancelled, type RasterBackend, type RasterSurface } from './exporter'
 import { drawSlide, type Ctx2D, type DrawableImage } from './rasterize'
@@ -75,7 +76,7 @@ export async function drawFrame(fc: FrameContext, tMs: number): Promise<void> {
 export type VideoFormat = 'mp4' | 'gif'
 export const VIDEO_FPS_CHOICES = [12, 15, 24, 30] as const
 
-export interface VideoMeta { fps: number; width: number; height: number; frames: number; format: VideoFormat }
+export interface VideoMeta { fps: number; width: number; height: number; frames: number; format: VideoFormat; /** background music (MP4 only) */ audio?: NonNullable<ReturnType<typeof trackToSpec>> }
 export interface VideoSink {
   start(meta: VideoMeta): Promise<string>
   /** Frames arrive in order, `startIndex` being the index of the first one in the batch. */
@@ -89,6 +90,8 @@ export interface VideoExportOptions {
   fps: number
   scale: number
   format: VideoFormat
+  /** Background music. Used for MP4 only: a GIF is always silent. */
+  audio?: AudioTrack
   quality?: number
   resolveUrl?: (u: string) => string
   tokens?: BrandTokens
@@ -110,7 +113,8 @@ export async function exportAnimatedVideo(doc: PostDocument, backend: RasterBack
   const size = videoSize(doc, o.scale)
   const fc = await prepareFrameContext(doc, backend, { size, resolveUrl: o.resolveUrl, tokens: o.tokens })
   const total = frameCount(fc.timeline, o.fps)
-  const jobId = await sink.start({ fps: o.fps, width: fc.width, height: fc.height, frames: total, format: o.format })
+  const audio = o.format === 'mp4' ? trackToSpec(o.audio) : null
+  const jobId = await sink.start({ fps: o.fps, width: fc.width, height: fc.height, frames: total, format: o.format, ...(audio ? { audio } : {}) })
   const cancelled = () => { if (o.signal?.aborted) throw new ExportCancelled() }
   try {
     let batch: Uint8Array[] = []
