@@ -203,7 +203,7 @@ export default function StageCanvas({ doc, pageId, selectedId, selectedIds, snap
       onKeyDown={onKeyDown}
       aria-label="Slide canvas. Click an element to select it; Shift-click adds to the selection; drag to move; arrow keys nudge; Ctrl+G groups; [ and ] change layer order; Delete removes; Tab steps through elements; Escape clears."
       data-testid="stage"
-      className="flex min-h-[320px] flex-1 items-center justify-center rounded-lg bg-muted/60 p-3 outline-none focus-visible:ring-2 focus-visible:ring-primary xl:min-h-0"
+      className="flex min-h-[320px] flex-1 rounded-lg bg-muted/60 p-3 outline-none focus-visible:ring-2 focus-visible:ring-primary xl:min-h-0 xl:overflow-auto"
     >
       <div
         ref={canvasRef}
@@ -211,7 +211,7 @@ export default function StageCanvas({ doc, pageId, selectedId, selectedIds, snap
         data-slide-id={pageId}
         data-box-width={box.w}
         data-box-height={box.h}
-        className="relative touch-none select-none shadow-lg"
+        className="relative m-auto shrink-0 touch-none select-none shadow-lg"
         style={{ width: box.w, height: box.h }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
