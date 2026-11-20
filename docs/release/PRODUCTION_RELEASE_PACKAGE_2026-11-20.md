@@ -10,7 +10,7 @@ Revision 1 assumed `feature/carousel-creator-v2` (`276e415`) could be deployed a
 2. **Production appears to deploy from `main`** (deployments appear on each PR merge: 18 Nov ×2, 19 Nov ×4). Merging into `main` is therefore most likely the production deployment. Confirm (decision D2).
 3. Production already contains the Deconstructor/Reconstructor code (it has `startup_security`, `ai_metering`, `schema_patches`, `reference_videos`) but **not** the carousel code.
 
-**Release candidate (use this, not `276e415`):** branch `integration/carousel-v2-on-main`, built as `origin/main` + `feature/carousel-creator-v2` merged with **no conflicts** (merge `24610bf`, plus test-timeout fix `c1b000e`). It keeps all 17 newer `main` commits.
+**Release candidate (use this, not `276e415`):** branch `integration/carousel-v2-on-main`, built as `origin/main` (`2d7a33b`) + `feature/carousel-creator-v2` merged with **no conflicts** (merge `24610bf`, test-timeout fix `c1b000e`; the code has not changed since `c1b000e`, later commits are documentation only). `origin/main` is an ancestor of the candidate: **0 `main` commits are missing**, and `backend/app/routers/assets.py` (the 18 Nov A1-audio fix) is **byte-identical to `main`**. Final identifiers are in section 10.
 
 ## 1. Facts about production (read-only, 2026-11-20)
 
@@ -29,7 +29,7 @@ Revision 1 assumed `feature/carousel-creator-v2` (`276e415`) could be deployed a
 Location: `C:\Users\samee\Documents\socialgenius-backups\production-pre-v2-2026-11-20\`
 
 - **Database**: `production-db-prod-pre-v2-20261120.sql.gz` (+ `.meta.json` with per-table row counts and data hashes). One repeatable-read **read-only** transaction. **Restore-verified** into a scratch database: 20 tables, **0 row-count or data-hash mismatches**, 97/97 constraints restored. The scratch copy was dropped afterwards.
-- **Media**: `uploads\` — every user file copied in 6 MB chunks and verified against a SHA-256 computed on the server (`MANIFEST.json`, `progress.txt`). The re-downloadable OCR model cache is excluded.
+- **Media**: `uploads\` — **all 45 user files (362.6 MB) copied and verified**: each file re-hashed locally and compared with the SHA-256 computed on the server (45/45 match, 0 size mismatches), and the 113 MB recovery zip passes its integrity test. `MANIFEST.json` lists every file with size and hash; restoring media means copying the files back to `/app/uploads` with the same relative paths. The re-downloadable OCR model cache (3 files) is excluded.
 - **Warning:** the older file `SG-Content-Studio-Production-2026-11-17.dump` in the same folder is **0 bytes**. It is not a usable backup.
 - Railway's own volume/database snapshots (dashboard) are a recommended extra copy; they are not available to the CLI.
 
@@ -46,13 +46,13 @@ The SQL files in `backend/migrations/` match the models (a test compares them), 
 
 - Candidate (`integration/carousel-v2-on-main`): tsc clean; frontend 1632 tests pass (one timing-sensitive 300-slide test hit its 5 s default under full parallel load and passes alone in ~3 s; fixed with an explicit 30 s timeout in `c1b000e`); full backend suite 2168 pass, 11 known environment-only failures (identical set to the pre-merge run); the 46 `test_forgot_password` errors seen only in the full parallel run are a Windows event-loop teardown flake: that file plus the other auth tests pass 79/79 when run alone.
 - Hosted acceptance (earlier revision `276e415`, new test data only): Carousel V2 PASS; Deconstructor/Reconstructor PASS for the flows that need no paid AI, including the footage-assignment check (new draft 12 with 6 clips and 9 text layers; an unreadable file is flagged and blocks saving until fixed; reference videos cannot be used as footage); drafts 9, 10 and 11 unchanged.
-- **Not yet done:** the merged candidate (with `main`'s 17 commits) has **not** been deployed to acceptance. An acceptance deploy was blocked this session. Do it before production (section 5, step 1).
+- **Merged candidate on acceptance (deployed, acceptance only):** backend deployment `47681284-ecba-422f-ac42-07a891cdf5fe`, frontend `b000d7d9-0052-4f8d-941b-0f00fa12780c`. Rolled-back in-container probe 20/20 PASS; `/health` 200 and the new APIs 401 signed out; AI spend OFF on acceptance; new frontend bundle `index-CluZdHRm.js` live. Focused smoke tests passed: existing carousels intact, open + PNG + PDF export (6 link annotations); Video Studio V2 loads with `main`'s editor features, all drafts (2, 6-12) intact and draft 9 untouched; `/assets/{id}/audio-stream` (the 18 Nov audio fix) answers `has_audio:true` (401 signed out); draft 10 exports the **same 358,444-byte** 1080x1920 12 s H.264+AAC MP4 as before the merge; Deconstructor reference 5131 stages and the footage-assignment section load.
 
 ## 5. Deployment sequence (production) — only after approval
 
 Stop at any failed check and roll back (section 8).
 
-1. **Validate on acceptance first**: deploy `integration/carousel-v2-on-main` (backend, then frontend) to the acceptance environment; spot-check sign-in, `/carousel-creator`, `/video-studio-v2` (the new `main` editor features) and `/deconstructor`; confirm drafts 9–12 are intact.
+1. **Acceptance validation: done** (section 4). Nothing further is needed unless the candidate changes.
 2. Take a fresh production database dump immediately before deploying if the backup is more than a few hours old (same read-only script).
 3. Decide D1–D3 (section 6) and set production variables accordingly.
 4. Open a pull request `integration/carousel-v2-on-main` → `main`, review the diff (131 files; non-carousel areas: shell/mobile navigation, Deconstructor intelligence panel, two backend scoring files, mobile header CSS), get CI green.
@@ -70,7 +70,7 @@ Stop at any failed check and roll back (section 8).
 
 ## 7. Remaining risks
 
-1. The merged candidate has not yet run on acceptance (blocked this session). Mitigated by a conflict-free merge, tsc and the full frontend suite; closed by section 5, step 1.
+1. Closed: the merged candidate is deployed and smoke-tested on acceptance (section 4). Residual: the sign-in form itself was not exercised on the merged build (it needs credentials); `main`'s login commits are covered by the auth tests (79/79 pass when run alone).
 2. Production AI spending is on (D1).
 3. The media backup excludes the OCR model cache (it re-downloads on first use).
 4. The earlier 17 Nov dump is empty; only the new backup is valid.
@@ -91,3 +91,12 @@ Stop at any failed check and roll back (section 8).
   `carousel_documents` is new to production, so dropping it loses any carousels users made after the release: export or snapshot first.
 - **Full restore** from `production-db-prod-pre-v2-20261120.sql.gz` is a last resort (it discards everything written after the backup). Restore into a scratch database first and compare, as was done to verify it.
 - **Media**: the release only adds files; nothing existing is modified or deleted. The `uploads\` backup (SHA-256 verified) is the reference.
+
+## 10. Final identifiers
+
+- Candidate branch: `integration/carousel-v2-on-main` (pushed). Its last commit is this document; the code last changed in `c1b000e`. The exact head is shown by `git rev-parse origin/integration/carousel-v2-on-main`.
+- Feature branch: `feature/carousel-creator-v2` (`da88844`); earlier acceptance build `276e415` (superseded for production).
+- Acceptance (merged candidate): backend `47681284-ecba-422f-ac42-07a891cdf5fe`, frontend `b000d7d9-0052-4f8d-941b-0f00fa12780c` (project `67f34f55-ea24-478b-8e73-73207b4c559f`, environment `deconstructor-acceptance`).
+- Production (unchanged; rollback targets): backend `64b942ff-31d2-4a41-b82b-81d28d18bdb1`, frontend `b6aa693a-be05-418f-8534-57b20daaaa53`.
+- Backups: `C:\Users\samee\Documents\socialgenius-backups\production-pre-v2-2026-11-20\` (database `.sql.gz` + `.meta.json`; `uploads\` + `MANIFEST.json`).
+- Production was **not** changed during this preparation: no merge to `main`, no variable change, no deployment; read-only database and media reads only.
