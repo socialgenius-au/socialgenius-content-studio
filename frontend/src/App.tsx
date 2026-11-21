@@ -134,8 +134,9 @@ function AppRoutes() {
         }
       />
 
-      {/* Approved Home UI: isolated review route; production dashboard unchanged. */}
+      {/* Approved Home UI now serves the main dashboard; original dashboard retained at /dashboard-classic. */}
       <Route path="/studio-home-preview" element={<RequireAuth><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></RequireAuth>} />
+      <Route path="/dashboard" element={<RequireAuth><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></RequireAuth>} />
 
       {/* Unified platform shell */}
       <Route
@@ -148,7 +149,7 @@ function AppRoutes() {
         }
       >
         <Route
-          path="/dashboard"
+          path="/dashboard-classic"
           element={<Suspense fallback={<PageFallback />}><DashboardPage /></Suspense>}
         />
         <Route
