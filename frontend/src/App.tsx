@@ -14,6 +14,7 @@ import BrandList from './components/BrandList'
 import BrandForm from './components/BrandForm'
 import MediaLibraryHub from './components/MediaLibraryHub'
 import Templates from './components/Templates'
+import StarterDesignEditor from './components/StarterDesignEditor'
 import Layout from './components/Layout'
 import StudioPage from './components/studio/StudioPage'
 import { AppShell } from './components/shell/AppShell'
@@ -192,6 +193,8 @@ function AppRoutes() {
         <Route path="/knowledge" element={<Suspense fallback={<PageFallback />}><KnowledgePage /></Suspense>} />
         <Route path="/settings" element={<Suspense fallback={<PageFallback />}><SettingsPage /></Suspense>} />
       </Route>
+
+      <Route path="/template-design" element={<RequireAuth><Layout><StarterDesignEditor /></Layout></RequireAuth>} />
 
       {/* Legacy routes kept for backwards compatibility — unchanged functionality, moved off /dashboard */}
       <Route
