@@ -75,3 +75,21 @@
 .sgw-publish-summary{padding:15px;background:#f3e9ff;border-radius:13px;margin:15px 0}
 .sgw-publish-summary h3{margin:0 0 8px;font-size:16px}.sgw-publish-summary p{font-size:13px}
 @media(max-width:1150px){.sgw-publish-layout{grid-template-columns:1fr}}
+
+/* Draggable editor panel widths: preview grows into remaining space */
+.sgw-editor-columns.sgw-resizable{display:grid;min-width:0;grid-template-rows:minmax(0,1fr);overflow:hidden}
+.sgw-resizable .sgw-editor-tools,.sgw-resizable .sgw-editor-scenes,.sgw-resizable .sgw-editor-properties{overflow:auto;min-width:0}
+.sgw-panel-resizer{width:7px;min-width:7px;cursor:col-resize;background:#272439;display:flex;align-items:center;justify-content:center;touch-action:none;position:relative;z-index:3;user-select:none}
+.sgw-panel-resizer span{width:3px;height:42px;background:#78649a;border-radius:8px;opacity:.55}
+.sgw-panel-resizer:hover,.sgw-panel-resizer:focus-visible{background:#6f3cba;outline:0}
+.sgw-panel-resizer:hover span,.sgw-panel-resizer:focus-visible span{background:#f5d071;opacity:1}
+.sgw-resizable .sgw-editor-preview{min-width:0;overflow:hidden}
+.sgw-resizable .sgw-stage-canvas{min-height:430px}
+.sgw-resizable .sgw-canvas-design{height:clamp(345px,50vw,620px);max-height:70vh;aspect-ratio:9/16}
+.sgw-resizable .sgw-canvas-object h2{font-size:clamp(26px,3vw,44px)}
+.sgw-resizable .sgw-scene-card>span:last-child{overflow-wrap:anywhere;min-width:0}
+.sgw-resizable .sgw-editor-tools .sgw-tool-tabs,.sgw-resizable .sgw-property-tabs{flex-wrap:wrap}
+.sgw-editor-shell.sgw-focus .sgw-editor-columns.sgw-resizable{grid-template-columns:minmax(0,1fr)!important}
+.sgw-editor-shell.sgw-focus .sgw-panel-resizer{display:none}
+.sgw-editor-shell.sgw-focus .sgw-canvas-design{height:min(72vh,760px)}
+@media(max-width:900px){.sgw-editor-columns.sgw-resizable{display:flex!important;flex-direction:column}.sgw-resizable .sgw-panel-resizer{display:none}.sgw-resizable .sgw-editor-tools,.sgw-resizable .sgw-editor-scenes,.sgw-resizable .sgw-editor-properties{display:block;max-height:280px;border-bottom:1px solid #39334a}.sgw-resizable .sgw-editor-preview{min-height:440px}.sgw-resizable .sgw-stage-canvas{min-height:350px}}
