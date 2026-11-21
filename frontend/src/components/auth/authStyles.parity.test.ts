@@ -1,5 +1,5 @@
 // Guards the "preserve the approved Login identity" requirement: Login.tsx's own style values are pinned to the approved snapshot, the new
-// screens' shared styles must equal them, and the only change allowed in Login.tsx is the one plain text link.
+// screens' shared styles must equal them, and the login page may also contain the approved show/hide-password affordance.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -36,9 +36,12 @@ describe('Login.tsx visual identity', () => {
     for (const [key, value] of Object.entries(APPROVED)) expect(live[key], key).toEqual(value)
   })
 
-  it('the only addition is the plain text link: underlined, no outline, no border, no background', () => {
+  it('the forgot-password link and show-password styles preserve the approved login identity', () => {
     const live = loginStyles()
-    expect(Object.keys(live).sort()).toEqual([...Object.keys(APPROVED), 'forgot'].sort())
+    expect(Object.keys(live).sort()).toEqual([...Object.keys(APPROVED), 'forgot', 'passwordWrap', 'passwordInput', 'passwordToggle'].sort())
+    expect(live.passwordWrap).toEqual({ position: 'relative' })
+    expect(live.passwordInput).toEqual({ width: '100%', boxSizing: 'border-box', paddingRight: 76 })
+    expect(live.passwordToggle).toMatchObject({ position: 'absolute', background: 'transparent', border: 0, cursor: 'pointer' })
     const forgot = live.forgot
     expect(forgot.textDecoration).toBe('underline')
     for (const banned of ['outline', 'border', 'background', 'borderRadius', 'boxShadow']) expect(forgot, banned).not.toHaveProperty(banned)
