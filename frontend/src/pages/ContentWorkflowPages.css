@@ -93,3 +93,17 @@
 .sgw-editor-shell.sgw-focus .sgw-panel-resizer{display:none}
 .sgw-editor-shell.sgw-focus .sgw-canvas-design{height:min(72vh,760px)}
 @media(max-width:900px){.sgw-editor-columns.sgw-resizable{display:flex!important;flex-direction:column}.sgw-resizable .sgw-panel-resizer{display:none}.sgw-resizable .sgw-editor-tools,.sgw-resizable .sgw-editor-scenes,.sgw-resizable .sgw-editor-properties{display:block;max-height:280px;border-bottom:1px solid #39334a}.sgw-resizable .sgw-editor-preview{min-height:440px}.sgw-resizable .sgw-stage-canvas{min-height:350px}}
+
+/* Six independent text/video/audio lanes with eye toggles */
+.sgw-track-pro{min-height:40px;gap:10px}
+.sgw-track-pro>span{width:115px;gap:7px;white-space:nowrap}
+.sgw-track-pro>span b{font-size:12px;font-weight:600}
+.sgw-track-eye{border:0;background:transparent;color:#d8c9f1;display:grid;place-items:center;cursor:pointer;padding:5px;border-radius:6px}
+.sgw-track-eye:hover,.sgw-track-eye:focus-visible{background:#4b376e;outline:2px solid #a886d6}
+.sgw-track-hidden{opacity:.7;min-height:31px}
+.sgw-track-hidden .sgw-track-eye{color:#a09aaf}
+.sgw-track-placeholder{flex:1;border:1px dashed #4c445e;border-radius:5px;color:#9c93ac;font-size:11px;padding:6px 10px}
+.sgw-track-block.text{background:#8e5dc4}
+.sgw-track-block.video{background:linear-gradient(90deg,#5279aa,#8769b5,#5279aa)}
+.sgw-track-block.audio{background:#218c7b}
+.sgw-track-block.music{background:#6a9a75}
