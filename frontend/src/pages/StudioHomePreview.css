@@ -11,3 +11,18 @@
 /* Visually remove the white rectangular matte around the supplied oval artwork. */
 .sg-brand-logo,.sg-hero-logo img{mix-blend-mode:multiply;border-radius:50%;}
 .sg-hero-logo,.sg-brand{isolation:isolate;}
+
+/* Official oval logo: crop the original square white canvas to its oval silhouette.
+   The gold border sits at approximately x=10–90% of the source and y=0–100%. */
+.sg-brand-logo,.sg-hero-logo img{
+  clip-path:ellipse(40.5% 49.7% at 50% 50%);
+  mix-blend-mode:normal;
+  border-radius:0;
+  background:transparent;
+  object-fit:contain;
+}
+.sg-brand-logo{width:90px;height:90px;margin:0 auto 5px}
+.sg-hero-logo img{width:154px;height:154px}
+.sg-side-collapsed .sg-brand-logo{width:52px;height:52px}
+.sg-hero{min-height:184px}
+.sg-brand{min-height:165px}
