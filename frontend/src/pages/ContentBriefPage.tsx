@@ -45,7 +45,7 @@ export default function ContentBriefPage(){
   const update=(patch:Partial<Brief>)=>{setBrief(v=>({...v,...patch}));setSaved(false)}
   const save=()=>{sessionStorage.setItem('sg-content-brief',JSON.stringify(brief));setSaved(true)}
   const toggle=(p:string)=>update({platforms:brief.platforms.includes(p)?brief.platforms.filter(x=>x!==p):[...brief.platforms,p]})
-  const goNext=()=>{if(!brief.topic.trim()||!brief.goal||!brief.platforms.length)return;save();navigate('/video-studio-v2')}
+  const goNext=()=>{if(!brief.topic.trim()||!brief.goal||!brief.platforms.length)return;save();navigate('/create/generate')}
   return <div className="sgb-app">
     <aside className={'sgb-sidebar '+(collapsed?'sgb-collapsed ':'')+(mobile?'sgb-mobile-open':'')}>
       <button className="sgb-collapse" onClick={()=>setCollapsed(v=>!v)} aria-label="Collapse navigation">{collapsed?<ChevronRight size={17}/>:<ChevronLeft size={17}/>}</button>
@@ -69,7 +69,7 @@ export default function ContentBriefPage(){
           {assistantOpen&&<aside className="sgb-helper"><div className="sgb-helper-title"><Sparkles size={28}/><div><h2>AI Content Helper</h2><p>Get ideas, angles and a ready-to-use brief.</p></div><button aria-label="Hide AI suggestions" onClick={()=>setAssistantOpen(false)}><X size={17}/></button></div><div className="sgb-tabs">{Object.keys(ideaSets).map(x=><button className={tab===x?'active':''} key={x} onClick={()=>setTab(x)}>{x}</button>)}</div><div className="sgb-ideas">{ideaSets[tab].filter(x=>!query||x.toLowerCase().includes(query.toLowerCase())).map(x=><button key={x} onClick={()=>update({topic:x})}><Lightbulb size={19}/>{x}</button>)}</div><button className="sgb-more" onClick={()=>setTab(tab==='Ideas'?'Angles':'Ideas')}><RefreshCw size={17}/> Explore More {tab==='Ideas'?'Angles':'Ideas'}</button><p className="sgb-helper-note">Example suggestions only. Live AI generation will be connected during the functionality phase.</p></aside>}
         </div>
         <div className="sgb-actions">{!assistantOpen&&<button onClick={()=>setAssistantOpen(true)}><Sparkles size={17}/> Show AI Helper</button>}<button onClick={save}><Save size={17}/> {saved?'Draft saved in this browser':'Save as Draft'}</button><button className="sgb-next" onClick={goNext} disabled={!brief.topic.trim()||!brief.goal||!brief.platforms.length}>Next: Generate Content <ArrowRight size={18}/></button></div>
-        <p className="sgb-note">Design implementation: drafts are saved only in this browser session. The next step currently opens the existing Video Studio; post/carousel routing and persistent brief storage will be connected later.</p>
+        <p className="sgb-note">Design implementation: drafts are saved only in this browser session. The next step opens the Generate design screen; actual AI media generation and persistent storage are not yet connected.</p>
       </main>
     </div>
   </div>
