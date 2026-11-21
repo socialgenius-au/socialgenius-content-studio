@@ -22,6 +22,7 @@ import { LEGACY_STUDIO_ROUTE } from './config/studioRoutes'
 import { legacyStudioRedirectRoutes } from './routes/studioRedirects'
 
 const StudioHomePreview = lazy(() => import('./pages/StudioHomePreview'))
+const ContentBriefPage = lazy(() => import('./pages/ContentBriefPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const ClientsPage = lazy(() => import('./pages/ClientsPage'))
 const NewClientPage = lazy(() => import('./pages/NewClientPage'))
@@ -133,6 +134,8 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
+
+      <Route path="/create-brief" element={<RequireAuth><Suspense fallback={<PageFallback />}><ContentBriefPage /></Suspense></RequireAuth>} />
 
       {/* Approved Home UI now serves the main dashboard; original dashboard retained at /dashboard-classic. */}
       <Route path="/studio-home-preview" element={<RequireAuth><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></RequireAuth>} />
