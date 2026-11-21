@@ -1,181 +1,44 @@
-import { useEffect, useState, type CSSProperties } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import type { Template } from '../types'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { templatesApi } from '../api/client'
+import type { Template } from '../types'
+import './TemplatesMarketplace.css'
 
-export default function Templates() {
-  const navigate = useNavigate()
-  const [templates, setTemplates] = useState<Template[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [deleting, setDeleting]   = useState<number | null>(null)
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState('All')
-  const categories = ['All','Social Post','Carousel','Video','Other']
-  const filtered = templates.filter(t => { const term = (t.name+' '+(t.description||'')+' '+t.prompt).toLowerCase();const matchesSearch=term.includes(search.toLowerCase());const name=term;const matchesCategory=category==='All'||(category==='Social Post'&&/post|instagram|facebook|linkedin/.test(name))||(category==='Carousel'&&/carousel|slides/.test(name))||(category==='Video'&&/video|reel|short/.test(name))||(category==='Other'&&!/post|instagram|facebook|linkedin|carousel|slides|video|reel|short/.test(name));return matchesSearch&&matchesCategory })
-
-  const load = () => {
-    setLoading(true)
-    templatesApi.list()
-      .then((r) => setTemplates(r.data as Template[]))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => { load() }, [])
-
-  const handleUseTemplate = (tpl: Template) => {
-    // Navigate to planner with prompt pre-filled via URL state
-    navigate('/planner', { state: { prompt: tpl.prompt, title: tpl.name } })
-  }
-
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this template?')) return
-    setDeleting(id)
-    try {
-      await templatesApi.delete(id)
-      setTemplates((prev) => prev.filter((t) => t.id !== id))
-    } finally {
-      setDeleting(null)
-    }
-  }
-
-  function fmtDate(iso: string) {
-    return new Date(iso).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
-  }
-
-  return (
-    <div>
-      <div style={{background:"linear-gradient(115deg,#281a3d,#654185)",color:"#fff",padding:24,borderRadius:16,marginBottom:20}}><small style={{color:"#eac27b",letterSpacing:2}}>SOCIAL GENIUS · CONTENT STUDIO</small><h1 style={{fontSize:29,fontWeight:800,margin:"8px 0"}}>Templates</h1><p style={{color:"#e6d9ef"}}>Start with a saved creative plan, then customise it for your brand.</p><div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:12}}><Link to="/assets" style={{color:"#f2d28e"}}>Media Library</Link><Link to="/clients" style={{color:"#f2d28e"}}>Client Brand Kits</Link></div></div><div style={s.header}>
-        <div>
-          <h2 style={s.title}>Templates</h2>
-          <p style={s.sub}>{templates.length} saved template{templates.length !== 1 ? 's' : ''}</p>
-        </div>
-        <button style={s.newBtn} onClick={() => navigate('/planner')}>
-          + New Plan
-        </button>
-      </div>
-
-      <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:20}}><input aria-label="Search templates" placeholder="Search saved templates…" value={search} onChange={e=>setSearch(e.target.value)} style={{padding:11,border:'1px solid #d7c4e8',borderRadius:9,minWidth:220,flex:1}}/>{categories.map(cat=><button key={cat} onClick={()=>setCategory(cat)} style={{padding:'9px 12px',borderRadius:20,border:'1px solid #d8c5e8',background:category===cat?'#654185':'#fff',color:category===cat?'white':'#654185'}}>{cat}</button>)}</div>
-      {loading ? (
-        <p style={{ color: '#888' }}>Loading…</p>
-      ) : filtered.length === 0 ? (
-        <div style={s.empty}>
-          <p style={s.emptyTitle}>No matching templates</p>
-          <p style={s.emptyHint}>
-            Open any job and click <strong>Save as Template</strong> to reuse its prompt and structure.
-          </p>
-          <button style={s.emptyBtn} onClick={() => navigate('/planner')}>
-            Create your first plan →
-          </button>
-        </div>
-      ) : (
-        <div style={s.grid}>
-          {filtered.map((tpl) => (
-            <div key={tpl.id} style={s.card}>
-              <div style={s.cardTop}>
-                <h3 style={s.cardName}>{tpl.name}</h3>
-                <span style={s.cardDate}>{fmtDate(tpl.created_at)}</span>
-              </div>
-
-              {tpl.description && (
-                <p style={s.cardDesc}>{tpl.description}</p>
-              )}
-
-              <p style={s.cardPrompt}>
-                {tpl.prompt.length > 150 ? `${tpl.prompt.slice(0, 150)}…` : tpl.prompt}
-              </p>
-
-              {tpl.plan_json?.platforms && tpl.plan_json.platforms.length > 0 && (
-                <div style={s.tags}>
-                  {tpl.plan_json.platforms.map((p) => (
-                    <span key={p} style={s.tag}>{p}</span>
-                  ))}
-                </div>
-              )}
-
-              {tpl.plan_json?.steps && (
-                <p style={s.stepCount}>
-                  {tpl.plan_json.steps.length} steps
-                  {tpl.plan_json.estimated_total_time ? ` · ${tpl.plan_json.estimated_total_time}` : ''}
-                </p>
-              )}
-
-              <div style={s.cardActions}>
-                <button style={s.useBtn} onClick={() => handleUseTemplate(tpl)}>
-                  Use Template
-                </button>
-                <button
-                  style={{ ...s.delBtn, opacity: deleting === tpl.id ? 0.5 : 1 }}
-                  onClick={() => handleDelete(tpl.id)}
-                  disabled={deleting === tpl.id}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+const catalogue: Record<string,string[]> = {
+  'Social Posts':['Business Introduction','Product Showcase','Special Offer','Customer Testimonial','Motivational Quote','Before & After','Event Announcement','Educational Tip','New Product Launch','Call-to-Action Post'],
+  'Carousels':['Five Business Tips','Step-by-Step Guide','Problem to Solution','Myth vs Fact','Product Features','Customer Journey','Industry Statistics','Common Mistakes','Frequently Asked Questions','Case Study'],
+  'Videos & Reels':['Business Introduction Reel','Product Demonstration','Before & After Transformation','Three Quick Tips','Customer Testimonial Video','Promotional Offer Reel','Behind the Scenes','Question & Answer','Problem to Solution Video','Event Highlight'],
+  'Stories & Ads':['Flash Sale','Countdown','Poll or Question','New Arrival','Limited-Time Offer','Book an Appointment','Visit Our Website','Customer Review Story','Event Reminder','Lead Generation Advertisement'],
+  'Industry':['Real Estate Listing','Restaurant Menu Special','Retail Product Promotion','Health & Wellness Tip','Professional Services Introduction','Trades & Home Services','Beauty & Salon Offer','Education and Coaching','Automotive Promotion','B2B Services']
 }
-
-const s: Record<string, CSSProperties> = {
-  header:     { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 32 },
-  title:      { margin: 0, fontSize: 28, fontWeight: 800, color: '#1E3D2A', letterSpacing: '-0.5px' },
-  sub:        { margin: '6px 0 0', color: '#888', fontSize: 14 },
-  newBtn: {
-    background: '#1E3D2A',
-    color: '#F5F0E8',
-    border: 'none',
-    padding: '12px 24px',
-    borderRadius: 8,
-    fontWeight: 700,
-    fontSize: 14,
-    cursor: 'pointer',
-  },
-  empty:      { textAlign: 'center', padding: '80px 0' },
-  emptyTitle: { fontSize: 18, fontWeight: 700, color: '#555', margin: '0 0 8px' },
-  emptyHint:  { fontSize: 14, color: '#888', margin: '0 0 24px', lineHeight: 1.55 },
-  emptyBtn:   { background: 'none', border: 'none', color: '#C89A2E', fontWeight: 700, fontSize: 15, cursor: 'pointer', textDecoration: 'underline' },
-  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 },
-  card: {
-    background: '#fff',
-    borderRadius: 12,
-    padding: 24,
-    boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
-    border: '1px solid #ede9e0',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-  },
-  cardTop:   { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
-  cardName:  { margin: 0, fontSize: 16, fontWeight: 800, color: '#1E3D2A', lineHeight: 1.3, flex: 1 },
-  cardDate:  { fontSize: 11, color: '#bbb', flexShrink: 0, marginLeft: 8 },
-  cardDesc:  { margin: 0, fontSize: 13, color: '#888', fontStyle: 'italic', lineHeight: 1.5 },
-  cardPrompt:{ margin: 0, fontSize: 13, color: '#555', lineHeight: 1.6 },
-  tags:      { display: 'flex', gap: 6, flexWrap: 'wrap' },
-  tag:       { background: '#F5F0E8', color: '#1E3D2A', padding: '2px 9px', borderRadius: 20, fontSize: 11, fontWeight: 600 },
-  stepCount: { margin: 0, fontSize: 12, color: '#bbb' },
-  cardActions: { display: 'flex', gap: 8, marginTop: 4 },
-  useBtn: {
-    flex: 1,
-    padding: '10px',
-    background: '#C89A2E',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 7,
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: 'pointer',
-  },
-  delBtn: {
-    padding: '10px 16px',
-    background: 'transparent',
-    color: '#c0392b',
-    border: '1px solid #f5c6c6',
-    borderRadius: 7,
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
+type Starter={title:string;category:string;index:number}
+const starters:Starter[]=Object.entries(catalogue).flatMap(([category,names])=>names.map((title,index)=>({title,category,index})))
+const providers=[{name:'Adobe Express',url:'https://www.adobe.com/express/templates',description:'External free and premium design templates; editing and licensing depend on Adobe.'},{name:'Canva',url:'https://www.canva.com/templates/',description:'External free and Pro designs; check Canva terms and use in Canva where required.'},{name:'Pixabay',url:'https://pixabay.com/',description:'Stock images, video and music for filling templates, not a native editable template catalogue.'},{name:'Pexels',url:'https://www.pexels.com/',description:'Stock photos and video for filling templates; check licence and restrictions.'}]
+export default function Templates(){
+ const navigate=useNavigate()
+ const [saved,setSaved]=useState<Template[]>([])
+ const [loading,setLoading]=useState(true)
+ const [query,setQuery]=useState('')
+ const [category,setCategory]=useState('All')
+ const [tab,setTab]=useState<'free'|'saved'|'external'>('free')
+ const [paid,setPaid]=useState(false)
+ const [modal,setModal]=useState<{title:string;category:string;prompt:string;url?:string}|null>(null)
+ const [confirmed,setConfirmed]=useState(false)
+ const [error,setError]=useState('')
+ const [deleting,setDeleting]=useState<number|null>(null)
+ useEffect(()=>{templatesApi.list().then(r=>setSaved(r.data as Template[])).catch(()=>setError('Saved templates could not be loaded.')).finally(()=>setLoading(false))},[])
+ const shown=useMemo(()=>starters.filter(t=>(category==='All'||t.category===category)&&(`${t.title} ${t.category}`).toLowerCase().includes(query.toLowerCase())),[category,query])
+ const open=(title:string,cat:string,prompt:string,url?:string)=>{setConfirmed(false);setError('');setModal({title,category:cat,prompt,url})}
+ const start=()=>{if(!modal||!confirmed)return;if(modal.url){window.open(modal.url,'_blank','noopener,noreferrer')}else{navigate('/planner',{state:{title:modal.title,prompt:modal.prompt}})}setModal(null)}
+ const deleteSaved=async(t:Template)=>{if(!window.confirm('Delete this saved template?'))return;setDeleting(t.id);try{await templatesApi.delete(t.id);setSaved(old=>old.filter(x=>x.id!==t.id))}catch{setError('Could not delete template.')}finally{setDeleting(null)}}
+ return <main className="sgtm">
+ <header className="sgtm-hero"><small>SOCIAL GENIUS · CONTENT STUDIO</small><h1>Template Marketplace</h1><p>Start with 50 original, free creative-plan templates. Discover external sources only when you choose.</p><div className="sgtm-links"><Link to="/assets">Media Library</Link><Link to="/clients">Client Brand Kits</Link></div></header>
+ <div className="sgtm-tabs" role="tablist" aria-label="Template sources"><button role="tab" aria-selected={tab==='free'} className={tab==='free'?'active':''} onClick={()=>setTab('free')}>Free starters · 50</button><button role="tab" aria-selected={tab==='saved'} className={tab==='saved'?'active':''} onClick={()=>setTab('saved')}>My saved templates · {saved.length}</button><button role="tab" aria-selected={tab==='external'} className={tab==='external'?'active':''} onClick={()=>setTab('external')}>External sources</button></div>
+ <div className="sgtm-notice"><strong>Copyright & usage responsibility</strong><p>You are responsible for checking that you have permission to use, edit, publish and commercially distribute any third-party images, videos, music, logos, text or templates. Free does not necessarily mean unrestricted. Social Genius cannot guarantee the rights of third-party content.</p></div>
+ {error&&<p role="alert" className="sgtm-error">{error}</p>}
+ {tab==='free'&&<><div className="sgtm-controls"><input aria-label="Search free templates" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search free templates…"/><select aria-label="Filter template category" value={category} onChange={e=>setCategory(e.target.value)}>{['All',...Object.keys(catalogue)].map(c=><option key={c}>{c}</option>)}</select></div><p className="sgtm-info">{shown.length} free starter plans. These are original structured creative prompts, not finished editable graphic/video projects.</p><div className="sgtm-grid">{shown.map(t=><article className="sgtm-card" key={t.category+t.title}><div className="sgtm-art" data-kind={t.category}><span>{t.category==='Videos & Reels'?'▶':t.category==='Carousels'?'▤':t.category==='Stories & Ads'?'▥':t.category==='Industry'?'◈':'✦'}</span><small>{t.category}</small></div><div className="sgtm-card-body"><span className="sgtm-free">FREE</span><h3>{t.title}</h3><p>{t.category} · Original Social Genius starter</p><button onClick={()=>open(t.title,t.category,`Create an original ${t.category.toLowerCase()} content plan titled "${t.title}" for my business. Ask for my target audience, positioning, campaign goal, key message and CTA. Use my authorised brand assets only. Include a hook, editable text and scene/slide structure, visual direction, platform format, and an explicit asset rights checklist. Do not imitate copyrighted templates or use third-party assets without confirmed permissions.`)}>Use free starter</button></div></article>)}</div></>}
+ {tab==='saved'&&<><div className="sgtm-saved-head"><p>Templates previously saved from your jobs.</p><button onClick={()=>navigate('/planner')}>+ New Plan</button></div>{loading?<p>Loading saved templates…</p>:saved.length===0?<p>No saved templates yet. The 50 free starters are available in the Free starters tab.</p>:<div className="sgtm-grid">{saved.map(t=><article key={t.id} className="sgtm-card sgtm-saved"><span className="sgtm-free">MY TEMPLATE</span><h3>{t.name}</h3><p>{t.description||t.prompt.slice(0,130)}</p><div className="sgtm-actions"><button onClick={()=>open(t.name,'Saved template',t.prompt)}>Use saved template</button><button disabled={deleting===t.id} onClick={()=>void deleteSaved(t)}>Delete</button></div></article>)}</div>}</>}
+ {tab==='external'&&<><div className="sgtm-paid"><label><input type="checkbox" checked={paid} onChange={e=>setPaid(e.target.checked)}/> Show external paid / premium options <span aria-label="Paid content">★</span></label><p>Off by default. No purchases or subscriptions take place inside Social Genius.</p></div><div className="sgtm-grid">{providers.filter(p=>paid||p.name==='Pixabay'||p.name==='Pexels').map(p=><article className="sgtm-card sgtm-saved" key={p.name}><span className="sgtm-source">{p.name==='Canva'||p.name==='Adobe Express'?'★ Free + paid provider':'External stock source'}</span><h3>{p.name}</h3><p>{p.description}</p><button onClick={()=>open(p.name,'External provider',p.description,p.url)}>Review source & rights</button></article>)}</div><p className="sgtm-info">External sources open on their own websites. Their designs are not automatically imported, licensed, or editable inside Content Studio. AI-generated template integrations are not yet available.</p></>}
+ {modal&&<div className="sgtm-overlay" role="presentation"><div className="sgtm-dialog" role="dialog" aria-modal="true" aria-labelledby="sgtm-dialog-title"><h2 id="sgtm-dialog-title">Check content rights before continuing</h2><p><strong>{modal.title}</strong> · {modal.category}</p><p>It is your responsibility to check that the source and every asset you use permits your intended use, including commercial use, modification, attribution and redistribution. Do not use content without appropriate rights. Social Genius cannot verify or guarantee third-party permissions.</p><label className="sgtm-ack"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/> I understand and will check that I have the necessary permissions before using any content.</label><div className="sgtm-actions"><button className="sgtm-cancel" onClick={()=>setModal(null)}>Cancel</button><button disabled={!confirmed} onClick={start}>{modal.url?'Open provider':'Continue to planner'}</button></div></div></div>}
+ </main>
 }
