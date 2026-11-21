@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import PostRenderer from './PostRenderer'
-import PostCanvas from '../components/PostCanvas'
 import { PostFormatProvider } from '../format/PostFormatContext'
 import { initialPostFormatState, postCreatorFormats, postCreatorPlatforms, postFormatReducer } from '../format/formatState'
 import { createAbcTilesMockDocument } from '../mock/abcTilesDocument'
@@ -82,7 +81,7 @@ describe('the creative comes from data, not from the renderer', () => {
 
   it('the renderer and canvas SOURCE contain no ABC Tiles creative, colours or class-based creative styling', () => {
     const root = join(process.cwd(), 'src/pages/post-creator-v2')
-    const sources = ['canvas/PostRenderer.tsx', 'components/PostCanvas.tsx'].map(f => readFileSync(join(root, f), 'utf8')).join('\n')
+    const sources = ['canvas/PostRenderer.tsx'].map(f => readFileSync(join(root, f), 'utf8')).join('\n')
     for (const s of ['LARGE FORMAT', 'PREMIUM FINISH', 'ABC TILES', 'TILE SCHEDULE', 'BUILT FOR QUALITY', '#1E8A55', '#2C3532', 'pcv2-mock-post']) expect(sources, s).not.toContain(s)
     const css = readFileSync(join(root, 'PostCreatorV2.css'), 'utf8')
     expect(css).not.toContain('pcv2-mock-post')
@@ -188,32 +187,5 @@ describe('several substantially different canvas ratios', () => {
     const story = seed(FORMATS[0]), wide = seed(FORMATS[3])
     expect(findElement(story, 'el-headline')!.y).not.toBeCloseTo(findElement(wide, 'el-headline')!.y, 2)
     expect(textOf(story, 'el-headline')).toBe(textOf(wide, 'el-headline'))
-  })
-})
-
-describe('PostCanvas: P1 platform/format switching still drives the data-driven canvas', () => {
-  const withState = (state: ReturnType<typeof initialPostFormatState>, node = <PostCanvas />) => renderToStaticMarkup(<PostFormatProvider initialState={state}>{node}</PostFormatProvider>)
-
-  it('for every platform x applicable format, the canvas renders the document for that format with one page and the four seed elements', () => {
-    let n = 0
-    for (const p of postCreatorPlatforms()) for (const f of postCreatorFormats(p.key)) {
-      let s = postFormatReducer(initialPostFormatState(), { type: 'platform', platformKey: p.key })
-      s = postFormatReducer(s, { type: 'format', formatKey: f.key })
-      const out = withState(s)
-      expect(out, `${p.key}/${f.key}`).toContain('data-testid="pcv2-post-page"')
-      expect(out).toContain('data-page-count="1"')
-      expect(out).toContain('data-document-id="mock-abc-tiles-post"')
-      expect(out).toContain(`data-format="${f.key}"`)
-      for (const role of ['primary_headline', 'supporting_text', 'primary_cta', 'brand_logo']) expect(out).toContain(`data-role="${role}"`)
-      n++
-    }
-    expect(n).toBeGreaterThanOrEqual(25)
-  })
-
-  it('an injected document is what the canvas draws (the canvas has no built-in creative)', () => {
-    const d = seed(); setText(d, 'el-headline', 'INJECTED HEADLINE')
-    const out = renderToStaticMarkup(<PostFormatProvider><PostCanvas document={d} /></PostFormatProvider>)
-    expect(out).toContain('INJECTED HEADLINE')
-    expect(out).not.toContain('LARGE FORMAT')
   })
 })

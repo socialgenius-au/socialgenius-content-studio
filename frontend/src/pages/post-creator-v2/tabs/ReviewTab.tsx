@@ -1,116 +1,119 @@
-import { Sparkles, Wand2, Send, Download, Save } from 'lucide-react'
-import { REVIEW_SCORES, AI_RECOMMENDATIONS } from '../mockData'
-import { usePostFormat } from '../format/PostFormatContext'
-import { sizeReadout } from '../components/FormatFields'
+import { useMemo, useRef, useState } from 'react'
+import { AlertTriangle, CheckCircle2, Download, Info, Loader2, Save } from 'lucide-react'
+import { withMediaToken } from '../../../api/mediaAccess'
+import { BrandTokensContext } from '../../../lib/carousel/brandContext'
+import { browserBackend, downloadBytes } from '../../../lib/carousel/browserBackend'
+import SlideView from '../../carousel-creator/components/SlideView'
+import ExportPanel from '../../carousel-creator/components/ExportPanel'
+import { SaveBadge } from '../../carousel-creator/components/SyncStatus'
+import { postCreatorPlatforms } from '../format/formatState'
+import { exportForPlatforms, platformExports } from '../postExport'
+import { usePostSession } from '../session'
+import { checkSummary, reviewChecks } from '../workflow'
 
-export default function ReviewTab({ onBack }: { onBack: () => void }) {
-  const { state, canvas, platforms, toggleExtraPlatform } = usePostFormat()
+export default function ReviewTab({ onBack, onGoCreate }: { onBack: () => void; onGoCreate: () => void }) {
+  const s = usePostSession()
+  const { doc } = s
+  const checks = useMemo(() => reviewChecks(doc), [doc])
+  const sum = checkSummary(checks)
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+  const [extra, setExtra] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [exportMsg, setExportMsg] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+  const abort = useRef<AbortController | null>(null)
+  const platforms = postCreatorPlatforms()
+  const targets = platformExports(doc, extra)
 
-  const overall = Math.round(REVIEW_SCORES.reduce((s, r) => s + r.value, 0) / REVIEW_SCORES.length)
+  const save = async () => {
+    setSaving(true); setSaveMsg(null)
+    try { setSaveMsg((await s.saveNow()) ? { tone: 'ok', text: 'Saved to your account. Reopen it any time from your drafts.' } : { tone: 'error', text: 'Could not save yet. Your changes are kept in this browser and the editor keeps retrying.' }) }
+    finally { setSaving(false) }
+  }
+  const exportPlatforms = async () => {
+    setBusy(true); setExportMsg(null)
+    const ctl = new AbortController(); abort.current = ctl
+    try {
+      if (typeof document !== 'undefined' && document.fonts?.ready) await document.fonts.ready
+      const f = await exportForPlatforms(doc, extra, browserBackend(), { resolveUrl: withMediaToken, tokens: s.tokens, signal: ctl.signal })
+      downloadBytes(f.name, f.mime, f.bytes)
+      setExportMsg({ tone: 'ok', text: `Downloaded ${f.name} (${(f.bytes.length / 1024 / 1024).toFixed(2)} MB): the post as designed plus ${targets.length} re-laid-out size${targets.length === 1 ? '' : 's'}. Check each one before posting.` })
+    } catch (e) { setExportMsg({ tone: 'error', text: e instanceof Error ? e.message : 'The export failed.' }) } finally { setBusy(false); abort.current = null }
+  }
+  const toggle = (k: string) => setExtra(cur => (cur.includes(k) ? cur.filter(x => x !== k) : [...cur, k]))
 
   return (
-    <div>
-      <div className="pcv2-stage-head">
-        <span className="pcv2-stage-num">5</span>
-        <span className="pcv2-stage-title">Review</span>
-      </div>
-      <p className="pcv2-stage-sub">Quality check before publishing</p>
+    <BrandTokensContext.Provider value={s.tokens}>
+      <div>
+        <div className="pcv2-stage-head"><span className="pcv2-stage-num">5</span><span className="pcv2-stage-title">Review</span></div>
+        <p className="pcv2-stage-sub">Check the finished post, save it and export it</p>
 
-      <div className="pcv2-review-layout" style={{ marginTop: 20 }}>
-        <div>
-          <div className="pcv2-review-preview" />
-          <div className="pcv2-card" style={{ marginTop: 16 }}>
-            <h3 className="pcv2-card-title">Post Quality Score</h3>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, margin: '10px 0 4px' }}>
-              <span style={{ fontSize: 34, fontWeight: 800, color: 'var(--pcv2-accent)' }}>{overall}</span>
-              <span style={{ color: 'var(--pcv2-text-muted)', fontSize: 13 }}>/100 Excellent</span>
+        <div className="pcv2-review-layout" style={{ marginTop: 20 }}>
+          <div>
+            <div className="pcv2-review-preview" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }} data-testid="pcv2-review-preview">
+              <SlideView doc={doc} pageId={doc.pages[0].id} style={{ width: '100%', maxHeight: 520 }} />
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" className="pcv2-btn pcv2-btn-primary pcv2-btn-block">
-                <Send size={14} /> Approve &amp; Export
+            <div className="pcv2-card" style={{ marginTop: 16 }}>
+              <h3 className="pcv2-card-title">Draft</h3>
+              <p className="pcv2-card-sub">{doc.title} · {doc.format.platformKey} · {doc.format.width} × {doc.format.height}</p>
+              <div style={{ margin: '8px 0' }}><SaveBadge state={s.sync} onRetry={s.retry} /></div>
+              <button type="button" className="pcv2-btn pcv2-btn-primary pcv2-btn-block" disabled={saving} onClick={() => void save()} data-testid="pcv2-save-draft">
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save draft
               </button>
+              {saveMsg && <p role={saveMsg.tone === 'error' ? 'alert' : 'status'} className="pcv2-source-note" data-testid="pcv2-save-message">{saveMsg.text}</p>}
+              <p className="pcv2-source-note">Changes also save automatically as you work.</p>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-              <button type="button" className="pcv2-btn pcv2-btn-secondary pcv2-btn-block">
-                Send for Approval
+          </div>
+
+          <div>
+            <div className="pcv2-card" style={{ marginBottom: 20 }} data-testid="pcv2-checks">
+              <h3 className="pcv2-card-title">Pre-publish checks</h3>
+              <p className="pcv2-card-sub">Facts about this post, checked against your brief. There is no quality score: nothing here predicts how the post will perform.</p>
+              <p style={{ margin: '6px 0 10px', fontWeight: 700 }} data-testid="pcv2-check-summary">{sum.passed} of {sum.total} checks passed{sum.warnings > 0 ? ` · ${sum.warnings} to look at` : ''}</p>
+              <ul className="pcv2-insight-list">
+                {checks.map(c => (
+                  <li key={c.id} data-testid="pcv2-check" data-status={c.status}>
+                    {c.status === 'pass' ? <CheckCircle2 size={15} /> : c.status === 'warn' ? <AlertTriangle size={15} /> : <Info size={15} />}
+                    <span>{c.label}{c.detail && <><br /><span className="pcv2-card-sub">{c.detail}</span></>}</span>
+                  </li>
+                ))}
+              </ul>
+              {sum.warnings > 0 && <button type="button" className="pcv2-btn pcv2-btn-secondary" onClick={onGoCreate}>← Fix in Create</button>}
+            </div>
+
+            <div className="pcv2-card" style={{ marginBottom: 20 }} data-testid="pcv2-export-card">
+              <h3 className="pcv2-card-title"><Download size={14} style={{ verticalAlign: -2, marginRight: 6 }} />Export the finished post</h3>
+              <p className="pcv2-card-sub">PNG, JPEG, SVG or PDF, at the size you choose.</p>
+              <ExportPanel doc={doc} activeIndex={0} />
+            </div>
+
+            <div className="pcv2-card" style={{ marginBottom: 20 }} data-testid="pcv2-platforms-card">
+              <h3 className="pcv2-card-title">Also export for other platforms</h3>
+              <p className="pcv2-card-sub">The post is re-laid out for each size you pick; every layer is kept. Exported as one ZIP of PNG files.</p>
+              <div className="pcv2-platform-row">
+                {platforms.map(p => {
+                  const primary = p.key === doc.format.platformKey
+                  const selected = primary || extra.includes(p.key)
+                  return <button key={p.key} type="button" data-testid={`pcv2-publish-${p.key}`} className={`pcv2-platform-pill ${selected ? 'is-selected' : ''}`} aria-pressed={selected} disabled={primary} title={primary ? `Primary platform (${doc.format.width} × ${doc.format.height}). Change it in Create → Format.` : undefined} onClick={() => toggle(p.key)}>{p.label}</button>
+                })}
+              </div>
+              <button type="button" className="pcv2-btn pcv2-btn-secondary" style={{ marginTop: 12 }} disabled={busy || targets.length === 0} onClick={() => void exportPlatforms()} data-testid="pcv2-export-platforms">
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export ZIP ({targets.length + 1} size{targets.length === 0 ? '' : 's'})
               </button>
-              <button type="button" className="pcv2-btn pcv2-btn-secondary pcv2-btn-block">
-                <Save size={14} /> Save as Draft
-              </button>
+              {exportMsg && <p role={exportMsg.tone === 'error' ? 'alert' : 'status'} className="pcv2-source-note" data-testid="pcv2-platforms-message">{exportMsg.text}</p>}
+            </div>
+
+            <div className="pcv2-card" data-testid="pcv2-publishing-note">
+              <h3 className="pcv2-card-title">Publishing</h3>
+              <p className="pcv2-card-sub">Posting to social platforms and approval requests are not connected in this release, so there are no publish or approval buttons. Export the finished post above and upload it on the platform.</p>
             </div>
           </div>
         </div>
 
-        <div>
-          <div className="pcv2-card" style={{ marginBottom: 20 }}>
-            <h3 className="pcv2-card-title">Scorecard</h3>
-            <p className="pcv2-card-sub">How this post is expected to perform</p>
-            {REVIEW_SCORES.map((s) => (
-              <div key={s.label} className="pcv2-score-row">
-                <span className="pcv2-score-label">{s.label}</span>
-                <div className="pcv2-score-bar-track">
-                  <div className="pcv2-score-bar-fill" style={{ width: `${s.value}%` }} />
-                </div>
-                <span className="pcv2-score-value">{s.value}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="pcv2-card" style={{ marginBottom: 20 }}>
-            <h3 className="pcv2-card-title">
-              <Sparkles size={14} style={{ verticalAlign: -2, marginRight: 6 }} />
-              AI Recommendations
-            </h3>
-            {AI_RECOMMENDATIONS.map((r) => (
-              <div key={r.id} className="pcv2-recommendation">
-                <span style={{ fontSize: 12.5 }}>{r.text}</span>
-                <button type="button" className="pcv2-btn pcv2-btn-secondary" style={{ padding: '6px 10px', fontSize: 11.5 }}>
-                  <Wand2 size={12} /> Apply
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <div className="pcv2-card">
-            <h3 className="pcv2-card-title">Publish To</h3>
-            <p className="pcv2-card-sub">Select platforms for this post</p>
-            <div className="pcv2-platform-row">
-              {platforms.map((p) => {
-                const primary = p.key === state.selection.platformKey
-                const selected = primary || state.extraPlatformKeys.includes(p.key)
-                return (
-                  <button
-                    key={p.key}
-                    type="button"
-                    data-testid={`pcv2-publish-${p.key}`}
-                    className={`pcv2-platform-pill ${selected ? 'is-selected' : ''}`}
-                    aria-pressed={selected}
-                    title={primary ? `Primary platform (${canvas.formatLabel} · ${sizeReadout(canvas)}) — change it in Brief or Create` : undefined}
-                    onClick={() => toggleExtraPlatform(p.key)}
-                    disabled={primary}
-                  >
-                    {p.label}
-                  </button>
-                )
-              })}
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button type="button" className="pcv2-btn pcv2-btn-primary">
-                <Send size={14} /> Send to Publishing
-              </button>
-              <button type="button" className="pcv2-btn pcv2-btn-secondary">
-                <Download size={14} /> Export
-              </button>
-            </div>
-          </div>
+        <div className="pcv2-footer-nav" style={{ justifyContent: 'flex-start' }}>
+          <button type="button" className="pcv2-btn pcv2-btn-secondary" onClick={onBack}>← Create</button>
         </div>
       </div>
-
-      <div className="pcv2-footer-nav" style={{ justifyContent: 'flex-start' }}>
-        <button type="button" className="pcv2-btn pcv2-btn-secondary" onClick={onBack}>
-          ← Create
-        </button>
-      </div>
-    </div>
+    </BrandTokensContext.Provider>
   )
 }
