@@ -8,6 +8,7 @@ export default function Login() {
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -50,15 +51,26 @@ export default function Login() {
             autoFocus
             autoComplete="username"
           />
-          <input
-            style={s.input}
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="current-password"
-          />
+          <div style={s.passwordWrap}>
+            <input
+              style={{ ...s.input, ...s.passwordInput }}
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              style={s.passwordToggle}
+              onClick={() => setShowPassword((visible) => !visible)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
           {error && <p role="alert" style={s.error}>{error}</p>}
           <button style={{ ...s.btn, opacity: loading ? 0.7 : 1 }} type="submit" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign In'}
@@ -104,6 +116,9 @@ const s: Record<string, CSSProperties> = {
     color: '#1a1a1a',
     transition: 'border-color 0.2s',
   },
+  passwordWrap: { position: 'relative' },
+  passwordInput: { width: '100%', boxSizing: 'border-box', paddingRight: 76 },
+  passwordToggle: { position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 0, color: '#1E3D2A', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: '8px', minHeight: 36 },
   error: { margin: 0, color: '#c0392b', fontSize: 13 },
   btn: {
     marginTop: 6,
