@@ -348,6 +348,8 @@ export interface PostDocument {
   context: {
     brand?: { clientId?: string; clientName?: string; brandKitId?: string }
     message?: { keyMessage?: string; audience?: string; objective?: string; cta?: string; language?: string }
+    /** Post Creator only: the brief, the user's own research notes and the chosen reference pictures, saved with the post so a reopened draft restores every stage. Read defensively (see pages/post-creator-v2/workflow.ts). */
+    workflow?: Record<string, unknown>
   }
   provenance: Provenance
   variants?: Record<string, PostVariant>
