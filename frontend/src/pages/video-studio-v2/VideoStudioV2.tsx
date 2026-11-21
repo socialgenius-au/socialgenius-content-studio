@@ -18,6 +18,7 @@ import ReviewTab from "./components/ReviewTab";
 import LearnTab from "./components/LearnTab";
 import BlueprintPlanPanel from "./blueprint/BlueprintPlanPanel";
 import ProjectIdentityCard from "./identity/ProjectIdentityCard";
+import TemplateHandoff from "./TemplateHandoff";
 
 // Step 7.1 (second persistence defect): the active workflow stage and the entire project
 // (video/audio/text/overlays/timeline positions/canvas format/placeholder positions) were pure
@@ -216,6 +217,7 @@ export default function VideoStudioV2() {
           ))}
         </div>
 
+        <TemplateHandoff />
         <BlueprintPlanPanel />
 
         <section className="vsv2-workspace">
