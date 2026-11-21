@@ -99,6 +99,7 @@ export default function BrandKitPage() {
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="rounded-2xl p-6 text-white" style={{background:"linear-gradient(115deg,#281a3d,#654185)"}}><p className="text-xs font-bold tracking-widest" style={{color:"#eac27b"}}>SOCIAL GENIUS · CONTENT STUDIO</p><h1 className="mt-2 text-2xl font-bold">Brand Identity Workspace</h1><p className="mt-2 text-sm" style={{color:"#e6d9ef"}}>Client-specific colours, typography, logos, brand voice and reusable content rules.</p><p className="mt-2 text-xs" style={{color:"#eac27b"}}>Active client: {client.name}</p></div>
       <PageHeader
         title={`Brand Kit — ${client.name}`}
         description="The foundation every other module pulls from: visual identity, voice, commercial facts, content rules, and channel applications. Click any field to edit."
