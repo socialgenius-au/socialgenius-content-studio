@@ -26,3 +26,7 @@
 .sg-side-collapsed .sg-brand-logo{width:52px;height:52px}
 .sg-hero{min-height:184px}
 .sg-brand{min-height:165px}
+
+/* Final edge fit: keep the entire original gold border, without a pale halo. */
+.sg-brand-logo,.sg-hero-logo img{clip-path:ellipse(41.1% 50% at 50% 50%);}
+.sg-hero-logo{background:transparent;}
