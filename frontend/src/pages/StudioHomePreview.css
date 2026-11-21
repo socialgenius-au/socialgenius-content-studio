@@ -7,3 +7,7 @@
 .sg-brand{min-height:145px}
 .sg-side-collapsed .sg-brand{min-height:95px}
 @media(max-width:750px){.sg-hero-logo{display:none}}
+
+/* Visually remove the white rectangular matte around the supplied oval artwork. */
+.sg-brand-logo,.sg-hero-logo img{mix-blend-mode:multiply;border-radius:50%;}
+.sg-hero-logo,.sg-brand{isolation:isolate;}
