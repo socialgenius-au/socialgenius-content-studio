@@ -202,6 +202,7 @@ export default function DeconstructorPage() {
               }
             />
           )}
+          {(step === 'blueprint' || step === 'create') && <button type="button" onClick={() => navigate('/reconstructor/assets?scene=3')} className="rounded-xl border border-purple-300 bg-purple-50 px-4 py-3 text-sm font-semibold text-purple-900 hover:bg-purple-100">Find images, videos and audio for individual scenes →</button>}
           {step === 'blueprint' && <BlueprintStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} onNew={() => setStep('intent')} useMessage={useMessage} />}
           {step === 'create' && <CreateStage blueprint={d.blueprint} busy={busy} onUse={() => void onUse()} sceneSummary={sceneSummary} useMessage={useMessage} />}
           {step === 'create' && plan && textLayersOn && <TextLayersReview key={`text:${routeId}:${plan.blueprintId}`} plan={plan} onPlan={setTextLayers} />}
