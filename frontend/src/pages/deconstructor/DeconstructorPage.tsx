@@ -2,6 +2,7 @@
 // It reuses the existing reference-video, deconstruction, anatomy, mechanism and blueprint APIs and hands the finished blueprint to the
 // EXISTING Video Studio V2 (route /video-studio-v2) -- there is no parallel editor here.
 import { useEffect, useMemo, useState } from 'react'
+import './WorkspaceThemes.css'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/common/PageHeader'
 import { buildBlueprintPlan, checkBlueprintUsable } from '../video-studio-v2/blueprint/blueprintPlan'
@@ -151,18 +152,21 @@ export default function DeconstructorPage() {
   const plan = useMemo(() => (checkBlueprintUsable(d.blueprint.data).ok ? buildBlueprintPlan(d.blueprint.data!) : null), [d.blueprint.data])
 
   const needsRef = step !== 'reference' && routeId == null
+  const isReconstructor = step === 'intent' || step === 'blueprint' || step === 'create'
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6" data-testid="deconstructor-page">
+    <div className={`sg-workspace ${isReconstructor ? "sg-workspace--reconstructor" : "sg-workspace--deconstructor"}`} data-testid="deconstructor-page"><div className="mx-auto max-w-4xl space-y-4 p-4 sm:p-6">
+      <div className="sg-workspace__identity" role="status"><span className="sg-workspace__symbol" aria-hidden>{isReconstructor ? "✦" : "◎"}</span><div><strong>{isReconstructor ? "RECONSTRUCTOR" : "DECONSTRUCTOR"}</strong><span>{isReconstructor ? "Create · Blueprint · Replace · Produce" : "Reference · Anatomy · Mechanisms · Analyse"}</span></div></div>
       <PageHeader title="Reconstruct from a reference" description="Learn how a reference video works, then plan new content that applies the same principles — without copying it." />
 
       <nav aria-label="Steps" className="flex flex-wrap gap-1.5">
         {STEPS.map((s, i) => (
           <button
             key={s.id} onClick={() => setStep(s.id)} data-testid={`step-${s.id}`} aria-current={step === s.id ? 'step' : undefined}
-            className={`rounded-lg border px-3 py-1.5 text-left text-xs transition ${step === s.id ? 'border-primary bg-primary/10' : 'hover:bg-muted'}`}
+            data-other-mode={isReconstructor !== (i >= 3)}
+            className="sg-workspace__step rounded-lg border px-3 py-1.5 text-left text-xs transition"
           >
-            <div className="font-semibold">{i + 1}. {s.label}</div>
+            <div className="sg-workspace__mode-label">{i < 3 ? "DECONSTRUCTOR" : "RECONSTRUCTOR"}</div><div className="font-semibold">{i + 1}. {s.label}</div>
             <div className="text-[11px] text-muted-foreground">{s.caption}</div>
           </button>
         ))}
@@ -215,6 +219,6 @@ export default function DeconstructorPage() {
           {step === 'create' && plan && <FootageAssignment key={`${routeId}:${plan.blueprintId}`} resp={d.blueprint.data} plan={plan} references={d.references.data} textLayers={textLayersOn ? textLayers : null} imageLayers={imageLayersOn ? imageLayers : null} transitionPlan={transitionsOn ? transitionPlan : null} speechPlan={transcriptOn ? speechPlan : null} backgroundPlan={backgroundOn ? backgroundPlan : null} compositionPolicy={backgroundOn ? compositionPolicy : null} canvasColour={backgroundOn ? canvasColour : null} elementPlan={visualOn ? elementPlan : null} onFootage={backgroundOn ? setSceneFootage : undefined} />}
         </>
       )}
-    </div>
+    </div></div>
   )
 }
