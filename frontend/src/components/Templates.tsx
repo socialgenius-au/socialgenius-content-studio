@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import type { Template } from '../types'
 import { templatesApi } from '../api/client'
 
@@ -8,6 +8,10 @@ export default function Templates() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading]     = useState(true)
   const [deleting, setDeleting]   = useState<number | null>(null)
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('All')
+  const categories = ['All','Social Post','Carousel','Video','Other']
+  const filtered = templates.filter(t => { const term = (t.name+' '+(t.description||'')+' '+t.prompt).toLowerCase();const matchesSearch=term.includes(search.toLowerCase());const name=term;const matchesCategory=category==='All'||(category==='Social Post'&&/post|instagram|facebook|linkedin/.test(name))||(category==='Carousel'&&/carousel|slides/.test(name))||(category==='Video'&&/video|reel|short/.test(name))||(category==='Other'&&!/post|instagram|facebook|linkedin|carousel|slides|video|reel|short/.test(name));return matchesSearch&&matchesCategory })
 
   const load = () => {
     setLoading(true)
@@ -40,7 +44,7 @@ export default function Templates() {
 
   return (
     <div>
-      <div style={s.header}>
+      <div style={{background:"linear-gradient(115deg,#281a3d,#654185)",color:"#fff",padding:24,borderRadius:16,marginBottom:20}}><small style={{color:"#eac27b",letterSpacing:2}}>SOCIAL GENIUS · CONTENT STUDIO</small><h1 style={{fontSize:29,fontWeight:800,margin:"8px 0"}}>Templates</h1><p style={{color:"#e6d9ef"}}>Start with a saved creative plan, then customise it for your brand.</p><div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:12}}><Link to="/assets" style={{color:"#f2d28e"}}>Media Library</Link><Link to="/brand-kit" style={{color:"#f2d28e"}}>Brand Kit</Link></div></div><div style={s.header}>
         <div>
           <h2 style={s.title}>Templates</h2>
           <p style={s.sub}>{templates.length} saved template{templates.length !== 1 ? 's' : ''}</p>
@@ -50,11 +54,12 @@ export default function Templates() {
         </button>
       </div>
 
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:20}}><input aria-label="Search templates" placeholder="Search saved templates…" value={search} onChange={e=>setSearch(e.target.value)} style={{padding:11,border:'1px solid #d7c4e8',borderRadius:9,minWidth:220,flex:1}}/>{categories.map(cat=><button key={cat} onClick={()=>setCategory(cat)} style={{padding:'9px 12px',borderRadius:20,border:'1px solid #d8c5e8',background:category===cat?'#654185':'#fff',color:category===cat?'white':'#654185'}}>{cat}</button>)}</div>
       {loading ? (
         <p style={{ color: '#888' }}>Loading…</p>
-      ) : templates.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div style={s.empty}>
-          <p style={s.emptyTitle}>No templates yet</p>
+          <p style={s.emptyTitle}>No matching templates</p>
           <p style={s.emptyHint}>
             Open any job and click <strong>Save as Template</strong> to reuse its prompt and structure.
           </p>
@@ -64,7 +69,7 @@ export default function Templates() {
         </div>
       ) : (
         <div style={s.grid}>
-          {templates.map((tpl) => (
+          {filtered.map((tpl) => (
             <div key={tpl.id} style={s.card}>
               <div style={s.cardTop}>
                 <h3 style={s.cardName}>{tpl.name}</h3>
