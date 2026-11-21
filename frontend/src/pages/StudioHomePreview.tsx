@@ -6,7 +6,7 @@ import './StudioHomePreview.css'
 const nav = [
   { name:'Home', icon:Home, url:'/dashboard' },
   { name:'Campaigns', icon:FolderKanban, url:'/dashboard-classic' },
-  { name:'Create Brief', icon:FileText, url:'/dashboard-classic' },
+  { name:'Create Brief', icon:FileText, url:'/create-brief' },
   { name:'Post Creator', icon:Image, url:'/post-creator-v2' },
   { name:'Carousel Creator', icon:Images, url:'/carousel-creator' },
   { name:'Video Studio', icon:Clapperboard, url:'/video-studio-v2' },
