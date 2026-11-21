@@ -1,0 +1,15 @@
+/* Distinct, scoped workspaces. Shared global app theme and production editor are untouched. */
+.sg-workspace { --sg-accent:#22a8cf; --sg-accent-soft:#e4f7fc; --sg-accent-dark:#12475c; --sg-surface:#f2f9fc; --sg-border:#b7dce9; background:linear-gradient(180deg,var(--sg-surface),transparent 420px); min-height:100vh; border-top:5px solid var(--sg-accent); }
+.sg-workspace--reconstructor { --sg-accent:#a478d1; --sg-accent-soft:#f5ecfc; --sg-accent-dark:#573477; --sg-surface:#faf6fd; --sg-border:#dfc7ee; }
+.sg-workspace__identity {display:flex; align-items:center; gap:12px; padding:14px 18px; background:var(--sg-accent-dark); color:white; border-radius:14px; }
+.sg-workspace__identity strong {font-size:12px;letter-spacing:.12em;display:block}
+.sg-workspace__identity span {font-size:12px;opacity:.85}
+.sg-workspace__symbol {font-size:24px;line-height:1}
+.sg-workspace__step {border-color:var(--sg-border); background:white}
+.sg-workspace__step[aria-current=step] {background:var(--sg-accent-soft);border-color:var(--sg-accent);color:var(--sg-accent-dark);box-shadow:inset 0 0 0 1px var(--sg-accent)}
+.sg-workspace__step[data-other-mode=true] {opacity:.7}
+.sg-workspace__step:hover {border-color:var(--sg-accent)}
+.sg-workspace__mode-label {font-size:10px;font-weight:700;letter-spacing:.09em;color:var(--sg-accent-dark);padding:3px 0}
+.sg-workspace--deconstructor [data-testid=stage-reference] button:hover,.sg-workspace--deconstructor [data-testid=stage-anatomy] button:hover {border-color:#22a8cf}
+.sg-workspace--reconstructor [data-testid=stage-create] button:hover {border-color:#a478d1}
+@media(max-width:640px){.sg-workspace__identity {padding:12px}.sg-workspace__step {flex:1 1 125px}}
