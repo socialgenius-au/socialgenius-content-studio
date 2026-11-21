@@ -44,7 +44,7 @@ export default function Templates() {
 
   return (
     <div>
-      <div style={{background:"linear-gradient(115deg,#281a3d,#654185)",color:"#fff",padding:24,borderRadius:16,marginBottom:20}}><small style={{color:"#eac27b",letterSpacing:2}}>SOCIAL GENIUS · CONTENT STUDIO</small><h1 style={{fontSize:29,fontWeight:800,margin:"8px 0"}}>Templates</h1><p style={{color:"#e6d9ef"}}>Start with a saved creative plan, then customise it for your brand.</p><div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:12}}><Link to="/assets" style={{color:"#f2d28e"}}>Media Library</Link><Link to="/brand-kit" style={{color:"#f2d28e"}}>Brand Kit</Link></div></div><div style={s.header}>
+      <div style={{background:"linear-gradient(115deg,#281a3d,#654185)",color:"#fff",padding:24,borderRadius:16,marginBottom:20}}><small style={{color:"#eac27b",letterSpacing:2}}>SOCIAL GENIUS · CONTENT STUDIO</small><h1 style={{fontSize:29,fontWeight:800,margin:"8px 0"}}>Templates</h1><p style={{color:"#e6d9ef"}}>Start with a saved creative plan, then customise it for your brand.</p><div style={{display:"flex",gap:14,flexWrap:"wrap",marginTop:12}}><Link to="/assets" style={{color:"#f2d28e"}}>Media Library</Link><Link to="/clients" style={{color:"#f2d28e"}}>Client Brand Kits</Link></div></div><div style={s.header}>
         <div>
           <h2 style={s.title}>Templates</h2>
           <p style={s.sub}>{templates.length} saved template{templates.length !== 1 ? 's' : ''}</p>
