@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Home, ChevronLeft, ChevronRight, Sparkles, WandSparkles, Image, Images, Clapperboard, Settings2, Download, Play, Check, PanelRightClose, PanelRightOpen, Plus, ArrowRight, ArrowLeft, Save, MonitorPlay, Copy, Share2, Layers, Type, Music, Film, SlidersHorizontal, Eye, Maximize2, Palette, Focus, PanelLeftClose, PanelLeftOpen, Clock3, Volume2, Grid3X3 } from 'lucide-react'
+import { Home, ChevronLeft, ChevronRight, Sparkles, WandSparkles, Image, Images, Clapperboard, Settings2, Download, Play, Check, PanelRightClose, PanelRightOpen, Plus, ArrowRight, ArrowLeft, Save, MonitorPlay, Copy, Share2, Layers, Type, SlidersHorizontal, Eye, Maximize2, Palette, Focus, PanelLeftClose, Clock3, Volume2, Grid3X3 } from 'lucide-react'
 import './ContentWorkflowPages.css'
 type Stage='generate'|'edit'|'publish'
 const labels=['Content Brief','Generate','Edit & Enhance','Publish / Export']
