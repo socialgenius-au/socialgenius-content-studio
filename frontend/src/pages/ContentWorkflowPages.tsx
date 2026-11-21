@@ -7,6 +7,7 @@ const labels=['Content Brief','Generate','Edit & Enhance','Publish / Export']
 const destinations=['/create-brief','/create/generate','/create/edit','/create/publish']
 const formatOptions=['Social Post','Carousel','Video']
 const tiers=['Low','Medium','Best']
+const navItems=[{name:'Home',url:'/dashboard',icon:Home},{name:'Create Brief',url:'/create-brief',icon:Sparkles},{name:'Generate',url:'/create/generate',icon:WandSparkles},{name:'Edit & Enhance',url:'/create/edit',icon:Settings2},{name:'Publish / Export',url:'/create/publish',icon:Share2},{name:'Video Studio',url:'/video-studio-v2',icon:Clapperboard}]
 export default function ContentWorkflowPages(){
   const {stage:stageParam}=useParams()
   const stage:Stage=stageParam==='edit'?'edit':stageParam==='publish'?'publish':'generate'
@@ -31,7 +32,7 @@ export default function ContentWorkflowPages(){
     <aside className={'sgw-nav '+(navCollapsed?'sgw-nav-mini':'')}>
       <button className="sgw-collapse" onClick={()=>setNavCollapsed(!navCollapsed)} aria-label="Collapse navigation">{navCollapsed?<ChevronRight size={16}/>:<ChevronLeft size={16}/>}</button>
       <Link to="/dashboard" className="sgw-brand"><img src="/social-genius-official-logo.svg" alt="Social Genius official logo"/>{!navCollapsed&&<><strong>Social Genius</strong><small>Content Studio</small><em>The Positioning People</em></>}</Link>
-      {[['Home','/dashboard',Home],['Create Brief','/create-brief',Sparkles],['Generate','/create/generate',WandSparkles],['Edit & Enhance','/create/edit',Settings2],['Publish / Export','/create/publish',Share2],['Video Studio','/video-studio-v2',Clapperboard]].map(([name,url,Icon])=><Link key={name as string} to={url as string} className={'sgw-nav-item '+(url===destinations[step]?'active':'')} title={name as string}><Icon size={19}/>{!navCollapsed&&<span>{name as string}</span>}</Link>)}
+      {navItems.map(({name,url,icon:Icon})=><Link key={name} to={url} className={'sgw-nav-item '+(url===destinations[step]?'active':'')} title={name}><Icon size={19}/>{!navCollapsed&&<span>{name}</span>}</Link>)}
     </aside>
     <div className="sgw-body">
       <header className="sgw-top"><Link to="/dashboard">Social Genius <b>Content Studio</b></Link><span className="sgw-project-name">{brief.topic||'Untitled content project'}</span><button onClick={()=>setRightOpen(!rightOpen)}>{rightOpen?<PanelRightClose size={17}/>:<PanelRightOpen size={17}/>} AI Assistant</button><span className="sgw-avatar">AS</span></header>
