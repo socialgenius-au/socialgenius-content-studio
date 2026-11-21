@@ -12,7 +12,7 @@ import JobPlanner from './components/JobPlanner'
 import JobDetail from './components/JobDetail'
 import BrandList from './components/BrandList'
 import BrandForm from './components/BrandForm'
-import AssetLibrary from './components/AssetLibrary'
+import MediaLibraryHub from './components/MediaLibraryHub'
 import Templates from './components/Templates'
 import Layout from './components/Layout'
 import StudioPage from './components/studio/StudioPage'
@@ -259,7 +259,7 @@ function AppRoutes() {
         element={
           <RequireAuth>
             <Layout>
-              <AssetLibrary />
+              <MediaLibraryHub />
             </Layout>
           </RequireAuth>
         }
