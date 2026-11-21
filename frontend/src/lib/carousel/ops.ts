@@ -390,17 +390,17 @@ export interface ImageItem { assetId: number; url: string; name: string }
 export function addImages(doc: PostDocument, pageId: string, items: ImageItem[], ctx?: OpContext): { doc: PostDocument; ids: string[] } {
   if (items.length === 0) return { doc, ids: [] }
   const W = doc.format.width, H = doc.format.height
-  const margin = 0.06, gap = 0.02
+  const margin = 0.12, gap = 0.02
   const n = items.length
   const cols = n === 1 ? 1 : Math.ceil(Math.sqrt(n))
   const rows = Math.ceil(n / cols)
   const cellW = (1 - 2 * margin - gap * (cols - 1)) / cols
-  const cellH = n === 1 ? 0.5 : Math.min((cellW * W) / H, (1 - 2 * margin - gap * (rows - 1)) / rows)
+  const cellH = n === 1 ? 0.36 : Math.min((cellW * W) / H, (1 - 2 * margin - gap * (rows - 1)) / rows)
   const gridH = rows * cellH + (rows - 1) * gap
-  const top = n === 1 ? 0.12 : Math.max(margin, (1 - gridH) / 2)
+  const top = n === 1 ? 0.32 : Math.max(margin, (1 - gridH) / 2)
   const els = items.map((it, i) => makeImage({
     name: it.name.slice(0, 80) || 'Image', source: { kind: 'asset', assetId: it.assetId, url: it.url }, alt: it.name.slice(0, 120),
-    x: margin + (i % cols) * (cellW + gap), y: top + Math.floor(i / cols) * (cellH + gap), width: cellW, height: cellH,
+    x: margin + (i % cols) * (cellW + gap), y: top + Math.floor(i / cols) * (cellH + gap), width: cellW, height: cellH, fit: 'contain', lockAspect: true,
   }, ctx))
   let d = doc
   for (const e of els) d = addElement(d, pageId, e, ctx)
