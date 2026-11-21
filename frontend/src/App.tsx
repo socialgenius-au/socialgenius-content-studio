@@ -51,6 +51,7 @@ const PostCreatorV2 = lazy(() => import('./pages/post-creator-v2/PostCreatorV2')
 const VideoStudioV2 = lazy(() => import('./pages/video-studio-v2/VideoStudioV2'))
 const PositioningLandingPage = lazy(() => import('./pages/PositioningLandingPage'))
 const DeconstructorPage = lazy(() => import('./pages/deconstructor/DeconstructorPage'))
+const ReconstructorAssetFinder = lazy(() => import('./pages/deconstructor/ReconstructorAssetFinder'))
 const CarouselCreatorPage = lazy(() => import('./pages/carousel-creator/CarouselCreatorPage'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -136,6 +137,7 @@ function AppRoutes() {
         }
       />
 
+      <Route path="/reconstructor/assets" element={<RequireAuth><Suspense fallback={<PageFallback />}><ReconstructorAssetFinder /></Suspense></RequireAuth>} />
       <Route path="/create/:stage" element={<RequireAuth><Suspense fallback={<PageFallback />}><ContentWorkflowPages /></Suspense></RequireAuth>} />
       <Route path="/create-brief" element={<RequireAuth><Suspense fallback={<PageFallback />}><ContentBriefPage /></Suspense></RequireAuth>} />
 
