@@ -21,6 +21,7 @@ import { LoadingState } from './components/common/LoadingState'
 import { LEGACY_STUDIO_ROUTE } from './config/studioRoutes'
 import { legacyStudioRedirectRoutes } from './routes/studioRedirects'
 
+const StudioHomePreview = lazy(() => import('./pages/StudioHomePreview'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const ClientsPage = lazy(() => import('./pages/ClientsPage'))
 const NewClientPage = lazy(() => import('./pages/NewClientPage'))
@@ -132,6 +133,9 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
+
+      {/* Approved Home UI: isolated review route; production dashboard unchanged. */}
+      <Route path="/studio-home-preview" element={<RequireAuth><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></RequireAuth>} />
 
       {/* Unified platform shell */}
       <Route
