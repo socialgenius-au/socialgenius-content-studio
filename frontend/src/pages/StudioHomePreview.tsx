@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { useClient } from '@/contexts/ClientContext'
 import { Link, useNavigate } from 'react-router-dom'
-import { Home, FolderKanban, FileText, Image, Images, Clapperboard, ScanSearch, RefreshCw, Sparkles, FolderOpen, LayoutTemplate, Palette, Settings, Bell, Search, ChevronLeft, ChevronRight, Plus, UploadCloud, WandSparkles, Play, ArrowUpRight, Menu } from 'lucide-react'
+import { Home, FolderKanban, FileText, Image, Images, Clapperboard, ScanSearch, RefreshCw, Sparkles, FolderOpen, LayoutTemplate, Palette, Settings, Bell, Search, ChevronLeft, ChevronRight, Plus, UploadCloud, WandSparkles, Play, ArrowUpRight, Menu, Users, Target, BarChart3, BriefcaseBusiness, Zap, ExternalLink } from 'lucide-react'
 import './StudioHomePreview.css'
 
 const nav = [
@@ -13,9 +14,13 @@ const nav = [
   { name:'Deconstructor', icon:ScanSearch, url:'/deconstructor' },
   { name:'Reconstructor', icon:RefreshCw, url:'/video-studio-v2' },
   { name:'AI Generators', icon:Sparkles, url:'/video-studio-v2' },
-  { name:'Assets', icon:FolderOpen, url:'/dashboard' },
-  { name:'Templates', icon:LayoutTemplate, url:'/dashboard' },
-  { name:'Brand Kit', icon:Palette, url:'/dashboard' },
+  { name:'Clients', icon:Users, url:'/clients' },
+  { name:'Strategic Intelligence', icon:Target, url:'/dashboard-classic' },
+  { name:'Positioning', icon:Target, url:'/dashboard-classic' },
+  { name:'Campaigns & Growth', icon:FolderKanban, url:'/dashboard-classic' },
+  { name:'Assets', icon:FolderOpen, url:'/dashboard-classic' },
+  { name:'Templates', icon:LayoutTemplate, url:'/templates' },
+  { name:'Brand Kit', icon:Palette, url:'/dashboard-classic' },
 ]
 const actions = [
   { title:'Social Post', detail:'Single image content for social media', icon:Image, tone:'lilac', url:'/post-creator-v2' },
@@ -34,40 +39,42 @@ const templates = [
   { name:'Mindset & Success', kind:'Education', tone:'mindset', description:'Inspiration' },
 ]
 const filters = ['All','Business','Marketing','Product','Service','Education','Real Estate','Health & Wellness','Promotions']
-const projects = [
-  { name:'Tile Education – Benefits', type:'Video', time:'0:43', tone:'tile', url:'/deconstructor' },
-  { name:'Property – Home Buying', type:'Video', time:'0:38', tone:'property', url:'/video-studio-v2' },
-  { name:'Product – Skincare', type:'Video', time:'0:32', tone:'product', url:'/video-studio-v2' },
-  { name:'Fitness – Quick Routine', type:'Video', time:'0:45', tone:'fitness', url:'/video-studio-v2' },
-  { name:'Business Growth Tips', type:'Video', time:'1:02', tone:'growth', url:'/video-studio-v2' },
-  { name:'Tile Styles – Comparison', type:'Video', time:'0:36', tone:'tile', url:'/video-studio-v2' },
-]
 export default function StudioHomePreview() {
+  const {client,clients,loading,switchClient}=useClient()
   const [collapsed,setCollapsed] = useState(false)
   const [mobileMenu,setMobileMenu] = useState(false)
   const [filter,setFilter] = useState('All')
   const [search,setSearch] = useState('')
   const navigate=useNavigate()
   const visibleTemplates=templates.filter(t=>(filter==='All'||t.kind===filter||filter==='Marketing')&&(!search|| (t.name+' '+t.kind).toLowerCase().includes(search.toLowerCase())))
-  const visibleProjects=projects.filter(p=>!search||(p.name+' '+p.type).toLowerCase().includes(search.toLowerCase()))
+  const visibleClients=clients.filter(c=>!search||(c.name+' '+c.industry).toLowerCase().includes(search.toLowerCase()))
   return <div className="sg-home">
     <aside className={'sg-side '+(collapsed?'sg-side-collapsed ':'')+(mobileMenu?'sg-side-mobile-open':'')}>
       <div className="sg-brand"><img className="sg-brand-logo" src="/social-genius-official-logo.svg" alt="Social Genius official tree logo" />{!collapsed&&<div><strong>Social Genius</strong><small>Content Studio</small><em>The Positioning People</em></div>}</div>
       <button className="sg-collapse" aria-label="Toggle navigation" onClick={()=>setCollapsed(!collapsed)}>{collapsed?<ChevronRight size={17}/>:<ChevronLeft size={17}/>}</button>
       <nav aria-label="Studio navigation">{nav.map(item=><Link title={item.name} key={item.name} className={'sg-nav-link '+(item.name==='Home'?'sg-active':'')+(item.name==='AI Generators'?' sg-generator-nav':'')} to={item.url}><item.icon size={19}/>{!collapsed&&<span>{item.name}</span>}</Link>)}</nav>
-      <div className="sg-side-bottom">{!collapsed&&<><div className="sg-project-tag"><span>◎</span><div><b>Design Preview</b><small>● UI concept</small></div></div><p>Preview workspace</p></>}<div className="sg-side-footer"><Link to="/settings" title="Settings"><Settings size={20}/></Link><Bell size={20}/><div className="sg-avatar">AS</div></div></div>
+      <div className="sg-side-bottom">{!collapsed&&<><div className="sg-project-tag"><span>✦</span><div><b>Content Studio</b><small>Creative workspace</small></div></div></>}<div className="sg-side-footer"><Link to="/settings" title="Settings"><Settings size={20}/></Link><Bell size={20}/><div className="sg-avatar">AS</div></div></div>
     </aside>
     <div className="sg-main">
-      <header className="sg-top"><button className="sg-mobile-toggle" aria-label="Open navigation" onClick={()=>setMobileMenu(!mobileMenu)}><Menu/></button><div className="sg-search"><Search size={21}/><input aria-label="Search templates and projects" placeholder="Search projects, templates, assets, brands..." value={search} onChange={e=>setSearch(e.target.value)}/></div><button className="sg-ai-pill" onClick={()=>navigate('/video-studio-v2')}><Sparkles size={18}/> AI Assistant</button><Bell size={20}/><span className="sg-avatar">AS</span></header>
+      <header className="sg-top"><button className="sg-mobile-toggle" aria-label="Open navigation" onClick={()=>setMobileMenu(!mobileMenu)}><Menu/></button><div className="sg-client-switch"><BriefcaseBusiness size={17}/><select aria-label="Active client" value={client?.id??''} onChange={e=>switchClient(e.target.value)} disabled={!clients.length}><option value="" disabled>{loading?"Loading clients…":"Choose client"}</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div><div className="sg-search"><Search size={21}/><input aria-label="Search templates and projects" placeholder="Search projects, templates, assets, brands..." value={search} onChange={e=>setSearch(e.target.value)}/></div><button className="sg-ai-pill" onClick={()=>navigate('/video-studio-v2')}><Sparkles size={18}/> AI Assistant</button><Bell size={20}/><span className="sg-avatar">AS</span></header>
       <main className="sg-content">
         <section className="sg-hero"><div className="sg-hero-copy"><p>Welcome to</p><h1>Social Genius <span>Content Studio</span></h1><div>Plan. Create. Analyse. Recreate. Scale.</div></div><div className="sg-hero-logo"><img src="/social-genius-official-logo.svg" alt="Social Genius official tree logo" /><small>The Positioning People</small></div><div className="sg-gold-wave"/></section>
-        <div className="sg-section-heading"><h2><Sparkles/> What would you like to create today?</h2><div className="sg-heading-actions"><button onClick={()=>navigate('/dashboard-classic')}><Plus size={16}/> New Project</button><button className="sg-primary" onClick={()=>navigate('/video-studio-v2')}><UploadCloud size={16}/> Upload Media</button></div></div>
+        <div className="sg-section-heading"><h2><Sparkles/> What would you like to create today?</h2><div className="sg-heading-actions"><button onClick={()=>navigate('/post-creator-v2')}><Plus size={16}/> New Project</button><button className="sg-primary" onClick={()=>navigate('/clients/'+(client?.id??'')+'/library')} disabled={!client}><UploadCloud size={16}/> Upload Media</button></div></div>
         <section className="sg-create-grid">{actions.map(a=><Link key={a.title} className={'sg-create-card '+a.tone} to={a.url}><a.icon size={35}/><strong>{a.title}</strong><p>{a.detail}</p><span className="sg-card-arrow"><ArrowUpRight size={17}/></span></Link>)}</section>
-        <div className="sg-section-heading sg-templates-heading"><h2><LayoutTemplate/> Templates</h2><div className="sg-filters">{filters.map(f=><button key={f} onClick={()=>setFilter(f)} className={filter===f?'selected':''}>{f}</button>)}</div><Link to="/dashboard-classic">View All →</Link></div>
-        <section className="sg-template-grid">{visibleTemplates.length?visibleTemplates.map(t=><button onClick={()=>navigate('/post-creator-v2')} key={t.name} className={'sg-template '+t.tone}><strong>{t.name}</strong><span>{t.description}</span></button>):<p>No templates match your search.</p>}</section>
-        <div className="sg-section-heading"><h2><Play/> Recent Projects</h2><Link to="/dashboard">View All →</Link></div>
-        <section className="sg-recent-grid">{visibleProjects.length?visibleProjects.map(p=><Link to={p.url} className="sg-recent" key={p.name}><div className={'sg-recent-art '+p.tone}><span className="sg-play"><Play size={12} fill="currentColor"/> {p.time}</span></div><div className="sg-recent-info"><b>{p.name}</b><small>{p.type} · Design preview</small></div></Link>):<p>No projects match your search.</p>}</section>
-        <p className="sg-preview-note">UI design preview · Templates and recent projects are illustrative; these are not live records. Generator and other unfinished navigation entries lead to existing workspaces until their dedicated screens are built.</p>
+        <div className="sg-section-heading sg-templates-heading"><h2><LayoutTemplate/> Templates</h2><div className="sg-filters">{filters.map(f=><button key={f} onClick={()=>setFilter(f)} className={filter===f?'selected':''}>{f}</button>)}</div><Link to="/templates">View All →</Link></div>
+        <section className="sg-template-grid">{visibleTemplates.length?visibleTemplates.map(t=><button onClick={()=>navigate('/templates')} key={t.name} className={'sg-template '+t.tone}><strong>{t.name}</strong><span>{t.description}</span></button>):<p>No templates match your search.</p>}</section>
+        <div className="sg-home-lower">
+          <section className="sg-home-panel"><div className="sg-section-heading"><h2><Users/> Your Client Workspaces</h2><Link to="/clients">View all →</Link></div>
+            <div className="sg-client-grid">{visibleClients.slice(0,6).map(c=><Link to={`/clients/${c.id}/overview`} className="sg-client-card" key={c.id}><div className="sg-client-card-head"><span className="sg-client-initial" style={{background:c.color}}>{c.logoInitial}</span><div><strong>{c.name}</strong><small>{c.industry}</small></div>{c.id===client?.id&&<span className="sg-focused">Focused</span>}</div><div className="sg-progress-label"><span>Positioning confidence</span><b>{c.positioningConfidence}%</b></div><div className="sg-progress-track"><span style={{width:`${Math.max(0,Math.min(100,c.positioningConfidence))}%`}}/></div></Link>)}{!loading&&visibleClients.length===0&&<p>No client workspaces match your search.</p>}</div>
+          </section>
+          <section className="sg-home-panel sg-quick-panel"><div className="sg-section-heading"><h2><Zap/> Quick Actions</h2></div>
+            {([{label:'Browse Templates',detail:'Ready-to-use editable designs',url:'/templates',icon:LayoutTemplate},{label:'Brand Kit',detail:'Manage your brand assets',url:client?`/clients/${client.id}/brand-kit`:'/clients',icon:Palette},{label:'Manage Projects',detail:'Open saved workspaces',url:'/dashboard-classic',icon:FolderOpen},{label:'AI Assistant',detail:'Start an AI-assisted brief',url:'/post-creator-v2',icon:Sparkles}] as const).map(a=><Link key={a.label} to={a.url} className="sg-quick-action"><span><a.icon size={19}/></span><div><strong>{a.label}</strong><small>{a.detail}</small></div><ChevronRight size={16}/></Link>)}
+          </section>
+        </div>
+        <div className="sg-home-lower sg-home-bottom">
+          <section className="sg-home-panel"><div className="sg-section-heading"><h2><FolderOpen/> Continue Your Projects</h2><Link to="/dashboard-classic">Open workspace →</Link></div><p className="sg-real-data-note">Open your saved work in its Creator. This Home screen does not display invented project thumbnails.</p><div className="sg-continue-actions"><Link to="/post-creator-v2"><Image size={18}/> Post projects <ArrowUpRight size={15}/></Link><Link to="/carousel-creator"><Images size={18}/> Carousel projects <ArrowUpRight size={15}/></Link><Link to="/video-studio-v2"><Clapperboard size={18}/> Video projects <ArrowUpRight size={15}/></Link></div></section>
+          <section className="sg-home-panel"><div className="sg-section-heading"><h2><BarChart3/> Performance & Intelligence</h2></div><p className="sg-real-data-note">View actual performance and strategic information for your selected client.</p><div className="sg-continue-actions">{client&&<Link to={`/clients/${client.id}/analytics`}><BarChart3 size={18}/> Analytics <ExternalLink size={15}/></Link>}{client&&<Link to={`/clients/${client.id}/intelligence`}><Target size={18}/> Strategic Intelligence <ExternalLink size={15}/></Link>}</div></section>
+        </div>
       </main>
     </div>
   </div>
