@@ -1,3 +1,4 @@
+import '../../components/editor/resizableEditor.css'
 import { useResizableEditorPanels } from '../../components/editor/useResizableEditorPanels'
 import { createCarouselDocument } from '../../lib/carousel/document'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
