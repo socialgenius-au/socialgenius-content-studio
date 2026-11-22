@@ -1,3 +1,4 @@
+import '../../../components/editor/resizableEditor.css'
 // The Create stage's editing workspace. It is the SAME canvas, inspector, layers, design, format and brand panels the Carousel Creator uses, working on the post's single page, so every tool
 // shown here is real: nothing is a placeholder and nothing calls a mock.
 import { useState } from 'react'
