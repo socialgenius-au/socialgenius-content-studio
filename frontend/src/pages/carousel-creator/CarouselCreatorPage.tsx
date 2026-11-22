@@ -300,6 +300,16 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
     try { const t = await templateStore.get(id); openCarousel(await server.create(carouselFromTemplate(t), { themeId: 'forest' })) }
     catch (e) { setActionError(`Could not start from the template: ${messageOf(e)}`) } finally { setBusy(false) }
   }
+  // A server-backed saved template can be opened directly from the marketplace.
+  const initialTemplateId = useRef(params.get('templateId'))
+  useEffect(() => {
+    const id = Number(initialTemplateId.current)
+    if (!Number.isSafeInteger(id) || id <= 0) return
+    initialTemplateId.current = null
+    void useTemplate(id)
+  // Run once for a deep link; useTemplate creates a fresh document from the template.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const exit = () => { setOpen(null); setParams({}, { replace: true }); void loadList() }
 
   const importOne = async (id: string, asCopy: boolean) => {
