@@ -26,3 +26,18 @@
 .sg-canva-focus{grid-template-columns:0px 0px 0px minmax(320px,1fr) 0px 0px!important}
 .sg-canva-focus .pcv2-editor-rail,.sg-canva-focus .pcv2-editor-left,.sg-canva-focus .pcv2-editor-right,.sg-canva-focus .sg-editor-resize-handle{display:none!important}
 @media(max-width:900px){.sg-canva-workspace .pcv2-editor-rail{display:flex;flex-direction:row;overflow:auto}.sg-canva-workspace .pcv2-editor-rail button{min-width:70px}.sg-canva-focus .pcv2-editor-center{width:100%}}
+
+.sg-canva-template-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-content:start}
+.sg-canva-template-gallery>p{grid-column:1/-1;color:#f0e3ff;font-size:13px}
+.sg-canva-template-gallery>button{background:transparent;border:0;padding:0;color:#fff;text-align:left;cursor:pointer;min-width:0}
+.sg-canva-template-gallery>button>span:last-child{display:block;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 2px}
+.sg-canva-template-preview{display:flex;flex-direction:column;justify-content:center;gap:12px;aspect-ratio:1;border:2px solid #b9a7d4;border-radius:11px;padding:14px;color:#fff;font-size:clamp(12px,1.3vw,21px);font-weight:900;text-transform:uppercase;overflow:hidden;box-shadow:inset 0 -12px #ffd13d}
+.sg-canva-template-preview small{font-size:10px;color:#ffdc54;text-transform:none}
+.sg-canva-template-preview-0{background:linear-gradient(145deg,#200a3b,#75208e)}
+.sg-canva-template-preview-1{background:linear-gradient(145deg,#07132d,#0845b7)}
+.sg-canva-template-preview-2{background:linear-gradient(145deg,#1d0b2c,#a52a29)}
+.sg-canva-template-preview-3{background:linear-gradient(145deg,#10283a,#bd7c21)}
+.sg-canva-template-preview-4{background:linear-gradient(145deg,#281a11,#141013)}
+.sg-canva-template-preview-5{background:linear-gradient(145deg,#081a31,#401288)}
+.sg-canva-template-gallery>button:hover .sg-canva-template-preview{outline:3px solid #ffcf33}
+.sg-canva-template-gallery .sg-canva-template-more{grid-column:1/-1;text-align:center;padding:14px;font-weight:700}
