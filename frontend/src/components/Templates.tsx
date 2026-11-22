@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { templatesApi } from '../api/client'
 import type { Template } from '../types'
@@ -23,7 +23,7 @@ function DesignPreview({item}:{item:Starter}){
  const isVideo=item.category==='Videos & Reels'
  const isCarousel=item.category==='Carousels'
  const layout=item.index%5
- return <div className={'sgtm-design sgtm-design--'+layout} style={{'--d-bg':p[0],'--d-accent':p[1],'--d-ink':p[2]} as React.CSSProperties} aria-label={'Original design preview: '+item.title}>
+ return <div className={'sgtm-design sgtm-design--'+layout} style={{'--d-bg':p[0],'--d-accent':p[1],'--d-ink':p[2]} as CSSProperties} aria-label={'Original design preview: '+item.title}>
  <div className="sgtm-design-frame">
  <div className="sgtm-design-decor sgtm-design-decor-a"/><div className="sgtm-design-decor sgtm-design-decor-b"/>
  <div className="sgtm-design-brand">SOCIAL <b>GENIUS</b><span>✦</span></div>
