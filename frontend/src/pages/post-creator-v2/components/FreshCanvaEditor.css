@@ -1,4 +1,4 @@
-.sg-fresh-editor{--sg-rail:100px;display:grid;grid-template-columns:var(--sg-rail) var(--sg-editor-left-width,370px) 6px minmax(300px,1fr) 6px var(--sg-editor-right-width,355px);width:100%;height:100%;min-height:0;overflow:hidden;background:#f6f5fd;color:#241432;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+.sg-fresh-editor{--sg-rail:100px;display:grid;grid-template-columns:var(--sg-rail) var(--sg-editor-left,370px) 6px minmax(300px,1fr) 6px var(--sg-editor-right,355px);width:100%;height:100%;min-height:0;overflow:hidden;background:#f6f5fd;color:#241432;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
 .sg-fresh-editor *{box-sizing:border-box}
 .sg-fresh-editor button{cursor:pointer}
 .sg-fresh-editor button:disabled{opacity:.45;cursor:default}
