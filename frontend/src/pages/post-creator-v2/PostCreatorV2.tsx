@@ -166,7 +166,7 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
     try { const raw = sessionStorage.getItem('sg-content-brief'); source = raw ? JSON.parse(raw) as Record<string, unknown> : null } catch { /* a malformed browser draft is ignored */ }
     if (!fromBrief || !source || source.contentType !== 'post') source = null
     const value = (k: string) => typeof source?.[k] === 'string' ? String(source[k]) : ''
-    const kitId = Number(source.brandKitId)
+    const kitId = Number(source?.brandKitId)
     const nextBrief: PostBrief = { ...emptyBrief(), title: value('topic'), goal: value('goal') || emptyBrief().goal, audience: value('audience'), keyMessage: value('message'), product: value('product'), cta: value('cta'), instructions: [value('instructions'),value('references'),value('offer')].filter(Boolean).join('\n'), brandKitId: Number.isInteger(kitId) && kitId > 0 ? kitId : null }
     if (!fromBrief) nextBrief.title = 'Untitled Post'
     setBrief(nextBrief)
