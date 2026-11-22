@@ -1192,3 +1192,25 @@
 .pcv2-start-bottom>section>button{display:flex;align-items:center;gap:8px;border:0;border-radius:10px;padding:12px 16px;background:#6b2aa4;color:white;font-weight:650;cursor:pointer}
 @media(max-width:850px){.pcv2-start-options{grid-template-columns:1fr 1fr}.pcv2-start-bottom{grid-template-columns:1fr}}
 @media(max-width:580px){.pcv2-start-options,.pcv2-start-drafts{grid-template-columns:1fr}.pcv2-start-hero{padding:30px 22px}.pcv2-start-options>a,.pcv2-start-options>button{min-height:180px}.pcv2-start-top{flex-wrap:wrap}.pcv2-start-top select{margin-left:auto}}
+
+
+/* Approved Social Genius Post Creator visual direction — purple, gold and light canvas.
+   Existing editing controls and persistence are preserved. */
+.pcv2[data-theme='light']{--pcv2-bg:#f5f0ff;--pcv2-header-bg:#240b3d;--pcv2-panel:#fff;--pcv2-panel-alt:#f7f1ff;--pcv2-border:#e5d8f6;--pcv2-border-strong:#cbb1ee;--pcv2-text:#28153e;--pcv2-text-muted:#705c85;--pcv2-text-faint:#9c8aaa;--pcv2-accent:#8428ed;--pcv2-accent-strong:#58208e;--pcv2-accent-soft:#f0e3ff;--pcv2-accent-contrast:#fff;--pcv2-sidebar-bg:#250b40;--pcv2-sidebar-text:#fff;--pcv2-sidebar-active-bg:#812ae6;--pcv2-sidebar-active-text:#fff;--pcv2-canvas-bg:#eae6f5}
+.pcv2-header{background:linear-gradient(100deg,#1c092e,#34104c 75%,#4d175e);color:#fff;border-bottom:1px solid #74418f}
+.pcv2-header .pcv2-brand,.pcv2-header .pcv2-title,.pcv2-header .pcv2-subtitle{color:#fff}
+.pcv2-brand-badge{width:45px;height:45px;background:transparent;border:0}
+.pcv2-brand-badge img{width:100%;height:100%;object-fit:contain}
+.pcv2-brand-name{font-size:15px;line-height:1.2}
+.pcv2-brand-name small{display:block;color:#ffd54c;font-size:10px;font-weight:650;margin-top:4px}
+.pcv2-unifiedbar{background:#2c0e47;color:white}
+.pcv2-unifiedbar select,.pcv2-unifiedbar button,.pcv2-unifiedbar a{border-color:#9054bb}
+.pcv2-stepper{gap:4px}
+.pcv2-step{border-color:#74458c;background:#391351;color:#f5eaff}
+.pcv2-step-num{background:#7130ac;color:white}
+.pcv2-step.is-active{background:#8128e7;border-color:#aa66ff}
+.pcv2-theme-toggle{border-color:#6d4985;background:#36104f}
+.pcv2-theme-toggle button{color:#fff}
+.pcv2-body{background:#f6f2ff}
+.pcv2-btn-primary{background:#f6c247;color:#251134}
+.pcv2-start{background:#f8f4ff}
