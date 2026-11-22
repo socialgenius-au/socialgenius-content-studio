@@ -215,42 +215,15 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
           <span className="pcv2-brand-name">Social Genius <small>The Positioning People</small></span>
         </a>
 
-        <div className="pcv2-titles">
-          <div className="pcv2-title">Post Creator</div>
-          <div className="pcv2-subtitle">Create, customise, save and export using one workspace.</div>
-        </div>
-
-        <nav className="pcv2-stepper" aria-label="Post Creator workflow">
-          {STAGES.map((s, i) => {
-            const locked = !opened && s.id !== 'brief'
-            return (
-              <span key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {i > 0 && <span className="pcv2-step-arrow">→</span>}
-                <button type="button" className={`pcv2-step ${stage === s.id ? 'is-active' : ''} ${i < stageIndex ? 'is-done' : ''}`} onClick={() => goTo(s.id)} disabled={locked} aria-disabled={locked}
-                  title={locked ? 'Start the post in Brief first' : undefined} data-testid={`pcv2-step-${s.id}`}>
-                  <span className="pcv2-step-num">{s.num}</span>
-                  {s.label.toUpperCase()}
-                </button>
-              </span>
-            )
-          })}
-        </nav>
-
-        <div className="pcv2-theme-toggle" role="group" aria-label="Theme">
-          <button type="button" className={theme === 'light' ? 'is-active' : ''} onClick={() => setThemeAndPersist('light')}>Light</button>
-          <button type="button" className={`pcv2-theme-knob ${theme === 'dark' ? 'is-dark' : ''}`} aria-label="Toggle theme" onClick={() => setThemeAndPersist(theme === 'light' ? 'dark' : 'light')} />
-          <button type="button" className={theme === 'dark' ? 'is-active' : ''} onClick={() => setThemeAndPersist('dark')}>Dark</button>
+        <div className="pcv2-approved-product"><span>Content Studio</span><select aria-label="Creator mode" value="post" onChange={e=>{if(e.target.value==='carousel'&&window.confirm('Switch to Carousel Creator? Your post is saved separately.'))window.location.assign('/carousel-creator')}}><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select></div>
+        <div className="pcv2-approved-header-actions">
+          <a href="/dashboard" title="Home">Home</a>
+          <button type="button" onClick={()=>setAssistantOpen(v=>!v)} aria-expanded={assistantOpen}><Sparkles size={17}/> AI Assistant</button>
+          <a href="/templates"><LayoutTemplate size={16}/> Templates</a>
+          <button type="button" onClick={()=>goTo('review')} disabled={!opened}><Download size={17}/> Save / Export</button>
         </div>
       </header>
 
-      <div className="pcv2-unifiedbar" aria-label="Unified creator toolbar">
-        <strong>Social Genius · Content Studio</strong>
-        <select aria-label="Creator mode" value="post" onChange={e=>{if(e.target.value==='carousel' && window.confirm('Switch to Carousel Creator? Your post is saved separately.'))window.location.assign('/carousel-creator')}}><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select>
-        <button type="button" onClick={()=>setAssistantOpen(v=>!v)} aria-expanded={assistantOpen}>✦ AI Assistant</button>
-        <button type="button" onClick={()=>{setAssistantOpen(false);goTo('create')}} disabled={!opened}>Manual editor</button>
-        <button type="button" onClick={()=>goTo('review')} disabled={!opened}>Save / Export</button>
-        <a href="/templates">Templates</a>
-      </div>
       {assistantOpen&&<section className="pcv2-ai-panel" aria-label="AI Assistant"><div className="pcv2-ai-title"><strong>✦ AI Assistant</strong><button type="button" onClick={()=>setAssistantOpen(false)}>Close ×</button></div><label htmlFor="pcv2-ai-prompt">Describe the post you want to create</label><textarea id="pcv2-ai-prompt" value={assistantPrompt} onChange={e=>setAssistantPrompt(e.target.value)} rows={3} placeholder="Create a promotional post for my business using our brand colours" /><p>Prompt-to-design generation is not connected yet. You can apply this prompt to your editable brief.</p><button type="button" disabled={!assistantPrompt.trim()} onClick={()=>{setBrief(b=>({...b,keyMessage:assistantPrompt.slice(0,500),instructions:assistantPrompt.slice(0,1000)}));goTo('brief');setAssistantOpen(false)}}>Use prompt in brief</button></section>}
       <div className="pcv2-body">
         {recovery ? (
@@ -259,7 +232,7 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
             onDiscard={() => { discardUnsynced(storage, recovery.carousel.id); openCarousel(recovery.carousel); setStage('brief') }} />
         ) : opened ? (
           <PostSessionProvider key={`${opened.id}:${opened.nonce}`} opened={opened} server={server} buffer={storage} brandStore={brandStore} libraryStore={libraryStore} onReload={c => { discardUnsynced(storage, c.id); openCarousel(c) }}>
-            <SessionBar onClose={closePost} />
+            <div className="pcv2-session-status"><SessionBar onClose={closePost} /></div>
             {workflow}
           </PostSessionProvider>
         ) : workflow}
