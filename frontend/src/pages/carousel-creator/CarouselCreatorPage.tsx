@@ -236,6 +236,7 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
   const templateStore = useMemo(() => templateProp ?? createHttpTemplateStore(carouselTemplatesApi), [templateProp])
   const libraryStore = useMemo(() => libraryProp ?? createHttpLibraryStore(libraryItemsApi), [libraryProp])
   const [managing, setManaging] = useState(false)
+  const [showClassicStart, setShowClassicStart] = useState(false)
   const [kitsRefresh, setKitsRefresh] = useState(0)
   const [startKits, setStartKits] = useState<BrandKitSummary[] | null>(null)
   const [startTemplates, setStartTemplates] = useState<TemplateSummary[] | null>(null)
@@ -372,10 +373,19 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
   }
   return (
     <div className="space-y-3">
-      <StartScreen items={items} listState={listState} listError={listError} onRetryList={() => void loadList()} busy={busy} actionError={actionError}
+      <section className="rounded-2xl border border-purple-900/20 bg-gradient-to-r from-[#241034] to-[#4c176d] p-5 text-white" aria-label="Unified Carousel Creator start">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-amber-300">Social Genius · Content Studio</p><h1 className="mt-1 text-2xl font-bold">Create a carousel</h1><p className="mt-1 text-sm text-purple-100">One editable workspace for templates, designs, slides and export.</p></div><select aria-label="Creator mode" value="carousel" onChange={e=>{if(e.target.value==='post')window.location.assign('/post-creator-v2')}} className="rounded-lg border border-purple-300 bg-[#321548] px-4 py-2 text-white"><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select></div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <button type="button" onClick={()=>void create(templateDocumentFrom('blank','square'), 'forest')} disabled={busy} className="rounded-xl bg-amber-400 p-4 text-left font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-50">＋ New blank carousel <span className="mt-1 block text-xs font-normal">Open the editable slide canvas</span></button>
+          <button type="button" onClick={()=>setShowClassicStart(true)} className="rounded-xl border border-purple-300 bg-purple-900/40 p-4 text-left font-semibold">Browse my templates <span className="mt-1 block text-xs font-normal">Reuse an existing editable design</span></button>
+          <button type="button" onClick={()=>setShowClassicStart(true)} className="rounded-xl border border-purple-300 bg-purple-900/40 p-4 text-left font-semibold">Advanced setup <span className="mt-1 block text-xs font-normal">Formats, brand kits and blueprints</span></button>
+        </div>
+      </section>
+      <section aria-label="Recent carousel projects" className="rounded-xl border border-border bg-card p-4"><div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">Continue editing</h2><button type="button" className="text-sm underline" onClick={()=>setShowClassicStart(v=>!v)}>{showClassicStart?'Hide advanced options':'Show all options'}</button></div>{listState==='loading'&&<p>Loading saved designs…</p>}{listState==='error'&&<p role="alert">{listError}</p>}<div className="flex flex-wrap gap-2">{items.slice(0,8).map(item=><button key={item.id} type="button" onClick={()=>void openById(item.id)} className="rounded-lg border border-border px-4 py-3 text-left hover:bg-muted"><strong className="block">{item.title}</strong><span className="text-xs text-muted-foreground">{item.slideCount} slides</span></button>)}</div>{listState==='ready'&&items.length===0&&<p className="text-sm text-muted-foreground">No saved carousels yet. Start a new design above.</p>}</section>
+      {showClassicStart&&<StartScreen items={items} listState={listState} listError={listError} onRetryList={() => void loadList()} busy={busy} actionError={actionError}
         onOpen={id => void openById(id)} onDuplicate={id => void duplicate(id)} onDelete={id => void remove(id)} onCreate={(d, t, k) => void create(d, t, k)}
         kits={startKits} templates={startTemplates} onUseTemplate={id => void useTemplate(id)} onOpenBrandKits={() => setManaging(true)}
-        local={local} importResults={importResults} importing={importing} onImportAll={() => void importAll()} onImportOne={(id, asCopy) => void importOne(id, asCopy)} onRemoveLocal={id => void removeLocal(id)} />
+        local={local} importResults={importResults} importing={importing} onImportAll={() => void importAll()} onImportOne={(id, asCopy) => void importOne(id, asCopy)} onRemoveLocal={id => void removeLocal(id)} />}
     </div>
   )
 }
