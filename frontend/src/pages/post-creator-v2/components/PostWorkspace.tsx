@@ -1,7 +1,7 @@
 import '../../../components/editor/resizableEditor.css'
 // The Create stage's editing workspace. It is the SAME canvas, inspector, layers, design, format and brand panels the Carousel Creator uses, working on the post's single page, so every tool
 // shown here is real: nothing is a placeholder and nothing calls a mock.
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './CanvaWorkspace.css'
 import { useResizableEditorPanels } from '../../../components/editor/useResizableEditorPanels'
 import { Image as ImageIcon, Layers, LayoutTemplate, Palette, Redo2, Shapes, Undo2, Type, UploadCloud, Sparkles, FolderOpen } from 'lucide-react'
@@ -16,6 +16,9 @@ import LayersPanel from '../../carousel-creator/components/LayersPanel'
 import BrandPanel from '../../carousel-creator/components/BrandPanel'
 import { SaveBadge } from '../../carousel-creator/components/SyncStatus'
 import { usePostSession } from '../session'
+import { carouselTemplatesApi } from '../../../api/client'
+import { createHttpTemplateStore } from '../../../lib/carousel/assetsStore'
+import { applyTemplateSlides, type TemplateSummary } from '../../../lib/carousel/templates'
 
 type Tab = 'edit' | 'design' | 'format' | 'layers' | 'brand'
 
@@ -28,6 +31,26 @@ export default function PostWorkspace() {
   const [category, setCategory] = useState('All')
   const [designSection, setDesignSection] = useState<'Templates'|'Layouts'|'Styles'>('Templates')
   const [focus, setFocus] = useState(false)
+  const templateStore = useMemo(() => createHttpTemplateStore(carouselTemplatesApi), [])
+  const [templates, setTemplates] = useState<TemplateSummary[] | null>(null)
+  const [templateError, setTemplateError] = useState('')
+  const [templateBusy, setTemplateBusy] = useState(false)
+  useEffect(() => {
+    let live = true
+    templateStore.list().then(items => { if (live) setTemplates(items) }).catch(e => { if (live) { setTemplates([]); setTemplateError(e instanceof Error ? e.message : 'Could not load templates') } })
+    return () => { live = false }
+  }, [templateStore])
+  const applySavedTemplate = async (id: number) => {
+    setTemplateBusy(true); setTemplateError('')
+    try {
+      const template = await templateStore.get(id)
+      const applied = applyTemplateSlides(doc, template, 'replace', doc.pages[0].id)
+      const firstPage = applied.doc.pages[0]
+      dispatch({ type: 'commitDoc', doc: { ...applied.doc, pages: [firstPage], title: doc.title, context: doc.context, id: doc.id }, activeSlideId: firstPage.id })
+    } catch (e) { setTemplateError(e instanceof Error ? e.message : 'Template could not be applied') }
+    finally { setTemplateBusy(false) }
+  }
+
   const [snap, setSnap] = useState(true)
   const panels = useResizableEditorPanels('sg-post-editor-panel-widths')
   const page = doc.pages[0]
@@ -46,8 +69,16 @@ export default function PostWorkspace() {
           {tab==='design'&&<div className="sg-canva-design-content">
             <input aria-label="Search templates" placeholder="⌕  Search templates..." value={search} onChange={e=>setSearch(e.target.value)}/>
             <div className="sg-canva-chips">{['All','Business','Marketing','Education','Real Estate'].map(v=><button type="button" key={v} className={category===v?'active':''} onClick={()=>setCategory(v)}>{v}</button>)}</div>
-            <div className="sg-canva-template-help">Choose a background or layout below to edit your design.</div>
-            <DesignPanel doc={doc} page={page} theme={theme} selectedIds={state.selectedIds} dispatch={dispatch} libraryStore={s.libraryStore} />
+            {designSection==='Templates' ? <div className="sg-canva-template-gallery" aria-label="Saved editable templates">
+              {templateError&&<p role="alert">{templateError}</p>}
+              {templates===null&&<p>Loading saved templates…</p>}
+              {templates?.length===0&&<p>No saved templates yet. Save a design as a template to see it here.</p>}
+              {templates?.filter(t=>(category==='All'||t.name.toLowerCase().includes(category.toLowerCase()))&&t.name.toLowerCase().includes(search.toLowerCase())).map((t,i)=><button key={t.id} type="button" disabled={templateBusy} onClick={()=>void applySavedTemplate(t.id)} title={t.description||t.name}>
+                <span className={'sg-canva-template-preview sg-canva-template-preview-'+(i%6)}><strong>{t.name}</strong><small>{t.slideCount} {t.slideCount===1?'page':'pages'}</small></span>
+                <span>{t.name}</span>
+              </button>)}
+              <button type="button" className="sg-canva-template-more" onClick={()=>window.location.assign('/templates')}>Browse more templates →</button>
+            </div> : <DesignPanel doc={doc} page={page} theme={theme} selectedIds={state.selectedIds} dispatch={dispatch} libraryStore={s.libraryStore} />}
           </div>}
           {tab==='layers'&&<LayersPanel page={page} selectedId={state.selectedElementId} selectedIds={state.selectedIds} dispatch={dispatch} />}
           {tab==='format'&&<FormatPanel key={`${doc.format.width}x${doc.format.height}`} doc={doc} dispatch={dispatch} />}
