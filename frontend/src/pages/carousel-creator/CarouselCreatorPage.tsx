@@ -43,6 +43,8 @@ const messageOf = (e: unknown) => (e instanceof CarouselServerError ? e.message 
 function Editor({ opened, server, buffer, brandStore, templateStore, libraryStore, videoSink, onExit, onReload, onManageKits, kitsRefresh, notices, onDismissNotices, onCreateFrom }: { opened: Opened; notices: string[]; onDismissNotices: () => void; onCreateFrom: (doc: PostDocument, themeId: string, notices: string[]) => Promise<string | null>; server: CarouselServer; buffer: KeyValueStorage | null; brandStore: BrandKitStore; templateStore: TemplateStore; libraryStore: LibraryStore; videoSink?: VideoSink; onExit: () => void; onReload: (c: ServerCarousel) => void; onManageKits: () => void; kitsRefresh: number }) {
   const [state, dispatch] = useReducer((s: ReturnType<typeof initialState>, a: Parameters<typeof editorReducer>[1]) => editorReducer(s, a), undefined, () => initialState(opened.doc, opened.themeId, opened.activeSlideId))
   const [tab, setTab] = useState<PanelTab>('edit')
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [assistantPrompt, setAssistantPrompt] = useState('')
   const [engine, setEngine] = useState<SyncEngine | null>(null)
   const [sync, setSync] = useState<SyncState>({ status: 'clean', version: opened.version, unsaved: false, attempts: 0 })
   const [resolving, setResolving] = useState(false)
@@ -144,7 +146,15 @@ function Editor({ opened, server, buffer, brandStore, templateStore, libraryStor
 
   return (
     <div className="flex flex-col gap-3 xl:h-[calc(100dvh-7rem)] xl:min-h-[480px]" data-testid="carousel-editor" data-document-id={state.doc.id}>
-      <header className="flex flex-wrap items-center gap-2" data-testid="editor-header">
+      <header className="flex flex-wrap items-center gap-2 rounded-xl border border-purple-900/20 bg-gradient-to-r from-[#241034] via-[#3b1659] to-[#241034] p-3 text-white" data-testid="editor-header">
+        <span className="mr-2 text-sm font-bold text-amber-300">Social Genius · Content Studio</span>
+        <label className="sr-only" htmlFor="sg-creator-mode">Creator mode</label>
+        <select id="sg-creator-mode" aria-label="Creator mode" value="carousel" onChange={e => { if(e.target.value === 'post' && window.confirm('Switch to Post Creator? Your carousel remains saved separately.')) window.location.assign('/post-creator-v2') }} className="h-9 rounded-md border border-purple-400 bg-[#321548] px-3 text-sm font-semibold text-white"><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select>
+        <button type="button" className="h-9 rounded-md bg-purple-600 px-3 text-sm font-semibold text-white hover:bg-purple-500" onClick={()=>setAssistantOpen(v=>!v)} aria-expanded={assistantOpen}>✦ AI Assistant</button>
+        <button type="button" className="h-9 rounded-md border border-purple-400 px-3 text-sm" onClick={()=>{setAssistantOpen(false);setTab('edit')}}>Manual editor</button>
+        <button type="button" className="h-9 rounded-md border border-purple-400 px-3 text-sm" onClick={()=>void saveNow()}>Save project</button>
+        <button type="button" className="h-9 rounded-md border border-purple-400 px-3 text-sm" onClick={()=>setTab('templates')}>Save as template</button>
+        <button type="button" className="h-9 rounded-md bg-amber-400 px-3 text-sm font-bold text-slate-900" onClick={()=>setTab('export')}>Export</button>
         <button type="button" onClick={() => void leave()} className="inline-flex h-9 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-sm hover:bg-muted" data-testid="back-to-list"><ArrowLeft className="h-4 w-4" />All carousels</button>
         <input aria-label="Carousel name" className="order-last h-9 w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 text-lg font-semibold hover:border-border focus:border-border focus:bg-background md:order-none md:w-auto md:flex-1" value={state.doc.title} onChange={e => dispatch({ type: 'setTitle', title: e.target.value })} data-testid="doc-title" />
         <div className="flex items-center gap-1">
@@ -155,6 +165,13 @@ function Editor({ opened, server, buffer, brandStore, templateStore, libraryStor
         <SaveBadge state={sync} onRetry={engine ? () => engine.retryNow() : undefined} />
       </header>
 
+      {assistantOpen && <section aria-label="AI Assistant" className="rounded-xl border border-purple-300 bg-purple-50 p-4 text-slate-900 dark:bg-[#2a1740] dark:text-white">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><strong>✦ AI Assistant</strong><button type="button" onClick={()=>setAssistantOpen(false)} aria-label="Close assistant">Close ×</button></div>
+        <label htmlFor="sg-ai-prompt" className="mb-2 block text-sm">Describe the post or carousel you want to create or improve</label>
+        <textarea id="sg-ai-prompt" rows={3} value={assistantPrompt} onChange={e=>setAssistantPrompt(e.target.value)} placeholder="e.g. Create five slides about business automation with our brand colours" className="w-full rounded-lg border border-purple-200 bg-white p-3 text-slate-900" />
+        <p className="mt-2 text-xs text-purple-800 dark:text-purple-200">AI prompt-to-design is not connected yet. Use the existing manual tools below; your prompt stays in this session.</p>
+        <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={()=>setTab('design')} className="rounded-lg bg-purple-700 px-3 py-2 text-sm text-white">Design tools</button><button type="button" onClick={()=>setTab('brand')} className="rounded-lg border border-purple-300 px-3 py-2 text-sm">Brand Kit</button><button type="button" onClick={()=>setTab('animate')} className="rounded-lg border border-purple-300 px-3 py-2 text-sm">Transitions & animation</button></div>
+      </section>}
       <BrandTokensContext.Provider value={tokens}>
       <ConflictBanner state={sync} busy={resolving} onKeepMine={() => void resolve('keep-mine')} onUseServer={() => void resolve('use-server')} />
       <AuthBanner state={sync} />
