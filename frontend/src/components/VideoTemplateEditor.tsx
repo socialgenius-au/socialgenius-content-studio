@@ -16,9 +16,10 @@ const presets:Record<string,string[]>={
 const initial=(name:string):Scene[]=>(presets[name]||presets['Business Introduction Reel']).map((headline,i)=>({id:'scene-'+i,duration:i===0?4:6,headline,caption:i===0?'Add your opening hook':'Add your message here',media:null,mediaType:null,transition:'fade'}))
 const color='#d5ab60'
 export default function VideoTemplateEditor(){
- const nav=useNavigate();const {state}=useLocation();const title=(state as {title?:string}|null)?.title||'Business Introduction Reel'
+ const nav=useNavigate();const {state}=useLocation();const title=(state as {title?:string}|null)?.title||new URLSearchParams(useLocation().search).get('template')||'Business Introduction Reel'
  const [scenes,setScenes]=useState<Scene[]>(()=>initial(title))
  const [selected,setSelected]=useState(0)
+ useEffect(()=>{setScenes(initial(title));setSelected(0);setTime(0);setPlaying(false)},[title])
  const [rights,setRights]=useState(false)
  const [playing,setPlaying]=useState(false)
  const [time,setTime]=useState(0)
