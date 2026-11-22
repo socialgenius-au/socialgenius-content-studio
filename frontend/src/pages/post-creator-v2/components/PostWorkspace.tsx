@@ -1,103 +1,124 @@
-import '../../../components/editor/resizableEditor.css'
-// The Create stage's editing workspace. It is the SAME canvas, inspector, layers, design, format and brand panels the Carousel Creator uses, working on the post's single page, so every tool
-// shown here is real: nothing is a placeholder and nothing calls a mock.
 import { useEffect, useMemo, useState } from 'react'
-import './CanvaWorkspace.css'
-import { useResizableEditorPanels } from '../../../components/editor/useResizableEditorPanels'
-import { Image as ImageIcon, Layers, LayoutTemplate, Palette, Redo2, Shapes, Undo2, Type, UploadCloud, Sparkles, FolderOpen } from 'lucide-react'
+import { LayoutTemplate, Shapes, Type, Image as ImageIcon, Palette, UploadCloud, Sparkles, FolderOpen, ChevronLeft, ChevronRight, Plus, Undo2, Redo2, Crop, Lock, Layers, SlidersHorizontal, Maximize, Grid2X2, X, Search, FlipHorizontal, Trash2, MousePointer2, AlignCenter } from 'lucide-react'
+import { BrandTokensContext } from '../../../lib/carousel/brandContext'
 import { makeBrandLogo, makeBrandName } from '../../../lib/carousel/brandKit'
 import { themeById } from '../../../lib/carousel/layouts'
-import { BrandTokensContext } from '../../../lib/carousel/brandContext'
+import { createHttpTemplateStore } from '../../../lib/carousel/assetsStore'
+import { applyTemplateSlides, type TemplateSummary } from '../../../lib/carousel/templates'
+import { carouselTemplatesApi } from '../../../api/client'
+import { useResizableEditorPanels } from '../../../components/editor/useResizableEditorPanels'
 import StageCanvas from '../../carousel-creator/components/StageCanvas'
 import Inspector from '../../carousel-creator/components/Inspector'
 import DesignPanel from '../../carousel-creator/components/DesignPanel'
 import FormatPanel from '../../carousel-creator/components/FormatPanel'
 import LayersPanel from '../../carousel-creator/components/LayersPanel'
 import BrandPanel from '../../carousel-creator/components/BrandPanel'
-import { SaveBadge } from '../../carousel-creator/components/SyncStatus'
 import { usePostSession } from '../session'
-import { carouselTemplatesApi } from '../../../api/client'
-import { createHttpTemplateStore } from '../../../lib/carousel/assetsStore'
-import { applyTemplateSlides, type TemplateSummary } from '../../../lib/carousel/templates'
+import './FreshCanvaEditor.css'
 
-type Tab = 'edit' | 'design' | 'format' | 'layers' | 'brand'
-
+type Tool = 'Design' | 'Elements' | 'Text' | 'Media' | 'Brand Kit' | 'Uploads' | 'AI Tools' | 'Apps' | 'Projects'
+type DesignTab = 'Templates' | 'Layouts' | 'Styles'
+const tools = [
+  { label:'Design', Icon:LayoutTemplate },{ label:'Elements', Icon:Shapes },{ label:'Text', Icon:Type },
+  { label:'Media', Icon:ImageIcon },{ label:'Brand Kit', Icon:Palette },{ label:'Uploads', Icon:UploadCloud },
+  { label:'AI Tools', Icon:Sparkles },{ label:'Apps', Icon:Grid2X2 },{ label:'Projects', Icon:FolderOpen },
+] as const
+const examples = [
+  {name:'Grow your business',tag:'Business',headline:'GROW YOUR BUSINESS',sub:'WITH SOCIAL GENIUS',style:'growth'},
+  {name:'AI Automation',tag:'Business',headline:'AI AUTOMATION',sub:'FOR YOUR BUSINESS',style:'ai'},
+  {name:'Positioning & Strategy',tag:'Marketing',headline:'POSITIONING',sub:'THAT GETS YOU CLIENTS',style:'position'},
+  {name:'Mentoring & Coaching',tag:'Education',headline:'MENTORING',sub:'& COACHING',style:'mentor'},
+  {name:'The Positioning People',tag:'Business',headline:'THE POSITIONING',sub:'PEOPLE',style:'people'},
+  {name:'Content That Converts',tag:'Marketing',headline:'CONTENT THAT',sub:'CONVERTS',style:'content'},
+]
 export default function PostWorkspace() {
-  const s = usePostSession()
-  const { state, dispatch, doc } = s
-  const [tab, setTab] = useState<Tab>('design')
-  const [activeTool, setActiveTool] = useState('Design')
-  const [search, setSearch] = useState('')
-  const [category, setCategory] = useState('All')
-  const [designSection, setDesignSection] = useState<'Templates'|'Layouts'|'Styles'>('Templates')
-  const [focus, setFocus] = useState(false)
-  const templateStore = useMemo(() => createHttpTemplateStore(carouselTemplatesApi), [])
-  const [templates, setTemplates] = useState<TemplateSummary[] | null>(null)
-  const [templateError, setTemplateError] = useState('')
-  const [templateBusy, setTemplateBusy] = useState(false)
-  useEffect(() => {
-    let live = true
-    templateStore.list().then(items => { if (live) setTemplates(items) }).catch(e => { if (live) { setTemplates([]); setTemplateError(e instanceof Error ? e.message : 'Could not load templates') } })
-    return () => { live = false }
-  }, [templateStore])
-  const applySavedTemplate = async (id: number) => {
-    setTemplateBusy(true); setTemplateError('')
-    try {
-      const template = await templateStore.get(id)
-      const applied = applyTemplateSlides(doc, template, 'replace', doc.pages[0].id)
-      const firstPage = applied.doc.pages[0]
-      dispatch({ type: 'commitDoc', doc: { ...applied.doc, pages: [firstPage], title: doc.title, context: doc.context, id: doc.id }, activeSlideId: firstPage.id })
-    } catch (e) { setTemplateError(e instanceof Error ? e.message : 'Template could not be applied') }
-    finally { setTemplateBusy(false) }
+  const s=usePostSession()
+  const {state,dispatch,doc}=s
+  const page=doc.pages[0]
+  const selected=state.selectedElementId?page.elements.find(e=>e.id===state.selectedElementId):undefined
+  const theme=themeById(state.themeId)
+  const panels=useResizableEditorPanels('sg-canva-rebuilt-post-panels')
+  const [tool,setTool]=useState<Tool>('Design')
+  const [designTab,setDesignTab]=useState<DesignTab>('Templates')
+  const [filter,setFilter]=useState('All')
+  const [search,setSearch]=useState('')
+  const [focus,setFocus]=useState(false)
+  const [snap,setSnap]=useState(true)
+  const [zoom,setZoom]=useState(62)
+  const [inspectorTab,setInspectorTab]=useState<'Edit'|'Effects'|'Animate'>('Edit')
+  const [templates,setTemplates]=useState<TemplateSummary[]>([])
+  const [templateError,setTemplateError]=useState('')
+  const [busy,setBusy]=useState(false)
+  const store=useMemo(()=>createHttpTemplateStore(carouselTemplatesApi),[])
+  useEffect(()=>{let active=true;store.list().then(t=>{if(active)setTemplates(t)}).catch(e=>{if(active)setTemplateError(String(e))});return()=>{active=false}},[store])
+  const applyTemplate=async(id:number)=>{
+    setBusy(true);setTemplateError('')
+    try{const t=await store.get(id);const result=applyTemplateSlides(doc,t,'replace',page.id);const first=result.doc.pages[0];dispatch({type:'commitDoc',doc:{...result.doc,id:doc.id,title:doc.title,context:doc.context,pages:[first]},activeSlideId:first.id})}
+    catch(e){setTemplateError(e instanceof Error?e.message:String(e))}
+    finally{setBusy(false)}
   }
-
-  const [snap, setSnap] = useState(true)
-  const panels = useResizableEditorPanels('sg-post-editor-panel-widths')
-  const page = doc.pages[0]
-  const selected = state.selectedElementId ? page.elements.find(e => e.id === state.selectedElementId) : undefined
-  const theme = themeById(state.themeId)
-
-
-  return (
-    <BrandTokensContext.Provider value={s.tokens}>
-      <div className={`pcv2-editor-grid sg-canva-workspace ${focus ? "sg-canva-focus" : ""}`} data-testid="pcv2-workspace" style={panels.style}>
-        <nav className="pcv2-editor-rail" aria-label="Design tools">
-          {([{id:'design',label:'Design',icon:LayoutTemplate},{id:'edit',label:'Elements',icon:Shapes},{id:'edit',label:'Text',icon:Type},{id:'design',label:'Media',icon:ImageIcon},{id:'brand',label:'Brand Kit',icon:Palette},{id:'design',label:'Uploads',icon:UploadCloud},{id:'layers',label:'Layers',icon:Layers},{id:'format',label:'Format',icon:FolderOpen}] as const).map((t,i)=><button key={i} type="button" className={activeTool===t.label?'active':''} onClick={()=>{setActiveTool(t.label);setTab(t.id)}}><t.icon size={21}/><span>{t.label}</span></button>)}
-        </nav>
-        <aside className="pcv2-editor-left" aria-label="Templates and design tools">
-          <div className="sg-canva-design-top"><button type="button" onClick={()=>panels.toggle('left')} aria-label="Collapse design panel">☰</button>{(['Templates','Layouts','Styles'] as const).map(v=><button type="button" key={v} className={designSection===v?'active':''} onClick={()=>{setDesignSection(v);setTab('design')}}>{v}</button>)}</div>
-          {tab==='design'&&<div className="sg-canva-design-content">
-            <input aria-label="Search templates" placeholder="⌕  Search templates..." value={search} onChange={e=>setSearch(e.target.value)}/>
-            <div className="sg-canva-chips">{['All','Business','Marketing','Education','Real Estate'].map(v=><button type="button" key={v} className={category===v?'active':''} onClick={()=>setCategory(v)}>{v}</button>)}</div>
-            {designSection==='Templates' ? <div className="sg-canva-template-gallery" aria-label="Saved editable templates">
-              {templateError&&<p role="alert">{templateError}</p>}
-              {templates===null&&<p>Loading saved templates…</p>}
-              {templates?.length===0&&<p>No saved templates yet. Save a design as a template to see it here.</p>}
-              {templates?.filter(t=>(category==='All'||t.name.toLowerCase().includes(category.toLowerCase()))&&t.name.toLowerCase().includes(search.toLowerCase())).map((t,i)=><button key={t.id} type="button" disabled={templateBusy} onClick={()=>void applySavedTemplate(t.id)} title={t.description||t.name}>
-                <span className={'sg-canva-template-preview sg-canva-template-preview-'+(i%6)}><strong>{t.name}</strong><small>{t.slideCount} {t.slideCount===1?'page':'pages'}</small></span>
-                <span>{t.name}</span>
-              </button>)}
-              <button type="button" className="sg-canva-template-more" onClick={()=>window.location.assign('/templates')}>Browse more templates →</button>
-            </div> : <DesignPanel doc={doc} page={page} theme={theme} selectedIds={state.selectedIds} dispatch={dispatch} libraryStore={s.libraryStore} />}
-          </div>}
-          {tab==='layers'&&<LayersPanel page={page} selectedId={state.selectedElementId} selectedIds={state.selectedIds} dispatch={dispatch} />}
-          {tab==='format'&&<FormatPanel key={`${doc.format.width}x${doc.format.height}`} doc={doc} dispatch={dispatch} />}
-          {tab==='brand'&&<BrandPanel kit={s.kit} missingKitId={s.missingKit} kits={s.kits} error={s.kitError} busy={s.kitBusy} report={s.kitReport} onChooseKit={id=>void s.chooseKit(id)} onApply={s.applyKit} onDetach={()=>void s.chooseKit(null)} onManage={()=>window.open('/create-brief','_blank','noopener')} onAddLogo={l=>dispatch({type:'addPrepared',element:makeBrandLogo(l)})} onAddName={n=>dispatch({type:'addPrepared',element:makeBrandName(n,doc.format,theme)})}/>}
-          {tab==='edit'&&<div className="pcv2-editor-left-hint"><p>Select a text, image or shape on the canvas to edit it in the right panel.</p><button type="button" onClick={()=>setTab('design')}>Browse elements and backgrounds</button></div>}
-        </aside>
-        <div {...panels.separator('left')} />
-        <section className="pcv2-editor-center" aria-label="Editable design canvas">
-          <div className="pcv2-editor-toolbar"><span className="sg-canva-toolbar-label"></span><button type="button" disabled={state.past.length===0} onClick={()=>dispatch({type:'undo'})} aria-label="Undo"><Undo2 size={17}/></button><button type="button" disabled={state.future.length===0} onClick={()=>dispatch({type:'redo'})} aria-label="Redo"><Redo2 size={17}/></button><strong>{doc.title}</strong><span>{doc.format.width} × {doc.format.height}</span><button type="button" onClick={()=>setTab('edit')}>Edit image / shape</button><button type="button" onClick={()=>setTab('layers')}>Position</button><label className="pcv2-toolbar-snap"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)}/> Snap</label><SaveBadge state={s.sync} onRetry={s.retry}/></div>
-          <div className="pcv2-editor-stage"><StageCanvas doc={doc} pageId={page.id} selectedId={state.selectedElementId} selectedIds={state.selectedIds} snap={snap} dispatch={dispatch}/></div>
-          <div className="pcv2-editor-pages"><div className="sg-canva-page-thumb"><span>1</span><strong>{doc.title}</strong></div><span>Page 1 of 1</span><button type="button" onClick={()=>setFocus(v=>!v)}>{focus?"Exit Focus Mode":"Focus Mode ⛶"}</button></div>
-        </section>
-        <div {...panels.separator('right')} />
-        <aside className="pcv2-editor-right" aria-label="Post editing panels">
-          <div className="pcv2-panel-heading"><button type="button" onClick={()=>panels.toggle('right')} title="Collapse or expand properties panel">☰</button><strong>Properties</strong></div><div className="pcv2-editor-inspector-tabs"><button type="button" className={tab==='edit'?'active':''} onClick={()=>setTab('edit')}>Edit</button><button type="button" className={tab==='design'?'active':''} onClick={()=>setTab('design')}>Effects & design</button><button type="button" onClick={()=>setTab('layers')}>Position</button></div>
+  const selectTool=(t:Tool)=>{setTool(t);if(panels.leftCollapsed)panels.toggle('left')}
+  const chooseExample=(name:string)=>{
+    const match=templates.find(t=>t.name.toLowerCase()===name.toLowerCase())
+    if(match){void applyTemplate(match.id);return}
+    setTemplateError('This example is a design preview. Save a matching template to your library to apply its editable artwork.')
+  }
+  return <BrandTokensContext.Provider value={s.tokens}>
+    <div className={'sg-fresh-editor'+(focus?' sg-fresh-focus':'')} style={panels.style} data-testid="pcv2-workspace">
+      <nav className="sg-fresh-rail" aria-label="Design tools">
+        {tools.map(({label,Icon})=><button key={label} type="button" className={tool===label?'selected':''} onClick={()=>selectTool(label)}><Icon size={23}/><span>{label}</span></button>)}
+      </nav>
+      <aside className="sg-fresh-library" aria-label="Design library">
+        <div className="sg-fresh-library-head">
+          <button type="button" className="sg-fresh-collapse" aria-label="Collapse library" onClick={()=>panels.toggle('left')}><ChevronLeft size={18}/></button>
+          {tool==='Design'?(['Templates','Layouts','Styles'] as const).map(t=><button type="button" key={t} className={designTab===t?'selected':''} onClick={()=>setDesignTab(t)}>{t}</button>):<strong>{tool}</strong>}
+        </div>
+        {tool==='Design'&&designTab==='Templates'?<div className="sg-fresh-template-area">
+          <div className="sg-fresh-search"><Search size={17}/><input aria-label="Search templates" placeholder="Search templates..." value={search} onChange={e=>setSearch(e.target.value)}/><SlidersHorizontal size={17}/></div>
+          <div className="sg-fresh-filters">{['All','Business','Marketing','Education','Real Estate'].map(v=><button type="button" key={v} className={filter===v?'selected':''} onClick={()=>setFilter(v)}>{v}</button>)}</div>
+          {templateError&&<p className="sg-fresh-error" role="alert">{templateError}<button type="button" onClick={()=>setTemplateError('')}><X size={13}/></button></p>}
+          <div className="sg-fresh-templates">
+            {examples.filter(e=>(filter==='All'||e.tag===filter)&&(`${e.name} ${e.headline} ${e.sub}`).toLowerCase().includes(search.toLowerCase())).map(e=><button type="button" key={e.name} onClick={()=>chooseExample(e.name)} className="sg-fresh-template-card"><span className={'sg-fresh-art sg-fresh-art-'+e.style}><small>✦ SOCIAL GENIUS</small><strong>{e.headline}</strong><em>{e.sub}</em><span className="sg-fresh-art-accent"/></span></button>)}
+            {templates.filter(t=>!examples.some(e=>e.name.toLowerCase()===t.name.toLowerCase())&&(filter==='All'||t.name.toLowerCase().includes(filter.toLowerCase()))&&t.name.toLowerCase().includes(search.toLowerCase())).map(t=><button type="button" key={t.id} disabled={busy} onClick={()=>void applyTemplate(t.id)} className="sg-fresh-template-card"><span className="sg-fresh-art sg-fresh-art-saved"><small>YOUR TEMPLATE</small><strong>{t.name}</strong><em>{t.slideCount} page{t.slideCount!==1?'s':''}</em><span className="sg-fresh-art-accent"/></span></button>)}
+          </div><button type="button" className="sg-fresh-more" onClick={()=>window.location.assign('/templates')}>See more templates →</button>
+        </div>:tool==='Brand Kit'?<div className="sg-fresh-tool-content"><BrandPanel kit={s.kit} missingKitId={s.missingKit} kits={s.kits} error={s.kitError} busy={s.kitBusy} report={s.kitReport} onChooseKit={id=>void s.chooseKit(id)} onApply={s.applyKit} onDetach={()=>void s.chooseKit(null)} onManage={()=>window.open('/create-brief','_blank','noopener')} onAddLogo={logo=>dispatch({type:'addPrepared',element:makeBrandLogo(logo)})} onAddName={name=>dispatch({type:'addPrepared',element:makeBrandName(name,doc.format,theme)})}/></div>
+        :tool==='Projects'?<div className="sg-fresh-tool-content"><h3>Saved projects</h3><button type="button" onClick={()=>window.location.assign('/post-creator-v2')}>Open projects</button><LayersPanel page={page} selectedId={state.selectedElementId} selectedIds={state.selectedIds} dispatch={dispatch}/></div>
+        :tool==='Apps'?<div className="sg-fresh-tool-content"><FormatPanel key={doc.format.width+'x'+doc.format.height} doc={doc} dispatch={dispatch}/></div>
+        :tool==='AI Tools'?<div className="sg-fresh-tool-content"><h3>AI Tools</h3><p>Use Content Brief to prepare AI-assisted design instructions.</p><button type="button" onClick={()=>window.open('/create-brief','_blank','noopener')}>Open Content Brief</button></div>
+        :<div className="sg-fresh-tool-content"><h3>{tool==='Text'?'Add and edit text':tool==='Media'||tool==='Uploads'?'Images and media':tool==='Elements'?'Shapes and elements':designTab+' library'}</h3>
+          {tool==='Text'&&<button type="button" onClick={()=>dispatch({type:'addElement',kind:'text'})}><Plus size={17}/> Add text</button>}
+          {(tool==='Media'||tool==='Uploads')&&<button type="button" onClick={()=>dispatch({type:'addElement',kind:'image'})}><Plus size={17}/> Add image</button>}
+          {tool==='Elements'&&<button type="button" onClick={()=>dispatch({type:'addElement',kind:'shape'})}><Plus size={17}/> Add shape</button>}
+          <DesignPanel doc={doc} page={page} theme={theme} selectedIds={state.selectedIds} dispatch={dispatch} libraryStore={s.libraryStore}/>
+        </div>}
+      </aside>
+      <div {...panels.separator('left')}/>
+      <main className="sg-fresh-center" aria-label="Editable design canvas">
+        <div className="sg-fresh-context">
+          <button type="button" onClick={()=>setInspectorTab('Edit')}><ImageIcon size={17}/> Edit image</button>
+          <button type="button" onClick={()=>setInspectorTab('Effects')}>Remove BG</button>
+          <button type="button" onClick={()=>setInspectorTab('Edit')}><Crop size={17}/> Crop</button>
+          <button type="button" onClick={()=>setInspectorTab('Edit')}><FlipHorizontal size={17}/> Flip</button>
+          <span className="sg-fresh-rule"/>
+          <button type="button" onClick={()=>setInspectorTab('Animate')}>◉ Animate</button>
+          <button type="button" className="sg-fresh-position" onClick={()=>selectTool('Projects')}>Position</button>
+          <button type="button" onClick={()=>dispatch({type:'lockSelected',locked:true})} aria-label="Lock selected"><Lock size={18}/></button>
+        </div>
+        <div className="sg-fresh-stage"><StageCanvas doc={doc} pageId={page.id} selectedId={state.selectedElementId} selectedIds={state.selectedIds} snap={snap} dispatch={dispatch}/></div>
+        <div className="sg-fresh-pages"><button type="button" className="sg-fresh-back" onClick={()=>panels.toggle('left')} aria-label="Toggle design library"><ChevronLeft size={17}/></button><button type="button" className="sg-fresh-page-card" aria-label="Current page"><span className="sg-fresh-page-art">✦<strong>{doc.title}</strong></span><small>1</small></button><div className="sg-fresh-page-add"><button type="button" onClick={()=>window.location.assign('/carousel-creator')}><Plus size={24}/> Multi-page carousel</button></div></div>
+        <footer className="sg-fresh-footer"><button type="button" onClick={()=>setSnap(v=>!v)}>▤ Notes</button><span>Page 1 of 1</span><div className="sg-fresh-zoom"><input aria-label="Canvas zoom" type="range" min="25" max="200" value={zoom} onChange={e=>setZoom(Number(e.target.value))}/><span>{zoom}%</span></div><button type="button" onClick={()=>setFocus(v=>!v)} aria-label="Toggle focus mode"><Maximize size={18}/></button></footer>
+      </main>
+      <div {...panels.separator('right')}/>
+      <aside className="sg-fresh-properties" aria-label="Properties">
+        <div className="sg-fresh-property-tabs">{(['Edit','Effects','Animate'] as const).map(t=><button type="button" key={t} className={inspectorTab===t?'selected':''} onClick={()=>setInspectorTab(t)}>{t}</button>)}<button type="button" className="sg-fresh-collapse" aria-label="Collapse properties" onClick={()=>panels.toggle('right')}><ChevronRight size={18}/></button></div>
+        <div className="sg-fresh-properties-content">
+          <h3>{selected?.type==='image'?'Image / Video':selected?.type==='text'?'Text':selected?.type==='shape'?'Shape':'Design properties'}</h3>
+          {selected&&<div className="sg-fresh-selected"><span><MousePointer2 size={20}/> Selected element</span><button type="button" aria-label="Delete selected element" onClick={()=>dispatch({type:'deleteSelected'})}><Trash2 size={19}/></button></div>}
+          {inspectorTab==='Effects'&&<p className="sg-fresh-property-note">Image adjustments, transparency and available effects appear below. Automatic background removal requires a connected image processing service.</p>}
+          {inspectorTab==='Animate'&&<p className="sg-fresh-property-note">Animation controls are available in Carousel Creator for multi-slide designs.</p>}
           <Inspector doc={doc} page={page} selected={selected} selectedIds={state.selectedIds} swatches={s.swatches} kitFonts={s.kitFonts} dispatch={dispatch}/>
-          <div className="pcv2-editor-inspector-hint"><Sparkles size={15}/> Select an image inside a shape to adjust the image and its frame using the available editing controls.</div>
-        </aside>
-      </div>
-    </BrandTokensContext.Provider>
-  )
+        </div>
+      </aside>
+    </div>
+  </BrandTokensContext.Provider>
 }
