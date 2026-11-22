@@ -1,7 +1,7 @@
 // The Create stage's editing workspace. It is the SAME canvas, inspector, layers, design, format and brand panels the Carousel Creator uses, working on the post's single page, so every tool
 // shown here is real: nothing is a placeholder and nothing calls a mock.
 import { useState } from 'react'
-import { Eraser, Image as ImageIcon, Layers, LayoutTemplate, Palette, Redo2, Shapes, Undo2, Type, UploadCloud, Sparkles, FolderOpen } from 'lucide-react'
+import { Image as ImageIcon, Layers, LayoutTemplate, Palette, Redo2, Shapes, Undo2, Type, UploadCloud, Sparkles, FolderOpen } from 'lucide-react'
 import { makeBrandLogo, makeBrandName } from '../../../lib/carousel/brandKit'
 import { themeById } from '../../../lib/carousel/layouts'
 import { BrandTokensContext } from '../../../lib/carousel/brandContext'
@@ -19,30 +19,15 @@ type Tab = 'edit' | 'design' | 'format' | 'layers' | 'brand'
 export default function PostWorkspace() {
   const s = usePostSession()
   const { state, dispatch, doc } = s
-  const [tab, setTab] = useState<Tab>('edit')
+  const [tab, setTab] = useState<Tab>('design')
   const [snap, setSnap] = useState(true)
   const page = doc.pages[0]
   const selected = state.selectedElementId ? page.elements.find(e => e.id === state.selectedElementId) : undefined
   const theme = themeById(state.themeId)
-  const blank = () => dispatch({ type: 'commitDoc', doc: { ...doc, revision: doc.revision + 1, updatedAt: new Date().toISOString(), pages: doc.pages.map(p => ({ ...p, elements: [] })) } })
-  const mode = 'pcv2-mode-btn'
+
 
   return (
     <BrandTokensContext.Provider value={s.tokens}>
-      <div className="pcv2-mode-row" style={{ marginTop: 16, alignItems: 'center' }} data-testid="pcv2-create-modes">
-        <button type="button" className={mode} onClick={() => { setTab('edit'); dispatch({ type: 'selectElement', id: null }) }} data-testid="pcv2-mode-edit"><LayoutTemplate size={14} /> Layout &amp; text</button>
-        <button type="button" className={mode} onClick={() => setTab('design')} data-testid="pcv2-mode-design"><Shapes size={14} /> Shapes &amp; backgrounds</button>
-        <button type="button" className={mode} onClick={() => { setTab('edit'); dispatch({ type: 'selectElement', id: null }) }} data-testid="pcv2-mode-pictures"><ImageIcon size={14} /> Add pictures</button>
-        <button type="button" className={mode} onClick={() => setTab('brand')} data-testid="pcv2-mode-brand"><Palette size={14} /> Brand Kit</button>
-        <button type="button" className={mode} onClick={() => setTab('layers')} data-testid="pcv2-mode-layers"><Layers size={14} /> Layers</button>
-        <button type="button" className={mode} onClick={blank} data-testid="pcv2-mode-blank" title="Remove every layer. You can undo this."><Eraser size={14} /> Blank canvas</button>
-        <span style={{ flex: 1 }} />
-        <button type="button" className="pcv2-canvas-tool" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={state.past.length === 0} onClick={() => dispatch({ type: 'undo' })} data-testid="pcv2-undo"><Undo2 size={16} /></button>
-        <button type="button" className="pcv2-canvas-tool" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={state.future.length === 0} onClick={() => dispatch({ type: 'redo' })} data-testid="pcv2-redo"><Redo2 size={16} /></button>
-        <label className="pcv2-canvas-tool" style={{ gap: 4 }}><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} data-testid="pcv2-snap" /> Snap</label>
-        <SaveBadge state={s.sync} onRetry={s.retry} />
-      </div>
-
       <div className="pcv2-editor-grid" data-testid="pcv2-workspace">
         <nav className="pcv2-editor-rail" aria-label="Design tools">
           {([{id:'design',label:'Design',icon:LayoutTemplate},{id:'edit',label:'Elements',icon:Shapes},{id:'edit',label:'Text',icon:Type},{id:'design',label:'Media',icon:ImageIcon},{id:'brand',label:'Brand Kit',icon:Palette},{id:'design',label:'Uploads',icon:UploadCloud},{id:'layers',label:'Layers',icon:Layers},{id:'format',label:'Format',icon:FolderOpen}] as const).map((t,i)=><button key={i} type="button" className={tab===t.id?'active':''} onClick={()=>setTab(t.id)}><t.icon size={21}/><span>{t.label}</span></button>)}
@@ -57,7 +42,7 @@ export default function PostWorkspace() {
           {tab==='edit'&&<div className="pcv2-editor-left-hint"><p>Select a text, image or shape on the canvas to edit it in the right panel.</p><button type="button" onClick={()=>setTab('design')}>Browse elements and backgrounds</button></div>}
         </aside>
         <section className="pcv2-editor-center" aria-label="Editable design canvas">
-          <div className="pcv2-editor-toolbar"><strong>{doc.title}</strong><span>Single design · {doc.format.width} × {doc.format.height}</span><button type="button" onClick={()=>setTab('edit')}>Edit selected</button><button type="button" onClick={()=>setTab('layers')}>Position / Layers</button></div>
+          <div className="pcv2-editor-toolbar"><button type="button" disabled={state.past.length===0} onClick={()=>dispatch({type:'undo'})} aria-label="Undo"><Undo2 size={17}/></button><button type="button" disabled={state.future.length===0} onClick={()=>dispatch({type:'redo'})} aria-label="Redo"><Redo2 size={17}/></button><strong>{doc.title}</strong><span>{doc.format.width} × {doc.format.height}</span><button type="button" onClick={()=>setTab('edit')}>Edit image / shape</button><button type="button" onClick={()=>setTab('layers')}>Position</button><label className="pcv2-toolbar-snap"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)}/> Snap</label><SaveBadge state={s.sync} onRetry={s.retry}/></div>
           <div className="pcv2-editor-stage"><StageCanvas doc={doc} pageId={page.id} selectedId={state.selectedElementId} selectedIds={state.selectedIds} snap={snap} dispatch={dispatch}/></div>
           <div className="pcv2-editor-pages"><div className="pcv2-page-chip"><span>1</span>Page 1 of 1</div><span>Use Carousel Creator for multiple slides</span></div>
         </section>
