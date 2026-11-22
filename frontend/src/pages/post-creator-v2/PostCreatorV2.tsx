@@ -91,6 +91,8 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
   const { canvas } = usePostFormat()
   const [theme, setTheme] = useState<ThemeMode>('light')
   const [stage, setStage] = useState<Stage>('brief')
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [assistantPrompt, setAssistantPrompt] = useState('')
   const [brief, setBrief] = useState<PostBrief>(() => { const b=emptyBrief();if(typeof window==='undefined')return b;const q=new URLSearchParams(window.location.search);const title=q.get('template');return title?{...b,title:title.slice(0,120),keyMessage:title.slice(0,120),instructions:'Marketplace starter: customise this content in Post Creator. Template graphics have not been imported.'}:b })
   const [opened, setOpened] = useState<OpenedPost | null>(null)
   const [recovery, setRecovery] = useState<{ carousel: ServerCarousel; record: UnsyncedRecord; serverNewer: boolean } | null>(null)
@@ -200,6 +202,15 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
         </div>
       </header>
 
+      <div className="pcv2-unifiedbar" aria-label="Unified creator toolbar">
+        <strong>Social Genius · Content Studio</strong>
+        <select aria-label="Creator mode" value="post" onChange={e=>{if(e.target.value==='carousel' && window.confirm('Switch to Carousel Creator? Your post is saved separately.'))window.location.assign('/carousel-creator')}}><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select>
+        <button type="button" onClick={()=>setAssistantOpen(v=>!v)} aria-expanded={assistantOpen}>✦ AI Assistant</button>
+        <button type="button" onClick={()=>{setAssistantOpen(false);goTo('create')}} disabled={!opened}>Manual editor</button>
+        <button type="button" onClick={()=>goTo('review')} disabled={!opened}>Save / Export</button>
+        <a href="/templates">Templates</a>
+      </div>
+      {assistantOpen&&<section className="pcv2-ai-panel" aria-label="AI Assistant"><div className="pcv2-ai-title"><strong>✦ AI Assistant</strong><button type="button" onClick={()=>setAssistantOpen(false)}>Close ×</button></div><label htmlFor="pcv2-ai-prompt">Describe the post you want to create</label><textarea id="pcv2-ai-prompt" value={assistantPrompt} onChange={e=>setAssistantPrompt(e.target.value)} rows={3} placeholder="Create a promotional post for my business using our brand colours" /><p>Prompt-to-design generation is not connected yet. You can apply this prompt to your editable brief.</p><button type="button" disabled={!assistantPrompt.trim()} onClick={()=>{setBrief(b=>({...b,keyMessage:assistantPrompt.slice(0,500),instructions:assistantPrompt.slice(0,1000)}));goTo('brief');setAssistantOpen(false)}}>Use prompt in brief</button></section>}
       <div className="pcv2-quickbar" aria-label="Post Creator quick actions"><a href="/templates"><ArrowLeft size={15}/> Templates</a><span className="pcv2-quickbar-separator"/><button type="button" onClick={()=>goTo('brief')}>Brief</button><button type="button" onClick={()=>goTo('create')} disabled={!opened}>Design editor</button><button type="button" onClick={()=>goTo('review')} disabled={!opened}><Download size={15}/> Review & export</button><span className="pcv2-quickbar-spacer"/><span className="pcv2-quickbar-note"><BookmarkPlus size={15}/> Drafts save to your account</span><a href="/templates"><LayoutTemplate size={15}/> Browse templates</a></div><div className="pcv2-body">
         {recovery ? (
           <RecoveryPrompt title={recovery.carousel.title} serverNewer={recovery.serverNewer}
