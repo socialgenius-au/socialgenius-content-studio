@@ -40,7 +40,7 @@ function Editor({ onHome }: { onHome: () => void }) {
       <div className="sg-new-post-spacer" />
       <button type="button" aria-label="Undo" disabled={!s.state.past.length} onClick={()=>s.dispatch({type:'undo'})}><Undo2 size={20}/></button>
       <button type="button" aria-label="Redo" disabled={!s.state.future.length} onClick={()=>s.dispatch({type:'redo'})}><Redo2 size={20}/></button>
-      <span className="sg-new-post-status">{s.sync.unsaved?'Saving…':s.sync.status==='error'?'Save error':'Autosaved'}</span>
+      <span className="sg-new-post-status">{s.sync.unsaved?'Saving…':['failed','conflict','auth'].includes(s.sync.status)?'Save needs attention':'Autosaved'}</span>
       <button type="button" onClick={()=>void save()}><FolderOpen size={18}/> Save Project</button>
       <button type="button" onClick={()=>void saveTemplate()}><Star size={18}/> Save as Template</button>
       <button type="button" className="sg-new-post-export" onClick={()=>setExportOpen(true)}><Download size={18}/> Export</button>
