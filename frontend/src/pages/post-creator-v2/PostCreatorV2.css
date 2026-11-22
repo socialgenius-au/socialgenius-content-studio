@@ -1214,3 +1214,37 @@
 .pcv2-body{background:#f6f2ff}
 .pcv2-btn-primary{background:#f6c247;color:#251134}
 .pcv2-start{background:#f8f4ff}
+
+
+/* Canvas-first approved Post Creator layout */
+.pcv2-body:has(.pcv2-editor-grid){padding:12px 14px 35px}
+.pcv2-body:has(.pcv2-editor-grid) .pcv2-stage-head,.pcv2-body:has(.pcv2-editor-grid) .pcv2-stage-sub,.pcv2-body:has(.pcv2-editor-grid) .pcv2-source-note{display:none}
+.pcv2-editor-grid{display:grid;grid-template-columns:74px minmax(220px,310px) minmax(320px,1fr) minmax(270px,320px);gap:0;min-height:570px;height:min(780px,calc(100vh - 230px));border:1px solid #e0d4ef;border-radius:15px;overflow:hidden;background:#f7f5ff;color:#29133f}
+.pcv2-editor-rail{display:flex;flex-direction:column;background:#260e42;padding:10px 5px;gap:5px}
+.pcv2-editor-rail button{border:0;border-radius:10px;background:transparent;color:#f5eaff;display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 2px;font-size:10px;cursor:pointer}
+.pcv2-editor-rail button.active,.pcv2-editor-rail button:hover{background:#7625d7}
+.pcv2-editor-left{padding:16px 12px;overflow-y:auto;background:linear-gradient(160deg,#34164e,#211036);color:#fff}
+.pcv2-editor-left h3{font-size:17px;margin:0 0 13px;color:#fff}
+.pcv2-editor-left-tabs{display:flex;gap:6px;margin-bottom:12px}
+.pcv2-editor-left-tabs button{background:#462765;border:1px solid #80549c;color:#fff;border-radius:9px;padding:8px;font-size:11px;cursor:pointer}
+.pcv2-editor-left-tabs button.active{background:#f3e7ff;color:#42126f}
+.pcv2-editor-left-hint{padding:14px;border:1px solid #79549b;border-radius:10px;font-size:13px}
+.pcv2-editor-left-hint button{background:#f4c448;border:0;border-radius:8px;padding:10px;cursor:pointer}
+.pcv2-editor-center{min-width:0;display:flex;flex-direction:column;background:#f2effb}
+.pcv2-editor-toolbar{display:flex;align-items:center;gap:12px;padding:12px;background:white;border-bottom:1px solid #e6d9f4;font-size:12px;flex-wrap:wrap}
+.pcv2-editor-toolbar strong{font-size:14px;color:#2b1544}
+.pcv2-editor-toolbar span{color:#756489;margin-right:auto}
+.pcv2-editor-toolbar button{border:1px solid #d6c3ef;border-radius:8px;background:#f6f0ff;padding:7px 10px;color:#4a2180;cursor:pointer}
+.pcv2-editor-stage{min-height:0;flex:1;padding:18px;display:flex;flex-direction:column;overflow:auto}
+.pcv2-editor-stage>div{flex:1;min-height:350px}
+.pcv2-editor-pages{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 20px;border-top:1px solid #e4d9f4;background:#fff;font-size:12px;color:#6a5480}
+.pcv2-page-chip{display:flex;align-items:center;gap:8px;font-weight:700;color:#3c175f}
+.pcv2-page-chip span{display:grid;place-items:center;border:2px solid #8428ec;border-radius:8px;width:44px;height:44px;background:#f6eaff;color:#6e1fc4}
+.pcv2-editor-right{overflow-y:auto;padding:14px;background:#fff;border-left:1px solid #e4d9f4;color:#2a1742}
+.pcv2-editor-inspector-tabs{display:flex;gap:5px;border-bottom:1px solid #eee3f8;margin-bottom:15px;padding-bottom:8px}
+.pcv2-editor-inspector-tabs button{background:transparent;border:0;border-radius:9px;padding:9px;color:#4c306e;font-size:12px;font-weight:700;cursor:pointer}
+.pcv2-editor-inspector-tabs button.active{background:#f1e2ff;color:#6824b8}
+.pcv2-editor-inspector-hint{display:flex;gap:7px;padding:12px;border:1px solid #e6d9f3;background:#f8f3ff;border-radius:10px;font-size:11px;margin-top:14px;color:#68517d}
+@media(max-width:1250px){.pcv2-editor-grid{grid-template-columns:65px minmax(190px,250px) minmax(300px,1fr) 270px}}
+@media(max-width:980px){.pcv2-editor-grid{height:auto;grid-template-columns:65px minmax(0,1fr) 280px}.pcv2-editor-left{grid-column:2/4;grid-row:2;max-height:300px}.pcv2-editor-center{grid-column:2;grid-row:1;min-height:520px}.pcv2-editor-right{grid-column:3;grid-row:1}.pcv2-editor-rail{grid-row:1/3}}
+@media(max-width:650px){.pcv2-editor-grid{display:flex;flex-direction:column}.pcv2-editor-rail{flex-direction:row;overflow-x:auto}.pcv2-editor-rail button{min-width:65px}.pcv2-editor-center{min-height:460px}.pcv2-editor-right,.pcv2-editor-left{max-height:none}.pcv2-editor-stage{padding:8px}}
