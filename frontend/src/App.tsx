@@ -147,6 +147,9 @@ function AppRoutes() {
       <Route path="/studio-home-preview" element={<RequireAuth><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></RequireAuth>} />
       <Route path="/dashboard" element={<RequireAuth><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></RequireAuth>} />
 
+      {/* Creator workspace: full-width editing surface, outside the legacy application sidebar. */}
+      <Route path="/carousel-creator" element={<RequireAuth><ClientProvider><Suspense fallback={<PageFallback />}><CarouselCreatorPage /></Suspense></ClientProvider></RequireAuth>} />
+
       {/* Unified platform shell */}
       <Route
         element={
@@ -187,7 +190,7 @@ function AppRoutes() {
         <Route path="/clients/:clientId/tasks" element={<Suspense fallback={<PageFallback />}><TasksPage /></Suspense>} />
         <Route path="/clients/:clientId/analytics" element={<Suspense fallback={<PageFallback />}><AnalyticsPage /></Suspense>} />
         <Route path="/clients/:clientId/service-config" element={<Suspense fallback={<PageFallback />}><ServiceConfiguratorPage /></Suspense>} />
-        <Route path="/carousel-creator" element={<Suspense fallback={<PageFallback />}><CarouselCreatorPage /></Suspense>} />
+
         <Route path="/deconstructor" element={<Suspense fallback={<PageFallback />}><DeconstructorPage /></Suspense>} />
         <Route path="/deconstructor/:referenceVideoId" element={<Suspense fallback={<PageFallback />}><DeconstructorPage /></Suspense>} />
         <Route path="/connections" element={<Suspense fallback={<PageFallback />}><ConnectionsPage /></Suspense>} />
