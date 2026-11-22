@@ -51,3 +51,12 @@
 @media(max-width:750px){.sgb-brief-grid{grid-template-columns:1fr}.sgb-type-options{grid-template-columns:1fr}.sgb-type-options button{min-height:70px}.sgb-summary-body dl>div{grid-template-columns:95px minmax(0,1fr)}.sgb-banner-logo{display:none}}
 
 .sgb-brief-extras{margin-top:14px}.sgb-instructions{display:block;margin-top:14px}.sgb-instructions textarea{width:100%;margin-top:10px}.sgb-type-options button:focus-visible,.sgb-actions button:focus-visible{outline:3px solid #f3c74d;outline-offset:2px}
+
+
+.sgb-manage-kit{width:100%;border:1px dashed #8b4ed6;background:#f7efff;border-radius:11px;padding:12px;display:flex;align-items:center;justify-content:center;gap:8px;color:#58219c;font-weight:750;cursor:pointer;flex-wrap:wrap}
+.sgb-manage-kit span{font-size:11px;font-weight:450;width:100%;text-align:center}
+.sgb-kit-error{color:#a32743;font-size:12px}
+.sgb-kit-overlay{position:fixed;inset:0;z-index:100;background:#18072ab8;display:flex;justify-content:center;align-items:flex-start;padding:24px;overflow:auto}
+.sgb-kit-modal{background:white;color:#28143e;width:min(1100px,100%);min-height:320px;border-radius:19px;padding:24px;box-shadow:0 20px 60px #13062366}
+.sgb-kit-modal input,.sgb-kit-modal select{color:#28143e}
+@media(max-width:750px){.sgb-kit-overlay{padding:8px}.sgb-kit-modal{padding:12px}}
