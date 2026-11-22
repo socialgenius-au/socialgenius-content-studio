@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Ban, CheckCircle2, Clock, ListChecks, Megaphone, TrendingUp, UserPlus } from 'lucide-react'
+import { AlertTriangle, Ban, CheckCircle2, Clock, ListChecks, Megaphone, TrendingUp, UserPlus, Image as ImageIcon, GalleryHorizontal, Clapperboard, Sparkles, ArrowRight, Palette, FolderOpen, Target } from 'lucide-react'
 import { PageHeader } from '@/components/common/PageHeader'
 import { EmptyState } from '@/components/common/EmptyState'
 import { LoadingState } from '@/components/common/LoadingState'
@@ -82,10 +82,26 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Dashboard"
-        description={loading ? undefined : brief}
-      />
+      <section className="relative overflow-hidden rounded-3xl border border-purple-100 bg-gradient-to-r from-[#eee2ff] via-[#f8f3ff] to-[#eee0fa] p-8 shadow-sm">
+        <div className="relative z-10"><p className="mb-2 text-xs font-bold uppercase tracking-widest text-purple-600">Social Genius Content Studio</p><h1 className="text-3xl font-extrabold text-[#32145e] sm:text-4xl">Create. Engage. <span className="text-[#c59635]">Grow.</span></h1><p className="mt-3 max-w-xl text-sm text-[#615077]">Powerful content tools, strategic insights and AI assistance — all in one place.</p></div>
+        <div aria-hidden="true" className="absolute -right-16 -top-20 h-72 w-72 rounded-full border-[40px] border-purple-200/40"/>
+      </section>
+      <section aria-label="Content creation"><h2 className="text-xl font-bold text-[#2e1b4b]">What would you like to create today?</h2><p className="mb-4 mt-1 text-sm text-[#867593]">Choose a content type and start creating.</p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">{([
+          {name:'Social Post',desc:'Create single posts for your social platforms.',path:'/post-creator-v2',icon:ImageIcon},
+          {name:'Carousel',desc:'Design engaging multi-slide stories.',path:'/carousel-creator',icon:GalleryHorizontal},
+          {name:'Video',desc:'Create professional videos with AI and templates.',path:'/video-studio-v2',icon:Clapperboard},
+          {name:'From Reference',desc:'Turn references into new content.',path:'/deconstructor',icon:FolderOpen},
+          {name:'With AI',desc:'Start with an AI-assisted creative brief.',path:'/post-creator-v2',icon:Sparkles},
+        ] as const).map(a=><button key={a.name} type="button" onClick={()=>navigate(a.path)} className="group flex min-h-48 flex-col items-start rounded-2xl border border-[#ebe2f4] bg-white p-5 text-left shadow-[0_6px_22px_rgba(80,30,120,.05)] transition hover:-translate-y-1 hover:border-purple-300 hover:shadow-lg"><span className="mb-4 rounded-xl bg-[#f0e5ff] p-3 text-[#793bb1]"><a.icon className="h-5 w-5"/></span><strong className="text-base text-[#29163f]">{a.name}</strong><span className="mt-2 flex-1 text-xs leading-5 text-[#84748e]">{a.desc}</span><span className="mt-3 self-end rounded-full bg-[#f3eafb] p-2 text-purple-700 group-hover:bg-purple-700 group-hover:text-white"><ArrowRight className="h-4 w-4"/></span></button>)}</div>
+      </section>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <section className="rounded-2xl border border-purple-100 bg-white p-5 shadow-sm"><div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-[#2e1b4b]">Client workspaces</h2><button type="button" onClick={()=>navigate('/clients')} className="text-sm text-purple-700 hover:underline">View all →</button></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{clients.slice(0,6).map(c=><button key={c.id} type="button" onClick={()=>navigate(`/clients/${c.id}/overview`)} className="flex items-center gap-3 rounded-xl border border-purple-100 bg-[#fdfaff] p-3 text-left hover:border-purple-300"><span className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold text-white" style={{background:c.color}}>{c.logoInitial}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{c.name}</strong><span className="block truncate text-xs text-[#8b7a96]">{c.industry}</span></span><ArrowRight className="h-4 w-4 text-purple-600"/></button>)}</div></section>
+        <section className="rounded-2xl border border-purple-100 bg-white p-5 shadow-sm"><h2 className="mb-4 text-lg font-bold text-[#2e1b4b]">Quick actions</h2>{([{name:'Browse templates',path:'/templates',icon:GalleryHorizontal},{name:'Brand Kit',path:`/clients/${focusClient.id}/brand-kit`,icon:Palette},{name:'Manage clients',path:'/clients',icon:FolderOpen},{name:'AI Assistant',path:'/post-creator-v2',icon:Sparkles}] as const).map(a=><button type="button" key={a.name} onClick={()=>navigate(a.path)} className="flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left text-sm hover:bg-purple-50"><span className="rounded-full bg-purple-100 p-2 text-purple-700"><a.icon className="h-4 w-4"/></span><span className="flex-1">{a.name}</span><ArrowRight className="h-4 w-4 text-purple-400"/></button>)}</section>
+      </div>
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{([{name:'Business Automation',path:`/clients/${focusClient.id}/strategy`,icon:Sparkles},{name:'Positioning & Landing Pages',path:`/clients/${focusClient.id}/positioning`,icon:Target},{name:'Campaigns',path:`/clients/${focusClient.id}/campaigns`,icon:Megaphone},{name:'View Analytics',path:`/clients/${focusClient.id}/analytics`,icon:TrendingUp}] as const).map(a=><button type="button" key={a.name} onClick={()=>navigate(a.path)} className="flex items-center gap-3 rounded-xl bg-[#f1e9fb] p-4 text-left text-sm font-semibold text-[#4c2778] hover:bg-[#e8daf7]"><a.icon className="h-5 w-5"/><span className="flex-1">{a.name}</span><ArrowRight className="h-4 w-4"/></button>)}</section>
+      <details className="rounded-2xl border border-purple-100 bg-white p-5"><summary className="cursor-pointer font-semibold text-[#4e2d75]">Operations overview — tasks, leads and campaigns</summary><div className="mt-5 flex flex-col gap-5"><p className="text-sm text-[#82738c]">{loading ? 'Loading…' : brief}</p>
+
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {clients.map(c => {
@@ -214,6 +230,7 @@ export default function DashboardPage() {
           </div>
         </>
       )}
+      </div></details>
     </div>
   )
 }
