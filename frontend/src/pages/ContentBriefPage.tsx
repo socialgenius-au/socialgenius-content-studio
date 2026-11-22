@@ -1,4 +1,8 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { brandKitsApi } from '../api/client'
+import { createHttpBrandKitStore } from '../lib/carousel/assetsStore'
+import type { BrandKitSummary } from '../lib/carousel/brandKit'
+import BrandKitManager from './carousel-creator/components/BrandKitManager'
 import { Link, useNavigate } from 'react-router-dom'
 import { Home, FolderKanban, FileText, Image, Images, Clapperboard, ScanSearch, Sparkles, Palette, FolderOpen, Settings, Search, Bell, ChevronLeft, ChevronRight, Lightbulb, RefreshCw, ArrowRight, Save, Menu, X } from 'lucide-react'
 import './ContentBriefPage.css'
@@ -31,8 +35,8 @@ const ideaSets: Record<string,string[]> = {
   Outlines:['Hook → Problem → Solution → Call to action','Question → Three tips → Summary','Before → After → How to achieve it','Myth → Reality → Practical advice','Audience need → Benefits → Next step'],
 }
 type ContentType = 'post' | 'carousel' | 'video'
-type Brief = { topic:string; goal:string; audience:string; message:string; tone:string; brand:string; platforms:string[]; contentType:ContentType; product:string; offer:string; cta:string; instructions:string; references:string }
-const empty: Brief = {topic:'',goal:'',audience:'',message:'',tone:'',brand:'',platforms:['Instagram','Facebook'],contentType:'post',product:'',offer:'',cta:'',instructions:'',references:''}
+type Brief = { topic:string; goal:string; audience:string; message:string; tone:string; brand:string; platforms:string[]; contentType:ContentType; brandKitId:number|null; product:string; offer:string; cta:string; instructions:string; references:string }
+const empty: Brief = {topic:'',goal:'',audience:'',message:'',tone:'',brand:'',platforms:['Instagram','Facebook'],contentType:'post',brandKitId:null,product:'',offer:'',cta:'',instructions:'',references:''}
 const platforms = ['Instagram','Facebook','TikTok','YouTube','LinkedIn']
 export default function ContentBriefPage(){
   const navigate=useNavigate()
@@ -41,13 +45,19 @@ export default function ContentBriefPage(){
   const [assistantOpen,setAssistantOpen]=useState(true)
   const [tab,setTab]=useState('Ideas')
   const [brief,setBrief]=useState<Brief>(()=>{try {return {...empty,...JSON.parse(sessionStorage.getItem('sg-content-brief')||'{}')}} catch{return empty}})
+  const kitStore=useMemo(()=>createHttpBrandKitStore(brandKitsApi),[])
+  const [kits,setKits]=useState<BrandKitSummary[]>([])
+  const [kitEditorOpen,setKitEditorOpen]=useState(false)
+  const [kitError,setKitError]=useState('')
+  const loadKits=useCallback(async()=>{try{const items=await kitStore.list();setKits(items);setKitError('')}catch(e){setKitError(e instanceof Error?e.message:'Could not load Brand Kits. Please try again.')}},[kitStore])
+  useEffect(()=>{void loadKits()},[loadKits])
   const [saved,setSaved]=useState(false)
   const [validation,setValidation]=useState(false)
   const [query,setQuery]=useState('')
   const update=(patch:Partial<Brief>)=>{setBrief(v=>({...v,...patch}));setSaved(false)}
   const save=()=>{sessionStorage.setItem('sg-content-brief',JSON.stringify(brief));setSaved(true)}
   const toggle=(p:string)=>update({platforms:brief.platforms.includes(p)?brief.platforms.filter(x=>x!==p):[...brief.platforms,p]})
-  const goNext=()=>{setValidation(true);if(!brief.topic.trim()||!brief.goal||!brief.audience.trim()||!brief.message.trim()||!brief.platforms.length)return;save();const target={post:'/post-creator-v2',carousel:'/carousel-creator',video:'/video-studio-v2'}[brief.contentType];navigate(target+'?fromBrief=1',{state:{contentBrief:brief}})}
+  const goNext=()=>{setValidation(true);if(!brief.topic.trim()||!brief.goal||!brief.audience.trim()||!brief.message.trim()||!brief.platforms.length)return;save();const target={post:'/post-creator-v2',carousel:'/carousel-creator',video:'/video-studio-v2'}[brief.contentType];navigate(target+'?fromBrief=1',{state:{contentBrief:brief,brandKitId:brief.brandKitId}})}
   return <div className="sgb-app">
     <aside className={'sgb-sidebar '+(collapsed?'sgb-collapsed ':'')+(mobile?'sgb-mobile-open':'')}>
       <button className="sgb-collapse" onClick={()=>setCollapsed(v=>!v)} aria-label="Collapse navigation">{collapsed?<ChevronRight size={17}/>:<ChevronLeft size={17}/>}</button>
@@ -70,14 +80,15 @@ export default function ContentBriefPage(){
               <label className="sgb-field sgb-tile"><span>Audience <b>*</b></span><input value={brief.audience} onChange={e=>update({audience:e.target.value})} placeholder="e.g. Homeowners, 25–55, Sydney"/></label>
               <label className="sgb-field sgb-tile"><span>Key Message <b>*</b></span><textarea rows={2} value={brief.message} onChange={e=>update({message:e.target.value})} placeholder="What is the main message you want to communicate?"/></label>
               <div className="sgb-tile"><strong>Product / Service</strong><p>What are you promoting or explaining?</p><label className="sgb-field"><span>Product or service (optional)</span><input value={brief.product} onChange={e=>update({product:e.target.value})} placeholder="e.g. Food packaging for restaurants"/></label><label className="sgb-field"><span>Offer (optional)</span><input value={brief.offer} onChange={e=>update({offer:e.target.value})} placeholder="e.g. Free consultation"/></label></div>
-              <div className="sgb-tile"><strong>Brand Kit</strong><p>Apply your brand style to keep it consistent.</p><label className="sgb-field"><span>Brand / Client</span><input value={brief.brand} onChange={e=>update({brand:e.target.value})} placeholder="Select or enter a brand"/></label><label className="sgb-field"><span>Tone of voice</span><select value={brief.tone} onChange={e=>update({tone:e.target.value})}><option value="">Select tone</option>{['Professional','Friendly','Confident','Educational','Inspirational','Playful'].map(v=><option key={v}>{v}</option>)}</select></label></div>
+              <div className="sgb-tile"><strong>Brand Kit</strong><p>Apply your brand style to keep it consistent.</p><label className="sgb-field"><span>Saved Brand Kit</span><select value={brief.brandKitId??''} onChange={e=>{const id=e.target.value?Number(e.target.value):null;const selected=kits.find(k=>k.id===id);update({brandKitId:id,brand:selected?.name??''})}}><option value="">No Brand Kit selected</option>{kits.map(k=><option key={k.id} value={k.id}>{k.name} ({k.logoCount} logos)</option>)}</select></label><button type="button" className="sgb-manage-kit" onClick={()=>setKitEditorOpen(true)}><Palette size={17}/> Create / Edit Brand Kit <span>Upload logos, colours, fonts and brand images</span></button>{kitError&&<p role="alert" className="sgb-kit-error">{kitError}</p>}<label className="sgb-field"><span>Tone of voice</span><select value={brief.tone} onChange={e=>update({tone:e.target.value})}><option value="">Select tone</option>{['Professional','Friendly','Confident','Educational','Inspirational','Playful'].map(v=><option key={v}>{v}</option>)}</select></label></div>
             </div>
             <div className="sgb-brief-grid sgb-brief-extras"><label className="sgb-field sgb-tile"><span>Call to Action (optional)</span><input value={brief.cta} onChange={e=>update({cta:e.target.value})} placeholder="e.g. Enquire today"/></label><label className="sgb-field sgb-tile"><span>References / Existing Assets (optional)</span><textarea rows={2} value={brief.references} onChange={e=>update({references:e.target.value})} placeholder="Paste a reference link or describe existing images, videos or templates"/></label></div><label className="sgb-field sgb-tile sgb-instructions"><span>Additional instructions for AI or the creator (optional)</span><textarea rows={2} value={brief.instructions} onChange={e=>update({instructions:e.target.value})} placeholder="Anything else the Creator should know?"/></label>
             <div className="sgb-tile sgb-platform-tile"><strong>Publishing platforms</strong><p>Choose where this content will appear.</p><div className="sgb-platforms">{platforms.map((p,i)=><button type="button" key={p} className={brief.platforms.includes(p)?'sgb-selected':''} onClick={()=>toggle(p)} aria-pressed={brief.platforms.includes(p)}><span className="sgb-platform-icon">{['◎','f','♪','▶','in'][i]}</span><strong>{p}</strong><span className="sgb-check">{brief.platforms.includes(p)?'✓':'○'}</span></button>)}</div></div>
           </section>
-          <aside className="sgb-summary"><div className="sgb-summary-art"><Sparkles size={55}/></div><div className="sgb-summary-body"><h2><Sparkles size={21}/> Brief Summary</h2><p>A live view of your content brief.</p><dl>{([['Content Type',brief.contentType[0].toUpperCase()+brief.contentType.slice(1)],['Project',brief.topic],['Objective',brief.goal],['Audience',brief.audience],['Key Message',brief.message],['Product / Service',brief.product],['Call to Action',brief.cta],['Brand Kit',brief.brand||'Not selected']] as const).map(([k,v])=><div key={k}><dt>{k}:</dt><dd>{v||'—'}</dd></div>)}</dl></div></aside>
+          <aside className="sgb-summary"><div className="sgb-summary-art"><Sparkles size={55}/></div><div className="sgb-summary-body"><h2><Sparkles size={21}/> Brief Summary</h2><p>A live view of your content brief.</p><dl>{([['Content Type',brief.contentType[0].toUpperCase()+brief.contentType.slice(1)],['Project',brief.topic],['Objective',brief.goal],['Audience',brief.audience],['Key Message',brief.message],['Product / Service',brief.product],['Call to Action',brief.cta],['Brand Kit',kits.find(k=>k.id===brief.brandKitId)?.name||'Not selected']] as const).map(([k,v])=><div key={k}><dt>{k}:</dt><dd>{v||'—'}</dd></div>)}</dl></div></aside>
         </div>
         {validation&&(!brief.topic.trim()||!brief.goal||!brief.audience.trim()||!brief.message.trim()||!brief.platforms.length)&&<p role="alert" className="sgb-validation">Please complete Project Title, Objective, Audience, Key Message and at least one publishing platform.</p>}
+        {kitEditorOpen&&<div className="sgb-kit-overlay" role="dialog" aria-modal="true" aria-label="Manage saved Brand Kits"><div className="sgb-kit-modal"><BrandKitManager store={kitStore} onClose={()=>{setKitEditorOpen(false);void loadKits()}} onChanged={()=>{void loadKits()}} /></div></div>}
         <div className="sgb-actions">{}<button onClick={save}><Save size={17}/> {saved?'Draft saved in this browser':'Save as Draft'}</button><button className="sgb-next" onClick={goNext} disabled={false}>Continue to {brief.contentType==='post'?'Post Creator':brief.contentType==='carousel'?'Carousel Creator':'Video Studio'} <ArrowRight size={18}/></button></div>
         <p className="sgb-note">Briefs are saved in this browser session. Continue opens your selected Creator; production details such as slides, scenes, media and transitions belong in the editor.</p>
       </main>
