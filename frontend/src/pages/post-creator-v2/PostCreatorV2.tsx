@@ -92,7 +92,7 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
   const [theme, setTheme] = useState<ThemeMode>('light')
   const briefLaunchStarted=useRef(false)
   const [stage, setStage] = useState<Stage>('brief')
-  const [showStart, setShowStart] = useState(() => { if (typeof window === 'undefined') return true; const q = new URLSearchParams(window.location.search); return q.get('start') === '1' || (!q.has('draft') && !q.has('template') && q.get('fromBrief') !== '1') })
+  const [showStart, setShowStart] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [assistantPrompt, setAssistantPrompt] = useState('')
   const [brief, setBrief] = useState<PostBrief>(() => { const b=emptyBrief();if(typeof window==='undefined')return b;const q=new URLSearchParams(window.location.search);const title=q.get('template');return title?{...b,title:title.slice(0,120),keyMessage:title.slice(0,120),instructions:'Marketplace starter: customise this content in Post Creator. Template graphics have not been imported.'}:b })
@@ -128,7 +128,7 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
   const openCarousel = useCallback((c: ServerCarousel, base?: Partial<OpenedPost>) => {
     nonce.n += 1
     setOpened({ id: c.id, doc: c.document, themeId: c.themeId, activeSlideId: c.activeSlideId, version: c.version, nonce: nonce.n, ...base })
-    setRecovery(null); writeDraftParam(c.id)
+    setRecovery(null); writeDraftParam(c.id); sessionStorage.setItem('sg-last-post-draft',c.id); setShowStart(false); setStage('create')
   }, [nonce])
 
   const openById = useCallback(async (id: string) => {
@@ -138,11 +138,11 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
       const plan = planRecovery(storage, c)
       if (plan.kind === 'already-saved') discardUnsynced(storage, id)
       if (plan.kind === 'offer') { setRecovery({ carousel: c, record: plan.record, serverNewer: plan.serverNewer }); return }
-      openCarousel(c); setStage('brief')
+      openCarousel(c); setStage('create')
     } catch (e) { setStartError(`Could not open that post: ${messageOf(e)}`); writeDraftParam(null) } finally { setOpeningId(null) }
   }, [server, storage, openCarousel])
 
-  const initial = useMemo(() => ({ id: readDraftParam() }), [])
+  const initial = useMemo(() => ({ id: readDraftParam() ?? (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('fromBrief') !== '1' ? sessionStorage.getItem('sg-last-post-draft') : null) }), [])
   useEffect(() => { if (initial.id) void openById(initial.id) }, [initial, openById])
 
   const start = async () => {
@@ -159,15 +159,16 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
   // A completed common Content Brief qualifies the project; the Creator opens the
   // editable canvas directly instead of making the user repeat a second brief.
   useEffect(() => {
-    if (briefLaunchStarted.current || opened || readDraftParam()) return
-    if (new URLSearchParams(window.location.search).get('fromBrief') !== '1') return
+    if (briefLaunchStarted.current || opened || readDraftParam() || initial.id) return
+    const fromBrief = new URLSearchParams(window.location.search).get('fromBrief') === '1'
     briefLaunchStarted.current = true
     let source: Record<string, unknown> | null = null
     try { const raw = sessionStorage.getItem('sg-content-brief'); source = raw ? JSON.parse(raw) as Record<string, unknown> : null } catch { /* a malformed browser draft is ignored */ }
-    if (!source || source.contentType !== 'post') { setShowStart(true); return }
+    if (!fromBrief || !source || source.contentType !== 'post') source = null
     const value = (k: string) => typeof source?.[k] === 'string' ? String(source[k]) : ''
     const kitId = Number(source.brandKitId)
     const nextBrief: PostBrief = { ...emptyBrief(), title: value('topic'), goal: value('goal') || emptyBrief().goal, audience: value('audience'), keyMessage: value('message'), product: value('product'), cta: value('cta'), instructions: [value('instructions'),value('references'),value('offer')].filter(Boolean).join('\n'), brandKitId: Number.isInteger(kitId) && kitId > 0 ? kitId : null }
+    if (!fromBrief) nextBrief.title = 'Untitled Post'
     setBrief(nextBrief)
     setStarting(true)
     void (async () => {
@@ -182,9 +183,9 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
       } catch (e) { setStartError('Could not create the post from your brief: '+messageOf(e)); setShowStart(false); setStage('brief') }
       finally { setStarting(false) }
     })()
-  }, [opened, canvas, brandStore, server, openCarousel])
+  }, [opened, canvas, brandStore, server, openCarousel, initial.id])
 
-  const closePost = () => { setOpened(null); setStage('brief'); setShowStart(true); writeDraftParam(null); void loadDrafts() }
+  const closePost = () => { setOpened(null); setStage('brief'); setShowStart(true); sessionStorage.removeItem('sg-last-post-draft'); writeDraftParam(null); void loadDrafts() }
 
   const stageIndex = STAGES.findIndex(s => s.id === stage)
   const goTo = (s: Stage) => { if (opened || s === 'brief') { setShowStart(false); setStage(s) } }
