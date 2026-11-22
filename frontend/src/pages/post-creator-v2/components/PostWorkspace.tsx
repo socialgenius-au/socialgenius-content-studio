@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { LayoutTemplate, Shapes, Type, Image as ImageIcon, Palette, UploadCloud, Sparkles, FolderOpen, ChevronLeft, ChevronRight, Plus, Undo2, Redo2, Crop, Lock, Layers, SlidersHorizontal, Maximize, Grid2X2, X, Search, FlipHorizontal, Trash2, MousePointer2, AlignCenter } from 'lucide-react'
+import { LayoutTemplate, Shapes, Type, Image as ImageIcon, Palette, UploadCloud, Sparkles, FolderOpen, ChevronLeft, ChevronRight, Plus, Crop, Lock, SlidersHorizontal, Maximize, Grid2X2, X, Search, FlipHorizontal, Trash2, MousePointer2 } from 'lucide-react'
 import { BrandTokensContext } from '../../../lib/carousel/brandContext'
 import { makeBrandLogo, makeBrandName } from '../../../lib/carousel/brandKit'
 import { themeById } from '../../../lib/carousel/layouts'
@@ -57,7 +57,7 @@ export default function PostWorkspace() {
     catch(e){setTemplateError(e instanceof Error?e.message:String(e))}
     finally{setBusy(false)}
   }
-  const selectTool=(t:Tool)=>{setTool(t);if(panels.leftCollapsed)panels.toggle('left')}
+  const selectTool=(t:Tool)=>{setTool(t);if(panels.widths.left===0)panels.toggle('left')}
   const chooseExample=(name:string)=>{
     const match=templates.find(t=>t.name.toLowerCase()===name.toLowerCase())
     if(match){void applyTemplate(match.id);return}
