@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Sparkles, ArrowLeft, BookmarkPlus, Download, LayoutTemplate, Image as ImageIcon, FolderOpen, ArrowRight, WandSparkles, Palette, FilePlus2 } from 'lucide-react'
 import './PostCreatorV2.css'
+import NewPostCreatorScreen from './NewPostCreatorScreen'
 import { brandKitsApi, carouselsApi, libraryItemsApi } from '../../api/client'
 import { applyBrandKit } from '../../lib/carousel/brandKit'
 import type { BrandKitSummary } from '../../lib/carousel/brandKit'
@@ -248,7 +249,7 @@ export default function PostCreatorV2({ server: serverProp, storage: storageProp
   const libraryStore = useMemo(() => libraryProp ?? createHttpLibraryStore(libraryItemsApi), [libraryProp])
   return (
     <PostFormatProvider>
-      <Shell server={server} storage={storage} brandStore={brandStore} libraryStore={libraryStore} />
+      <NewPostCreatorScreen server={server} storage={storage} brandStore={brandStore} libraryStore={libraryStore} />
     </PostFormatProvider>
   )
 }
