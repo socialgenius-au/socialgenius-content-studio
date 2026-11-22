@@ -1,3 +1,4 @@
+import { createCarouselDocument } from '../../lib/carousel/document'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Redo2, Undo2 } from 'lucide-react'
@@ -376,7 +377,7 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
       <section className="rounded-2xl border border-purple-900/20 bg-gradient-to-r from-[#241034] to-[#4c176d] p-5 text-white" aria-label="Unified Carousel Creator start">
         <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-amber-300">Social Genius · Content Studio</p><h1 className="mt-1 text-2xl font-bold">Create a carousel</h1><p className="mt-1 text-sm text-purple-100">One editable workspace for templates, designs, slides and export.</p></div><select aria-label="Creator mode" value="carousel" onChange={e=>{if(e.target.value==='post')window.location.assign('/post-creator-v2')}} className="rounded-lg border border-purple-300 bg-[#321548] px-4 py-2 text-white"><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select></div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <button type="button" onClick={()=>void create(templateDocumentFrom('blank','square'), 'forest')} disabled={busy} className="rounded-xl bg-amber-400 p-4 text-left font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-50">＋ New blank carousel <span className="mt-1 block text-xs font-normal">Open the editable slide canvas</span></button>
+          <button type="button" onClick={()=>void create(createCarouselDocument({title:'Untitled carousel',themeId:'forest'}), 'forest')} disabled={busy} className="rounded-xl bg-amber-400 p-4 text-left font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-50">＋ New blank carousel <span className="mt-1 block text-xs font-normal">Open the editable slide canvas</span></button>
           <button type="button" onClick={()=>setShowClassicStart(true)} className="rounded-xl border border-purple-300 bg-purple-900/40 p-4 text-left font-semibold">Browse my templates <span className="mt-1 block text-xs font-normal">Reuse an existing editable design</span></button>
           <button type="button" onClick={()=>setShowClassicStart(true)} className="rounded-xl border border-purple-300 bg-purple-900/40 p-4 text-left font-semibold">Advanced setup <span className="mt-1 block text-xs font-normal">Formats, brand kits and blueprints</span></button>
         </div>
