@@ -15,7 +15,6 @@ import { SaveBadge } from '../../carousel-creator/components/SyncStatus'
 import { usePostSession } from '../session'
 
 type Tab = 'edit' | 'design' | 'format' | 'layers' | 'brand'
-const TABS: { id: Tab; label: string }[] = [{ id: 'edit', label: 'Edit' }, { id: 'design', label: 'Design' }, { id: 'format', label: 'Format' }, { id: 'layers', label: 'Layers' }, { id: 'brand', label: 'Brand' }]
 
 export default function PostWorkspace() {
   const s = usePostSession()
