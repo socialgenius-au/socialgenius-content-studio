@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Sparkles, ArrowLeft, BookmarkPlus, Download, LayoutTemplate } from 'lucide-react'
+import { Sparkles, ArrowLeft, BookmarkPlus, Download, LayoutTemplate, Image as ImageIcon, FolderOpen, ArrowRight, WandSparkles, Palette, FilePlus2 } from 'lucide-react'
 import './PostCreatorV2.css'
 import { brandKitsApi, carouselsApi, libraryItemsApi } from '../../api/client'
 import { applyBrandKit } from '../../lib/carousel/brandKit'
@@ -91,6 +91,7 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
   const { canvas } = usePostFormat()
   const [theme, setTheme] = useState<ThemeMode>('light')
   const [stage, setStage] = useState<Stage>('brief')
+  const [showStart, setShowStart] = useState(() => !readDraftParam() && !(typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('template')))
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [assistantPrompt, setAssistantPrompt] = useState('')
   const [brief, setBrief] = useState<PostBrief>(() => { const b=emptyBrief();if(typeof window==='undefined')return b;const q=new URLSearchParams(window.location.search);const title=q.get('template');return title?{...b,title:title.slice(0,120),keyMessage:title.slice(0,120),instructions:'Marketplace starter: customise this content in Post Creator. Template graphics have not been imported.'}:b })
@@ -154,10 +155,10 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
       setBrief(emptyBrief()); setStage('intelligence')
     } catch (e) { setStartError(`Could not start the post: ${messageOf(e)}`) } finally { setStarting(false) }
   }
-  const closePost = () => { setOpened(null); setStage('brief'); writeDraftParam(null); void loadDrafts() }
+  const closePost = () => { setOpened(null); setStage('brief'); setShowStart(true); writeDraftParam(null); void loadDrafts() }
 
   const stageIndex = STAGES.findIndex(s => s.id === stage)
-  const goTo = (s: Stage) => { if (opened || s === 'brief') setStage(s) }
+  const goTo = (s: Stage) => { if (opened || s === 'brief') { setShowStart(false); setStage(s) } }
   const goNext = () => { const next = STAGES[stageIndex + 1]; if (next) setStage(next.id) }
   const goBack = () => { const prev = STAGES[stageIndex - 1]; if (prev) setStage(prev.id) }
 
@@ -168,6 +169,16 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
 
   return (
     <div className="pcv2" data-theme={theme}>
+      {!opened && showStart && !recovery ? <main className="pcv2-start" aria-label="Post Creator start screen">
+        <div className="pcv2-start-top"><a href="/dashboard" className="pcv2-start-back"><ArrowLeft size={17}/> Home</a><span>Social Genius · Content Studio</span><select aria-label="Creator mode" value="post" onChange={e=>{if(e.target.value==='carousel')window.location.assign('/carousel-creator')}}><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select></div>
+        <section className="pcv2-start-hero"><span className="pcv2-start-eyebrow"><Sparkles size={17}/> YOUR CREATIVE WORKSPACE</span><h1>Create something <em>brilliant.</em></h1><p>Start with a blank post, customise a template or use an AI-assisted brief. Every design opens in the same editable Post Creator.</p></section>
+        <h2>How would you like to start?</h2><div className="pcv2-start-options">
+          <button type="button" onClick={()=>{setShowStart(false);setStage('brief')}}><span className="pcv2-start-icon lilac"><FilePlus2 size={29}/></span><strong>Start from scratch</strong><small>Create a new post with your own text, images and brand.</small><ArrowRight size={18}/></button>
+          <a href="/templates"><span className="pcv2-start-icon blue"><LayoutTemplate size={29}/></span><strong>Choose a template</strong><small>Browse editable templates, then customise in Post Creator.</small><ArrowRight size={18}/></a>
+          <button type="button" onClick={()=>{setShowStart(false);setAssistantOpen(true);setStage('brief')}}><span className="pcv2-start-icon gold"><WandSparkles size={29}/></span><strong>Create with AI</strong><small>Describe your idea and prepare an editable creative brief.</small><ArrowRight size={18}/></button>
+        </div>
+        <div className="pcv2-start-bottom"><section><h2><FolderOpen size={20}/> Continue your posts</h2>{draftsError&&<p role="alert">{draftsError}</p>}{drafts===null&&<p>Loading saved posts…</p>}{drafts?.length===0&&<p>No saved posts yet. Start your first design above.</p>}<div className="pcv2-start-drafts">{drafts?.slice(0,8).map(d=><button type="button" key={d.id} disabled={openingId===d.id} onClick={()=>{setShowStart(false);void openById(d.id)}}><ImageIcon size={20}/><span>{d.title}</span><ArrowRight size={16}/></button>)}</div></section><section><h2><Palette size={20}/> Your design tools</h2><p>Text, shapes, media, backgrounds, layers, Brand Kit, save and export remain available inside the existing editor.</p><button type="button" onClick={()=>{setShowStart(false);setStage('brief')}}>Open Post Creator <ArrowRight size={16}/></button></section></div>
+      </main> : <>
       <header className="pcv2-header">
         <a className="pcv2-brand" href="/dashboard">
           <span className="pcv2-brand-badge"><Sparkles size={16} /></span>
@@ -223,6 +234,7 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
           </PostSessionProvider>
         ) : workflow}
       </div>
+      </>}
     </div>
   )
 }
