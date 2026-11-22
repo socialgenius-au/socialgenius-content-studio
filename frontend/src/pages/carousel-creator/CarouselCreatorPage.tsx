@@ -1,3 +1,4 @@
+import { useResizableEditorPanels } from '../../components/editor/useResizableEditorPanels'
 import { createCarouselDocument } from '../../lib/carousel/document'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -50,6 +51,7 @@ function Editor({ opened, server, buffer, brandStore, templateStore, libraryStor
   const [sync, setSync] = useState<SyncState>({ status: 'clean', version: opened.version, unsaved: false, attempts: 0 })
   const [resolving, setResolving] = useState(false)
   const [snap, setSnap] = useState(true)
+  const panels = useResizableEditorPanels('sg-carousel-editor-panel-widths')
   const [kit, setKit] = useState<BrandKit | null>(null)
   const [kits, setKits] = useState<BrandKitSummary[] | null>(null)
   const [kitError, setKitError] = useState<string | null>(null)
@@ -184,9 +186,11 @@ function Editor({ opened, server, buffer, brandStore, templateStore, libraryStor
       )}
       {state.notice && <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100" data-testid="notice">{state.notice} <button type="button" className="ml-2 underline" onClick={() => dispatch({ type: 'clearNotice' })}>Dismiss</button></p>}
 
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 xl:min-h-0 xl:flex-1 xl:grid-cols-[9.5rem_minmax(0,1fr)_21rem] xl:grid-rows-[minmax(0,1fr)]">
+      <div className="sg-carousel-resizable-layout xl:min-h-0 xl:flex-1" style={panels.style}>
         <div className="order-2 min-h-0 xl:order-none xl:flex xl:flex-col"><Filmstrip doc={state.doc} activeId={page.id} onSelect={id => dispatch({ type: 'selectSlide', id })} onAdd={layout => dispatch({ type: 'addSlide', layout })} onDuplicate={id => dispatch({ type: 'duplicateSlide', id })} onDelete={id => dispatch({ type: 'deleteSlide', id })} onMove={(id, to) => dispatch({ type: 'moveSlide', id, to })} /></div>
+        <div {...panels.separator('left')} />
         <div className="order-1 flex min-h-0 flex-col xl:order-none"><StageCanvas doc={state.doc} pageId={page.id} selectedId={state.selectedElementId} selectedIds={state.selectedIds} snap={snap} dispatch={dispatch} /></div>
+        <div {...panels.separator('right')} />
         <aside className="order-3 min-h-0 rounded-lg border border-border bg-card p-3 xl:h-full xl:overflow-y-auto" aria-label="Editor panels">
           <div role="tablist" aria-label="Panels" className="mb-3 flex gap-1 overflow-x-auto rounded-md bg-muted p-1">{tabBtn('edit', 'Edit')}{tabBtn('design', 'Design')}{tabBtn('format', 'Format')}{tabBtn('layers', 'Layers')}{tabBtn('brand', 'Brand')}{tabBtn('templates', 'Templates')}{tabBtn('animate', 'Animate')}{tabBtn('export', 'Export')}{tabBtn('file', 'File')}</div>
           {tab === 'edit' && <Inspector doc={state.doc} page={page} selected={selected} selectedIds={state.selectedIds} swatches={kit ? kitSwatches(kit.kit) : []} kitFonts={kit ? kitFontFamilies(kit.kit) : []} dispatch={dispatch} />}
