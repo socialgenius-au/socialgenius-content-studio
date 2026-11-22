@@ -63,28 +63,16 @@ export function Sidebar({ narrow = false, open = false, onClose }: SidebarProps 
       <aside
         aria-label="Main navigation"
         className={cn(
-          'flex flex-col border-r border-border bg-card',
-          narrow ? 'fixed inset-y-0 left-0 z-50 w-60 max-w-[85vw] shadow-xl' : 'h-full shrink-0 transition-[width] duration-150',
-          !narrow && (compact ? 'w-[60px]' : 'w-60')
+          'flex flex-col border-r border-[#65418b] bg-[#211032] text-white',
+          narrow ? 'fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] shadow-xl' : 'h-full shrink-0 transition-[width] duration-150',
+          !narrow && (compact ? 'w-[76px]' : 'w-64')
         )}
       >
-        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-sg-forest text-xs font-extrabold text-sg-ivory">
-            SG
-          </div>
-          {!compact && (
-            <div className="flex flex-col leading-tight">
-              <span className="text-[13px] font-extrabold tracking-tight">Social Genius</span>
-              <span className="text-[10px] font-medium text-muted-foreground">The Positioning People</span>
-            </div>
-          )}
-          {narrow && (
-            <button type="button" onClick={onClose} aria-label="Close navigation" className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
-              <X className="h-4 w-4" />
-            </button>
-          )}
+        <div className="flex min-h-[94px] shrink-0 items-center gap-3 border-b border-white/15 px-3 py-3">
+          <img src="/positioning-landing/social-genius-logo.png" alt="Social Genius official tree logo" className="h-12 w-12 shrink-0 object-contain" />
+          {!compact && <div className="min-w-0 flex flex-col leading-tight"><span className="text-[15px] font-bold tracking-tight text-white">Social Genius</span><span className="mt-1 text-[11px] font-medium text-amber-300">Content Studio</span><span className="mt-1 text-[10px] text-purple-200">The Positioning People</span></div>}
+          {narrow && <button type="button" onClick={onClose} aria-label="Close navigation" className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-white hover:bg-white/10"><X className="h-4 w-4" /></button>}
         </div>
-
         <nav className="flex-1 overflow-y-auto px-2 py-3">
           {NAV_GROUPS.map(group => {
             const visibleItems = group.items.filter(item => isNavItemVisible(item, role))
@@ -112,12 +100,12 @@ export function Sidebar({ narrow = false, open = false, onClose }: SidebarProps 
                           onClick={e => { if (disabled) e.preventDefault(); else if (narrow) onClose?.() }}
                           className={({ isActive }) =>
                             cn(
-                              'flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors',
+                              'flex items-center gap-2.5 rounded-lg px-2 py-2 text-[13px] font-medium transition-colors',
                               compact && 'justify-center px-0 py-2',
                               disabled && 'pointer-events-none opacity-40',
                               isActive
-                                ? 'bg-primary text-primary-foreground'
-                                : 'text-foreground/80 hover:bg-muted hover:text-foreground'
+                                ? 'bg-[#7440a3] text-white shadow-sm ring-1 ring-[#b78ad6]/40'
+                                : 'text-purple-100 hover:bg-white/10 hover:text-white'
                             )
                           }
                         >
