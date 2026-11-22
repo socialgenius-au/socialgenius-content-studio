@@ -49,3 +49,5 @@
 .sgb-actions .sgb-next{background:linear-gradient(100deg,#ffda72,#ffb935);color:#27133d;border:1px solid #eaa72c;box-shadow:0 4px 12px #a87b2430}
 @media(max-width:1120px){.sgb-brief-layout{grid-template-columns:1fr}.sgb-summary{position:static}.sgb-summary-art{height:80px}}
 @media(max-width:750px){.sgb-brief-grid{grid-template-columns:1fr}.sgb-type-options{grid-template-columns:1fr}.sgb-type-options button{min-height:70px}.sgb-summary-body dl>div{grid-template-columns:95px minmax(0,1fr)}.sgb-banner-logo{display:none}}
+
+.sgb-brief-extras{margin-top:14px}.sgb-instructions{display:block;margin-top:14px}.sgb-instructions textarea{width:100%;margin-top:10px}.sgb-type-options button:focus-visible,.sgb-actions button:focus-visible{outline:3px solid #f3c74d;outline-offset:2px}
