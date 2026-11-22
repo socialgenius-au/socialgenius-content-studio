@@ -14,6 +14,7 @@ import FormatPanel from '../../carousel-creator/components/FormatPanel'
 import LayersPanel from '../../carousel-creator/components/LayersPanel'
 import BrandPanel from '../../carousel-creator/components/BrandPanel'
 import { usePostSession } from '../session'
+import { createPostDocument, workflowOf } from '../workflow'
 import './FreshCanvaEditor.css'
 
 type Tool = 'Design' | 'Elements' | 'Text' | 'Media' | 'Brand Kit' | 'Uploads' | 'AI Tools' | 'Apps' | 'Projects'
@@ -61,7 +62,12 @@ export default function PostWorkspace() {
   const chooseExample=(name:string)=>{
     const match=templates.find(t=>t.name.toLowerCase()===name.toLowerCase())
     if(match){void applyTemplate(match.id);return}
-    setTemplateError('This example is a design preview. Save a matching template to your library to apply its editable artwork.')
+    const example=examples.find(e=>e.name===name)
+    if(!example)return
+    const brief={...workflowOf(doc).brief,title:doc.title,keyMessage:example.headline,product:example.sub,themeId:state.themeId}
+    const fresh=createPostDocument(brief,doc.format)
+    dispatch({type:'commitDoc',doc:{...doc,pages:fresh.pages,revision:doc.revision+1},activeSlideId:fresh.pages[0].id})
+    setTemplateError('Applied an editable starter layout. The preview artwork is illustrative; use Media and Brand Kit to personalise the canvas.')
   }
   return <BrandTokensContext.Provider value={s.tokens}>
     <div className={'sg-fresh-editor'+(focus?' sg-fresh-focus':'')} style={panels.style} data-testid="pcv2-workspace">
