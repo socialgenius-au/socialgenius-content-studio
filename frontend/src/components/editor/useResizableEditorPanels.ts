@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
+import type { CSSProperties, PointerEvent as ReactPointerEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 
 type Side = 'left' | 'right'
 type Widths = { left: number; right: number }
@@ -37,7 +37,7 @@ export function useResizableEditorPanels(storageKey: string) {
       resize(side, event.clientX - last)
       event.currentTarget.dataset.lastX = String(event.clientX)
     },
-    onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+    onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault()
         resize(side, event.key === 'ArrowRight' ? 24 : -24)
