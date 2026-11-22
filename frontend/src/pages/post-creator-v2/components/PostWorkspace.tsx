@@ -1,7 +1,7 @@
 // The Create stage's editing workspace. It is the SAME canvas, inspector, layers, design, format and brand panels the Carousel Creator uses, working on the post's single page, so every tool
 // shown here is real: nothing is a placeholder and nothing calls a mock.
 import { useState } from 'react'
-import { Eraser, Image as ImageIcon, Layers, LayoutTemplate, Palette, Redo2, Shapes, Undo2 } from 'lucide-react'
+import { Eraser, Image as ImageIcon, Layers, LayoutTemplate, Palette, Redo2, Shapes, Undo2, Type, UploadCloud, Sparkles, FolderOpen } from 'lucide-react'
 import { makeBrandLogo, makeBrandName } from '../../../lib/carousel/brandKit'
 import { themeById } from '../../../lib/carousel/layouts'
 import { BrandTokensContext } from '../../../lib/carousel/brandContext'
@@ -44,26 +44,28 @@ export default function PostWorkspace() {
         <SaveBadge state={s.sync} onRetry={s.retry} />
       </div>
 
-      <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 xl:h-[calc(100dvh-19rem)] xl:min-h-[480px] xl:grid-cols-[minmax(0,1fr)_21rem] xl:grid-rows-[minmax(0,1fr)]" data-testid="pcv2-workspace">
-        <div className="flex min-h-0 flex-col">
-          <StageCanvas doc={doc} pageId={page.id} selectedId={state.selectedElementId} selectedIds={state.selectedIds} snap={snap} dispatch={dispatch} />
-        </div>
-        <aside className="min-h-0 rounded-lg border border-border bg-card p-3 text-foreground xl:h-full xl:overflow-y-auto" aria-label="Post editing panels">
-          <div role="tablist" aria-label="Editing panels" className="mb-3 flex gap-1 overflow-x-auto rounded-md bg-muted p-1">
-            {TABS.map(t => (
-              <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} data-testid={`pcv2-tab-${t.id}`}
-                className={`flex-1 shrink-0 rounded px-2 py-1.5 text-sm font-medium ${tab === t.id ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}>{t.label}</button>
-            ))}
-          </div>
-          {tab === 'edit' && <Inspector doc={doc} page={page} selected={selected} selectedIds={state.selectedIds} swatches={s.swatches} kitFonts={s.kitFonts} dispatch={dispatch} />}
-          {tab === 'design' && <DesignPanel doc={doc} page={page} theme={theme} selectedIds={state.selectedIds} dispatch={dispatch} libraryStore={s.libraryStore} />}
-          {tab === 'format' && <FormatPanel key={`${doc.format.width}x${doc.format.height}`} doc={doc} dispatch={dispatch} />}
-          {tab === 'layers' && <LayersPanel page={page} selectedId={state.selectedElementId} selectedIds={state.selectedIds} dispatch={dispatch} />}
-          {tab === 'brand' && (
-            <BrandPanel kit={s.kit} missingKitId={s.missingKit} kits={s.kits} error={s.kitError} busy={s.kitBusy} report={s.kitReport} onChooseKit={id => void s.chooseKit(id)} onApply={s.applyKit} onDetach={() => void s.chooseKit(null)}
-              onManage={() => window.open('/carousel-creator', '_blank', 'noopener')}
-              onAddLogo={l => dispatch({ type: 'addPrepared', element: makeBrandLogo(l) })} onAddName={n => dispatch({ type: 'addPrepared', element: makeBrandName(n, doc.format, theme) })} />
-          )}
+      <div className="pcv2-editor-grid" data-testid="pcv2-workspace">
+        <nav className="pcv2-editor-rail" aria-label="Design tools">
+          {([{id:'design',label:'Design',icon:LayoutTemplate},{id:'edit',label:'Elements',icon:Shapes},{id:'edit',label:'Text',icon:Type},{id:'design',label:'Media',icon:ImageIcon},{id:'brand',label:'Brand Kit',icon:Palette},{id:'design',label:'Uploads',icon:UploadCloud},{id:'layers',label:'Layers',icon:Layers},{id:'format',label:'Format',icon:FolderOpen}] as const).map((t,i)=><button key={i} type="button" className={tab===t.id?'active':''} onClick={()=>setTab(t.id)}><t.icon size={21}/><span>{t.label}</span></button>)}
+        </nav>
+        <aside className="pcv2-editor-left" aria-label="Templates and design tools">
+          <h3>{tab==='design'?'Design':tab==='edit'?'Elements & text':tab==='brand'?'Brand Kit':tab==='layers'?'Layers': 'Format'}</h3>
+          <div className="pcv2-editor-left-tabs"><button type="button" className={tab==='design'?'active':''} onClick={()=>setTab('design')}>Templates & layouts</button><button type="button" className={tab==='brand'?'active':''} onClick={()=>setTab('brand')}>Brand</button></div>
+          {tab==='design'&&<DesignPanel doc={doc} page={page} theme={theme} selectedIds={state.selectedIds} dispatch={dispatch} libraryStore={s.libraryStore} />}
+          {tab==='layers'&&<LayersPanel page={page} selectedId={state.selectedElementId} selectedIds={state.selectedIds} dispatch={dispatch} />}
+          {tab==='format'&&<FormatPanel key={`${doc.format.width}x${doc.format.height}`} doc={doc} dispatch={dispatch} />}
+          {tab==='brand'&&<BrandPanel kit={s.kit} missingKitId={s.missingKit} kits={s.kits} error={s.kitError} busy={s.kitBusy} report={s.kitReport} onChooseKit={id=>void s.chooseKit(id)} onApply={s.applyKit} onDetach={()=>void s.chooseKit(null)} onManage={()=>window.open('/create-brief','_blank','noopener')} onAddLogo={l=>dispatch({type:'addPrepared',element:makeBrandLogo(l)})} onAddName={n=>dispatch({type:'addPrepared',element:makeBrandName(n,doc.format,theme)})}/>}
+          {tab==='edit'&&<div className="pcv2-editor-left-hint"><p>Select a text, image or shape on the canvas to edit it in the right panel.</p><button type="button" onClick={()=>setTab('design')}>Browse elements and backgrounds</button></div>}
+        </aside>
+        <section className="pcv2-editor-center" aria-label="Editable design canvas">
+          <div className="pcv2-editor-toolbar"><strong>{doc.title}</strong><span>Single design · {doc.format.width} × {doc.format.height}</span><button type="button" onClick={()=>setTab('edit')}>Edit selected</button><button type="button" onClick={()=>setTab('layers')}>Position / Layers</button></div>
+          <div className="pcv2-editor-stage"><StageCanvas doc={doc} pageId={page.id} selectedId={state.selectedElementId} selectedIds={state.selectedIds} snap={snap} dispatch={dispatch}/></div>
+          <div className="pcv2-editor-pages"><div className="pcv2-page-chip"><span>1</span>Page 1 of 1</div><span>Use Carousel Creator for multiple slides</span></div>
+        </section>
+        <aside className="pcv2-editor-right" aria-label="Post editing panels">
+          <div className="pcv2-editor-inspector-tabs"><button type="button" className={tab==='edit'?'active':''} onClick={()=>setTab('edit')}>Edit</button><button type="button" className={tab==='design'?'active':''} onClick={()=>setTab('design')}>Effects & design</button><button type="button" onClick={()=>setTab('layers')}>Position</button></div>
+          <Inspector doc={doc} page={page} selected={selected} selectedIds={state.selectedIds} swatches={s.swatches} kitFonts={s.kitFonts} dispatch={dispatch}/>
+          <div className="pcv2-editor-inspector-hint"><Sparkles size={15}/> Select an image inside a shape to adjust the image and its frame using the available editing controls.</div>
         </aside>
       </div>
     </BrandTokensContext.Provider>
