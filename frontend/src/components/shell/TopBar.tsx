@@ -45,7 +45,7 @@ export function TopBar({ showMenuButton = false, onOpenMenu }: TopBarProps = {})
   const ThemeIcon = mode === 'auto' ? Monitor : resolvedTheme === 'dark' ? Moon : Sun
 
   return (
-    <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-2 border-b border-purple-200/50 bg-gradient-to-r from-[#f4eafb] via-white to-[#f9f4ff] px-3 py-2 shadow-sm sm:gap-3 sm:px-4 dark:border-purple-900 dark:from-[#2b153e] dark:via-[#231032] dark:to-[#321847]">
+    <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-2 border-b border-[#eee3f6] bg-gradient-to-r from-white via-[#fcfaff] to-[#f5effb] px-3 py-2 shadow-[0_2px_16px_rgba(77,33,115,0.05)] sm:gap-3 sm:px-4 dark:border-purple-900 dark:from-[#2b153e] dark:via-[#231032] dark:to-[#321847]">
       {showMenuButton && (
         <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={onOpenMenu} aria-label="Open navigation">
           <Menu className="h-5 w-5" />
@@ -95,7 +95,7 @@ export function TopBar({ showMenuButton = false, onOpenMenu }: TopBarProps = {})
           <ThemeIcon className="h-4 w-4" />
         </Button>
 
-        <Button size="sm" className="h-9 shrink-0 gap-1.5 bg-[#68318e] text-white hover:bg-[#8246a9]" onClick={openCompanion}>
+        <Button size="sm" className="h-9 shrink-0 gap-1.5 rounded-xl bg-[#6b3aa0] text-white shadow-sm hover:bg-[#8246a9]" onClick={openCompanion}>
           <Sparkles className="h-3.5 w-3.5" />
           <span className="hidden lg:inline">AI Companion</span>
         </Button>
