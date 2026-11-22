@@ -1248,3 +1248,46 @@
 @media(max-width:1250px){.pcv2-editor-grid{grid-template-columns:65px minmax(190px,250px) minmax(300px,1fr) 270px}}
 @media(max-width:980px){.pcv2-editor-grid{height:auto;grid-template-columns:65px minmax(0,1fr) 280px}.pcv2-editor-left{grid-column:2/4;grid-row:2;max-height:300px}.pcv2-editor-center{grid-column:2;grid-row:1;min-height:520px}.pcv2-editor-right{grid-column:3;grid-row:1}.pcv2-editor-rail{grid-row:1/3}}
 @media(max-width:650px){.pcv2-editor-grid{display:flex;flex-direction:column}.pcv2-editor-rail{flex-direction:row;overflow-x:auto}.pcv2-editor-rail button{min-width:65px}.pcv2-editor-center{min-height:460px}.pcv2-editor-right,.pcv2-editor-left{max-height:none}.pcv2-editor-stage{padding:8px}}
+
+
+/* Approved canvas-first interface: remove legacy workflow chrome */
+.pcv2{height:100dvh;overflow:hidden;background:#f5f2fc}
+.pcv2-header{height:76px;min-height:76px;gap:22px;background:linear-gradient(95deg,#21072f,#341044 80%,#260c3e);padding:0 22px}
+.pcv2-brand{gap:11px;min-width:220px}
+.pcv2-brand-badge{width:52px;height:52px;border:0!important;background:transparent!important}
+.pcv2-brand-name{font-size:18px;color:#fff}
+.pcv2-brand-name small{font-size:11px;color:#f9cf41}
+.pcv2-approved-product{display:flex;align-items:center;gap:17px;color:#f6ebff;font-weight:700;font-size:14px;flex:1;min-width:0}
+.pcv2-approved-product select{background:#33104b;border:1px solid #a353e8;color:#fff;border-radius:12px;padding:12px 18px;min-width:200px;max-width:245px;font-weight:700}
+.pcv2-approved-header-actions{display:flex;align-items:center;gap:9px}
+.pcv2-approved-header-actions a,.pcv2-approved-header-actions button{display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;text-decoration:none;border:1px solid #784397;background:#38124e;color:#fff;border-radius:11px;padding:11px 14px;font-size:12px;font-weight:700;cursor:pointer}
+.pcv2-approved-header-actions button:last-child{background:linear-gradient(110deg,#ffe078,#f7b735);border-color:#e9b03d;color:#29113c}
+.pcv2-approved-header-actions button:disabled{opacity:.5;cursor:not-allowed}
+.pcv2-body{padding:0!important;flex:1;min-height:0;overflow:auto;background:#f4f0fb}
+.pcv2-body:has(.pcv2-editor-grid){padding:0!important}
+.pcv2-body:has(.pcv2-editor-grid) .pcv2-session-status{position:absolute;right:10px;top:78px;z-index:3;max-width:300px}
+.pcv2-session-status>div{margin:0!important}
+.pcv2-session-status>div>div:first-child{padding:0;background:transparent}
+.pcv2-session-status [data-testid='pcv2-post-title'],.pcv2-session-status [data-testid='pcv2-close-post']{display:none}
+.pcv2-session-status [data-testid='pcv2-post-title']+*{display:none}
+.pcv2-body:has(.pcv2-editor-grid) .pcv2-editor-review-nav{display:none}
+.pcv2-editor-grid{height:calc(100dvh - 77px);min-height:520px;border:0;border-radius:0;grid-template-columns:78px minmax(240px,320px) minmax(340px,1fr) minmax(285px,345px);background:#f6f4fb}
+.pcv2-editor-rail{background:linear-gradient(180deg,#2a0b43,#1d0c36);padding:16px 7px;gap:10px}
+.pcv2-editor-rail button{min-height:65px;font-size:12px}
+.pcv2-editor-left{background:linear-gradient(155deg,#3d185c,#28123e);padding:18px 14px}
+.pcv2-editor-left h3{font-size:20px}
+.pcv2-editor-left .text-foreground{color:#f5eaff}
+.pcv2-editor-center{background:#f4f2fb}
+.pcv2-editor-toolbar{min-height:64px;padding:10px 16px;gap:9px}
+.pcv2-editor-toolbar strong{font-size:13px}
+.pcv2-editor-toolbar button{display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.pcv2-editor-toolbar button:disabled{opacity:.4}
+.pcv2-toolbar-snap{display:inline-flex;align-items:center;gap:4px;font-size:11px}
+.pcv2-editor-stage{padding:16px;align-items:center;justify-content:center;background:#f4f2fb}
+.pcv2-editor-stage>div{width:100%;min-width:0}
+.pcv2-editor-right{padding:18px 14px}
+.pcv2-editor-inspector-tabs{justify-content:space-around}
+.pcv2-editor-pages{min-height:76px}
+.pcv2-ai-panel{position:absolute;right:18px;top:80px;z-index:20;max-width:410px;box-shadow:0 14px 35px #220a4555;border-radius:14px}
+@media(max-width:1180px){.pcv2-approved-product>span{display:none}.pcv2-approved-header-actions a:first-child{display:none}.pcv2-editor-grid{grid-template-columns:65px minmax(190px,245px) minmax(310px,1fr) 280px}}
+@media(max-width:850px){.pcv2-header{gap:10px;padding:0 10px}.pcv2-brand{min-width:auto}.pcv2-brand-name{font-size:13px}.pcv2-approved-product select{min-width:130px}.pcv2-approved-header-actions a{display:none}.pcv2-approved-header-actions button{padding:8px}.pcv2-editor-grid{height:auto;min-height:calc(100dvh - 76px)}}
