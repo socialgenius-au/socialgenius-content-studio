@@ -14,7 +14,7 @@ import type { BrandTokens } from '../../lib/postDocument'
 import { editorReducer, initialState, type EditorAction } from '../carousel-creator/editorState'
 import { workflowOf, withWorkflow, type PostBrief, type PostWorkflow } from './workflow'
 
-export interface OpenedPost { id: string; doc: PostDocument; themeId: string; activeSlideId?: string; version: number; nonce: number }
+export interface OpenedPost { id: string; doc: PostDocument; themeId: string; activeSlideId?: string; version: number; nonce: number; recovered?: boolean }
 
 export const messageOf = (e: unknown) => (e instanceof CarouselServerError ? e.message : e instanceof Error ? e.message : String(e))
 
@@ -66,7 +66,11 @@ export interface PostSessionProps {
 }
 
 export function PostSessionProvider({ opened, server, buffer, brandStore, libraryStore, onReload, children }: PostSessionProps) {
-  const [state, dispatch] = useReducer((s: EditorState, a: EditorAction) => editorReducer(s, a), undefined, () => initialState(opened.doc, opened.themeId, opened.activeSlideId))
+  const [state, dispatch] = useReducer((s: EditorState, a: EditorAction) => editorReducer(s, a), undefined, () => {
+    const initial = initialState(opened.doc, opened.themeId, opened.activeSlideId)
+    const portrait = initial.doc.pages.find(p => p.id === initial.activeSlideId)?.elements.find(e => e.type === 'image' && e.name === 'Business portrait')
+    return portrait ? editorReducer(initial, { type: 'selectElement', id: portrait.id }) : initial
+  })
   const [engine, setEngine] = useState<SyncEngine | null>(null)
   const [sync, setSync] = useState<SyncState>({ status: 'clean', version: opened.version, unsaved: false, attempts: 0 })
   const [kit, setKit] = useState<BrandKit | null>(null)
@@ -87,7 +91,7 @@ export function PostSessionProvider({ opened, server, buffer, brandStore, librar
     return () => { unsubscribe(); e.persistNow(); void e.flush(); e.dispose() }
   }, [server, opened.id, opened.version, buffer])
 
-  const sent = useRef<{ doc: PostDocument; themeId: string; active: string } | null>({ doc: state.doc, themeId: state.themeId, active: state.activeSlideId })
+  const sent = useRef<{ doc: PostDocument; themeId: string; active: string } | null>(opened.recovered ? null : { doc: state.doc, themeId: state.themeId, active: state.activeSlideId })
   useEffect(() => {
     if (!engine) return
     const last = sent.current

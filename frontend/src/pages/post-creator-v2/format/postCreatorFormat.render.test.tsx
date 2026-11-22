@@ -48,10 +48,9 @@ describe('the Brief stage drives the shared platform / format selection', () => 
     expect(withState(<BriefTab {...brief()} />)).not.toContain('pcv2-custom-width')
   })
 
-  it('the full Post Creator loads on Brief with the default selection and the five-stage stepper', () => {
+  it('leaves format setup inside the workspace and skips the brief stepper on launch', () => {
     const html = renderToStaticMarkup(<PostCreatorV2 storage={null} />)
-    expect(selectedOption(html, 'pcv2-brief-platform')).toBe('instagram')
-    expect(selectedOption(html, 'pcv2-brief-format')).toBe('feed_portrait')
-    for (const label of ['BRIEF', 'INTELLIGENCE', 'REFERENCES', 'CREATE', 'REVIEW']) expect(html).toContain(label)
+    expect(html).toContain('Opening Post Creator')
+    expect(html).not.toContain('pcv2-brief-platform')
   })
 })

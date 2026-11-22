@@ -22,9 +22,11 @@ export function topLevelElementId(target: HTMLElement | null, root: HTMLElement)
   return found
 }
 
+type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se'
+
 type Drag =
   | { mode: 'move'; ids: string[]; startX: number; startY: number; base: Box; others: Box[] }
-  | { mode: 'resize'; id: string; startX: number; startY: number; x: number; y: number; w: number; h: number | 'auto' }
+  | { mode: 'resize'; id: string; corner: ResizeCorner; startX: number; startY: number; x: number; y: number; w: number; h: number | 'auto' }
   | { mode: 'rotate'; id: string; cx: number; cy: number; startAngle: number; startRotation: number }
 
 interface Outline { id: string; x: number; y: number; w: number; h: number }
@@ -38,10 +40,13 @@ export interface StageCanvasProps {
   selectedIds?: string[]
   /** Snap to the canvas and to other elements while moving (hold Alt to bypass). Default on. */
   snap?: boolean
+  zoomFactor?: number
+  fitHeight?: boolean
+  cornerHandles?: boolean
   dispatch: Dispatch<EditorAction>
 }
 
-export default function StageCanvas({ doc, pageId, selectedId, selectedIds, snap = true, dispatch }: StageCanvasProps) {
+export default function StageCanvas({ doc, pageId, selectedId, selectedIds, snap = true, zoomFactor = 1, fitHeight = false, cornerHandles = false, dispatch }: StageCanvasProps) {
   const stageRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const drag = useRef<Drag | null>(null)
@@ -54,8 +59,9 @@ export default function StageCanvas({ doc, pageId, selectedId, selectedIds, snap
   const narrow = useMatchMedia(STACKED_QUERY)
   const coarse = useMatchMedia('(pointer: coarse)')
   const availW = Math.max(stage.w - MARGIN * 2, 80)
-  const availH = narrow ? Math.max(availW * (doc.format.height / doc.format.width), 80) : Math.max(stage.h - MARGIN * 2, 80)
-  const box = fitCanvasBox(doc.format.width, doc.format.height, availW, availH)
+  const availH = narrow && !fitHeight ? Math.max(availW * (doc.format.height / doc.format.width), 80) : Math.max(stage.h - MARGIN * 2, 80)
+  const fit = fitCanvasBox(doc.format.width, doc.format.height, availW, availH)
+  const box = { w: Math.round(fit.w * zoomFactor), h: Math.round(fit.h * zoomFactor) }
   const selected = selectedId ? page.elements.find(e => e.id === selectedId) : undefined
   const handle = coarse ? 28 : 16
 
@@ -109,10 +115,10 @@ export default function StageCanvas({ doc, pageId, selectedId, selectedIds, snap
     dispatch({ type: 'dragStart' })
   }
 
-  const onHandleDown = (e: PointerEvent<HTMLButtonElement>) => {
+  const onHandleDown = (e: PointerEvent<HTMLButtonElement>, corner: ResizeCorner = 'se') => {
     e.stopPropagation()
     if (!selected || selected.locked || !canvasRef.current) return
-    drag.current = { mode: 'resize', id: selected.id, startX: e.clientX, startY: e.clientY, x: selected.x, y: selected.y, w: selected.width, h: selected.height }
+    drag.current = { mode: 'resize', id: selected.id, corner, startX: e.clientX, startY: e.clientY, x: selected.x, y: selected.y, w: selected.width, h: selected.height }
     capture(e.pointerId)
     dispatch({ type: 'dragStart' })
   }
@@ -148,15 +154,19 @@ export default function StageCanvas({ doc, pageId, selectedId, selectedIds, snap
       } else setGuides({ v: [], h: [] })
       dispatch({ type: 'dragDelta', dx, dy })
     } else {
-      let w = Math.max(0.04, d.w + dx)
-      let h = d.h === 'auto' ? 'auto' as const : Math.max(0.02, d.h + dy)
-      if (snap && !e.altKey) {                                          // snap the right / bottom edge
-        const r = snapMove({ x: d.x + w, y: d.y + (h === 'auto' ? 0 : h), w: 0, h: 0 }, othersExcept([d.id]), thr)
-        w = Math.max(0.04, w + r.dx)
-        if (h !== 'auto') h = Math.max(0.02, h + r.dy)
+      const west = d.corner.endsWith('w')
+      const north = d.corner.startsWith('n') && d.h !== 'auto'
+      const horizontal = west ? -1 : 1
+      const vertical = north ? -1 : 1
+      if (snap && !e.altKey) {
+        const r = snapMove({ x: d.x + (west ? 0 : d.w) + dx, y: d.y + (north || d.h === 'auto' ? 0 : d.h) + dy, w: 0, h: 0 }, othersExcept([d.id]), thr)
+        dx += r.dx; dy += r.dy
         setGuides(r.guides)
-      }
-      dispatch({ type: 'dragMove', id: d.id, width: w, ...(h === 'auto' ? {} : { height: h }) })
+      } else setGuides({ v: [], h: [] })
+      const width = Math.max(0.04, d.w + dx * horizontal)
+      const height = d.h === 'auto' ? undefined : Math.max(0.02, d.h + dy * vertical)
+      dispatch({ type: 'dragMove', id: d.id, width, ...(west ? { x: d.x + d.w - width } : {}),
+        ...(height === undefined || d.h === 'auto' ? {} : { height, ...(north ? { y: d.y + d.h - height } : {}) }) })
     }
   }
 
@@ -225,9 +235,16 @@ export default function StageCanvas({ doc, pageId, selectedId, selectedIds, snap
         {union && <div data-testid="selection-union" className="pointer-events-none absolute border border-sky-500/60" style={{ left: union.x - 3, top: union.y - 3, width: union.x2 - union.x + 6, height: union.y2 - union.y + 6 }} />}
         {primary && selected && !selected.locked && outlines.length === 1 && (
           <div className="pointer-events-none absolute" style={{ left: primary.x, top: primary.y, width: primary.w, height: primary.h }}>
-            <button type="button" aria-label="Resize element" data-testid="resize-handle" onPointerDown={onHandleDown} className="pointer-events-auto absolute cursor-nwse-resize rounded-full border-2 border-sky-500 bg-white" style={{ width: handle, height: handle, right: -handle / 2, bottom: -handle / 2 }} />
-            <button type="button" aria-label="Rotate element" data-testid="rotate-handle" onPointerDown={onRotateDown} className="pointer-events-auto absolute cursor-grab rounded-full border-2 border-sky-500 bg-white" style={{ width: handle, height: handle, left: `calc(50% - ${handle / 2}px)`, top: -(handle + 14) }} />
-            <span className="absolute left-1/2 w-px -translate-x-1/2 bg-sky-500" style={{ top: -14, height: 14 }} />
+            <button type="button" aria-label="Resize element" data-testid="resize-handle" onPointerDown={e => onHandleDown(e)} className="pointer-events-auto absolute cursor-nwse-resize rounded-full border-2 border-sky-500 bg-white" style={{ width: handle, height: handle, right: -handle / 2, bottom: -handle / 2 }} />
+            {cornerHandles && selected.height !== 'auto' ? (['nw', 'ne', 'sw'] as const).map(corner =>
+              <button type="button" key={corner} aria-label={`Resize from ${{ nw: 'top left', ne: 'top right', sw: 'bottom left' }[corner]}`}
+                data-testid={`resize-handle-${corner}`} onPointerDown={e => onHandleDown(e, corner)}
+                className="pointer-events-auto absolute rounded-full border-2 border-sky-500 bg-white"
+                style={{ width: handle, height: handle, cursor: corner + '-resize', [corner.startsWith('n') ? 'top' : 'bottom']: -handle / 2, [corner.endsWith('w') ? 'left' : 'right']: -handle / 2 }}/>
+            ) : <>
+              <button type="button" aria-label="Rotate element" data-testid="rotate-handle" onPointerDown={onRotateDown} className="pointer-events-auto absolute cursor-grab rounded-full border-2 border-sky-500 bg-white" style={{ width: handle, height: handle, left: `calc(50% - ${handle / 2}px)`, top: -(handle + 14) }} />
+              <span className="absolute left-1/2 w-px -translate-x-1/2 bg-sky-500" style={{ top: -14, height: 14 }} />
+            </>}
           </div>
         )}
         {guides.v.map(x => <div key={`v${x}`} data-testid="guide-v" className="pointer-events-none absolute top-0 h-full w-px bg-fuchsia-500" style={{ left: x * box.w }} />)}

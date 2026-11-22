@@ -113,7 +113,7 @@ function AppRoutes() {
         }
       />
 
-      {/* Post Creator V2 — tabbed workflow built from the approved visual reference, parallel to the existing Post Creator. Own full-screen chrome, not the AppShell. */}
+      {/* Full-screen Post Creator editor. */}
       <Route
         path="/post-creator-v2"
         element={

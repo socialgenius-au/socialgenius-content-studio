@@ -142,7 +142,8 @@ function renderImage(el: ImageElement, resolve: ResolveUrl = identity): ReactNod
     const fx = (el.focal?.x ?? 0.5) * 100
     const fy = (el.focal?.y ?? 0.5) * 100
     const flip = `${el.flipX ? 'scaleX(-1)' : ''}${el.flipY ? ' scaleY(-1)' : ''}`.trim()
-    const img = <img src={resolve(src.url)} alt={el.alt ?? ''} draggable={false} style={{ width: '100%', height: '100%', objectFit: el.fit, objectPosition: `${fx}% ${fy}%`, display: 'block', transform: zoom > 1 ? `scale(${zoom})` : undefined, transformOrigin: `${fx}% ${fy}%`, filter: cssFilter(el.adjust) }} />
+    const filter = [cssFilter(el.adjust), el.shadow ? `drop-shadow(0 ${u(el.shadow * .32)} ${u(el.shadow / 2)} #0009)` : undefined].filter(Boolean).join(' ') || undefined
+    const img = <img src={resolve(src.url)} alt={el.alt ?? ''} draggable={false} style={{ width: '100%', height: '100%', objectFit: el.fit, objectPosition: `${fx}% ${fy}%`, display: 'block', transform: zoom > 1 ? `scale(${zoom})` : undefined, transformOrigin: `${fx}% ${fy}%`, filter }} />
     inner = <div style={{ position: 'absolute', inset: 0, clipPath: trimClip }}><div style={{ width: '100%', height: '100%', transform: flip || undefined }}>{img}</div></div>
   } else if (src.kind === 'placeholder' || src.kind === 'brand') {
     // No real image yet: a wordmark placeholder sized from the element's own box (never stretched; the content keeps its own proportions).

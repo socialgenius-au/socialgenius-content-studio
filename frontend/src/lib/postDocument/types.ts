@@ -230,6 +230,8 @@ export interface ImageElement extends ElementBase {
   /** Zoom into the picture (1 = fitted to the frame, up to 8), centred on the focal point. Only for fit 'cover'. */
   zoom?: number
   adjust?: ImageAdjust
+  /** Soft shadow blur as a fraction of the shorter canvas side. */
+  shadow?: number
   flipX?: boolean
   flipY?: boolean
   /** Crop: hide this fraction of the picture from each edge (0..0.9). */

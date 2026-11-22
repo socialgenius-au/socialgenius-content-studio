@@ -188,6 +188,7 @@ function validateElement(el: unknown, path: string, errors: string[], ids: Set<s
       if (e.zoom !== undefined && !(isNum(e.zoom) && e.zoom >= 1 && e.zoom <= 8)) errors.push(`${path}.zoom: must be 1..8`)
       if (e.mask !== undefined && !['none', 'circle', 'rounded', ...POLYGON_SHAPES].includes(e.mask as string)) errors.push(`${path}.mask: unknown`)
       if (e.adjust !== undefined && !adjustOk(e.adjust)) errors.push(`${path}.adjust: values out of range`)
+      if (e.shadow !== undefined && !(isNum(e.shadow) && e.shadow >= 0 && e.shadow <= .06)) errors.push(`${path}.shadow: must be 0..0.06`)
       if (e.flipX !== undefined && typeof e.flipX !== 'boolean') errors.push(`${path}.flipX: must be boolean`)
       if (e.flipY !== undefined && typeof e.flipY !== 'boolean') errors.push(`${path}.flipY: must be boolean`)
       if (e.trim !== undefined && !(trimOk(e.trim))) errors.push(`${path}.trim: each edge 0..0.9 and the two opposite edges together under 0.95`)

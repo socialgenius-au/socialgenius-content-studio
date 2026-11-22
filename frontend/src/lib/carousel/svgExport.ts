@@ -1,7 +1,7 @@
 // Carousel Creator - SVG export. A slide is drawn by the SAME code as the PNG / JPEG / PDF export (rasterize.ts), but onto a recording context that writes SVG instead of pixels, so
 // the SVG looks like the other exports without a second definition of shapes, patterns, QR codes or masks. Text stays text (editable in a vector editor); pictures are embedded.
 //
-// Limits (reported to the person as warnings): text needs its font installed where the SVG is opened; image adjustments and text shadows are written as CSS filters, which browsers show but
+// Limits (reported to the person as warnings): text needs its font installed where the SVG is opened; image adjustments and shadows are written as CSS filters, which browsers show but
 // some vector editors ignore; links are clickable in a browser but not in an editor or when the SVG is used as an <img>.
 import type { BrandTokens, PostDocument, PostElement } from '../postDocument'
 import { hasAdjust } from './adjust'
@@ -248,7 +248,7 @@ export async function slideToSvg(doc: PostDocument, index: number, backend: SvgB
   walkAll(page.elements, check)
   if (page.background.kind === 'image' && hasAdjust(page.background.adjust)) adjusted = true
   if (adjusted || ctx.stats.filters) w.push(`Slide ${index + 1}: picture adjustments (brightness, blur and so on) are written as CSS filters. Browsers show them; some vector editors ignore them.`)
-  if (ctx.stats.shadows) w.push(`Slide ${index + 1}: text shadows are written as CSS filters. Browsers show them; some vector editors ignore them.`)
+  if (ctx.stats.shadows) w.push(`Slide ${index + 1}: shadows are written as CSS filters. Browsers show them; some vector editors ignore them.`)
   if (failed + ctx.stats.imagesSkipped > 0) w.push(`Slide ${index + 1}: ${failed + ctx.stats.imagesSkipped} picture(s) could not be loaded, so they are missing from the SVG.`)
   if (ctx.stats.images > 0) w.push(`Slide ${index + 1}: ${ctx.stats.images} picture(s) are embedded as pixels, so they do not scale like vector shapes.`)
   if (links.length > 0) w.push(`Slide ${index + 1}: ${links.length} link(s) are clickable when the SVG is opened in a web browser, but not in image viewers or when the SVG is used as a picture.`)

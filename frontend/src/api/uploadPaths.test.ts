@@ -12,6 +12,10 @@ describe('absolute layout on the Railway volume', () => {
     expect(assetsApi.previewUrl(`/data/uploads/90/${HEX}.jpg`)).toBe(`/uploads/90/${HEX}.jpg`)
     expect(uploadUrlPath(`${RAILWAY_UPLOAD_PREFIX}7/${HEX}.mp4`)).toBe(`7/${HEX}.mp4`)
   })
+  it('maps the production /app/uploads mount', () => {
+    expect(assetsApi.previewUrl('/app/uploads/1/image.png')).toBe('/uploads/1/image.png')
+    expect(uploadUrlPath('/app/uploads/../other/image.png')).toBeNull()
+  })
   it('handles nested folders (extracted frames) and Windows-style separators from a dev backend using the same root', () => {
     expect(uploadUrlPath('/data/uploads/1/frames/f_001.jpg')).toBe('1/frames/f_001.jpg')
     expect(uploadUrlPath('\\data\\uploads\\1\\x.mp4')).toBe('1/x.mp4')

@@ -357,6 +357,11 @@ function drawImageEl(ctx: Ctx2D, el: ImageElement, b: Box, S: number, images: Ma
     ctx.translate(ox, oy); ctx.scale(zoom, zoom); ctx.translate(-ox, -oy)
   }
   if (hasAdjust(el.adjust)) ctx.filter = canvasFilter(el.adjust, S)
+  if (el.shadow) {
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'
+    ctx.shadowBlur = el.shadow * S
+    ctx.shadowOffsetY = el.shadow * .32 * S
+  }
   ctx.drawImage(img, r.sx, r.sy, r.sw, r.sh, b.x + r.dx, b.y + r.dy, r.dw, r.dh)
   if (hasAdjust(el.adjust)) ctx.filter = 'none'
   ctx.restore()

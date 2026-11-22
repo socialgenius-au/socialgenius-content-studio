@@ -22,7 +22,7 @@ import { checkSummary, createPostDocument, emptyBrief, emptyInsights, reviewChec
 vi.mock('../../api/client', () => ({
   assetsApi: { list: async () => ({ data: [] }), previewUrl: (p: string) => p },
   uploadApi: { upload: async () => ({ data: {} }) },
-  carouselsApi: {}, brandKitsApi: {}, libraryItemsApi: {}, referenceVideosApi: { list: async () => ({ data: [] }) }, deconstructorApi: { blueprint: async () => ({ data: {} }) },
+  carouselsApi: {}, carouselTemplatesApi: {}, brandKitsApi: {}, libraryItemsApi: {}, referenceVideosApi: { list: async () => ({ data: [] }) }, deconstructorApi: { blueprint: async () => ({ data: {} }) },
 }))
 
 function ids(): OpContext { let n = 0; return { newId: p => `${p}_${++n}`, now: () => new Date('2026-11-21T09:00:00Z') } }
@@ -148,9 +148,10 @@ describe('every stage shows real content and no mock data', () => {
     expect(html).toContain('data-testid="image-picker"'); expect(html).toContain('data-testid="pcv2-no-references"'); expect(html).toContain('data-testid="pcv2-references-honesty"')
     for (const m of ['Popular Posts', 'Competitors', 'Eye', 'Deconstruct</button>', 'Adapt for Client']) expect(html, m).not.toContain(m)
   })
-  it('Create is the real editor on the post: canvas, panels, layers, undo/redo, save state, and no AI or mock tools', () => {
+  it('Create renders the canvas, template library and properties inspector', () => {
     const html = stage(<CreateTab onNext={noop} onBack={noop} />)
-    for (const id of ['pcv2-workspace', 'stage-canvas', 'pcv2-tab-edit', 'pcv2-tab-design', 'pcv2-tab-format', 'pcv2-tab-layers', 'pcv2-tab-brand', 'pcv2-undo', 'pcv2-redo', 'save-status', 'pcv2-create-honesty']) expect(html, id).toContain(`data-testid="${id}"`)
+    for (const id of ['pcv2-workspace', 'stage-canvas', 'inspector']) expect(html, id).toContain(`data-testid="${id}"`)
+    for (const label of ['Design tools', 'Design library', 'Canvas tools', 'Properties', 'Add Page', 'Canvas zoom']) expect(html).toContain(label)
     expect(html).toContain('Tiles that last')                                        // the brief is drawn on the canvas
     for (const m of ['Generate (3 Variations)', 'AI Generated Variations', 'AI Select', 'Regenerate', 'populated once this workspace is wired', 'Modern bathroom']) expect(html, m).not.toContain(m)
   })
@@ -161,9 +162,9 @@ describe('every stage shows real content and no mock data', () => {
     for (const m of ['Post Quality Score', 'AI Recommendations', 'Send to Publishing', 'Send for Approval', 'Approve &amp; Export', 'Scorecard', '/100']) expect(html, m).not.toContain(m)
     expect(html).toMatch(/data-testid="pcv2-publish-instagram"[^>]*aria-pressed="true"[^>]*disabled=""|disabled=""[^>]*data-testid="pcv2-publish-instagram"/)   // the post's own platform is shown selected and locked
   })
-  it('the shell locks stages 2 to 5 until a post is started', () => {
+  it('opens directly into the full-screen editor loading state', () => {
     const html = renderToStaticMarkup(<PostCreatorV2 storage={null} />)
-    for (const s of ['intelligence', 'references', 'create', 'review']) expect(html).toMatch(new RegExp(`<button[^>]*disabled=""[^>]*data-testid="pcv2-step-${s}"|<button[^>]*data-testid="pcv2-step-${s}"[^>]*disabled=""`))
-    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-testid="pcv2-step-brief"/)
+    expect(html).toContain('Opening Post Creator')
+    expect(html).not.toContain('pcv2-step-brief')
   })
 })
