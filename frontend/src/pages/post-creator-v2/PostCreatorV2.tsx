@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Sparkles, ArrowLeft, BookmarkPlus, Download, LayoutTemplate, Image as ImageIcon, FolderOpen, ArrowRight, WandSparkles, Palette, FilePlus2 } from 'lucide-react'
 import './PostCreatorV2.css'
 import { brandKitsApi, carouselsApi, libraryItemsApi } from '../../api/client'
@@ -90,8 +90,9 @@ function Workflow({ stage, goTo, goNext, goBack, brief, setBrief, kits, onStart,
 function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<PostCreatorV2Props, 'storage'>> & { storage: KeyValueStorage | null }) {
   const { canvas } = usePostFormat()
   const [theme, setTheme] = useState<ThemeMode>('light')
+  const briefLaunchStarted=useRef(false)
   const [stage, setStage] = useState<Stage>('brief')
-  const [showStart, setShowStart] = useState(() => { if (typeof window === 'undefined') return true; const q = new URLSearchParams(window.location.search); return q.get('start') === '1' || (!q.has('draft') && !q.has('template')) })
+  const [showStart, setShowStart] = useState(() => { if (typeof window === 'undefined') return true; const q = new URLSearchParams(window.location.search); return q.get('start') === '1' || (!q.has('draft') && !q.has('template') && q.get('fromBrief') !== '1') })
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [assistantPrompt, setAssistantPrompt] = useState('')
   const [brief, setBrief] = useState<PostBrief>(() => { const b=emptyBrief();if(typeof window==='undefined')return b;const q=new URLSearchParams(window.location.search);const title=q.get('template');return title?{...b,title:title.slice(0,120),keyMessage:title.slice(0,120),instructions:'Marketplace starter: customise this content in Post Creator. Template graphics have not been imported.'}:b })
@@ -155,6 +156,34 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
       setBrief(emptyBrief()); setStage('intelligence')
     } catch (e) { setStartError(`Could not start the post: ${messageOf(e)}`) } finally { setStarting(false) }
   }
+  // A completed common Content Brief qualifies the project; the Creator opens the
+  // editable canvas directly instead of making the user repeat a second brief.
+  useEffect(() => {
+    if (briefLaunchStarted.current || opened || readDraftParam()) return
+    if (new URLSearchParams(window.location.search).get('fromBrief') !== '1') return
+    briefLaunchStarted.current = true
+    let source: Record<string, unknown> | null = null
+    try { const raw = sessionStorage.getItem('sg-content-brief'); source = raw ? JSON.parse(raw) as Record<string, unknown> : null } catch { /* a malformed browser draft is ignored */ }
+    if (!source || source.contentType !== 'post') { setShowStart(true); return }
+    const value = (k: string) => typeof source?.[k] === 'string' ? String(source[k]) : ''
+    const kitId = Number(source.brandKitId)
+    const nextBrief: PostBrief = { ...emptyBrief(), title: value('topic'), goal: value('goal') || emptyBrief().goal, audience: value('audience'), keyMessage: value('message'), product: value('product'), cta: value('cta'), instructions: [value('instructions'),value('references'),value('offer')].filter(Boolean).join('\n'), brandKitId: Number.isInteger(kitId) && kitId > 0 ? kitId : null }
+    setBrief(nextBrief)
+    setStarting(true)
+    void (async () => {
+      try {
+        let doc = createPostDocument(nextBrief, { platformKey: canvas.platformKey, formatKey: canvas.formatKey, width: canvas.width, height: canvas.height, ratio: canvas.ratioLabel })
+        if (nextBrief.brandKitId) {
+          try { doc = applyBrandKit(doc, await brandStore.get(nextBrief.brandKitId), themeById(nextBrief.themeId)).doc } catch { /* user can apply kit later */ }
+        }
+        openCarousel(await server.create(doc, { themeId: nextBrief.themeId }))
+        setStage('create')
+        setShowStart(false)
+      } catch (e) { setStartError('Could not create the post from your brief: '+messageOf(e)); setShowStart(false); setStage('brief') }
+      finally { setStarting(false) }
+    })()
+  }, [opened, canvas, brandStore, server, openCarousel])
+
   const closePost = () => { setOpened(null); setStage('brief'); setShowStart(true); writeDraftParam(null); void loadDrafts() }
 
   const stageIndex = STAGES.findIndex(s => s.id === stage)
@@ -181,12 +210,12 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
       </main> : <>
       <header className="pcv2-header">
         <a className="pcv2-brand" href="/dashboard">
-          <span className="pcv2-brand-badge"><Sparkles size={16} /></span>
-          <span className="pcv2-brand-name">SocialGenius</span>
+          <span className="pcv2-brand-badge"><img src="/social-genius-official-logo.svg" alt="" /></span>
+          <span className="pcv2-brand-name">Social Genius <small>The Positioning People</small></span>
         </a>
 
         <div className="pcv2-titles">
-          <div className="pcv2-title">POST CREATOR — From Brief to Finished Post</div>
+          <div className="pcv2-title">Post Creator</div>
           <div className="pcv2-subtitle">Create, customise, save and export using one workspace.</div>
         </div>
 
