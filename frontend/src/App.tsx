@@ -144,8 +144,8 @@ function AppRoutes() {
       <Route path="/create-brief" element={<RequireAuth><Suspense fallback={<PageFallback />}><ContentBriefPage /></Suspense></RequireAuth>} />
 
       {/* Approved Home UI now serves the main dashboard; original dashboard retained at /dashboard-classic. */}
-      <Route path="/studio-home-preview" element={<RequireAuth><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></RequireAuth>} />
-      <Route path="/dashboard" element={<RequireAuth><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></RequireAuth>} />
+      <Route path="/studio-home-preview" element={<RequireAuth><ClientProvider><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></ClientProvider></RequireAuth>} />
+      <Route path="/dashboard" element={<RequireAuth><ClientProvider><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></ClientProvider></RequireAuth>} />
 
       {/* Creator workspace: full-width editing surface, outside the legacy application sidebar. */}
       <Route path="/carousel-creator" element={<RequireAuth><ClientProvider><Suspense fallback={<PageFallback />}><CarouselCreatorPage /></Suspense></ClientProvider></RequireAuth>} />
