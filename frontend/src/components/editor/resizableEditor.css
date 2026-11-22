@@ -1,0 +1,12 @@
+.sg-editor-resize-handle{width:9px;min-width:9px;cursor:col-resize;background:linear-gradient(90deg,transparent 35%,#c6addd 35%,#c6addd 65%,transparent 65%);touch-action:none;z-index:2}
+.sg-editor-resize-handle:hover,.sg-editor-resize-handle:focus-visible{background:#9c5fe1;outline:2px solid #7c29dc;outline-offset:-2px}
+.pcv2-editor-grid{grid-template-columns:78px minmax(0,var(--sg-editor-left,300px)) 9px minmax(320px,1fr) 9px minmax(0,var(--sg-editor-right,320px))!important}
+.pcv2-editor-left,.pcv2-editor-right{min-width:0;overflow:auto}
+.pcv2-panel-heading{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.pcv2-panel-heading h3{margin:0}
+.pcv2-panel-heading button{background:#eee0fa;border:1px solid #c49ae6;border-radius:8px;padding:5px 9px;color:#57217f;cursor:pointer}
+.pcv2-editor-left .pcv2-panel-heading button{background:#5c2980;color:#fff}
+.sg-carousel-resizable-layout{display:grid;grid-template-columns:minmax(0,var(--sg-editor-left,300px)) 9px minmax(300px,1fr) 9px minmax(0,var(--sg-editor-right,320px));gap:0;min-height:450px}
+.sg-carousel-resizable-layout>div,.sg-carousel-resizable-layout>aside{min-width:0}
+.sg-carousel-resizable-layout>aside{overflow:auto}
+@media(max-width:900px){.pcv2-editor-grid{display:flex!important;flex-direction:column}.pcv2-editor-grid>.sg-editor-resize-handle,.sg-carousel-resizable-layout>.sg-editor-resize-handle{display:none}.sg-carousel-resizable-layout{display:flex;flex-direction:column;gap:12px}.pcv2-editor-left,.pcv2-editor-right{max-height:400px}}
