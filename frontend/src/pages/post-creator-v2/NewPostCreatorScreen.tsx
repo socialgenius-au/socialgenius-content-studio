@@ -4,7 +4,9 @@ import type { CarouselServer, ServerCarousel } from '../../lib/carousel/serverSt
 import type { KeyValueStorage } from '../../lib/carousel/storage'
 import { applyBrandKit } from '../../lib/carousel/brandKit'
 import { themeById } from '../../lib/carousel/layouts'
-import type { BrandKitStore } from '../../lib/carousel/assetsStore'
+import { createHttpTemplateStore, type BrandKitStore } from '../../lib/carousel/assetsStore'
+import { carouselTemplatesApi } from '../../api/client'
+import { templateDocumentFrom } from '../../lib/carousel/templates'
 import type { LibraryStore } from '../../lib/carousel/libraryStore'
 import { usePostFormat } from './format/PostFormatContext'
 import { createPostDocument, emptyBrief } from './workflow'
@@ -18,6 +20,16 @@ function Editor({ onHome }: { onHome: () => void }) {
   const s = usePostSession()
   const [exportOpen, setExportOpen] = useState(false)
   const [notice, setNotice] = useState('')
+  const saveTemplate = async () => {
+    const name = window.prompt('Name your reusable design template:', s.doc.title + ' Template')
+    if (!name?.trim()) return
+    setNotice('Saving template…')
+    try {
+      const store = createHttpTemplateStore(carouselTemplatesApi)
+      await store.create({name:name.trim(),description:'Editable Post Creator template',kind:'layout',document:templateDocumentFrom(s.doc)})
+      setNotice('Template saved. Find it under Design → Templates.')
+    } catch(e) {setNotice(e instanceof Error ? e.message : 'Template could not be saved')}
+  }
   const save = async () => { const ok = await s.saveNow(); setNotice(ok ? 'Project saved' : 'Changes are still syncing') }
   return <div className="sg-new-post">
     <header className="sg-new-post-header">
@@ -28,9 +40,9 @@ function Editor({ onHome }: { onHome: () => void }) {
       <div className="sg-new-post-spacer" />
       <button type="button" aria-label="Undo" disabled={!s.state.past.length} onClick={()=>s.dispatch({type:'undo'})}><Undo2 size={20}/></button>
       <button type="button" aria-label="Redo" disabled={!s.state.future.length} onClick={()=>s.dispatch({type:'redo'})}><Redo2 size={20}/></button>
-      <span className="sg-new-post-status">{s.sync.unsaved?'Saving…':'Autosaved'}</span>
+      <span className="sg-new-post-status">{s.sync.unsaved?'Saving…':s.sync.status==='error'?'Save error':'Autosaved'}</span>
       <button type="button" onClick={()=>void save()}><FolderOpen size={18}/> Save Project</button>
-      <button type="button" onClick={()=>{setNotice('To save as a reusable template, open the Templates library.');window.location.assign('/templates')}}><Star size={18}/> Templates</button>
+      <button type="button" onClick={()=>void saveTemplate()}><Star size={18}/> Save as Template</button>
       <button type="button" className="sg-new-post-export" onClick={()=>setExportOpen(true)}><Download size={18}/> Export</button>
       <button type="button" onClick={onHome} aria-label="Back to projects"><ArrowLeft size={18}/></button>
     </header>
