@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, ArrowLeft, BookmarkPlus, Download, LayoutTemplate } from 'lucide-react'
 import './PostCreatorV2.css'
 import { brandKitsApi, carouselsApi, libraryItemsApi } from '../../api/client'
 import { applyBrandKit } from '../../lib/carousel/brandKit'
@@ -174,7 +174,7 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
 
         <div className="pcv2-titles">
           <div className="pcv2-title">POST CREATOR — From Brief to Finished Post</div>
-          <div className="pcv2-subtitle">Your brief, your design, your export. Saved to your account.</div>
+          <div className="pcv2-subtitle">Create, customise, save and export using one workspace.</div>
         </div>
 
         <nav className="pcv2-stepper" aria-label="Post Creator workflow">
@@ -200,7 +200,7 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
         </div>
       </header>
 
-      <div className="pcv2-body">
+      <div className="pcv2-quickbar" aria-label="Post Creator quick actions"><a href="/templates"><ArrowLeft size={15}/> Templates</a><span className="pcv2-quickbar-separator"/><button type="button" onClick={()=>goTo('brief')}>Brief</button><button type="button" onClick={()=>goTo('create')} disabled={!opened}>Design editor</button><button type="button" onClick={()=>goTo('review')} disabled={!opened}><Download size={15}/> Review & export</button><span className="pcv2-quickbar-spacer"/><span className="pcv2-quickbar-note"><BookmarkPlus size={15}/> Drafts save to your account</span><a href="/templates"><LayoutTemplate size={15}/> Browse templates</a></div><div className="pcv2-body">
         {recovery ? (
           <RecoveryPrompt title={recovery.carousel.title} serverNewer={recovery.serverNewer}
             onRestore={() => { openCarousel(recovery.carousel, { doc: recovery.record.document, themeId: recovery.record.themeId, activeSlideId: recovery.record.activeSlideId, version: recovery.record.baseVersion }); setStage('brief') }}
