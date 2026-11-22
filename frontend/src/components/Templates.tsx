@@ -35,6 +35,18 @@ function DesignPreview({item}:{item:Starter}){
  </div></div>
 }
 
+const videoScenePresets:Record<string,string[]>={
+ 'Business Introduction Reel':['Meet our business','What we believe','What we offer','Get in touch'],
+ 'Product Demonstration':['Meet the product','See it in action','Why it matters','Try it today'],
+ 'Before & After Transformation':['The challenge','Before','The transformation','After'],
+ 'Three Quick Tips':['Three tips for you','Tip number one','Tip number two','Tip number three'],
+ 'Customer Testimonial Video':['A customer story','The challenge','Their experience','The result'],
+ 'Promotional Offer Reel':['Something special','What is included','Why act now','Claim your offer'],
+ 'Behind the Scenes':['Come behind the scenes','Our process','Meet the people','The finished result'],
+ 'Question & Answer':['You asked us','The question','Our answer','Learn more'],
+ 'Problem to Solution Video':['The problem','Why it happens','Our solution','Take the next step'],
+ 'Event Highlight':['An unforgettable event','The highlights','The people','See you next time']
+}
 const providers=[{name:'Adobe Express',url:'https://www.adobe.com/express/templates',description:'External free and premium design templates; editing and licensing depend on Adobe.'},{name:'Canva',url:'https://www.canva.com/templates/',description:'External free and Pro designs; check Canva terms and use in Canva where required.'},{name:'Pixabay',url:'https://pixabay.com/',description:'Stock images, video and music for filling templates, not a native editable template catalogue.'},{name:'Pexels',url:'https://www.pexels.com/',description:'Stock photos and video for filling templates; check licence and restrictions.'}]
 export default function Templates(){
  const navigate=useNavigate()
@@ -58,7 +70,7 @@ export default function Templates(){
  useEffect(()=>{templatesApi.list().then(r=>setSaved(r.data as Template[])).catch(()=>setError('Saved templates could not be loaded.')).finally(()=>setLoading(false))},[])
  const shown=useMemo(()=>starters.filter(t=>(category==='All'||t.category===category)&&(`${t.title} ${t.category}`).toLowerCase().includes(query.toLowerCase())),[category,query])
  const open=(title:string,cat:string,prompt:string,url?:string)=>{setConfirmed(false);setError('');setPreviewPage(0);setModal({title,category:cat,prompt,url})}
- const start=()=>{if(!modal||!confirmed)return;if(modal.url){window.open(modal.url,'_blank','noopener,noreferrer')}else{navigate((modal.category==='Videos & Reels'?'/video-studio-v2':modal.category==='Carousels'?'/carousel-creator':'/post-creator-v2')+'?template='+encodeURIComponent(modal.title)+'&source=marketplace',{state:{title:modal.title,category:modal.category,prompt:modal.prompt}})}setModal(null)}
+ const start=()=>{if(!modal||!confirmed)return;if(modal.url){window.open(modal.url,'_blank','noopener,noreferrer')}else{if(modal.category==='Videos & Reels'){const scenes=(videoScenePresets[modal.title]||[modal.title,'Your key message','Show the value','Call to action']).map((headline,i)=>({id:'scene-'+i,duration:i===0?4:6,headline,caption:i===0?'Add your opening hook':'Add your message here',transition:'fade'}));sessionStorage.setItem('sg-video-template-handoff',JSON.stringify({title:modal.title,scenes}))}navigate((modal.category==='Videos & Reels'?'/video-studio-v2':modal.category==='Carousels'?'/carousel-creator':'/post-creator-v2')+'?template='+encodeURIComponent(modal.title)+'&source=marketplace',{state:{title:modal.title,category:modal.category,prompt:modal.prompt}})}setModal(null)}
  const deleteSaved=async(t:Template)=>{if(!window.confirm('Delete this saved template?'))return;setDeleting(t.id);try{await templatesApi.delete(t.id);setSaved(old=>old.filter(x=>x.id!==t.id))}catch{setError('Could not delete template.')}finally{setDeleting(null)}}
  return <main className="sgtm">
  <header className="sgtm-hero"><small>SOCIAL GENIUS · CREATIVE LIBRARY</small><h1>What will you create today?</h1><p>Find a starting point for your next great idea. Browse formats, discover original layouts, and make every design your own.</p><div className="sgtm-hero-search"><span aria-hidden="true">⌕</span><input aria-label="Search all templates" value={query} onChange={e=>{setQuery(e.target.value);setTab("free")}} placeholder="Search thousands of ideas…"/></div><div className="sgtm-links"><Link to="/assets">Media Library</Link><Link to="/clients">Client Brand Kits</Link></div></header><div className="sgtm-category-tiles">{[{name:"All",symbol:"✦",desc:"Explore everything"},{name:"Social Posts",symbol:"▣",desc:"Posts & graphics"},{name:"Carousels",symbol:"▤",desc:"Swipeable stories"},{name:"Videos & Reels",symbol:"▶",desc:"Motion & video"},{name:"Stories & Ads",symbol:"◫",desc:"Campaigns & ads"},{name:"Industry",symbol:"◈",desc:"Made for business"}].map(c=><button key={c.name} className={category===c.name?"selected":""} onClick={()=>{setCategory(c.name);setTab("free")}}><span className="sgtm-category-icon">{c.symbol}</span><strong>{c.name}</strong><small>{c.desc}</small></button>)}</div>
