@@ -117,7 +117,6 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
     root.setAttribute('data-theme', theme)
     return () => { if (before) root.setAttribute('data-theme', before); else root.removeAttribute('data-theme') }
   }, [theme])
-  const setThemeAndPersist = (mode: ThemeMode) => { setTheme(mode); window.localStorage.setItem(THEME_KEY, mode) }
 
   const loadDrafts = useCallback(async () => {
     try { setDrafts((await server.list()).filter(d => d.slideCount === 1)); setDraftsError(null) } catch (e) { setDrafts([]); setDraftsError(`Could not load your drafts: ${messageOf(e)}`) }
