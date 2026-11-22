@@ -30,8 +30,9 @@ const ideaSets: Record<string,string[]> = {
   Headlines:['The essential guide to getting started','What most people overlook','Five things to know before you choose','A smarter way to approach this','Your next step, made simple'],
   Outlines:['Hook → Problem → Solution → Call to action','Question → Three tips → Summary','Before → After → How to achieve it','Myth → Reality → Practical advice','Audience need → Benefits → Next step'],
 }
-type Brief = { topic:string; goal:string; audience:string; message:string; tone:string; brand:string; platforms:string[] }
-const empty: Brief = {topic:'',goal:'',audience:'',message:'',tone:'',brand:'',platforms:['Instagram','Facebook']}
+type ContentType = 'post' | 'carousel' | 'video'
+type Brief = { topic:string; goal:string; audience:string; message:string; tone:string; brand:string; platforms:string[]; contentType:ContentType }
+const empty: Brief = {topic:'',goal:'',audience:'',message:'',tone:'',brand:'',platforms:['Instagram','Facebook'],contentType:'post'}
 const platforms = ['Instagram','Facebook','TikTok','YouTube','LinkedIn']
 export default function ContentBriefPage(){
   const navigate=useNavigate()
@@ -41,11 +42,12 @@ export default function ContentBriefPage(){
   const [tab,setTab]=useState('Ideas')
   const [brief,setBrief]=useState<Brief>(()=>{try {return {...empty,...JSON.parse(sessionStorage.getItem('sg-content-brief')||'{}')}} catch{return empty}})
   const [saved,setSaved]=useState(false)
+  const [validation,setValidation]=useState(false)
   const [query,setQuery]=useState('')
   const update=(patch:Partial<Brief>)=>{setBrief(v=>({...v,...patch}));setSaved(false)}
   const save=()=>{sessionStorage.setItem('sg-content-brief',JSON.stringify(brief));setSaved(true)}
   const toggle=(p:string)=>update({platforms:brief.platforms.includes(p)?brief.platforms.filter(x=>x!==p):[...brief.platforms,p]})
-  const goNext=()=>{if(!brief.topic.trim()||!brief.goal||!brief.platforms.length)return;save();navigate('/create/generate')}
+  const goNext=()=>{setValidation(true);if(!brief.topic.trim()||!brief.goal||!brief.audience.trim()||!brief.message.trim()||!brief.platforms.length)return;save();navigate('/create/generate',{state:{contentType:brief.contentType}})}
   return <div className="sgb-app">
     <aside className={'sgb-sidebar '+(collapsed?'sgb-collapsed ':'')+(mobile?'sgb-mobile-open':'')}>
       <button className="sgb-collapse" onClick={()=>setCollapsed(v=>!v)} aria-label="Collapse navigation">{collapsed?<ChevronRight size={17}/>:<ChevronLeft size={17}/>}</button>
@@ -55,21 +57,28 @@ export default function ContentBriefPage(){
     <div className="sgb-body">
       <header className="sgb-top"><button className="sgb-menu" onClick={()=>setMobile(!mobile)} aria-label="Toggle navigation"><Menu/></button><div className="sgb-search"><Search size={20}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search projects, templates, assets, brands..." aria-label="Search"/></div><button className="sgb-ai-top" onClick={()=>setAssistantOpen(v=>!v)}><Sparkles size={19}/> AI Assistant</button><Bell size={20}/><div className="sgb-avatar">AS</div></header>
       <main className="sgb-main">
-        <div className="sgb-banner"><div><h1>Create <em>Content</em></h1><p>Turn your idea into a high-performing post, carousel or video.</p></div><Clapperboard size={65}/></div>
-        <div className="sgb-steps">{['Content Brief','Generate','Edit & Enhance','Publish / Export'].map((s,i)=><div className={'sgb-step '+(!i?'sgb-step-active':'')} key={s}><span>{i+1}</span><strong>{s}</strong></div>)}</div>
-        <div className={'sgb-workspace '+(!assistantOpen?'sgb-wide':'')}>
-          <section className="sgb-form-card">
-            <div className="sgb-card-title"><FileText size={34}/><div><h2>Content Brief</h2><p>Tell us what you want to create.</p></div></div>
-            <label className="sgb-field sgb-full"><span>Content Topic / Idea <b>*</b></span><textarea rows={3} value={brief.topic} onChange={e=>update({topic:e.target.value})} placeholder="e.g. How to choose the right washing machine for a family"/></label>
-            <div className="sgb-two"><label className="sgb-field"><span>Goal / Objective <b>*</b></span><select value={brief.goal} onChange={e=>update({goal:e.target.value})}><option value="">Select a goal</option>{['Awareness','Engagement','Lead generation','Sales','Education','Brand positioning'].map(x=><option key={x}>{x}</option>)}</select></label><label className="sgb-field"><span>Audience</span><input value={brief.audience} onChange={e=>update({audience:e.target.value})} placeholder="Who is this for?"/></label></div>
-            <div className="sgb-two"><label className="sgb-field"><span>Key Message (optional)</span><input value={brief.message} onChange={e=>update({message:e.target.value})} placeholder="Main point or takeaway..."/></label><label className="sgb-field"><span>Tone of Voice</span><select value={brief.tone} onChange={e=>update({tone:e.target.value})}><option value="">Select tone</option>{['Professional','Friendly','Confident','Educational','Inspirational','Playful'].map(x=><option key={x}>{x}</option>)}</select></label></div>
-            <label className="sgb-field sgb-full"><span>Brand Kit</span><input value={brief.brand} onChange={e=>update({brand:e.target.value})} placeholder="Client or brand name (Brand Kit integration coming next)"/></label>
-            <div className="sgb-field"><span>Platform(s) <b>*</b></span><div className="sgb-platforms">{platforms.map((p,i)=><button type="button" key={p} className={brief.platforms.includes(p)?'sgb-selected':''} onClick={()=>toggle(p)} aria-pressed={brief.platforms.includes(p)}><span className="sgb-platform-icon">{['◎','f','♪','▶','in'][i]}</span><strong>{p}</strong><span className="sgb-check">{brief.platforms.includes(p)?'✓':'○'}</span></button>)}</div></div>
+        <div className="sgb-banner"><div><h1>Create <em>Content Brief</em></h1><p>Turn your idea into a clear, actionable content plan.</p></div><img src="/social-genius-official-logo.svg" alt="Social Genius" className="sgb-banner-logo"/></div>
+        <div className="sgb-steps">{['Brief Details','Content Plan','AI Suggestions','Create & Edit'].map((s,i)=><div className={'sgb-step '+(!i?'sgb-step-active':'')} key={s}><span>{i+1}</span><strong>{s}</strong></div>)}</div>
+        <div className="sgb-brief-layout">
+          <section className="sgb-brief-fields" aria-label="Content brief details">
+            <fieldset className="sgb-type-card"><legend>Content Type <b>*</b><small>Choose what you want to create</small></legend><div className="sgb-type-options">
+              {([{id:'post',label:'Post',detail:'Single image',icon:Image},{id:'carousel',label:'Carousel',detail:'Multiple slides',icon:Images},{id:'video',label:'Video',detail:'Short or long-form',icon:Clapperboard}] as const).map(t=><button key={t.id} type="button" className={brief.contentType===t.id?'selected':''} aria-pressed={brief.contentType===t.id} onClick={()=>update({contentType:t.id})}><t.icon size={25}/><span><strong>{t.label}</strong><small>{t.detail}</small></span>{brief.contentType===t.id&&<span className="sgb-type-check">✓</span>}</button>)}
+            </div></fieldset>
+            <div className="sgb-brief-grid">
+              <label className="sgb-field sgb-tile"><span>Project Title <b>*</b></span><input value={brief.topic} onChange={e=>update({topic:e.target.value})} placeholder="e.g. Summer Launch Campaign" /></label>
+              <label className="sgb-field sgb-tile"><span>Campaign Objective <b>*</b></span><select value={brief.goal} onChange={e=>update({goal:e.target.value})}><option value="">Select primary objective</option>{['Awareness','Engagement','Lead generation','Sales','Education','Brand positioning'].map(v=><option key={v}>{v}</option>)}</select></label>
+              <label className="sgb-field sgb-tile"><span>Audience <b>*</b></span><input value={brief.audience} onChange={e=>update({audience:e.target.value})} placeholder="e.g. Homeowners, 25–55, Sydney"/></label>
+              <label className="sgb-field sgb-tile"><span>Key Message <b>*</b></span><textarea rows={2} value={brief.message} onChange={e=>update({message:e.target.value})} placeholder="What is the main message you want to communicate?"/></label>
+              <div className="sgb-tile"><strong>Deliverables <b>*</b></strong><p>Select the content formats you need.</p><div className="sgb-deliverables">{([{id:'post',label:'Post',icon:Image},{id:'carousel',label:'Carousel',icon:Images},{id:'video',label:'Video',icon:Clapperboard}] as const).map(t=><button key={t.id} type="button" className={brief.contentType===t.id?'selected':''} aria-pressed={brief.contentType===t.id} onClick={()=>update({contentType:t.id})}><t.icon size={23}/>{t.label}</button>)}</div></div>
+              <div className="sgb-tile"><strong>Brand Kit</strong><p>Apply your brand style to keep it consistent.</p><label className="sgb-field"><span>Brand / Client</span><input value={brief.brand} onChange={e=>update({brand:e.target.value})} placeholder="Select or enter a brand"/></label><label className="sgb-field"><span>Tone of voice</span><select value={brief.tone} onChange={e=>update({tone:e.target.value})}><option value="">Select tone</option>{['Professional','Friendly','Confident','Educational','Inspirational','Playful'].map(v=><option key={v}>{v}</option>)}</select></label></div>
+            </div>
+            <div className="sgb-tile sgb-platform-tile"><strong>Publishing platforms</strong><p>Choose where this content will appear.</p><div className="sgb-platforms">{platforms.map((p,i)=><button type="button" key={p} className={brief.platforms.includes(p)?'sgb-selected':''} onClick={()=>toggle(p)} aria-pressed={brief.platforms.includes(p)}><span className="sgb-platform-icon">{['◎','f','♪','▶','in'][i]}</span><strong>{p}</strong><span className="sgb-check">{brief.platforms.includes(p)?'✓':'○'}</span></button>)}</div></div>
           </section>
-          {assistantOpen&&<aside className="sgb-helper"><div className="sgb-helper-title"><Sparkles size={28}/><div><h2>AI Content Helper</h2><p>Get ideas, angles and a ready-to-use brief.</p></div><button aria-label="Hide AI suggestions" onClick={()=>setAssistantOpen(false)}><X size={17}/></button></div><div className="sgb-tabs">{Object.keys(ideaSets).map(x=><button className={tab===x?'active':''} key={x} onClick={()=>setTab(x)}>{x}</button>)}</div><div className="sgb-ideas">{ideaSets[tab].filter(x=>!query||x.toLowerCase().includes(query.toLowerCase())).map(x=><button key={x} onClick={()=>update({topic:x})}><Lightbulb size={19}/>{x}</button>)}</div><button className="sgb-more" onClick={()=>setTab(tab==='Ideas'?'Angles':'Ideas')}><RefreshCw size={17}/> Explore More {tab==='Ideas'?'Angles':'Ideas'}</button><p className="sgb-helper-note">Example suggestions only. Live AI generation will be connected during the functionality phase.</p></aside>}
+          <aside className="sgb-summary"><div className="sgb-summary-art"><Sparkles size={55}/></div><div className="sgb-summary-body"><h2><Sparkles size={21}/> Brief Summary</h2><p>A live view of your content brief.</p><dl>{([['Content Type',brief.contentType[0].toUpperCase()+brief.contentType.slice(1)],['Project',brief.topic],['Objective',brief.goal],['Audience',brief.audience],['Key Message',brief.message],['Deliverables',brief.contentType],['Brand Kit',brief.brand||'Not selected']] as const).map(([k,v])=><div key={k}><dt>{k}:</dt><dd>{v||'—'}</dd></div>)}</dl></div></aside>
         </div>
-        <div className="sgb-actions">{!assistantOpen&&<button onClick={()=>setAssistantOpen(true)}><Sparkles size={17}/> Show AI Helper</button>}<button onClick={save}><Save size={17}/> {saved?'Draft saved in this browser':'Save as Draft'}</button><button className="sgb-next" onClick={goNext} disabled={!brief.topic.trim()||!brief.goal||!brief.platforms.length}>Next: Generate Content <ArrowRight size={18}/></button></div>
-        <p className="sgb-note">Design implementation: drafts are saved only in this browser session. The next step opens the Generate design screen; actual AI media generation and persistent storage are not yet connected.</p>
+        {validation&&(!brief.topic.trim()||!brief.goal||!brief.audience.trim()||!brief.message.trim()||!brief.platforms.length)&&<p role="alert" className="sgb-validation">Please complete Project Title, Objective, Audience, Key Message and at least one publishing platform.</p>}
+        <div className="sgb-actions">{}<button onClick={save}><Save size={17}/> {saved?'Draft saved in this browser':'Save as Draft'}</button><button className="sgb-next" onClick={goNext} disabled={false}>Create Brief & Continue <ArrowRight size={18}/></button></div>
+        <p className="sgb-note">Drafts are currently saved in this browser session. The selected content type travels with the brief to the next workflow step.</p>
       </main>
     </div>
   </div>
