@@ -16,12 +16,12 @@ export function AppShell() {
   return (
     <EntitlementProvider>
       <AICompanionProvider>
-        <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+        <div className="flex h-screen w-full overflow-hidden bg-[#f7f4fa] text-foreground dark:bg-[#130b20]">
           <Sidebar narrow={narrow} open={navOpen} onClose={() => setNavOpen(false)} />
           <div className="flex min-w-0 flex-1 flex-col">
             <TopBar showMenuButton={narrow} onOpenMenu={() => setNavOpen(true)} />
             <main className="flex-1 overflow-y-auto">
-              <div className="mx-auto flex max-w-[1400px] flex-col gap-5 p-4 sm:p-6">
+              <div className="mx-auto flex max-w-[1600px] flex-col gap-5 p-4 sm:p-6">
                 <Outlet />
               </div>
             </main>
