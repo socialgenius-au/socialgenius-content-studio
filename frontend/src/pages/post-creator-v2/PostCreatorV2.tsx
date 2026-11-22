@@ -91,7 +91,7 @@ function Shell({ server, storage, brandStore, libraryStore }: Required<Omit<Post
   const { canvas } = usePostFormat()
   const [theme, setTheme] = useState<ThemeMode>('light')
   const [stage, setStage] = useState<Stage>('brief')
-  const [brief, setBrief] = useState<PostBrief>(emptyBrief)
+  const [brief, setBrief] = useState<PostBrief>(() => { const b=emptyBrief();if(typeof window==='undefined')return b;const q=new URLSearchParams(window.location.search);const title=q.get('template');return title?{...b,title:title.slice(0,120),keyMessage:title.slice(0,120),instructions:'Marketplace starter: customise this content in Post Creator. Template graphics have not been imported.'}:b })
   const [opened, setOpened] = useState<OpenedPost | null>(null)
   const [recovery, setRecovery] = useState<{ carousel: ServerCarousel; record: UnsyncedRecord; serverNewer: boolean } | null>(null)
   const [drafts, setDrafts] = useState<ServerCarouselSummary[] | null>(null)
