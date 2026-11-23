@@ -5,7 +5,7 @@ import type { Asset } from '../../../types'
 import { storedUrlFor } from './ImagePicker'
 
 export default function ImageBackgroundTools({ element, canvasWidth, canvasHeight, update }: {
-  element: ImageElement; canvasWidth: number; canvasHeight: number; update: (patch: Partial<ImageElement>) => void
+  element: ImageElement; canvasWidth: number; canvasHeight: number; update: (patch: Record<string, unknown>) => void
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
