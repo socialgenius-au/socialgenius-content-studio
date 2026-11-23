@@ -8,6 +8,7 @@ import { BRAND } from '../../../lib/carousel/brandKit'
 import type { AlignMode, AlignTo } from '../../../lib/carousel/geometry'
 import type { EditorAction } from '../editorState'
 import ImagePicker from './ImagePicker'
+import ImageBackgroundTools from './ImageBackgroundTools'
 import { ImageExtras, ShapeExtras, ShapeSelect, TypographyExtras } from './ElementControls'
 import { DynamicControls, LinkControls, QrControls } from './InfoControls'
 
@@ -198,6 +199,7 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
                   </>
                 )}
                 <ImageExtras el={selected} upd={upd} />
+                <ImageBackgroundTools element={selected} canvasWidth={doc.format.width} canvasHeight={doc.format.height} update={upd} />
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Replace this picture</p>
                 <ImagePicker onPick={img => upd({ source: { kind: 'asset', assetId: img.assetId, url: img.url }, alt: selected.alt || img.name })} />
               </>
