@@ -8,6 +8,7 @@ import { BRAND } from '../../../lib/carousel/brandKit'
 import type { AlignMode, AlignTo } from '../../../lib/carousel/geometry'
 import type { EditorAction } from '../editorState'
 import ImagePicker from './ImagePicker'
+import ImageBackgroundTools from './ImageBackgroundTools'
 import { ImageExtras, ShapeExtras, ShapeSelect, TypographyExtras } from './ElementControls'
 import { DynamicControls, LinkControls, QrControls } from './InfoControls'
 
@@ -198,6 +199,7 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
                   </>
                 )}
                 <ImageExtras el={selected} upd={upd} />
+                <ImageBackgroundTools element={selected} canvasWidth={doc.format.width} canvasHeight={doc.format.height} update={upd} />
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Replace this picture</p>
                 <ImagePicker onPick={img => upd({ source: { kind: 'asset', assetId: img.assetId, url: img.url }, alt: selected.alt || img.name })} />
               </>
@@ -209,6 +211,7 @@ export default function Inspector({ doc, page, selected, selectedIds, swatches =
                 <Row label="Fill"><span className="flex flex-wrap items-center gap-1.5"><input type="color" aria-label="Fill colour" value={hex(typeof selected.fill === 'string' ? selected.fill : selected.fill && 'token' in (selected.fill as object) ? rc(selected.fill as ColorRef) : '#1E8A55')} onChange={e => upd({ fill: e.target.value })} className="h-8 w-14 rounded border border-border p-0.5" data-testid="shape-fill" /><SwatchRow swatches={swatches} label="Brand colours for the fill" onPick={ref => upd({ fill: ref })} /></span></Row>
                 <Row label="Corners"><input type="range" aria-label="Corner radius" min={0} max={20} step={0.5} value={pctOf(selected.cornerRadius ?? 0)} onChange={e => upd({ cornerRadius: toFrac(e.target.value, 0, 0.5) })} className="w-full" /></Row>
                 <ShapeExtras el={selected} upd={upd} rc={rc} />
+                <button type="button" className="rounded border border-border px-2 py-1 text-xs" onClick={() => { const width = Math.min(selected.width, 0.76); const height = Math.min(typeof selected.height === 'number' ? selected.height : 0.3, 0.36); upd({ x: (1 - width) / 2, y: (1 - height) / 2, width, height }) }}>Auto fit shape to canvas</button>
               </>
             )}
 
