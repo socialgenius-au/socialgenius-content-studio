@@ -11,7 +11,7 @@ export default function ImageBackgroundTools({ element, canvasWidth, canvasHeigh
   const [error, setError] = useState('')
   const [colour, setColour] = useState('#FFFFFF')
   const [mode, setMode] = useState<'flat' | 'complex'>('flat')
-  const assetId = element.source.kind === 'asset' ? element.source.assetId : null
+  const assetId = element.source.kind === 'asset' ? element.source.assetId ?? null : null
   const btn = 'rounded border border-border px-2 py-1.5 text-xs hover:bg-muted disabled:opacity-50'
 
   async function process(replace: boolean) {
