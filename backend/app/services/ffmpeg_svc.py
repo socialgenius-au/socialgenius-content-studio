@@ -739,9 +739,20 @@ async def mix_audio_tracks(base_video_path: str, tracks: list[dict], user_id: in
         dur = max(0.05, t["end_time"] - t["start_time"])
         delay_ms = max(0, round(t["start_time"] * 1000))
         label = f"ta{idx}"
+        fade_in = t.get("fade_in", 0)
+        fade_out = t.get("fade_out", 0)
+        fades = []
+        if fade_in:
+            fades.append(f"afade=t=in:d={fade_in:.6f},")
+        if fade_out:
+            # A fade longer than the clip starts partway through its ramp.
+            fade_start = max(0, dur - fade_out)
+            if fade_out > dur:
+                fades.append(f"volume={dur / fade_out:.6f},")
+            fades.append(f"afade=t=out:st={fade_start:.6f}:d={min(dur, fade_out):.6f},")
         filter_parts.append(
             f"[{idx}:a]atrim=start={t['trim_in']}:duration={dur},asetpts=PTS-STARTPTS,"
-            f"volume={t['volume']},adelay={delay_ms}|{delay_ms}[{label}]"
+            f"{''.join(fades)}volume={t['volume']},adelay={delay_ms}|{delay_ms}[{label}]"
         )
         mix_labels.append(label)
 

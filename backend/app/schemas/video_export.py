@@ -2,7 +2,7 @@ from typing import Literal
 
 import re
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # STEP 7.15F: shape mirrors Video Studio V2's own editor state (VideoClip/TextOverlay/
@@ -213,6 +213,10 @@ class ExportAudioTrack(BaseModel):
     end_time: float
     trim_in: float
     volume: float = 1.0
+
+
+    fade_in: float = Field(default=0, ge=0, le=60)
+    fade_out: float = Field(default=0, ge=0, le=60)
 
 
 class ExportProjectRequest(BaseModel):

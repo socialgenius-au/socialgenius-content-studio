@@ -91,3 +91,11 @@ Front-end revision `caa2d5c0219cee320082626d8c95362fcee06f9b` reached **SUCCESS*
 The editing and media checks above ran in Chromium against the deployed public UI preview. Template and snapshot checks used a local authenticated-shell fixture. Full authenticated acceptance on the new revision remains open, including real cloud save/reopen, library-to-timeline drag, and an exported MP4 covering the new features. The prior browser export remains evidence for the earlier revision only.
 
 Still open in the editor are full V2 property parity (including arbitrary rotation, advanced effects and animation, per-clip video speed and audio fades), full Brand Kit parity, and testing a configured acceptance AI provider. Production application and data were not changed.
+
+## V3 inspector and compatible track movement
+
+- Added per-clip mute, independent audio and music fade-in and fade-out, and video contrast and saturation. Clip properties flow through undo/redo, draft snapshots and the V2-derived MP4 renderer. Existing drafts default to neutral settings.
+- Timeline clips can move between text tracks and among audio and music tracks. Pointer moves and trims that overlap another video on the same track revert to their original range. Cancelled pointer edits also revert.
+- Frontend build, inline editor syntax, Python compilation and diff checks passed. A local synthetic FFmpeg render verified that a delayed tone fades in and out and is silent outside its placed interval.
+- The isolated Railway editor route opened in Chrome and displayed sign-in. Control-level acceptance on this revision, cloud save/reopen and the authenticated editor-to-MP4 test are pending. The preceding toolkit table records the earlier browser checks and their scope.
+- Remaining implementation includes complete video and image transforms, per-clip video speed, text animation and font export parity, full saved Brand Kit application, broader Elements export, and a successful AI response with an acceptance provider.

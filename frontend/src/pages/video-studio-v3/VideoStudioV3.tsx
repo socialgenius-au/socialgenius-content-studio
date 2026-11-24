@@ -8,9 +8,11 @@ type ExportMedia = {
  end_time: number
  trim_in: number
  volume: number
+ fade_in?: number
+ fade_out?: number
 }
 
-type ExportVideo = ExportMedia & { muted: boolean; speed: number; fit_mode: 'fit' | 'fill'; crop_x: number; crop_y: number }
+type ExportVideo = ExportMedia & { muted: boolean; speed: number; fit_mode: 'fit' | 'fill'; crop_x: number; crop_y: number; contrast: number; saturation: number }
 
 export default function VideoStudioV3() {
  const frame = useRef<HTMLIFrameElement>(null)
@@ -100,18 +102,23 @@ export default function VideoStudioV3() {
       }
       const trim = clip.trim ?? 0
       if (!Number.isFinite(trim) || trim < 0) throw Error('Invalid clip trim')
-      const item = {asset_id:id,start_time:clip.start,end_time:clip.start+clip.duration,trim_in:trim,volume:clip.muted?0:Math.max(0,Math.min(1,Number(clip.volume ?? 1)))}
+      const props = clip.properties ?? {}
+      const muted = Boolean(clip.muted || props.clipMuted === 1)
+      const fade = (value: unknown) =>
+       typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(60, value)) : 0
+      const effect = (value: unknown) =>
+       typeof value === 'number' && Number.isFinite(value) ? Math.max(-100, Math.min(100, value)) : 0
+      const item = {asset_id:id,start_time:clip.start,end_time:clip.start+clip.duration,trim_in:trim,volume:muted?0:Math.max(0,Math.min(1,Number(clip.volume ?? 1)))}
       const percent = (value: unknown, fallback: number, min = 0) =>
        typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(100, value)) : fallback
-      const props = clip.properties ?? {}
       if (clip.kind === 'video') {
        if (clip.track !== 0 && clip.track !== 1) throw Error('Invalid video track')
        const track = clip.track === 0 ? video : upperVideo
-       track.push({...item,muted:!!clip.muted,speed:1,fit_mode:props.fitMode==='fill'?'fill':'fit',crop_x:percent(props.cropX,50),crop_y:percent(props.cropY,50)})
+       track.push({...item,muted,speed:1,contrast:effect(props.contrast),saturation:effect(props.saturation),fit_mode:props.fitMode==='fill'?'fill':'fit',crop_x:percent(props.cropX,50),crop_y:percent(props.cropY,50)})
       } else if (clip.kind === 'image') {
        overlays.push({ ...item,x:percent(props.imageX,0),y:percent(props.imageY,0),width:percent(props.imageWidth,100,1),height:percent(props.imageHeight,100,1),opacity:Math.max(0,Math.min(1,Number(clip.opacity ?? 1))),muted:true })
       } else {
-       audio.push(item)
+       audio.push({...item,fade_in:fade(props.fadeIn),fade_out:fade(props.fadeOut)})
       }
      }
      if (!video.length) video.push(...upperVideo.splice(0))

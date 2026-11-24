@@ -228,6 +228,8 @@ async def export_project(
             "start_time": a.start_time,
             "end_time": a.end_time,
             "volume": a.volume,
+            "fade_in": a.fade_in,
+            "fade_out": a.fade_out,
         })
 
     project = {
