@@ -62,3 +62,32 @@ Acceptance web deployment `f9f7e54c-cd21-434f-92a6-f6dfe8920736` reached SUCCESS
 The preview transport and timeline now use one time source. The browser tests also found and fixed an inspector binding order error, a grid collapse that caused the navigation rail to intercept pointer events, and a remaining hardcoded Text 2 start that put new text outside short exports.
 
 Coverage remains partial for advanced editor controls. The editor still uses the V3 iframe and the existing upload, draft, AI and export APIs. Motion provides clip placement and duration controls. Elements can browse and preview image assets, while export of those image elements and broader style/render parity remain open. This is a desktop Chromium result. Full control-by-control acceptance and cross-browser coverage remain open.
+
+## Timeline editing toolkit acceptance
+
+Front-end revision `caa2d5c0219cee320082626d8c95362fcee06f9b` reached **SUCCESS** on isolated Railway acceptance deployment `ef0df125-c455-4a63-9559-3fdf886ec435`. The public UI preview of the same revision reached **SUCCESS** on `82ace059-f532-4f65-a369-eac749901a61`.
+
+| Control | Evidence |
+| --- | --- |
+| Select | Chromium cleared selection and focused the tracks. |
+| Cut | Chromium removed the selected clip and retained a pasteable clip. |
+| Split at playhead | Chromium split a video at the chosen point. Undo and redo restored the expected clip counts. |
+| Trim | Chromium opened the selected clip's inspector and set a shorter duration. Pointer tests also shortened the clip from both trim handles. |
+| Copy and Paste | Chromium copied a clip and inserted it at the playhead. |
+| Duplicate | Chromium added a second copy, including multiple clips on Text 1 in the iframe fixture. |
+| Delete and Ripple delete | Chromium removed the selected clip. The context-menu Ripple delete closed the gap on the affected track. |
+| Snap | Chromium toggled the snapping state. Precision snapping in a full authenticated drag was not covered. |
+| Zoom in, Zoom out and Fit timeline | Chromium verified the track width changes and refreshed ruler labels. |
+| Beginning, Rewind, Previous frame, Play/Pause, Next frame, Fast forward, End | Chromium verified the seek/play behaviour and equal preview/timeline time strings. Frame stepping uses 30 fps. |
+| Playback speed | Chromium selected 2× and observed the video playback rate. This is a preview transport rate. |
+| Fullscreen | Chromium entered and exited preview fullscreen. |
+| Tracks and media | Chromium counted exactly seven lanes, inspected a decoded thumbnail and a decoded waveform, and confirmed no document-level overflow at 1024 px. |
+| Context menu | Chromium opened the selected clip's menu and invoked Ripple delete. A pointer test moved footage to the second video track. Keyboard copy, paste and delete also passed. |
+| Inspector | Chromium applied video framing and crop focus, image size and position, and clip volume. |
+| Templates | Authenticated-shell fixture exercised search, category filtering, custom scene titles, storyboard append, optional editable title clips, and snapshot save/reopen. It uses the shared video preset definitions from the existing template library. |
+| Export | The single Export control invokes the existing renderer. Image overlays, crop and volume are included in the payload. The new payload was not verified by rendering a new authenticated Railway MP4. |
+| Brand and AI | Official logo asset is shown in the rail, saved brand kit primary colors are connected to the inspector, and the existing AI request remains wired. Provider credentials and a successful AI response remain unverified. |
+
+The editing and media checks above ran in Chromium against the deployed public UI preview. Template and snapshot checks used a local authenticated-shell fixture. Full authenticated acceptance on the new revision remains open, including real cloud save/reopen, library-to-timeline drag, and an exported MP4 covering the new features. The prior browser export remains evidence for the earlier revision only.
+
+Still open in the editor are full V2 property parity (including arbitrary rotation, advanced effects and animation, per-clip video speed and audio fades), full Brand Kit parity, and testing a configured acceptance AI provider. Production application and data were not changed.
