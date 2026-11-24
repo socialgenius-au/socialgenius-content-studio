@@ -45,3 +45,20 @@ Starting branch `feature/content-studio-ui-v3` at `df44dace09c753debac8b9f9905db
 - Published-page imports and platform metadata, researched SEO/GEO/AEO, comprehensive per-shot technical labels, multi-range selection, persistent handoff and complete browser acceptance remain open. Unavailable evidence is labelled on screen. The representative imagery and illustrative metrics in the approved mockups are absent from the implementation.
 - The Deep Analysis API completed its acceptance run. Sixteen stages completed and three were skipped because the acceptance semantic, hook and retention reasoners have no configured provider. The UI now exposes per-stage status and skip reasons.
 - The Technical screen uses a shared playback clock for scenes, shots, detected text, speech, transition evidence and decoded waveform. Selective Analysis can use either a scene or a shot boundary as the excerpt range. Added desktop and narrow layout styles.
+
+## Video Studio V3 browser acceptance follow-up
+
+Acceptance web deployment `f9f7e54c-cd21-434f-92a6-f6dfe8920736` reached SUCCESS on frontend commit `c5b9f126955fbac862b219f951d6fd7dd2d64f55`. The frontend used the isolated acceptance API.
+
+| Check | Browser result |
+| --- | --- |
+| Authenticated workflow on Railway | Signed in with an isolated QA account, uploaded WebM footage, assigned Video Track 1, observed real video time advance, paused, compared the preview and timeline timestamps, and sought to an edit point. |
+| Editing on Railway | Split at the playhead, trimmed with the Motion inspector, created visible text on both text tracks, selected Color and Effects, toggled text shadow, uploaded an independent WAV, and opened the media library. |
+| Draft on Railway | Renamed and saved to the cloud, refreshed the browser, reopened the named draft, and confirmed clips, text and audio returned. |
+| Render on Railway | Downloaded the MP4 using the editor and played it in Chromium. Measured 3.5 seconds, 1080 × 1920, H.264 and AAC. Full decode succeeded. A frame at 2.3 seconds showed both text overlays. Audio peaked at −20.8 dBFS. |
+| Additional interaction checks | Verified Video Track 2 assignment and the palette action on Railway. Local Chromium verified undo and redo of a split, independent Audio 1, Audio 2 and Music assignment, scene creation and selection, navigation/tools/AI/timeline collapse, reversible Focus Mode, the Elements entry point, an AI suggestion handoff to Chat, and the Brand Kit link. |
+| AI | The editor submitted the request to the existing chat API and displayed the unavailable response. The acceptance service lacks an AI provider credential. |
+
+The preview transport and timeline now use one time source. The browser tests also found and fixed an inspector binding order error, a grid collapse that caused the navigation rail to intercept pointer events, and a remaining hardcoded Text 2 start that put new text outside short exports.
+
+Coverage remains partial for advanced editor controls. The editor still uses the V3 iframe and the existing upload, draft, AI and export APIs. Motion provides clip placement and duration controls. Elements can browse and preview image assets, while export of those image elements and broader style/render parity remain open. This is a desktop Chromium result. Full control-by-control acceptance and cross-browser coverage remain open.
