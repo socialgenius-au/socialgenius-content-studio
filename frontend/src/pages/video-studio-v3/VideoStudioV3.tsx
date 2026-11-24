@@ -61,6 +61,7 @@ export default function VideoStudioV3() {
     if (!Array.isArray(clips)||!clips.length||clips.length>100||!supportedCanvas) throw Error('Invalid export project')
      if (!Array.isArray(texts)||texts.length>2||texts.some((t: Record<string, any>)=>typeof t.text!=='string'||t.text.length>4000||![t.start_time,t.end_time,t.x,t.y,t.font_size].every(Number.isFinite)||t.start_time<0||t.end_time<=t.start_time)) throw Error('Invalid text layers')
      const video: ExportVideo[] = []
+     const upperVideo: ExportVideo[] = []
      const audio: ExportMedia[] = []
      for (const clip of clips) {
       if (!['video','audio'].includes(clip.kind)||!Number.isFinite(clip.start)||!Number.isFinite(clip.duration)||clip.start<0||clip.duration<=0) throw Error('Unsupported clip')
@@ -70,14 +71,44 @@ export default function VideoStudioV3() {
        const uploaded = await uploadApi.upload(new File([clip.blob],String(clip.name),{type:clip.blob.type}))
        id = uploaded.data.id
       }
-      const item = {asset_id:id,start_time:clip.start,end_time:clip.start+clip.duration,trim_in:0,volume:clip.muted?0:1}
-      if(clip.kind==='video') video.push({...item,muted:!!clip.muted,speed:1,fit_mode:'fit'})
-      else audio.push(item)
+      const trim = clip.trim ?? 0
+      if (!Number.isFinite(trim) || trim < 0) throw Error('Invalid clip trim')
+      const item = {asset_id:id,start_time:clip.start,end_time:clip.start+clip.duration,trim_in:trim,volume:clip.muted?0:1}
+      if (clip.kind === 'video') {
+       if (clip.track !== 0 && clip.track !== 1) throw Error('Invalid video track')
+       const track = clip.track === 0 ? video : upperVideo
+       track.push({...item,muted:!!clip.muted,speed:1,fit_mode:'fit'})
+      } else {
+       audio.push(item)
+      }
      }
-     if(!video.length) throw Error('Add video first')
-     video.sort((a,b)=>a.start_time-b.start_time)
-     if(video.some((clip,index)=>index > 0 && clip.start_time < video[index-1].end_time - 1e-6)) throw Error('Overlapping video is not supported by this export adapter')
-     const result = await videoExportApi.exportProject({canvas_width:width,canvas_height:height,video_clips:video,audio_tracks:audio,text_overlays:texts,media_overlays:[]})
+     if (!video.length) video.push(...upperVideo.splice(0))
+     if (!video.length) throw Error('Add video first')
+     for (const track of [video, upperVideo]) {
+      track.sort((a, b) => a.start_time - b.start_time)
+      if (track.some((clip, index) => index > 0 && clip.start_time < track[index - 1].end_time - 1e-6)) {
+       throw Error('Overlapping clips on the same video track are unsupported')
+      }
+     }
+     const baseEnd = video[video.length - 1].end_time
+     const additionalVideo = []
+     for (const clip of upperVideo) {
+      if (clip.start_time < baseEnd) {
+       const visible = {...clip,end_time:Math.min(clip.end_time,baseEnd)}
+       additionalVideo.push({...visible,insert_x:0,insert_y:0,insert_width:100,insert_height:100})
+       if (!clip.muted && (await assetsApi.hasAudioStream(clip.asset_id)).data.has_audio) {
+        audio.push(visible)
+       }
+      }
+      if (clip.end_time > baseEnd) {
+       const start = Math.max(clip.start_time,baseEnd)
+       video.push({...clip,start_time:start,trim_in:clip.trim_in+start-clip.start_time})
+      }
+     }
+     const result = await videoExportApi.exportProject({
+      canvas_width:width,canvas_height:height,video_clips:video,additional_video_clips:additionalVideo,
+      audio_tracks:audio,text_overlays:texts,media_overlays:[],
+     })
      const url=URL.createObjectURL(result.data)
      const link=document.createElement('a');link.href=url;link.download='social-genius-v3.mp4';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000)
      reply('MP4 rendered — check downloads')

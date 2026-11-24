@@ -1,0 +1,317 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Aperture, ArrowRight, Clapperboard, Film, Globe, Layers, MessageSquare, ScanSearch, Target, UploadCloud, Zap } from 'lucide-react'
+import { assetsApi, referenceVideosApi, uploadApi, videoExportApi } from '../../api/client'
+import type { ReferenceVideo } from '../../types'
+import { errorMessage, useDeconstructor } from './useDeconstructor'
+import { evidenceSummary, hookSummary, typeLabel } from './intelligence'
+import './DeconstructorV3.css'
+
+const root = '/deconstructor-v3'
+const views = ['Reference', 'Quick Analysis', 'Deep Analysis', 'Selective Analysis', 'Messaging Intelligence', 'Technical Intelligence', 'Discoverability'] as const
+type View = typeof views[number]
+type Evidence = 'Extracted' | 'Detected' | 'Inferred' | 'Researched' | 'Unavailable'
+type Finding = [label: string, value: ReactNode, evidence: Evidence]
+const modules = [
+  ['technical', 'Technical Intelligence', 'Detect shot boundaries and extract frames.'],
+  ['messaging', 'Messaging Intelligence', 'Transcribe speech and detect on-screen text.'],
+  ['discoverability', 'Discoverability Intelligence', 'Find terms and hashtags visible in the video.'],
+  ['metadata', 'Metadata', 'Probe video, audio and container properties.'],
+] as const
+type Module = typeof modules[number][0]
+
+const time = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`
+const spanLabel = (start: number, end: number) => `${time(start)} – ${time(end)}`
+const result = (label: string, value: string | number | null | undefined, source: Evidence): Finding =>
+  [label, value ?? 'Unavailable', value == null || value === '' ? 'Unavailable' : source]
+
+function Card({ title, children, className = '' }: { title: string; children: ReactNode; className?: string }) {
+  return <section className={`dc3-card ${className}`}><h2>{title}</h2><div className="dc3-card-content">{children}</div></section>
+}
+function Findings({ rows }: { rows: Finding[] }) {
+  return <dl className="dc3-findings">{rows.map(([label, value, source]) => <div key={label}><dt>{label}</dt><dd>{value || 'Unavailable'}</dd><dd><span className={`dc3-badge dc3-${source.toLowerCase()}`}>{source}</span></dd></div>)}</dl>
+}
+function mediaProperties(reference: ReferenceVideo | null): Finding[] {
+  const facts = reference?.technical_details
+  const picture = facts?.video
+  const audio = facts?.audio
+  return [
+    result('File name', reference?.original_filename, 'Extracted'),
+    result('Duration', facts?.container.duration_seconds != null ? time(facts.container.duration_seconds) : null, 'Extracted'),
+    result('Resolution', picture?.width && picture?.height ? `${picture.width} × ${picture.height}` : null, 'Extracted'),
+    result('Aspect ratio', picture?.display_aspect_ratio, 'Extracted'),
+    result('Frame rate', picture?.average_frame_rate != null ? `${picture.average_frame_rate} fps` : null, 'Extracted'),
+    result('Format / codec', [facts?.container.format_name, picture?.codec_name].filter(Boolean).join(' / '), 'Extracted'),
+    result('Audio', audio?.present ? [audio.codec_name, audio.channel_layout, audio.sample_rate_hz && `${audio.sample_rate_hz} Hz`].filter(Boolean).join(' · ') : audio ? 'No audio stream' : null, 'Extracted'),
+  ]
+}
+function sourceTerms(text: string) {
+  const ignore = new Set(['about','above','after','again','are','and','before','from','have','here','into','just','more','only','some','than','that','them','then','there','these','they','this','those','what','when','where','which','will','with','would','your','you'])
+  const terms = new Map<string, number>()
+  for (const word of text.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []) {
+    if (!ignore.has(word)) terms.set(word, (terms.get(word) ?? 0) + 1)
+  }
+  return [...terms.entries()].sort((a,b) => b[1] - a[1]).slice(0,12).map(([word]) => word)
+}
+
+export default function DeconstructorV3() {
+  const { referenceVideoId } = useParams()
+  const id = referenceVideoId && /^\d+$/.test(referenceVideoId) ? Number(referenceVideoId) : null
+  const [params, setParams] = useSearchParams()
+  const mode = views.find(view => view === params.get('view')) ?? 'Reference'
+  const changeView = (view: View) => setParams({ view })
+  const navigate = useNavigate()
+  const d = useDeconstructor(id)
+  const [reference, setReference] = useState<ReferenceVideo | null>(null)
+  const [message, setMessage] = useState('')
+  const [working, setWorking] = useState(false)
+  const [select, setSelect] = useState<Module[]>(['technical','metadata'])
+  const [range, setRange] = useState(false)
+  const [start, setStart] = useState('')
+  const [end, setEnd] = useState('')
+  const [sourceScope, setSourceScope] = useState('')
+  const [selected, setSelected] = useState(0)
+  const [deepTab, setDeepTab] = useState<'Overview' | 'Narrative' | 'Transcript' | 'Mechanisms'>('Overview')
+  const [messageTab, setMessageTab] = useState<'Strategy' | 'Hook' | 'Storytelling' | 'Persuasion' | 'Audience'>('Strategy')
+  const [tabular, setTabular] = useState(false)
+  const [playhead, setPlayhead] = useState(0)
+  const [waveform, setWaveform] = useState<{ referenceId: number; peaks: number[] } | null>(null)
+  const [waveformLoading, setWaveformLoading] = useState(false)
+  const [notes, setNotes] = useState({ industry: '', contentType: '', objective: '', audience: '', note: '' })
+  const [urlMode, setUrlMode] = useState(false)
+  const player = useRef<HTMLVideoElement>(null)
+  const file = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (id == null) return
+    let live = true
+    referenceVideosApi.get(id).then(({data}) => {
+      if (live) setReference(data)
+    }).catch(error => { if (live) setMessage(errorMessage(error, 'Could not load the reference video.')) })
+    return () => { live = false }
+  }, [id, d.references.data])
+  const video = reference?.id === id ? reference : null
+  const details = video?.technical_details
+  const duration = details?.container.duration_seconds ?? details?.video.duration_seconds ?? 0
+  const anatomy = d.anatomy.data?.provenance.reference_video_id === id ? d.anatomy.data : null
+  const creative = d.intelligence.data
+  const shots = video?.shots ?? []
+  const sections = anatomy?.sections ?? []
+  const sceneList = sections.length ? sections.map(section => ({
+    number: section.number, start: section.start_time, end: section.end_time,
+    role: section.interpretive.narrative_role || 'Scene',
+    story: section.speech_reading?.text || section.transcript_excerpt || section.on_screen_text.map(text => text.text).join(' · '),
+    technical: `${section.pacing.shot_count} detected shots`,
+    audio: section.audio.audio_stream_present ? 'Audio stream detected' : '',
+  })) : shots.map(shot => ({ number: shot.order, start: shot.start_time, end: shot.end_time, role: 'Shot', story: shot.text_elements.map(text => text.text).join(' · '), technical: shot.evidence_summary || '', audio: '' }))
+  const waveformPeaks = waveform?.referenceId === id ? waveform.peaks : null
+  const activeShot = shots.find(shot => playhead >= shot.start_time && playhead < shot.end_time) ?? shots[selected]
+  const transcript = video?.speech_segments?.map(segment => segment.text).join(' ') ?? ''
+  const observedText = shots.flatMap(shot => shot.text_elements.map(item => item.text)).join(' ')
+  const metadata = mediaProperties(video)
+  const messaging: Finding[] = [
+    result('Business objective', notes.objective || null, 'Extracted'),
+    result('Strategy and positioning', anatomy?.video.creative?.summary, 'Inferred'),
+    result('Core message', anatomy?.video.creative?.summary, 'Inferred'),
+    result('Hook', creative?.hook ? hookSummary(creative.hook) : null, 'Inferred'),
+    result('Problem', sections.find(section => /problem/i.test(section.interpretive.narrative_role ?? ''))?.transcript_excerpt, 'Inferred'),
+    result('Solution', sections.find(section => /solution/i.test(section.interpretive.narrative_role ?? ''))?.transcript_excerpt, 'Inferred'),
+    result('Benefits', sections.find(section => /benefit/i.test(section.interpretive.narrative_role ?? ''))?.transcript_excerpt, 'Inferred'),
+    result('Storytelling', creative?.narrative?.arc_text, 'Inferred'),
+    result('Persuasion mechanisms', creative?.mechanisms.map(typeLabel).join(' · '), 'Inferred'),
+    result('Emotional triggers', [...new Set(sections.flatMap(section => section.interpretive.emotional_function || []))].join(' · '), 'Inferred'),
+    result('Target audience', notes.audience || null, 'Extracted'),
+    result('Trust signals', sections.find(section => /trust/i.test(section.interpretive.narrative_role ?? ''))?.transcript_excerpt, 'Inferred'),
+    result('Call to action', sections.find(section => section.interpretive.cta_role)?.transcript_excerpt, 'Inferred'),
+  ]
+  const discoverability: Finding[] = [
+    result('Published URL', video?.original_url, 'Extracted'),
+    result('Published title', null, 'Extracted'),
+    result('Published description', null, 'Extracted'),
+    result('Frequently detected terms', sourceTerms(`${transcript} ${observedText}`).join(' · '), 'Detected'),
+    result('Hashtags visible in the video', [...new Set(observedText.match(/#[\p{L}\p{N}_]+/gu) ?? [])].join(' · '), 'Detected'),
+    result('Published hashtags', null, 'Extracted'),
+    result('Detected visual entities', [...new Set(shots.flatMap(shot => (shot.visual_objects ?? []).map(item => item.label)))].join(' · '), 'Detected'),
+    ...['Publication date', 'Views', 'Likes', 'Primary / secondary keywords', 'Long-tail and semantic keywords', 'SEO', 'GEO', 'AEO', 'Geographic and local search'].map(label => result(label, null, 'Researched')),
+  ]
+  const busy = working || d.busy !== null
+  const selectReference = (newId: number, view: View = 'Reference') => {
+    setSelected(0)
+    setPlayhead(0)
+    navigate(`${root}/${newId}?view=${encodeURIComponent(view)}`)
+  }
+  const importVideo = async (candidate?: File) => {
+    if (!candidate || busy) return
+    setMessage('')
+    const newId = await d.addReference(candidate)
+    if (newId != null) {
+      setSourceScope('')
+      selectReference(newId)
+      try { setReference((await referenceVideosApi.analyze(newId)).data) }
+      catch (error) { setMessage(errorMessage(error, 'Video uploaded. Metadata extraction can be retried in Quick Analysis.')) }
+    }
+  }
+  const updateTime = (seconds: number) => {
+    setPlayhead(seconds)
+    if (player.current) player.current.currentTime = seconds
+  }
+  const run = async (custom: boolean) => {
+    if (!video || busy) return
+    setWorking(true)
+    setMessage('')
+    try {
+      let target = video
+      if (custom && !select.length) throw Error('Select at least one analysis module.')
+      if (custom && range) {
+        const a = Number(start)
+        const b = Number(end)
+        if (!start || !end || !Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b <= a || b > duration) throw Error('Enter a start and end within the source duration.')
+        const landscape = (details?.video.width ?? 0) >= (details?.video.height ?? 0)
+        const excerpt = await videoExportApi.exportProject({
+          canvas_width: landscape ? 1920 : 1080, canvas_height: landscape ? 1080 : 1920,
+          video_clips: [{asset_id:video.asset_id,start_time:0,end_time:b-a,trim_in:a}],
+        })
+        const name = `Reference ${video.id} excerpt ${a}-${b}s.mp4`
+        const uploaded = await uploadApi.upload(new File([excerpt.data],name,{type:'video/mp4'}))
+        target = (await referenceVideosApi.ingest(uploaded.data.id)).data
+        setSourceScope(`Excerpt from ${video.original_filename}, ${spanLabel(a,b)}. Times are relative to the excerpt.`)
+      } else {
+        setSourceScope('')
+      }
+      const targetId = target.id
+      await referenceVideosApi.analyze(targetId)
+      const speechAndText = custom && (select.includes('messaging') || select.includes('discoverability'))
+      if (!custom || select.includes('technical') || speechAndText) await referenceVideosApi.analyzeStructure(targetId)
+      if (custom && (select.includes('technical') || speechAndText)) await referenceVideosApi.analyzeFrames(targetId)
+      if (speechAndText) {
+        await referenceVideosApi.analyzeText(targetId)
+        await referenceVideosApi.analyzeSpeech(targetId)
+      }
+      setReference((await referenceVideosApi.get(targetId)).data)
+      if (targetId !== id) selectReference(targetId,'Quick Analysis')
+      else changeView('Quick Analysis')
+      setMessage(custom ? 'Selected analysis completed.' : 'Quick Analysis completed.')
+    } catch (error) {
+      setMessage(errorMessage(error, error instanceof Error ? error.message : 'Analysis could not be completed.'))
+    } finally {
+      setWorking(false)
+    }
+  }
+  const loadWaveform = async () => {
+    if (!video || waveformLoading) return
+    setWaveformLoading(true)
+    setMessage('')
+    try {
+      const measuredSize = details?.container.size_bytes
+      if (measuredSize == null || measuredSize > 32 * 1024 * 1024) throw Error('Waveform decoding supports probed files up to 32 MB.')
+      const { data } = await assetsApi.download(video.asset_id)
+      const bytes = await (data as Blob).arrayBuffer()
+      const context = new OfflineAudioContext(1, 1, 8000)
+      const audio = await context.decodeAudioData(bytes)
+      const samples = audio.getChannelData(0)
+      const peaks = Array.from({length:180},(_,index) => {
+        const startSample = Math.floor(index * samples.length / 180)
+        const endSample = Math.floor((index + 1) * samples.length / 180)
+        let peak = 0
+        for (let sample = startSample; sample < endSample; sample += 1) peak = Math.max(peak,Math.abs(samples[sample]))
+        return peak
+      })
+      setWaveform({ referenceId:video.id, peaks })
+    } catch (error) {
+      setMessage(errorMessage(error, error instanceof Error ? error.message : 'This browser could not decode the audio waveform.'))
+    } finally {
+      setWaveformLoading(false)
+    }
+  }
+  const send = () => {
+    if (!video || !sceneList.length) return
+    const handoff = { referenceId:video.id, scenes:sceneList, messaging, discoverability, metadata, mechanisms:creative?.mechanisms ?? [], provenance:anatomy?.provenance }
+    try {
+      sessionStorage.setItem('sg-reconstructor-detected-scenes',JSON.stringify(handoff))
+      navigate(`/reconstructor/assets?scene=${sceneList[0].number}&reference=${video.id}`)
+    } catch { setMessage('Could not store this Reconstructor handoff in the browser.') }
+  }
+  const report = () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ reference:video?.original_filename, metadata, messaging, discoverability, scenes:sceneList, mechanisms:creative?.mechanisms ?? [] },null,2)],{type:'application/json'}))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `reference-${id}-analysis.json`
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url),60000)
+  }
+  const seek = (seconds: number, index: number) => { setSelected(index); updateTime(seconds) }
+  const preview = video ? <video className="dc3-preview" ref={player} src={assetsApi.previewUrl(video.asset_file_path)} controls playsInline preload="metadata" onLoadedMetadata={() => { if(player.current) player.current.currentTime = playhead }} onTimeUpdate={event => setPlayhead(event.currentTarget.currentTime)} aria-label="Read-only reference video" /> : <div className="dc3-placeholder"><Film />Select a reference video to preview</div>
+  const scenes = <div className="dc3-scenes">{sceneList.map((scene,index) => <button type="button" key={scene.number} aria-pressed={playhead >= scene.start && playhead < scene.end} onClick={() => seek(scene.start,index)}><strong>{scene.number}</strong>{shots.find(shot => shot.start_time <= scene.start && shot.end_time > scene.start)?.frames[0] && <img src={assetsApi.previewUrl(shots.find(shot => shot.start_time <= scene.start && shot.end_time > scene.start)!.frames[0].asset_file_path)} alt="" />}<span>{scene.role}<small>{spanLabel(scene.start,scene.end)}</small></span></button>)}{!sceneList.length && <p>Run analysis to detect shots and scenes.</p>}</div>
+  const row = (label: string, rows: Finding[]) => <Card title={label}><Findings rows={rows} /></Card>
+  const tabs = <div className="dc3-modes">{views.map(view => <button key={view} type="button" className={view === mode ? 'chosen' : ''} onClick={() => changeView(view)}>{view}</button>)}</div>
+  return <div className={`dc3 ${mode === 'Messaging Intelligence' ? 'dc3-dark' : ''}`}>
+    <aside className="dc3-sidebar">
+      <Link className="dc3-brand" to="/dashboard"><img src="/social-genius-official-logo.svg" alt="" /><strong>Social Genius</strong><span>Content Studio</span><small>The Positioning People</small></Link>
+      <nav aria-label="Content Studio">{[['Home','/dashboard'],['Campaigns','/dashboard-classic'],['Post Creator','/post-creator-v2'],['Video Studio','/video-studio-v3'],['Deconstructor',root],['Reconstructor','/reconstructor/assets'],['Assets','/assets'],['Templates','/templates'],['Brand Kit','/brands'],['Settings','/settings']].map(([name,url]) => <Link key={name} to={url} aria-current={url === root ? 'page' : undefined}>{url === root ? <ScanSearch /> : <Layers />}{name}</Link>)}</nav>
+    </aside>
+    <main>
+      <header className="dc3-banner"><Clapperboard /><div><p>Deconstructor</p><h1>{mode === 'Reference' ? 'Reference Import & Context' : mode}</h1></div><span className="dc3-banner-brand"><img src="/social-genius-official-logo.svg" alt="" /><span><strong>Social Genius</strong><small>The Positioning People</small></span></span></header>
+      {tabs}
+      {(message || d.actionError || sourceScope) && <p className="dc3-status" role="status">{message || d.actionError}{sourceScope && <><br />{sourceScope}</>}</p>}
+      {mode === 'Reference' && <div className="dc3-import">
+        <Card title="Video Reference">
+          <div className="dc3-actions"><button type="button" onClick={() => setUrlMode(false)}>Upload Video File</button><button type="button" onClick={() => setUrlMode(true)}>Published Video URL</button></div>
+          {urlMode ? <p>Published URL ingestion is unavailable. Upload a video file you can analyse.</p> : <div className="dc3-drop" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); void importVideo(event.dataTransfer.files[0]) }}>
+            <UploadCloud /><button type="button" disabled={busy} onClick={() => file.current?.click()}>{busy ? 'Working…' : 'Browse or drop a video file'}</button><input ref={file} type="file" accept="video/*" hidden onChange={event => void importVideo(event.currentTarget.files?.[0])} />
+          </div>}
+          {preview}
+          <label>Saved references<select value={id ?? ''} disabled={busy} onChange={event => { if(event.target.value) selectReference(Number(event.target.value)) }}><option value="">Select a reference</option>{(d.references.data ?? []).map(item => <option key={item.id} value={item.id}>{item.original_filename}</option>)}</select></label>
+        </Card>
+        {row('Video & Metadata Preview', [...metadata,...discoverability.slice(0,3)])}
+        <div className="dc3-stack"><Card title="Add Context"><div className="dc3-context">{([['industry','Industry / category'],['contentType','Content type'],['objective','Business objective'],['audience','Target audience']] as const).map(([key,label]) => <label key={key}>{label}<input value={notes[key]} onChange={event => setNotes({...notes,[key]:event.target.value})} /></label>)}<label>Additional context<textarea maxLength={500} value={notes.note} onChange={event => setNotes({...notes,note:event.target.value})} /></label></div></Card>
+          {row('Source Evidence',[result('Video file',video?.original_filename,'Extracted'),result('Container metadata',details?'Available':null,'Extracted'),result('Transcript',transcript?'Available':null,'Detected')])}
+        </div>
+        <footer className="dc3-footer"><span><Target /> Messaging, technical production and discoverability</span><button className="chosen" disabled={!video || busy} type="button" onClick={() => void run(false)}>Begin Quick Analysis <ArrowRight /></button></footer>
+      </div>}
+      {mode === 'Selective Analysis' && <div className="dc3-grid">
+        <div className="dc3-stack"><Card title="Video Reference">{preview}</Card><Card title="Time Range">
+          <label className="dc3-check"><input type="checkbox" checked={range} onChange={event => setRange(event.target.checked)} />Use a specific time range</label>
+          {range && <div className="dc3-context"><label>Start (seconds)<input type="number" min={0} step=".01" value={start} onChange={event => setStart(event.target.value)} /></label><label>End (seconds)<input type="number" min={0} max={duration || undefined} step=".01" value={end} onChange={event => setEnd(event.target.value)} /></label><label>Use scene or shot<select defaultValue="" onChange={event => { const pick = sceneList[Number(event.target.value)]; if(event.target.value && pick) { setStart(String(pick.start));setEnd(String(pick.end)) } }}><option value="">Choose a boundary</option>{sceneList.map((scene,index) => <option key={scene.number} value={index}>{scene.role} {scene.number} · {spanLabel(scene.start,scene.end)}</option>)}</select></label></div>}
+        </Card></div>
+        <div className="dc3-stack"><Card title="Select Analysis Modules"><div className="dc3-modules">{modules.map(([key,label,description]) => <label className={select.includes(key) ? 'selected' : ''} key={key}><input type="checkbox" checked={select.includes(key)} onChange={event => setSelect(event.target.checked ? [...select,key] : select.filter(module => module !== key))} /><strong>{label}</strong><small>{description}</small></label>)}</div></Card>
+          <Card title="Analysis Scope Summary"><div className="dc3-actions"><span>{select.length} modules · {range ? 'Selected time range' : 'Full video'}</span><button className="chosen" type="button" disabled={!video || busy || !select.length} onClick={() => void run(true)}><Target />Run Selected Analysis</button></div></Card>
+        </div>
+      </div>}
+      {(mode === 'Quick Analysis' || mode === 'Deep Analysis') && <div className="dc3-grid">
+        <div className="dc3-stack">{preview}<Card title="Scenes & Timeline">{scenes}</Card></div>
+        <div className="dc3-stack">
+          <div className="dc3-actions">{mode === 'Deep Analysis' ? <><button className="chosen" disabled={!video || busy} type="button" onClick={() => { if(window.confirm('Run the full analysis pipeline? Configured AI stages may incur provider costs.')) void d.deconstruct() }}>Run Deep Analysis</button><span role="status">{d.progress.headline}</span></> : <button className="chosen" disabled={!video || busy} type="button" onClick={() => void run(false)}><Zap />Run Quick Analysis</button>}<button type="button" disabled={!video} onClick={report}>Export Analysis</button><button type="button" disabled={!sceneList.length || !video} onClick={send}>Send to Reconstructor <ArrowRight /></button></div>
+          {mode === 'Deep Analysis' && <div className="dc3-actions">{(['Overview','Narrative','Transcript','Mechanisms'] as const).map(tab => <button className={tab === deepTab ? 'chosen' : ''} key={tab} onClick={() => setDeepTab(tab)}>{tab}</button>)}</div>}
+          {mode === 'Deep Analysis' && deepTab === 'Narrative' ? row('Narrative', messaging) : mode === 'Deep Analysis' && deepTab === 'Transcript' ? row('Transcript', [result('Recognised speech',transcript || null,'Detected')]) : mode === 'Deep Analysis' && deepTab === 'Mechanisms' ? row('Persuasion & Mechanisms', creative?.mechanisms.length ? creative.mechanisms.map((mechanism): Finding => [typeLabel(mechanism),`${mechanism.purpose} · ${evidenceSummary(mechanism)}`,'Inferred']) : [result('Mechanisms',null,'Inferred')]) : <>
+            {row('Key Metrics & Metadata',[...metadata,result('Detected shots',shots.length || null,'Detected'),result('Analysed scenes',sections.length || null,'Inferred')])}
+            {row('Executive Summary',messaging.filter(([label]) => ['Core message','Hook','Target audience','Call to action'].includes(label)))}
+            <div className="dc3-modules">{([['Messaging Intelligence',MessageSquare],['Technical Intelligence',Aperture],['Discoverability',Globe]] as const).map(([view,Icon]) => <button type="button" key={view} onClick={() => changeView(view)}><Icon />{view}<ArrowRight /></button>)}</div>
+          </>}
+        </div>
+      </div>}
+      {mode === 'Messaging Intelligence' && <>
+        <div className="dc3-grid">{preview}{row('Core Message',messaging.filter(([label]) => ['Core message','Target audience','Emotional triggers','Storytelling','Call to action'].includes(label)))}</div>
+        <div className="dc3-actions">{(['Strategy','Hook','Storytelling','Persuasion','Audience'] as const).map(tab => <button className={tab === messageTab ? 'chosen' : ''} type="button" key={tab} onClick={() => setMessageTab(tab)}>{tab}</button>)}<button type="button" disabled={!sceneList.length || !video} onClick={send}>Send to Reconstructor <ArrowRight /></button></div>
+        <div className="dc3-grid">{row(`${messageTab} Evidence`,messaging.filter(([label]) => ({Strategy:['Business objective','Strategy and positioning','Problem','Solution','Benefits'],Hook:['Hook'],Storytelling:['Storytelling','Core message','Call to action'],Persuasion:['Persuasion mechanisms','Emotional triggers','Trust signals'],Audience:['Target audience']}[messageTab].includes(label))))}<Card title="Messaging Structure & Evidence"><button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>
+      </>}
+      {mode === 'Technical Intelligence' && <div className="dc3-technical">
+        <Card title="Scenes">{scenes}</Card>
+        <div className="dc3-stack">{preview}<Card title="Read-only Technical Timeline">
+          <label>Playhead <input type="range" min={0} max={duration || 1} step=".01" value={playhead} onChange={event => updateTime(Number(event.target.value))} /></label>
+          <div className="dc3-timeline">{[['Scenes',sceneList],['Shots',shots.map(shot => ({number:shot.order,start:shot.start_time,end:shot.end_time}))]].map(([label, items]) => <div key={label as string}><strong>{label as string}</strong><div>{(items as {number:number;start:number;end:number}[]).map((item,index) => <button key={item.number} type="button" title={spanLabel(item.start,item.end)} style={{ flexGrow:item.end-item.start }} onClick={() => seek(item.start,index)}>{item.number}</button>)}</div></div>)}</div>
+          {waveformPeaks ? <div className="dc3-waveform"><span>Audio waveform</span><svg role="img" aria-label="Audio peaks measured from the reference" viewBox="0 0 180 36" preserveAspectRatio="none">{waveformPeaks.map((peak,index) => <line key={index} x1={index} x2={index} y1={18-peak*17} y2={18+peak*17} />)}<line className="dc3-cursor" x1={playhead/(duration||1)*180} x2={playhead/(duration||1)*180} y1={0} y2={36} /></svg></div> : <button type="button" disabled={!details?.audio.present || waveformLoading} onClick={() => void loadWaveform()}>{waveformLoading ? 'Decoding audio…' : 'Load audio waveform'}</button>}
+        </Card></div>
+        <div className="dc3-stack">{row('Video Properties',metadata)}{row('Shot Breakdown',[
+          result('Time range',activeShot?spanLabel(activeShot.start_time,activeShot.end_time):null,'Detected'),
+          result('Shot evidence',activeShot?.evidence_summary,'Detected'),
+          result('Text overlays',activeShot?.text_elements.map(item => item.text).join(' · '),'Detected'),
+          result('Voice-over / speech',transcript || null,'Detected'),
+          result('Transition measurements',video?.transition_evidence?.length || null,'Detected'),
+          result('Audio waveform',waveformPeaks?'Measured from decoded audio':null,'Detected'),
+          ...['Camera angles','Camera movement','Framing','Lighting','Animations','Music identification'].map(label => result(label,null,'Unavailable')),
+        ])}</div>
+      </div>}
+      {mode === 'Discoverability' && <div className="dc3-grid">{preview}<div className="dc3-stack">{row('Source and Discoverability Evidence', discoverability)}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched.</p></Card></div></div>}
+    </main>
+  </div>
+}

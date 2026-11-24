@@ -11,7 +11,7 @@ const nav = [
   { name:'Post Creator', icon:Image, url:'/post-creator-v2' },
   { name:'Carousel Creator', icon:Images, url:'/carousel-creator' },
   { name:'Video Studio', icon:Clapperboard, url:'/video-studio-v3' },
-  { name:'Deconstructor', icon:ScanSearch, url:'/deconstructor' },
+  { name:'Deconstructor', icon:ScanSearch, url:'/deconstructor-v3' },
   { name:'Reconstructor', icon:RefreshCw, url:'/reconstructor/assets' },
   { name:'AI Generators', icon:Sparkles, url:'/video-studio-v2' },
   { name:'Clients', icon:Users, url:'/clients' },
@@ -26,7 +26,7 @@ const actions = [
   { title:'Social Post', detail:'Single image content for social media', icon:Image, tone:'lilac', url:'/post-creator-v2' },
   { title:'Carousel', detail:'Multi-image story (swipe or slide)', icon:Images, tone:'blue', url:'/carousel-creator' },
   { title:'Video', detail:'Create short or long-form videos', icon:Clapperboard, tone:'pink', url:'/video-studio-v3' },
-  { title:'From Reference', detail:'Analyse and recreate a new version', icon:ScanSearch, tone:'mint', url:'/deconstructor' },
+  { title:'From Reference', detail:'Analyse and recreate a new version', icon:ScanSearch, tone:'mint', url:'/deconstructor-v3' },
   { title:'With AI', detail:'Create content from an idea or prompt', icon:WandSparkles, tone:'peach', url:'/video-studio-v2' },
   { title:'AI Generators', detail:'Images and video • Low, Medium, Best', icon:Sparkles, tone:'cream', url:'/video-studio-v2' },
 ]

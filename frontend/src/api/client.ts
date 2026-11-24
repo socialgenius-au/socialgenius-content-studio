@@ -174,6 +174,7 @@ export const referenceVideosApi = {
   // semantic classification/font ID/translation — see reference_videos.py's own module docstring
   // for exact scope.
   analyzeText: (id: number) => api.post(`/reference-videos/${id}/analyze-text`),
+  analyzeSpeech: (id: number) => api.post(`/reference-videos/${id}/analyze-speech`),
 }
 
 // Deconstructor -> Reconstructor (backend C1-C4). Reads are side-effect free. The three POSTs below are the

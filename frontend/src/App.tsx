@@ -53,6 +53,7 @@ const PostCreatorV2 = lazy(() => import('./pages/post-creator-v2/PostCreatorV2')
 const VideoStudioV3 = lazy(() => import('./pages/video-studio-v3/VideoStudioV3'))
 const VideoStudioV2 = lazy(() => import('./pages/video-studio-v2/VideoStudioV2'))
 const PositioningLandingPage = lazy(() => import('./pages/PositioningLandingPage'))
+const DeconstructorV3 = lazy(() => import('./pages/deconstructor/DeconstructorV3'))
 const DeconstructorPage = lazy(() => import('./pages/deconstructor/DeconstructorPage'))
 const ReconstructorAssetFinder = lazy(() => import('./pages/deconstructor/ReconstructorAssetFinder'))
 const CarouselCreatorPage = lazy(() => import('./pages/carousel-creator/CarouselCreatorPage'))
@@ -141,6 +142,7 @@ function AppRoutes() {
       />
 
       <Route path="/video-studio-v3" element={<RequireAuth><Suspense fallback={<PageFallback />}><VideoStudioV3 /></Suspense></RequireAuth>} />
+      <Route path="/deconstructor-v3/:referenceVideoId?" element={<RequireAuth><Suspense fallback={<PageFallback />}><DeconstructorV3 /></Suspense></RequireAuth>} />
       <Route path="/reconstructor/assets" element={<RequireAuth><Suspense fallback={<PageFallback />}><ReconstructorAssetFinder /></Suspense></RequireAuth>} />
       <Route path="/create/:stage" element={<RequireAuth><Suspense fallback={<PageFallback />}><ContentWorkflowPages /></Suspense></RequireAuth>} />
       <Route path="/create-brief" element={<RequireAuth><Suspense fallback={<PageFallback />}><ContentBriefPage /></Suspense></RequireAuth>} />
