@@ -130,7 +130,7 @@ function boundedClipDuration(clip,start,duration){
 function placeClip(clip,start,duration){clip.dataset.start=start;clip.dataset.duration=duration;clip.style.left=start/30*100+'%';clip.style.width=duration/30*100+'%';clip.setAttribute('aria-label',clip.dataset.label+', start '+start.toFixed(1)+' seconds, duration '+duration.toFixed(1)+' seconds')}
 function wireClip(clip,i){clip.dataset.label=clip.textContent;clip.tabIndex=0;clip.setAttribute('role','button');placeClip(clip,i===1?12:0,i===1?12:19.5);for(const edge of ['start','end']){const handle=document.createElement('span');handle.className='trim '+edge;handle.dataset.edge=edge;clip.append(handle)}
 clip.addEventListener('click',e=>{e.stopPropagation();selectClip(clip)});
-clip.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();e.stopPropagation();clip.focus();stop();selectClip(clip);const lane=clip.parentElement,w=lane.getBoundingClientRect().width,x=e.clientX,start=Number(clip.dataset.start),duration=Number(clip.dataset.duration),trim=Number(clip.dataset.trim||0),edge=e.target.dataset.edge;clip.setPointerCapture(e.pointerId);const move=ev=>{const delta=Math.round((ev.clientX-x)/w*visibleSpan()*10)/10;if(edge==='start'){const earliest=clip.dataset.asset?Math.max(0,start-trim):0;const s=Math.max(earliest,Math.min(start+duration-.05,start+delta));if(clip.dataset.asset)clip.dataset.trim=String(Math.max(0,trim+s-start));placeClip(clip,s,start+duration-s)}else if(edge==='end'){placeClip(clip,start,boundedClipDuration(clip,start,duration+delta))}else{placeClip(clip,Math.max(0,snapStart(start+delta,duration,lane,clip)),duration);document.querySelectorAll('.lane').forEach(l=>l.classList.toggle('drop-target',l===document.elementFromPoint(ev.clientX,ev.clientY)?.closest('.lane')&&l.parentElement.className===lane.parentElement.className))}};
+clip.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();e.stopPropagation();clip.focus();stop();selectClip(clip);const lane=clip.parentElement,w=lane.getBoundingClientRect().width,span=visibleSpan(),x=e.clientX,start=Number(clip.dataset.start),duration=Number(clip.dataset.duration),trim=Number(clip.dataset.trim||0),edge=e.target.dataset.edge;clip.setPointerCapture(e.pointerId);const move=ev=>{const delta=Math.round((ev.clientX-x)/w*span*10)/10;if(edge==='start'){const earliest=clip.dataset.asset?Math.max(0,start-trim):0;const s=Math.max(earliest,Math.min(start+duration-.05,start+delta));if(clip.dataset.asset)clip.dataset.trim=String(Math.max(0,trim+s-start));placeClip(clip,s,start+duration-s)}else if(edge==='end'){placeClip(clip,start,boundedClipDuration(clip,start,duration+delta))}else{placeClip(clip,Math.max(0,snapStart(start+delta,duration,lane,clip)),duration);document.querySelectorAll('.lane').forEach(l=>l.classList.toggle('drop-target',l===document.elementFromPoint(ev.clientX,ev.clientY)?.closest('.lane')&&l.parentElement.className===lane.parentElement.className))}};
 const finish=ev=>{if(!edge&&ev.type==='pointerup'){const target=document.elementFromPoint(ev.clientX,ev.clientY)?.closest('.lane');if(target&&target!==lane&&target.parentElement.className===lane.parentElement.className&&!lane.closest('.text'))target.append(clip)}document.querySelectorAll('.lane').forEach(l=>l.classList.remove('drop-target'));clip.removeEventListener('pointermove',move);clip.removeEventListener('pointerup',finish);clip.removeEventListener('pointercancel',finish);renderTime();refreshRuler();checkpoint()};clip.addEventListener('pointermove',move);clip.addEventListener('pointerup',finish);clip.addEventListener('pointercancel',finish)});
 clip.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight'].includes(e.key))return;e.preventDefault();selectClip(clip);const d=Number(clip.dataset.duration),s=Number(clip.dataset.start),delta=e.key==='ArrowLeft'?-.1:.1;if(e.shiftKey)placeClip(clip,s,boundedClipDuration(clip,s,d+delta));else placeClip(clip,Math.max(0,s+delta),d);renderTime();checkpoint()})}
 clips.forEach(wireClip);
@@ -150,11 +150,28 @@ function assignAsset(asset, explicitClip){const kind=asset.kind;let clip=explici
  },{once:true});
 }decorateMedia(asset,clip,player);selectClip(clip);if(typeof refreshRuler==='function')refreshRuler();status.textContent=asset.name+' assigned to '+clip.closest('.track').firstElementChild.textContent;renderTime()}
 $('file').multiple=true;$('file').onchange=e=>{for(const f of e.target.files){const kind=f.type.split('/')[0];if(!['video','audio','image'].includes(kind)){status.textContent='Unsupported media type';continue}if(parent!==window){parent.postMessage({type:'sg-v3-upload',file:f},parent.location.origin);status.textContent='Uploading '+f.name+'…';continue}const asset={id:crypto.randomUUID(),name:f.name,kind,url:URL.createObjectURL(f)};localAssets.set(asset.id,asset);const b=document.createElement('button');b.className='thumb';b.dataset.kind=kind;b.title='Assign '+f.name+' to selected compatible track';if(kind!=='audio'){const p=document.createElement(kind==='image'?'img':'video');p.src=asset.url;if(kind==='video'){p.muted=true;p.preload='metadata'}b.append(p)}else b.append('♫');const label=document.createElement('span');label.textContent=f.name;b.append(label);b.onclick=()=>assignAsset(asset);$('media').append(b);assignAsset(asset)}e.target.value=''};
-function syncMedia(){const visual=[...mediaPlayers].filter(([clip,p])=>p.tagName==='VIDEO'&&!clip.parentElement.classList.contains('track-muted')&&position>=Number(clip.dataset.start)&&position<Number(clip.dataset.start)+Number(clip.dataset.duration)).sort(([a],[b])=>a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1).pop()?.[1];for(const [clip,p] of mediaPlayers){const start=Number(clip.dataset.start),duration=Number(clip.dataset.duration),active=!clip.parentElement.classList.contains('track-muted')&&position>=start&&position<start+duration;const show=active&&(p===visual||p.tagName==='IMG');p.hidden=!show;p.style.opacity=clip.dataset.opacity??1;if(p.tagName!=='IMG')p.volume=Number(clip.dataset.volume??1);if(p.tagName==='IMG')continue;const shouldPlay=active;if(!shouldPlay){p.pause();continue}if(p.readyState>0){const target=Math.max(0,position-start)+Number(clip.dataset.trim||0);if(Math.abs(p.currentTime-target)>.35||!playing)p.currentTime=target}if(typeof transportRate==='number')p.playbackRate=transportRate;if(playing&&p.paused)p.play().catch(()=>{status.textContent='Media playback unavailable; check file format or browser permissions'});else if(!playing)p.pause()}activeVisual=visual}
+function syncMedia(){const visual=[...mediaPlayers].filter(([clip,p])=>p.tagName==='VIDEO'&&!clip.parentElement.classList.contains('track-muted')&&position>=Number(clip.dataset.start)&&position<Number(clip.dataset.start)+Number(clip.dataset.duration)).sort(([a],[b])=>a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING?-1:1).pop()?.[1];for(const [clip,p] of mediaPlayers){const start=Number(clip.dataset.start),duration=Number(clip.dataset.duration),active=!clip.parentElement.classList.contains('track-muted')&&position>=start&&position<start+duration;const show=active&&(p===visual||p.tagName==='IMG');p.hidden=!show;p.style.opacity=clip.dataset.opacity??1;applyMediaGeometry(p,clip);if(p.tagName!=='IMG')p.volume=Number(clip.dataset.volume??1);if(p.tagName==='IMG')continue;const shouldPlay=active;if(!shouldPlay){p.pause();continue}if(p.readyState>0){const target=Math.max(0,position-start)+Number(clip.dataset.trim||0);if(Math.abs(p.currentTime-target)>.35||!playing)p.currentTime=target}if(typeof transportRate==='number')p.playbackRate=transportRate;if(playing&&p.paused)p.play().catch(()=>{status.textContent='Media playback unavailable; check file format or browser permissions'});else if(!playing)p.pause()}activeVisual=visual}
 const oldRender=renderTime;renderTime=function(){oldRender();syncMedia()};const oldStop=stop;stop=function(){oldStop();syncMedia()};document.querySelectorAll('.track>span[role=button]').forEach(b=>b.addEventListener('click',syncMedia));window.addEventListener('pagehide',()=>{for(const asset of localAssets.values())URL.revokeObjectURL(asset.url)});
 
+const propertyDefaults={imageX:0,imageY:0,imageWidth:100,imageHeight:100,cropX:50,cropY:50,fitMode:'fit'};
+function projectProperties(clip){
+ return Object.fromEntries(Object.entries(propertyDefaults).map(([key,value])=>[
+  key,typeof value==='number'?Number(clip.dataset[key]??value):(clip.dataset[key]??value),
+ ]));
+}
+function applyMediaGeometry(player,clip){
+ const props=projectProperties(clip);
+ if(player.tagName==='IMG'){
+  player.style.left=props.imageX+'%';player.style.top=props.imageY+'%';
+  player.style.width=props.imageWidth+'%';player.style.height=props.imageHeight+'%';
+  player.style.objectFit='contain';
+ }else if(player.tagName==='VIDEO'){
+  player.style.objectFit=props.fitMode==='fill'?'cover':'contain';
+  player.style.objectPosition=props.cropX+'% '+props.cropY+'%';
+ }
+}
 const projectKey='sg-editor-v3-draft';const history=[],future=[];let restoring=false;
-function snapshot(){return {version:1,title:document.querySelector('header h2').textContent,text:$('copy').value,style:headline.style.cssText,canvasStyle:canvas.style.cssText,aspect:aspectSelect.value,position,scenes:[...$('scenes').children].map(b=>({html:b.innerHTML,selected:b.classList.contains('selected'),start:Number(b.dataset.start||0),end:b.dataset.end?Number(b.dataset.end):null})),clips:clips.map(c=>({start:Number(c.dataset.start),duration:Number(c.dataset.duration),trim:Number(c.dataset.trim||0),volume:Number(c.dataset.volume??1),opacity:Number(c.dataset.opacity??1),label:c.dataset.label,asset:c.dataset.asset||null,track:[...document.querySelectorAll('.lane')].indexOf(c.parentElement)})),muted:[...document.querySelectorAll('.lane')].map(l=>l.classList.contains('track-muted'))}}
+function snapshot(){return {version:1,title:document.querySelector('header h2').textContent,text:$('copy').value,style:headline.style.cssText,canvasStyle:canvas.style.cssText,aspect:aspectSelect.value,position,scenes:[...$('scenes').children].map(b=>({html:b.innerHTML,selected:b.classList.contains('selected'),start:Number(b.dataset.start||0),end:b.dataset.end?Number(b.dataset.end):null})),clips:clips.map(c=>({start:Number(c.dataset.start),duration:Number(c.dataset.duration),trim:Number(c.dataset.trim||0),volume:Number(c.dataset.volume??1),opacity:Number(c.dataset.opacity??1),properties:projectProperties(c),label:c.dataset.label,asset:c.dataset.asset||null,track:[...document.querySelectorAll('.lane')].indexOf(c.parentElement)})),muted:[...document.querySelectorAll('.lane')].map(l=>l.classList.contains('track-muted'))}}
 function restore(s){if(!s||s.version!==1||!Array.isArray(s.clips)||s.clips.length<7||s.clips.length>100)return;restoring=true;stop();document.querySelector('header h2').textContent=s.title;$('copy').value=s.text;headline.textContent=s.text;headline.style.cssText=s.style;canvas.style.cssText=s.canvasStyle;aspectSelect.selectedIndex=s.aspect?Array.from(aspectSelect.options).findIndex(option=>option.value===s.aspect):canvas.style.aspectRatio==='16 / 9'?1:canvas.style.aspectRatio==='1 / 1'?2:0;if(aspectSelect.selectedIndex<0)aspectSelect.selectedIndex=0;const lanes=[...document.querySelectorAll('.lane')];
 while(clips.length>s.clips.length){
  const clip=clips.pop(),player=mediaPlayers.get(clip);
@@ -169,7 +186,7 @@ while(clips.length<s.clips.length){
  clips.push(clip);
 }
 selectedClip=null;
-s.clips.forEach((v,i)=>{const clip=clips[i];if(lanes[v.track])lanes[v.track].append(clip);placeClip(clip,v.start,v.duration);clip.dataset.label=v.label;clip.firstChild.textContent=v.label;clip.classList.toggle('empty-slot',authenticatedEditor&&!v.asset&&v.label==='Empty');const player=mediaPlayers.get(clip);if(player&&clip.dataset.asset!==v.asset){player.pause?.();player.remove();mediaPlayers.delete(clip)}if(!v.asset){delete clip.dataset.asset;clip.style.backgroundImage=''}if(v.asset&&localAssets.has(v.asset)&&!mediaPlayers.has(clip)){selectClip(clip);assignAsset(localAssets.get(v.asset));placeClip(clip,v.start,v.duration)}else if(v.asset&&!localAssets.has(v.asset)){status.textContent='Reattach local media: '+v.label;delete clip.dataset.asset}clip.dataset.trim=String(v.trim||0);clip.dataset.volume=String(v.volume??1);clip.dataset.opacity=String(v.opacity??1);if(!v.asset)delete clip.dataset.sourceDuration});lanes.forEach((l,i)=>l.classList.toggle('track-muted',!!s.muted[i]));$('scenes').replaceChildren();s.scenes.forEach(v=>{const b=document.createElement('button');b.className='scene'+(v.selected?' selected':'');const parsed=new DOMParser().parseFromString(v.html,'text/html');b.textContent=parsed.body.textContent;b.dataset.start=String(v.start||0);if(v.end!=null)b.dataset.end=String(v.end);$('scenes').append(b)});position=Math.max(0,s.position);renderTime();restoring=false}
+s.clips.forEach((v,i)=>{const clip=clips[i];if(lanes[v.track])lanes[v.track].append(clip);placeClip(clip,v.start,v.duration);clip.dataset.label=v.label;clip.firstChild.textContent=v.label;clip.classList.toggle('empty-slot',authenticatedEditor&&!v.asset&&v.label==='Empty');const player=mediaPlayers.get(clip);if(player&&clip.dataset.asset!==v.asset){player.pause?.();player.remove();mediaPlayers.delete(clip)}if(!v.asset){delete clip.dataset.asset;clip.style.backgroundImage=''}if(v.asset&&localAssets.has(v.asset)&&!mediaPlayers.has(clip)){selectClip(clip);assignAsset(localAssets.get(v.asset));placeClip(clip,v.start,v.duration)}else if(v.asset&&!localAssets.has(v.asset)){status.textContent='Reattach local media: '+v.label;delete clip.dataset.asset}clip.dataset.trim=String(v.trim||0);clip.dataset.volume=String(v.volume??1);clip.dataset.opacity=String(v.opacity??1);for(const [key,val] of Object.entries(propertyDefaults))clip.dataset[key]=String(v.properties?.[key]??val);if(!v.asset)delete clip.dataset.sourceDuration});lanes.forEach((l,i)=>l.classList.toggle('track-muted',!!s.muted[i]));$('scenes').replaceChildren();s.scenes.forEach(v=>{const b=document.createElement('button');b.className='scene'+(v.selected?' selected':'');const parsed=new DOMParser().parseFromString(v.html,'text/html');b.textContent=parsed.body.textContent;b.dataset.start=String(v.start||0);if(v.end!=null)b.dataset.end=String(v.end);$('scenes').append(b)});position=Math.max(0,s.position);renderTime();restoring=false}
 function checkpoint(){if(restoring)return;const s=snapshot();if(JSON.stringify(history.at(-1))===JSON.stringify(s))return;history.push(s);if(history.length>80)history.shift();future.length=0;updateHistory()}
 const head=document.querySelector('header'), hb=head.querySelectorAll('button'), undo=hb[0],redo=hb[1];function updateHistory(){undo.disabled=history.length<2;redo.disabled=!future.length}
 undo.onclick=()=>{if(history.length<2)return;future.push(history.pop());restore(history.at(-1));updateHistory()};redo.onclick=()=>{if(!future.length)return;const s=future.pop();history.push(s);restore(s);updateHistory()};
@@ -185,7 +202,7 @@ async function cacheAssets(){const db=await openMediaDB();try{const records=awai
 async function loadCachedAssets(){const db=await openMediaDB();try{const records=await new Promise((resolve,reject)=>{const req=db.transaction('assets','readonly').objectStore('assets').getAll();req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)});for(const v of records){if(localAssets.has(v.id))continue;const asset={id:v.id,name:v.name,kind:v.kind,url:URL.createObjectURL(v.blob)};localAssets.set(v.id,asset);const b=document.createElement('button');b.className='thumb';b.dataset.kind=v.kind;b.textContent=v.name;b.onclick=()=>{assignAsset(asset);checkpoint()};$('media').append(b)}}finally{db.close()}}
 save.onclick=async()=>{save.disabled=true;try{const draft=snapshot();await cacheAssets();localStorage.setItem(projectKey,JSON.stringify(draft));checkpoint();saveStatus.textContent='Draft and media saved on this browser'}catch(e){saveStatus.textContent='Save failed — storage unavailable or quota exceeded'}finally{save.disabled=false}};
 reopen.onclick=async()=>{if(!confirm('Reopen saved draft and replace current edits?'))return;reopen.disabled=true;try{const raw=localStorage.getItem(projectKey);if(!raw){saveStatus.textContent='No local draft found';return}await loadCachedAssets();restore(JSON.parse(raw));checkpoint();saveStatus.textContent='Local draft and cached media reopened'}catch(e){saveStatus.textContent='Unable to reopen saved draft and media'}finally{reopen.disabled=false}};
-const serverSave=document.createElement('button'),serverOpen=document.createElement('button');serverSave.textContent='Cloud save';serverOpen.textContent='Cloud open';head.insertBefore(serverSave,save);head.insertBefore(serverOpen,save);serverSave.onclick=()=>{if(parent===window)return;parent.postMessage({type:'sg-v3-save-server',draft:snapshot()},parent.location.origin);saveStatus.textContent='Saving server draft…'};serverOpen.onclick=()=>{if(parent===window)return;const id=prompt('Enter V3 server draft ID');if(id&&confirm('Replace current editor state?'))parent.postMessage({type:'sg-v3-open-server',id},parent.location.origin)};window.addEventListener('message',async e=>{if(e.source!==parent||e.origin!==parent.location.origin||e.data?.type!=='sg-v3-server-result')return;try{if(e.data.draft){for(const item of e.data.media||[])registerServerMedia(item,item.blob);restore(e.data.draft);checkpoint()}saveStatus.textContent=e.data.message}catch{saveStatus.textContent='Unable to restore server draft'}});const renderButton=document.createElement('button');renderButton.textContent='Render MP4';renderButton.onclick=async()=>{if(parent===window)return;if(!confirm('Export video, audio and text. Export the current timeline as MP4?'))return;renderButton.disabled=true;try{const draft=snapshot();const payload=[];const lanes=[...document.querySelectorAll('.lane')];const videoLanes=lanes.filter(lane=>lane.closest('.track').classList.contains('video'));for(const c of draft.clips){if(!c.asset||draft.muted[c.track])continue;const a=localAssets.get(c.asset);if(!a)throw Error('Missing media');payload.push({kind:a.kind,track:videoLanes.indexOf(lanes[c.track]),name:a.name,start:c.start,duration:c.duration,trim:c.trim,volume:c.volume,opacity:c.opacity,muted:!!draft.muted[c.track],serverId:a.id.startsWith('server-')?Number(a.id.slice(7)):null,blob:await fetch(a.url).then(r=>r.blob())})}const [width,height]=[[1080,1920],[1920,1080],[1080,1080]][aspectSelect.selectedIndex];parent.postMessage({type:'sg-v3-export',clips:payload,texts:buildV3ExportText(width),width,height},parent.location.origin);saveStatus.textContent='Rendering MP4…'}catch(e){renderButton.disabled=false;saveStatus.textContent=e.message}};window.addEventListener('message',e=>{if(e.source!==parent||e.origin!==parent.location.origin||e.data?.type!=='sg-v3-export-result')return;renderButton.disabled=false;saveStatus.textContent=e.data.message});
+const serverSave=document.createElement('button'),serverOpen=document.createElement('button');serverSave.textContent='Cloud save';serverOpen.textContent='Cloud open';head.insertBefore(serverSave,save);head.insertBefore(serverOpen,save);serverSave.onclick=()=>{if(parent===window)return;parent.postMessage({type:'sg-v3-save-server',draft:snapshot()},parent.location.origin);saveStatus.textContent='Saving server draft…'};serverOpen.onclick=()=>{if(parent===window)return;const id=prompt('Enter V3 server draft ID');if(id&&confirm('Replace current editor state?'))parent.postMessage({type:'sg-v3-open-server',id},parent.location.origin)};window.addEventListener('message',async e=>{if(e.source!==parent||e.origin!==parent.location.origin||e.data?.type!=='sg-v3-server-result')return;try{if(e.data.draft){for(const item of e.data.media||[])registerServerMedia(item,item.blob);restore(e.data.draft);checkpoint()}saveStatus.textContent=e.data.message}catch{saveStatus.textContent='Unable to restore server draft'}});const renderButton=document.createElement('button');renderButton.textContent='Render MP4';renderButton.onclick=async()=>{if(parent===window)return;if(!confirm('Export video, audio and text. Export the current timeline as MP4?'))return;renderButton.disabled=true;try{const draft=snapshot();const payload=[];const lanes=[...document.querySelectorAll('.lane')];const videoLanes=lanes.filter(lane=>lane.closest('.track').classList.contains('video'));for(const c of draft.clips){if(!c.asset||draft.muted[c.track])continue;const a=localAssets.get(c.asset);if(!a)throw Error('Missing media');payload.push({kind:a.kind,track:videoLanes.indexOf(lanes[c.track]),name:a.name,start:c.start,duration:c.duration,trim:c.trim,volume:c.volume,opacity:c.opacity,properties:c.properties,muted:!!draft.muted[c.track],serverId:a.id.startsWith('server-')?Number(a.id.slice(7)):null,blob:await fetch(a.url).then(r=>r.blob())})}const [width,height]=[[1080,1920],[1920,1080],[1080,1080]][aspectSelect.selectedIndex];parent.postMessage({type:'sg-v3-export',clips:payload,texts:buildV3ExportText(width),width,height},parent.location.origin);saveStatus.textContent='Rendering MP4…'}catch(e){renderButton.disabled=false;saveStatus.textContent=e.message}};window.addEventListener('message',e=>{if(e.source!==parent||e.origin!==parent.location.origin||e.data?.type!=='sg-v3-export-result')return;renderButton.disabled=false;saveStatus.textContent=e.data.message});
 if(authenticatedEditor){
  save.hidden=true;
  reopen.hidden=true;
@@ -244,17 +261,30 @@ const textClips=clips.filter(c=>c.closest('.track').classList.contains('text'));
 const textStates=textClips.map((c,i)=>({text:i===0?$('copy').value:authenticatedEditor?'':c.dataset.label||'',style:i===0?headline.style.cssText:'top:65%;font-size:16px;border:0;'}));
 let activeText=0;
 const secondHeadline=headline.cloneNode(false);secondHeadline.removeAttribute('id');secondHeadline.style.top='65%';canvas.append(secondHeadline);
-function selectedTextNode(){return activeText===1?secondHeadline:headline}
+const textNodes=[headline,secondHeadline];
+function selectedTextNode(){return textNodes[activeText]}
+function ensureTextNode(index){
+ if(textNodes[index])return textNodes[index];
+ const node=headline.cloneNode(false);node.removeAttribute('id');node.hidden=true;
+ canvas.append(node);textNodes[index]=node;return node;
+}
+function refreshTextPicker(){
+ textPicker.replaceChildren(...textClips.map((clip,index)=>{
+  const track=[...document.querySelectorAll('.track.text')].indexOf(clip.closest('.track'))+1;
+  return new Option('Text '+track+' · Clip '+(index+1),String(index));
+ }));
+ textPicker.value=String(activeText);
+}
 function storeText(){textStates[activeText]={text:$('copy').value,style:selectedTextNode().style.cssText}}
-function showText(){const nodes=[headline,secondHeadline];textClips.forEach((c,i)=>{const n=nodes[i];if(!n)return;const s=textStates[i];n.textContent=s.text;n.style.cssText=s.style;if(i===1&&!n.style.top)n.style.top='65%';const start=Number(c.dataset.start),end=start+Number(c.dataset.duration);if(authenticatedEditor){c.classList.toggle('empty-slot',!s.text.trim());c.firstChild.textContent=s.text||'Empty'}n.hidden=!s.text.trim()||position<start||position>=end||c.parentElement.classList.contains('track-muted')})}
+function showText(){textClips.forEach((c,i)=>{const n=textNodes[i],s=textStates[i];if(!n||!s||!c.parentElement)return;n.textContent=s.text;n.style.cssText=s.style;if(i===1&&!n.style.top)n.style.top='65%';const start=Number(c.dataset.start),end=start+Number(c.dataset.duration);if(authenticatedEditor){c.classList.toggle('empty-slot',!s.text.trim());c.firstChild.textContent=s.text||'Empty'}n.hidden=!s.text.trim()||position<start||position>=end||c.parentElement.classList.contains('track-muted')})}
 const textPicker=document.createElement('select');textPicker.setAttribute('aria-label','Text track');textClips.forEach((c,i)=>textPicker.add(new Option('Text '+(i+1),String(i))));$('copy').before(textPicker);
 textPicker.onchange=()=>{storeText();activeText=Number(textPicker.value);$('copy').value=textStates[activeText].text;showText()};
 $('copy').addEventListener('input',()=>{
  const clip=textClips[activeText];
  if(authenticatedEditor&&!textStates[activeText].text.trim()&&$('copy').value.trim()){
-  const start=Math.min(position,29.95);
+  const start=position;
   const available=playbackEnd()-start;
-  placeClip(clip,start,Math.min(30-start,available>=.05?Math.min(4,available):4));
+  placeClip(clip,start,available>=.05?Math.min(4,available):4);
  }
  storeText();
  renderTime();
@@ -263,9 +293,20 @@ $('copy').addEventListener('input',()=>{
 inspector.addEventListener('change',()=>{storeText();showText();checkpoint()});
 inspector.addEventListener('click',()=>{storeText();showText();checkpoint()});
 const originalSnapshot=snapshot;snapshot=function(){return {...originalSnapshot(),textLayers:textStates.map(s=>({...s}))}};
-const originalRestore=restore;restore=function(s){originalRestore(s);if(Array.isArray(s?.textLayers))s.textLayers.slice(0,textStates.length).forEach((v,i)=>{textStates[i]={text:String(v.text||''),style:String(v.style||'')}});activeText=0;textPicker.value='0';$('copy').value=textStates[0]?.text||'';showText()};
+const originalRestore=restore;
+restore=function(s){
+ originalRestore(s);
+ const current=clips.filter(clip=>clip.closest('.track.text'));
+ textClips.splice(0,textClips.length,...current);
+ while(textNodes.length>current.length&&textNodes.length>2)textNodes.pop().remove();
+ textStates.splice(0,textStates.length,...current.map((_,i)=>({
+  text:String(s?.textLayers?.[i]?.text||''),style:String(s?.textLayers?.[i]?.style||''),
+ })));
+ current.forEach((_,i)=>ensureTextNode(i));
+ activeText=0;refreshTextPicker();$('copy').value=textStates[0]?.text||'';renderTime();refreshRuler();
+};
 const renderWithText=renderTime;renderTime=function(){renderWithText();showText()};renderTime();
-function buildV3ExportText(canvasWidth){const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)throw Error('Show canvas before exporting');return textClips.flatMap((clip,i)=>{const state=textStates[i];if(!state?.text.trim()||clip.parentElement.classList.contains('track-muted'))return [];const node=i===0?headline:secondHeadline;const wasHidden=node.hidden;node.hidden=false;const bounds=node.getBoundingClientRect(),css=getComputedStyle(node);const rgb=css.color.match(/\d+/g)||['255','255','255'];const color='#'+rgb.slice(0,3).map(n=>Number(n).toString(16).padStart(2,'0')).join('');const result={text:state.text,start_time:Number(clip.dataset.start),end_time:Number(clip.dataset.start)+Number(clip.dataset.duration),x:Math.max(0,Math.min(100,(bounds.left-rect.left)/rect.width*100)),y:Math.max(0,Math.min(100,(bounds.top-rect.top)/rect.height*100)),font_size:Math.max(1,Math.round(parseFloat(css.fontSize)*canvasWidth/rect.width)),color,order:i,align:['left','center','right'].includes(css.textAlign)?css.textAlign:'center',bold:Number(css.fontWeight)>=600,underline:css.textDecorationLine.includes('underline'),opacity:Number(css.opacity),width_pct:Math.min(100,bounds.width/rect.width*100),letter_spacing:(parseFloat(css.letterSpacing)||0)*canvasWidth/rect.width,line_spacing:(parseFloat(css.lineHeight)||parseFloat(css.fontSize)*1.15)/parseFloat(css.fontSize),...(css.textShadow!=='none'?{shadow_color:'#000000',shadow_offset_x:2*canvasWidth/rect.width,shadow_offset_y:2*canvasWidth/rect.width,shadow_blur:2*canvasWidth/rect.width}:{}),...(parseFloat(css.webkitTextStrokeWidth)>0?{stroke_color:'#000000',stroke_width:Math.max(1,Math.round(parseFloat(css.webkitTextStrokeWidth)*canvasWidth/rect.width))}:{}),...(css.backgroundColor==='rgba(0, 0, 0, 0.6)'?{bg_color:'#000000',bg_opacity:.6,bg_padding:Math.round(4*canvasWidth/rect.width)}:{})};node.hidden=wasHidden;return [result]})}const effects=document.createElement('div');effects.style.cssText='display:grid;gap:2px;margin:4px 0';effects.innerHTML='<label>Text opacity <input data-fx="opacity" type="range" min="0" max="1" step=".05" value="1"></label><label>Shadow <input data-fx="shadow" type="checkbox"></label><label>Outline <input data-fx="stroke" type="checkbox"></label><label>Background <input data-fx="background" type="checkbox"></label>';$('copy').after(effects);effects.addEventListener('input',e=>{const f=e.target.dataset.fx;if(!f)return;const style=document.createElement('span').style;style.cssText=textStates[activeText].style;if(f==='opacity')style.opacity=e.target.value;if(f==='shadow')style.textShadow=e.target.checked?'2px 2px 4px #000000':'none';if(f==='stroke')style.webkitTextStroke=e.target.checked?'1px #000000':'0px';if(f==='background'){style.backgroundColor=e.target.checked?'rgba(0,0,0,0.6)':'transparent';style.padding=e.target.checked?'4px':'0px'}textStates[activeText].style=style.cssText;showText();checkpoint()});effects.addEventListener('click',e=>e.stopPropagation());const libraryButton=document.createElement('button');libraryButton.textContent='My media library';$('media').before(libraryButton);const libraryRows=new Map();
+function buildV3ExportText(canvasWidth){const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)throw Error('Show canvas before exporting');return textClips.flatMap((clip,i)=>{const state=textStates[i];if(!state?.text.trim()||clip.parentElement.classList.contains('track-muted'))return [];const node=textNodes[i];const wasHidden=node.hidden;node.hidden=false;const bounds=node.getBoundingClientRect(),css=getComputedStyle(node);const rgb=css.color.match(/\d+/g)||['255','255','255'];const color='#'+rgb.slice(0,3).map(n=>Number(n).toString(16).padStart(2,'0')).join('');const result={text:state.text,start_time:Number(clip.dataset.start),end_time:Number(clip.dataset.start)+Number(clip.dataset.duration),x:Math.max(0,Math.min(100,(bounds.left-rect.left)/rect.width*100)),y:Math.max(0,Math.min(100,(bounds.top-rect.top)/rect.height*100)),font_size:Math.max(1,Math.round(parseFloat(css.fontSize)*canvasWidth/rect.width)),color,order:i,align:['left','center','right'].includes(css.textAlign)?css.textAlign:'center',bold:Number(css.fontWeight)>=600,underline:css.textDecorationLine.includes('underline'),opacity:Number(css.opacity),width_pct:Math.min(100,bounds.width/rect.width*100),letter_spacing:(parseFloat(css.letterSpacing)||0)*canvasWidth/rect.width,line_spacing:(parseFloat(css.lineHeight)||parseFloat(css.fontSize)*1.15)/parseFloat(css.fontSize),...(css.textShadow!=='none'?{shadow_color:'#000000',shadow_offset_x:2*canvasWidth/rect.width,shadow_offset_y:2*canvasWidth/rect.width,shadow_blur:2*canvasWidth/rect.width}:{}),...(parseFloat(css.webkitTextStrokeWidth)>0?{stroke_color:'#000000',stroke_width:Math.max(1,Math.round(parseFloat(css.webkitTextStrokeWidth)*canvasWidth/rect.width))}:{}),...(css.backgroundColor==='rgba(0, 0, 0, 0.6)'?{bg_color:'#000000',bg_opacity:.6,bg_padding:Math.round(4*canvasWidth/rect.width)}:{})};node.hidden=wasHidden;return [result]})}const effects=document.createElement('div');effects.style.cssText='display:grid;gap:2px;margin:4px 0';effects.innerHTML='<label>Text opacity <input data-fx="opacity" type="range" min="0" max="1" step=".05" value="1"></label><label>Shadow <input data-fx="shadow" type="checkbox"></label><label>Outline <input data-fx="stroke" type="checkbox"></label><label>Background <input data-fx="background" type="checkbox"></label>';$('copy').after(effects);effects.addEventListener('input',e=>{const f=e.target.dataset.fx;if(!f)return;const style=document.createElement('span').style;style.cssText=textStates[activeText].style;if(f==='opacity')style.opacity=e.target.value;if(f==='shadow')style.textShadow=e.target.checked?'2px 2px 4px #000000':'none';if(f==='stroke')style.webkitTextStroke=e.target.checked?'1px #000000':'0px';if(f==='background'){style.backgroundColor=e.target.checked?'rgba(0,0,0,0.6)':'transparent';style.padding=e.target.checked?'4px':'0px'}textStates[activeText].style=style.cssText;showText();checkpoint()});effects.addEventListener('click',e=>e.stopPropagation());const libraryButton=document.createElement('button');libraryButton.textContent='My media library';$('media').before(libraryButton);const libraryRows=new Map();
 function registerServerMedia(item,blob){
  const id='server-'+item.id;
  if(localAssets.has(id))return localAssets.get(id);
@@ -386,10 +427,16 @@ split.textContent='Split at playhead';
 split.onclick=()=>{
  const clip=selectedClip;
  const asset=clip&&localAssets.get(clip.dataset.asset);
- if(!asset||asset.kind==='image') {status.textContent='Select a video or audio clip to split';return}
+ const textIndex=textClips.indexOf(clip);
+ if(!occupied(clip)||(!asset&&textIndex<0)) {status.textContent='Select a clip to split';return}
  const start=Number(clip.dataset.start),duration=Number(clip.dataset.duration),cut=position-start;
  if(cut<.05||duration-cut<.05||clips.length>=100){status.textContent='Place the playhead inside the clip';return}
  stop();
+ if(textIndex>=0){
+  placeClip(clip,start,cut);
+  insertClip({text:{...textStates[textIndex]},duration:duration-cut},position,clip.parentElement);
+  return;
+ }
  const next=document.createElement('div');
  next.className='clip';
  next.textContent=asset.name;
@@ -399,7 +446,8 @@ split.onclick=()=>{
  restoring=true;
  assignAsset(asset,next);
  restoring=false;
- next.dataset.trim=String(Number(clip.dataset.trim||0)+cut);
+ next.dataset.trim=String(Number(clip.dataset.trim||0)+(asset.kind==='image'?0:cut));
+ next.dataset.volume=clip.dataset.volume??1;next.dataset.opacity=clip.dataset.opacity??1;for(const [key,val] of Object.entries(projectProperties(clip)))next.dataset[key]=String(val);
  placeClip(clip,start,cut);
  placeClip(next,position,duration-cut);
  renderTime();
@@ -548,8 +596,13 @@ function deleteSelected(ripple=false){
  discardPlayer(clip);
  if(textClips.includes(clip)){
   const index=textClips.indexOf(clip);
-  textStates[index].text='';
-  if(activeText===index)$('copy').value='';
+  if(clips.indexOf(clip)>=7){
+   textClips.splice(index,1);textStates.splice(index,1);textNodes.splice(index,1)[0]?.remove();
+   activeText=0;refreshTextPicker();$('copy').value=textStates[0]?.text||'';
+  }else{
+   textStates[index].text='';
+   if(activeText===index)$('copy').value='';
+  }
  }
  const index=clips.indexOf(clip);
  if(index>=7){clips.splice(index,1);clip.remove()}
@@ -576,19 +629,26 @@ function deleteSelected(ripple=false){
 function copySelected(){
  if(!occupied(selectedClip))return false;
  const clip=selectedClip,index=textClips.indexOf(clip);
- clipboardClip={asset:clip.dataset.asset,track:laneRows.indexOf(clip.parentElement),duration:Number(clip.dataset.duration),trim:Number(clip.dataset.trim||0),volume:Number(clip.dataset.volume??1),opacity:Number(clip.dataset.opacity??1),text:index>=0?{...textStates[index]}:null};
+ clipboardClip={asset:clip.dataset.asset,track:laneRows.indexOf(clip.parentElement),duration:Number(clip.dataset.duration),trim:Number(clip.dataset.trim||0),volume:Number(clip.dataset.volume??1),opacity:Number(clip.dataset.opacity??1),properties:projectProperties(clip),text:index>=0?{...textStates[index]}:null};
  status.textContent='Clip copied';
  return true;
 }
-function insertClip(record,start,lane){
+function insertClip(record,start,lane,shouldCommit=true){
  if(!record||!lane||!Number.isFinite(start)||clips.length>=100)return;
- const textSlot=textClips.find(clip=>clip.parentElement===lane);
  if(record.text){
-  if(!textSlot||occupied(textSlot)){status.textContent='Select an empty text track';return}
-  const index=textClips.indexOf(textSlot);
+  if(trackKind(lane)!=='text')return;
+  let slot=textClips.find(clip=>clip.parentElement===lane&&!occupied(clip));
+  if(!slot){
+   slot=document.createElement('div');slot.className='clip';slot.textContent='Empty';
+   lane.append(slot);wireClip(slot,clips.length);clips.push(slot);
+   textClips.push(slot);
+  }
+  const index=textClips.indexOf(slot);
+  ensureTextNode(index);
   textStates[index]={...record.text};
-  placeClip(textSlot,start,record.duration);
-  selectClip(textSlot);
+  placeClip(slot,start,record.duration);
+  activeText=index;$('copy').value=record.text.text;refreshTextPicker();
+  selectClip(slot);
  }else{
   const asset=localAssets.get(record.asset);
   if(!asset)return;
@@ -606,10 +666,10 @@ function insertClip(record,start,lane){
   assignAsset(asset,clip);
   restoring=false;
   clip.dataset.trim=String(record.trim||0);
-  clip.dataset.volume=String(record.volume??1);clip.dataset.opacity=String(record.opacity??1);
+  clip.dataset.volume=String(record.volume??1);clip.dataset.opacity=String(record.opacity??1);for(const [key,val] of Object.entries(record.properties??{}))clip.dataset[key]=String(val);
   placeClip(clip,start,record.duration);
  }
- commitEdit();
+ if(shouldCommit)commitEdit();
 }
 function pasteAt(start, lane=selectedClip?.parentElement){
  if(!clipboardClip)return;
@@ -622,7 +682,7 @@ function duplicateSelected(){
  if(!copySelected())return;
  const lane=clip.parentElement;
  const end=Math.max(...clips.filter(c=>c.parentElement===lane&&occupied(c)).map(c=>Number(c.dataset.start)+Number(c.dataset.duration)));
- pasteAt(end,clipboardClip.text?laneRows.find(candidate=>trackKind(candidate)==='text'&&textClips.some(slot=>slot.parentElement===candidate&&!occupied(slot))):lane);
+ pasteAt(end,lane);
 }
 function seekTo(time){
  stop();
@@ -760,6 +820,31 @@ function mediaProperty(label,input,key){
 }
 const volumeRow=mediaProperty('Clip volume',volumeControl,'volume');
 const opacityRow=mediaProperty('Image opacity',opacityControl,'opacity');
+const geometryFields=[];
+function geometryField(kind,key,label,min,max){
+ const row=document.createElement('label');
+ row.textContent=label+' ';
+ const input=document.createElement('input');
+ input.type='number';input.min=min;input.max=max;input.step=1;input.setAttribute('aria-label',label);
+ row.append(input);extraProperties.append(row);
+ geometryFields.push({kind,key,row,input});
+ input.onchange=()=>{
+  if(!selectedClip||!Number.isFinite(input.valueAsNumber))return;
+  selectedClip.dataset[key]=String(Math.min(max,Math.max(min,input.valueAsNumber)));
+  commitEdit();
+ };
+}
+geometryField('image','imageX','Image horizontal position (%)',0,100);
+geometryField('image','imageY','Image vertical position (%)',0,100);
+geometryField('image','imageWidth','Image width (%)',1,100);
+geometryField('image','imageHeight','Image height (%)',1,100);
+geometryField('video','cropX','Crop horizontal focus (%)',0,100);
+geometryField('video','cropY','Crop vertical focus (%)',0,100);
+const fitLabel=document.createElement('label');fitLabel.textContent='Video framing ';
+const fitControl=document.createElement('select');fitControl.setAttribute('aria-label','Video framing');
+fitControl.add(new Option('Fit','fit'));fitControl.add(new Option('Fill and crop','fill'));
+fitLabel.append(fitControl);extraProperties.append(fitLabel);
+fitControl.onchange=()=>{if(selectedClip){selectedClip.dataset.fitMode=fitControl.value;commitEdit()}};
 const mediaInspector=updateClipInputs;
 updateClipInputs=function(){
  mediaInspector();
@@ -770,6 +855,12 @@ updateClipInputs=function(){
  opacityRow.hidden=asset?.kind!=='image';
  volumeControl.value=selectedClip?.dataset.volume??1;
  opacityControl.value=selectedClip?.dataset.opacity??1;
+ fitLabel.hidden=asset?.kind!=='video';
+ fitControl.value=selectedClip?.dataset.fitMode??'fit';
+ for(const field of geometryFields){
+  field.row.hidden=field.kind!==asset?.kind;
+  field.input.value=selectedClip?.dataset[field.key]??propertyDefaults[field.key];
+ }
 };
 const chooseClip=selectClip;
 selectClip=function(clip){
@@ -787,14 +878,23 @@ function showTemplates(){
  heading.textContent='Videos & Reels';
  const search=document.createElement('input');
  search.type='search';search.placeholder='Search video templates';search.setAttribute('aria-label','Search video templates');
+ const category=document.createElement('select');
+ category.setAttribute('aria-label','Video template category');
+ for(const label of ['All video templates','Business','Education','Promotion'])category.add(new Option(label,label));
+ const groups={
+  Business:new Set(['Business Introduction Reel','Customer Testimonial Video','Behind the Scenes']),
+  Education:new Set(['Three Quick Tips','Question & Answer','Problem to Solution Video']),
+ };
  const results=document.createElement('div');
  results.className='template-grid';
  const library=document.createElement('a');
  library.href='/templates';library.target='_top';library.textContent='Open full template library';
- toolDetails.append(heading,search,results,library);
+ toolDetails.append(heading,category,search,results,library);
  function filter(){
   results.replaceChildren();
   for(const [title,cues] of Object.entries(studioTemplates??{})){
+   const genre=groups.Business.has(title)?'Business':groups.Education.has(title)?'Education':'Promotion';
+   if(category.selectedIndex&&genre!==category.value)continue;
    if(!title.toLowerCase().includes(search.value.toLowerCase()))continue;
    const button=namedButton(title,()=>previewTemplate(title,cues));
    button.className='template-tile';
@@ -803,7 +903,7 @@ function showTemplates(){
   if(!results.children.length)results.textContent=studioTemplates?'No matching video templates':'Loading video templates…';
  }
  toolbarTemplateFilter=filter;
- search.oninput=filter;
+ search.oninput=filter;category.onchange=filter;
  filter();
  if(authenticatedEditor&&!studioTemplates)parent.postMessage({type:'sg-v3-presets'},parent.location.origin);
 }
@@ -817,15 +917,25 @@ function previewTemplate(title,cues){
   const input=document.createElement('input');input.value=cue;input.maxLength=160;label.append(input);
   dialog.append(label);return input;
  });
+ const titlesLabel=document.createElement('label');
+ const addTitles=document.createElement('input');addTitles.type='checkbox';
+ titlesLabel.append(addTitles,' Add editable title clips to Text 1');
+ dialog.append(titlesLabel);
  const apply=namedButton('Add template scenes',()=>{
   let start=Math.max(0,...[...$('scenes').children].map(scene=>Number(scene.dataset.end??scene.dataset.start??0)));
+  const titleLane=laneRows.find(lane=>trackKind(lane)==='text');
+  if(addTitles.checked){
+   start=Math.max(start,...textClips.filter(clip=>clip.parentElement===titleLane&&occupied(clip))
+    .map(clip=>Number(clip.dataset.start)+Number(clip.dataset.duration)));
+  }
   inputs.forEach(input=>{
    if(!input.value.trim())return;
    const scene=document.createElement('button');
    scene.className='scene';scene.textContent=input.value.trim();scene.dataset.start=String(start);
+   if(addTitles.checked)insertClip({text:{text:input.value.trim(),style:''},duration:4},start,titleLane,false);
    start+=4;scene.dataset.end=String(start);$('scenes').append(scene);
   });
-  checkpoint();dialog.close();status.textContent='Template scenes added to storyboard';
+  commitEdit();dialog.close();status.textContent='Template scenes added to storyboard';
  });
  dialog.append(apply,namedButton('Cancel',()=>dialog.close()));
  dialog.onclose=()=>dialog.remove();

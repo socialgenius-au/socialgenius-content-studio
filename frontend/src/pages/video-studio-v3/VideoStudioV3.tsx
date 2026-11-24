@@ -10,7 +10,7 @@ type ExportMedia = {
  volume: number
 }
 
-type ExportVideo = ExportMedia & { muted: boolean; speed: number; fit_mode: 'fit' }
+type ExportVideo = ExportMedia & { muted: boolean; speed: number; fit_mode: 'fit' | 'fill'; crop_x: number; crop_y: number }
 
 export default function VideoStudioV3() {
  const frame = useRef<HTMLIFrameElement>(null)
@@ -85,7 +85,7 @@ export default function VideoStudioV3() {
      || (width === 1920 && height === 1080)
      || (width === 1080 && height === 1080)
     if (!Array.isArray(clips)||!clips.length||clips.length>100||!supportedCanvas) throw Error('Invalid export project')
-     if (!Array.isArray(texts)||texts.length>2||texts.some((t: Record<string, any>)=>typeof t.text!=='string'||t.text.length>4000||![t.start_time,t.end_time,t.x,t.y,t.font_size].every(Number.isFinite)||t.start_time<0||t.end_time<=t.start_time)) throw Error('Invalid text layers')
+     if (!Array.isArray(texts)||texts.length>100||texts.some((t: Record<string, any>)=>typeof t.text!=='string'||t.text.length>4000||![t.start_time,t.end_time,t.x,t.y,t.font_size].every(Number.isFinite)||t.start_time<0||t.end_time<=t.start_time)) throw Error('Invalid text layers')
      const video: ExportVideo[] = []
      const upperVideo: ExportVideo[] = []
      const audio: ExportMedia[] = []
@@ -101,12 +101,15 @@ export default function VideoStudioV3() {
       const trim = clip.trim ?? 0
       if (!Number.isFinite(trim) || trim < 0) throw Error('Invalid clip trim')
       const item = {asset_id:id,start_time:clip.start,end_time:clip.start+clip.duration,trim_in:trim,volume:clip.muted?0:Math.max(0,Math.min(1,Number(clip.volume ?? 1)))}
+      const percent = (value: unknown, fallback: number, min = 0) =>
+       typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(100, value)) : fallback
+      const props = clip.properties ?? {}
       if (clip.kind === 'video') {
        if (clip.track !== 0 && clip.track !== 1) throw Error('Invalid video track')
        const track = clip.track === 0 ? video : upperVideo
-       track.push({...item,muted:!!clip.muted,speed:1,fit_mode:'fit'})
+       track.push({...item,muted:!!clip.muted,speed:1,fit_mode:props.fitMode==='fill'?'fill':'fit',crop_x:percent(props.cropX,50),crop_y:percent(props.cropY,50)})
       } else if (clip.kind === 'image') {
-       overlays.push({ ...item,x:0,y:0,width:100,height:100,opacity:Math.max(0,Math.min(1,Number(clip.opacity ?? 1))),muted:true })
+       overlays.push({ ...item,x:percent(props.imageX,0),y:percent(props.imageY,0),width:percent(props.imageWidth,100,1),height:percent(props.imageHeight,100,1),opacity:Math.max(0,Math.min(1,Number(clip.opacity ?? 1))),muted:true })
       } else {
        audio.push(item)
       }
