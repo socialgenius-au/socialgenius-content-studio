@@ -71,6 +71,9 @@ async def update_draft(
     if not draft:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
 
+    if (draft.project_json.get("editor_version") == 3) != (body.project_json.get("editor_version") == 3):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Draft belongs to a different editor version")
+
     draft.name = body.name
     draft.project_json = strip_media_tokens(body.project_json)
     await db.commit()

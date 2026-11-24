@@ -1,11 +1,22 @@
 import { useEffect, useRef } from 'react'
 import { assetsApi, videoStudioDraftsApi, videoExportApi, uploadApi } from '../../api/client'
 import editorHtml from '../../../../ui-v3/index.html?raw'
+type ExportMedia = {
+ asset_id: number
+ start_time: number
+ end_time: number
+ trim_in: number
+ volume: number
+}
+
+type ExportVideo = ExportMedia & { muted: boolean; speed: number; fit_mode: 'fit' }
+
 export default function VideoStudioV3() {
  const frame = useRef<HTMLIFrameElement>(null)
  useEffect(() => {
   let disposed = false
   let v3DraftId: number | null = null
+  let draftRequestPending = false
   const receive = async (event: MessageEvent) => {
    if (event.source !== frame.current?.contentWindow || event.origin !== window.location.origin) return
    const target = frame.current?.contentWindow
@@ -13,9 +24,22 @@ export default function VideoStudioV3() {
     try {
      const response = await assetsApi.list()
      const rows = Array.isArray(response.data) ? response.data : response.data.items
-     const assets = (Array.isArray(rows) ? rows : []).slice(0,100).map((a: any)=>({id:a.id,name:a.filename || a.file_name || String(a.file_path || '').split('/').pop(),kind:String(a.file_type || '').split('/')[0]})).filter((a: any)=>Number.isSafeInteger(a.id)&&['video','image','audio'].includes(a.kind))
+     const assets = (Array.isArray(rows) ? rows : []).slice(0,100).map((a: any)=>({id:a.id,name:a.original_filename || a.filename || a.file_name || String(a.file_path || '').split('/').pop(),kind:String(a.file_type || '').split('/')[0]})).filter((a: any)=>Number.isSafeInteger(a.id)&&['video','image','audio'].includes(a.kind))
      target?.postMessage({type:'sg-v3-library-result',assets},window.location.origin)
     } catch {target?.postMessage({type:'sg-v3-library-result',error:true},window.location.origin)}
+    return
+   }
+   if (event.data?.type === 'sg-v3-upload') {
+    const file = event.data.file
+    try {
+     if (!(file instanceof File)) throw new Error('Invalid file')
+     const { data } = await uploadApi.upload(file)
+     target?.postMessage({type:'sg-v3-upload-result', asset: {
+      id: data.id, name: data.original_filename, kind: data.file_type,
+     }, file}, window.location.origin)
+    } catch {
+     target?.postMessage({type:'sg-v3-upload-result', error:true}, window.location.origin)
+    }
     return
    }
    if (event.data?.type === 'sg-v3-library-download') {
@@ -33,7 +57,8 @@ export default function VideoStudioV3() {
      const { clips, width, height, texts = [] } = event.data
      if (!Array.isArray(clips)||!clips.length||clips.length>100||![1080,1920].includes(width)||![1080,1920].includes(height)) throw Error('Invalid export project')
      if (!Array.isArray(texts)||texts.length>2||texts.some((t: Record<string, any>)=>typeof t.text!=='string'||t.text.length>4000||![t.start_time,t.end_time,t.x,t.y,t.font_size].every(Number.isFinite)||t.start_time<0||t.end_time<=t.start_time)) throw Error('Invalid text layers')
-     const video = [], audio = []
+     const video: ExportVideo[] = []
+     const audio: ExportMedia[] = []
      for (const clip of clips) {
       if (!['video','audio'].includes(clip.kind)||!Number.isFinite(clip.start)||!Number.isFinite(clip.duration)||clip.start<0||clip.duration<=0) throw Error('Unsupported clip')
       let id = Number(clip.serverId)
@@ -57,25 +82,44 @@ export default function VideoStudioV3() {
     return
    }
    if (event.data?.type === 'sg-v3-save-server') {
+    if (draftRequestPending) return
+    draftRequestPending = true
     try {
      const draft = event.data.draft
      if (draft?.version !== 1 || !Array.isArray(draft.clips)) throw Error('Invalid draft')
+     if (draft.clips.some((clip: { asset?: string }) => clip.asset && !/^server-[1-9]\d*$/.test(clip.asset))) throw Error('Upload locally attached media before cloud save')
      const body = { name: 'V3 · '+String(draft.title).slice(0,100), project_json: { editor_version: 3, draft } }
      const result = v3DraftId === null ? await videoStudioDraftsApi.create(body) : await videoStudioDraftsApi.update(v3DraftId,body)
      v3DraftId = result.data.id
-     target?.postMessage({type:'sg-v3-server-result',message:'Server draft '+v3DraftId+' saved; local media remain on this browser'},window.location.origin)
-    } catch { target?.postMessage({type:'sg-v3-server-result',message:'Server save failed'},window.location.origin) }
+     target?.postMessage({type:'sg-v3-server-result',message:'Server draft '+v3DraftId+' saved'},window.location.origin)
+    } catch (error) {
+     target?.postMessage({type:'sg-v3-server-result',message:error instanceof Error ? error.message : 'Server save failed'},window.location.origin)
+    } finally { draftRequestPending = false }
     return
    }
    if (event.data?.type === 'sg-v3-open-server') {
+    if (draftRequestPending) return
+    draftRequestPending = true
     try {
      const id = Number(event.data.id)
      if (!Number.isSafeInteger(id)||id<=0) throw Error('Invalid draft ID')
      const result = await videoStudioDraftsApi.get(id)
      if (result.data.project_json?.editor_version !== 3) throw Error('Not a V3 draft')
+     const draft = result.data.project_json.draft
+     if (draft?.version !== 1 || !Array.isArray(draft.clips)) throw Error('Invalid draft')
+     const assigned = new Map<number, string>()
+     for (const clip of draft.clips) {
+      const match = /^server-([1-9]\d*)$/.exec(clip.asset)
+      if (match) assigned.set(Number(match[1]), String(clip.label))
+     }
+     const media = await Promise.all([...assigned].map(async ([assetId, name]) => {
+      const { data: blob } = await assetsApi.download(assetId)
+      return { id:assetId, name, kind:String(blob.type).split('/')[0], blob }
+     }))
      v3DraftId = id
-     target?.postMessage({type:'sg-v3-server-result',draft:result.data.project_json.draft,message:'V3 server draft loaded'},window.location.origin)
-    } catch { target?.postMessage({type:'sg-v3-server-result',message:'V3 draft unavailable'},window.location.origin) }
+     target?.postMessage({type:'sg-v3-server-result',draft,media,message:'V3 server draft loaded'},window.location.origin)
+    } catch { target?.postMessage({type:'sg-v3-server-result',message:'V3 draft or its assigned media unavailable'},window.location.origin) }
+    finally { draftRequestPending = false }
     return
    }
    if(event.data?.type !== 'sg-v3-import-assets') return
