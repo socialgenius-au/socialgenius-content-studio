@@ -55,7 +55,10 @@ export default function VideoStudioV3() {
     const reply = (message: string) => target?.postMessage({type:'sg-v3-export-result',message},window.location.origin)
     try {
      const { clips, width, height, texts = [] } = event.data
-     if (!Array.isArray(clips)||!clips.length||clips.length>100||![1080,1920].includes(width)||![1080,1920].includes(height)) throw Error('Invalid export project')
+     const supportedCanvas = (width === 1080 && height === 1920)
+     || (width === 1920 && height === 1080)
+     || (width === 1080 && height === 1080)
+    if (!Array.isArray(clips)||!clips.length||clips.length>100||!supportedCanvas) throw Error('Invalid export project')
      if (!Array.isArray(texts)||texts.length>2||texts.some((t: Record<string, any>)=>typeof t.text!=='string'||t.text.length>4000||![t.start_time,t.end_time,t.x,t.y,t.font_size].every(Number.isFinite)||t.start_time<0||t.end_time<=t.start_time)) throw Error('Invalid text layers')
      const video: ExportVideo[] = []
      const audio: ExportMedia[] = []
@@ -73,12 +76,24 @@ export default function VideoStudioV3() {
      }
      if(!video.length) throw Error('Add video first')
      video.sort((a,b)=>a.start_time-b.start_time)
-     if(video.some((v,i)=>Math.abs(v.start_time-(i?video[i-1].end_time:0))>0.05)) throw Error('Video gaps or overlaps are not supported by this export adapter')
+     if(video.some((clip,index)=>index > 0 && clip.start_time < video[index-1].end_time - 1e-6)) throw Error('Overlapping video is not supported by this export adapter')
      const result = await videoExportApi.exportProject({canvas_width:width,canvas_height:height,video_clips:video,audio_tracks:audio,text_overlays:texts,media_overlays:[]})
      const url=URL.createObjectURL(result.data)
      const link=document.createElement('a');link.href=url;link.download='social-genius-v3.mp4';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000)
      reply('MP4 rendered — check downloads')
     } catch(e) {reply(e instanceof Error?e.message:'Export failed')}
+    return
+   }
+   if (event.data?.type === 'sg-v3-list-drafts') {
+    try {
+     const { data } = await videoStudioDraftsApi.list()
+     const drafts = (Array.isArray(data) ? data : [])
+      .filter(draft => typeof draft.name === 'string' && draft.name.startsWith('V3 · '))
+      .map(draft => ({ id: draft.id, name: draft.name.slice(5) }))
+     target?.postMessage({type:'sg-v3-draft-list',drafts},window.location.origin)
+    } catch {
+     target?.postMessage({type:'sg-v3-draft-list',error:true},window.location.origin)
+    }
     return
    }
    if (event.data?.type === 'sg-v3-save-server') {
