@@ -99,3 +99,13 @@ Still open in the editor are full V2 property parity (including arbitrary rotati
 - Frontend build, inline editor syntax, Python compilation and diff checks passed. A local synthetic FFmpeg render verified that a delayed tone fades in and out and is silent outside its placed interval.
 - The isolated Railway editor route opened in Chrome and displayed sign-in. Control-level acceptance on this revision, cloud save/reopen and the authenticated editor-to-MP4 test are pending. The preceding toolkit table records the earlier browser checks and their scope.
 - Remaining implementation includes complete video and image transforms, per-clip video speed, text animation and font export parity, full saved Brand Kit application, broader Elements export, and a successful AI response with an acceptance provider.
+
+## Signed-in Railway browser follow-up
+
+Chrome on the isolated acceptance deployment at `80e8c8b` exercised real library footage. Select cleared selection. Split, Undo and Redo produced 2, 1 and 2 video clips. Trim accepted numeric keyboard input. Duplicate, Copy/Paste, Cut, Delete and context-menu Ripple delete produced the expected clip counts. Snap toggled, zoom controls and Fit were exercised, and the editor showed seven lanes and a decoded clip thumbnail.
+
+Beginning, Previous frame, Next frame, Rewind, Fast forward, End, Play/Pause and 2× playback were exercised. Preview and timeline time matched in the sampled checks. Fullscreen was invoked without a confirmed browser fullscreen transition. Deleting clips exposed an out-of-range playhead, corrected by clamping the shared playback clock during render.
+
+The Product Demonstration template was found by search, customised and applied as editable titles. The existing main video remained present. An image was assigned to Video 2 and the inspector changed to image fields. Cloud save returned draft 5. After reload, cloud open restored the video, image and customised template title. The downloaded MP4 contained 1080 × 1920 H.264 and AAC with a measured audio peak of −0.3 dBFS. Its 5-second output exposed truncation at the end of the video footage when other tracks ran longer. The export now requests the full occupied timeline duration, and the renderer fills the tail with background and silence before compositing.
+
+Independent audio fade controls, exact inspector value persistence, fullscreen, fine snapping, cross-track drag, and verification of the corrected full-length MP4 remain separate acceptance checks. No production deployment was made.

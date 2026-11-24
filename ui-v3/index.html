@@ -75,8 +75,10 @@ function playbackEnd(){
  return ends.length?Math.max(...ends):30;
 }
 function renderTime(){
+ const end=playbackEnd();
+ position=Math.max(0,Math.min(position,end));
  seek.value=position;
- stamp.textContent=$('preview-time').textContent=timeLabel(position)+' / '+timeLabel(playbackEnd());
+ stamp.textContent=$('preview-time').textContent=timeLabel(position)+' / '+timeLabel(end);
  document.querySelectorAll('.lane').forEach(l=>l.style.setProperty('--playhead',position/30*100+'%'));
 }
 function setPlaybackButton(){
@@ -304,7 +306,7 @@ function refreshTextPicker(){
  textPicker.value=String(activeText);
 }
 function storeText(){textStates[activeText]={text:$('copy').value,style:selectedTextNode().style.cssText}}
-function showText(){textClips.forEach((c,i)=>{const n=textNodes[i],s=textStates[i];if(!n||!s||!c.parentElement)return;n.textContent=s.text;n.style.cssText=s.style;if(i===1&&!n.style.top)n.style.top='65%';const start=Number(c.dataset.start),end=start+Number(c.dataset.duration);if(authenticatedEditor){c.classList.toggle('empty-slot',!s.text.trim());c.firstChild.textContent=s.text||'Empty'}n.hidden=!s.text.trim()||position<start||position>=end||c.parentElement.classList.contains('track-muted')})}
+function showText(){textClips.forEach((c,i)=>{const n=textNodes[i],s=textStates[i];if(!n||!s||!c.parentElement)return;n.textContent=s.text;n.style.cssText=s.style;if(i===1&&!n.style.top)n.style.top='65%';const start=Number(c.dataset.start),end=start+Number(c.dataset.duration);if(authenticatedEditor){c.classList.toggle('empty-slot',!s.text.trim());c.firstChild.textContent=s.text||'Empty';c.setAttribute('aria-label',(s.text||'Empty')+', start '+start.toFixed(1)+' seconds, duration '+(end-start).toFixed(1)+' seconds')}n.hidden=!s.text.trim()||position<start||position>=end||c.parentElement.classList.contains('track-muted')})}
 const textPicker=document.createElement('select');textPicker.setAttribute('aria-label','Text track');textClips.forEach((c,i)=>textPicker.add(new Option('Text '+(i+1),String(i))));$('copy').before(textPicker);
 textPicker.onchange=()=>{storeText();activeText=Number(textPicker.value);$('copy').value=textStates[activeText].text;showText()};
 $('copy').addEventListener('input',()=>{

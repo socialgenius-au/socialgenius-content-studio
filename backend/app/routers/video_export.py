@@ -236,6 +236,7 @@ async def export_project(
         "canvas_width": body.canvas_width,
         "canvas_height": body.canvas_height,
         "video_clips": video_clips,
+        "timeline_duration": body.timeline_duration,
         "additional_video_clips": additional_video_clips,
         "text_overlays": text_overlays,
         "shapes": shapes,

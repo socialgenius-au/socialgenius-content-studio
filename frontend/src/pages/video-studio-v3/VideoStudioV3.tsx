@@ -147,6 +147,7 @@ export default function VideoStudioV3() {
      const result = await videoExportApi.exportProject({
       canvas_width:width,canvas_height:height,video_clips:video,additional_video_clips:additionalVideo,
       audio_tracks:audio,text_overlays:texts,media_overlays:overlays,
+      timeline_duration:Math.max(...[...video,...audio,...overlays,...texts].map(clip => Number(clip.end_time))),
      })
      const url=URL.createObjectURL(result.data)
      const link=document.createElement('a');link.href=url;link.download='social-genius-v3.mp4';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000)

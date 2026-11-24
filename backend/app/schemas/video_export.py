@@ -222,6 +222,7 @@ class ExportAudioTrack(BaseModel):
 class ExportProjectRequest(BaseModel):
     canvas_width: int
     canvas_height: int
+    timeline_duration: float | None = Field(default=None, gt=0, le=3600)
     video_clips: list[ExportVideoClip]
     # Phase 7 additions — every one defaults to empty/default so a request built before this
     # phase (or a test that only cares about V1) behaves identically to today.

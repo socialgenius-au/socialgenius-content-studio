@@ -1146,9 +1146,11 @@ async def render_project(project: dict, user_id: int) -> Path:
     # the unchanged path.
     runs = timeline_plan.split_runs(clips)
     lead = timeline_plan.to_frames(clips[0]["start_time"])
+    requested_frames = timeline_plan.to_frames(project.get("timeline_duration") or 0)
+    footage_end = timeline_plan.to_frames(clips[-1]["end_time"])
     behind_shapes = [s for s in (project.get("shapes") or []) if s.get("behind_footage")]
     run_plans: list = []
-    if len(runs) == 1 and lead < 1:
+    if len(runs) == 1 and lead < 1 and requested_frames <= footage_end:
         base, run_intermediates, base_frames = await _render_clip_run(clips, cw, ch, policy, user_id, pad_color, backdrop, plans_out=run_plans if behind_shapes else None)
     else:
         parts: list[tuple[str | None, int]] = []
@@ -1161,6 +1163,9 @@ async def render_project(project: dict, user_id: int) -> Path:
             rb, im, frames = await _render_clip_run(run, cw, ch, policy, user_id, pad_color, backdrop, plans_out=run_plans if behind_shapes else None)
             parts.append((str(rb), frames)); pos += frames
             run_intermediates += im + [str(rb)]
+        if requested_frames > pos:
+            parts.append((None, requested_frames - pos))
+            pos = requested_frames
         base = await concat_runs_with_gaps(parts, cw, ch, user_id, pad_color)
         base_frames = pos
 
