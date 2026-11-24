@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { assetsApi, videoStudioDraftsApi, videoExportApi, uploadApi } from '../../api/client'
+import { assetsApi, generateApi, videoStudioDraftsApi, videoExportApi, uploadApi } from '../../api/client'
 import editorHtml from '../../../../ui-v3/index.html?raw'
 type ExportMedia = {
  asset_id: number
@@ -20,6 +20,17 @@ export default function VideoStudioV3() {
   const receive = async (event: MessageEvent) => {
    if (event.source !== frame.current?.contentWindow || event.origin !== window.location.origin) return
    const target = frame.current?.contentWindow
+   if (event.data?.type === 'sg-v3-ai') {
+    const prompt = typeof event.data.prompt === 'string' ? event.data.prompt.trim().slice(0, 2000) : ''
+    if (!prompt) return
+    try {
+     const { data } = await generateApi.chat({ prompt, context: { workspace: 'Video Studio V3', title: String(event.data.title).slice(0, 100) } })
+     target?.postMessage({type:'sg-v3-ai-result',content:String(data.content)},window.location.origin)
+    } catch {
+     target?.postMessage({type:'sg-v3-ai-result',content:'The assistant could not respond. Check the acceptance AI configuration.'},window.location.origin)
+    }
+    return
+   }
    if (event.data?.type === 'sg-v3-library') {
     try {
      const response = await assetsApi.list()
@@ -186,5 +197,5 @@ export default function VideoStudioV3() {
   window.addEventListener('message',receive)
   return () => { disposed = true; window.removeEventListener('message',receive) }
  },[])
- return <iframe ref={frame} title="Video Studio V3" srcDoc={editorHtml} style={{border:0,width:'100%',height:'100dvh',display:'block'}} />
+ return <iframe ref={frame} title="Video Studio V3" allowFullScreen srcDoc={editorHtml} style={{border:0,width:'100%',height:'100dvh',display:'block'}} />
 }
