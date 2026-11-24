@@ -1,4 +1,5 @@
 FROM python:3.12-alpine
 WORKDIR /preview
 COPY index.html .
-CMD ["sh", "-c", "python -m http.server ${PORT:-8080} --bind 0.0.0.0"]
+EXPOSE 8080
+CMD ["python3","-m","http.server","8080","--bind","0.0.0.0"]
