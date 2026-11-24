@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { assetsApi, videoStudioDraftsApi } from '../../api/client'
+import { assetsApi, videoStudioDraftsApi, videoExportApi, uploadApi } from '../../api/client'
 import editorHtml from '../../../../ui-v3/index.html?raw'
 export default function VideoStudioV3() {
  const frame = useRef<HTMLIFrameElement>(null)
@@ -9,6 +9,34 @@ export default function VideoStudioV3() {
   const receive = async (event: MessageEvent) => {
    if (event.source !== frame.current?.contentWindow || event.origin !== window.location.origin) return
    const target = frame.current?.contentWindow
+   if (event.data?.type === 'sg-v3-export') {
+    const reply = (message: string) => target?.postMessage({type:'sg-v3-export-result',message},window.location.origin)
+    try {
+     const { clips, width, height } = event.data
+     if (!Array.isArray(clips)||!clips.length||clips.length>100||![1080,1920].includes(width)||![1080,1920].includes(height)) throw Error('Invalid export project')
+     const video = [], audio = []
+     for (const clip of clips) {
+      if (!['video','audio'].includes(clip.kind)||!Number.isFinite(clip.start)||!Number.isFinite(clip.duration)||clip.start<0||clip.duration<=0) throw Error('Unsupported clip')
+      let id = Number(clip.serverId)
+      if (!Number.isSafeInteger(id)||id<=0) {
+       if (!(clip.blob instanceof Blob)) throw Error('Missing media')
+       const uploaded = await uploadApi.upload(new File([clip.blob],String(clip.name),{type:clip.blob.type}))
+       id = uploaded.data.id
+      }
+      const item = {asset_id:id,start_time:clip.start,end_time:clip.start+clip.duration,trim_in:0,volume:clip.muted?0:1}
+      if(clip.kind==='video') video.push({...item,muted:!!clip.muted,speed:1,fit_mode:'fit'})
+      else audio.push(item)
+     }
+     if(!video.length) throw Error('Add video first')
+     video.sort((a,b)=>a.start_time-b.start_time)
+     if(video.some((v,i)=>Math.abs(v.start_time-(i?video[i-1].end_time:0))>0.05)) throw Error('Video gaps or overlaps are not supported by this export adapter')
+     const result = await videoExportApi.exportProject({canvas_width:width,canvas_height:height,video_clips:video,audio_tracks:audio,text_overlays:[],media_overlays:[]})
+     const url=URL.createObjectURL(result.data)
+     const link=document.createElement('a');link.href=url;link.download='social-genius-v3.mp4';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000)
+     reply('MP4 rendered — check downloads')
+    } catch(e) {reply(e instanceof Error?e.message:'Export failed')}
+    return
+   }
    if (event.data?.type === 'sg-v3-save-server') {
     try {
      const draft = event.data.draft
