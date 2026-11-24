@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Aperture, ArrowRight, Clapperboard, Film, Globe, Layers, MessageSquare, ScanSearch, Target, UploadCloud, Zap } from 'lucide-react'
+import { Aperture, ArrowRight, Clapperboard, Film, FolderKanban, FolderOpen, Globe, Home, Image, LayoutTemplate, MessageSquare, Palette, RefreshCw, ScanSearch, Settings, Target, UploadCloud, Zap } from 'lucide-react'
 import { assetsApi, referenceVideosApi, uploadApi, videoExportApi } from '../../api/client'
 import type { ReferenceVideo } from '../../types'
 import { errorMessage, useDeconstructor } from './useDeconstructor'
@@ -8,6 +8,13 @@ import { evidenceSummary, hookSummary, typeLabel } from './intelligence'
 import './DeconstructorV3.css'
 
 const root = '/deconstructor-v3'
+const navigation = [
+  ['Home','/dashboard',Home], ['Campaigns','/dashboard-classic',FolderKanban],
+  ['Post Creator','/post-creator-v2',Image], ['Video Studio','/video-studio-v3',Film],
+  ['Deconstructor',root,ScanSearch], ['Reconstructor','/reconstructor/assets',RefreshCw],
+  ['Assets','/assets',FolderOpen], ['Templates','/templates',LayoutTemplate],
+  ['Brand Kit','/brands',Palette], ['Settings','/settings',Settings],
+] as const
 const views = ['Reference', 'Quick Analysis', 'Deep Analysis', 'Selective Analysis', 'Messaging Intelligence', 'Technical Intelligence', 'Discoverability'] as const
 type View = typeof views[number]
 type Evidence = 'Extracted' | 'Detected' | 'Inferred' | 'Researched' | 'Unavailable'
@@ -19,6 +26,9 @@ const modules = [
   ['metadata', 'Metadata', 'Probe video, audio and container properties.'],
 ] as const
 type Module = typeof modules[number][0]
+type ContextNotes = { industry: string; contentType: string; objective: string; audience: string; note: string }
+const emptyNotes: ContextNotes = { industry: '', contentType: '', objective: '', audience: '', note: '' }
+type TimelineItem = { key: string; start: number; end: number; text: string }
 
 const time = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`
 const spanLabel = (start: number, end: number) => `${time(start)} – ${time(end)}`
@@ -77,7 +87,10 @@ export default function DeconstructorV3() {
   const [playhead, setPlayhead] = useState(0)
   const [waveform, setWaveform] = useState<{ referenceId: number; peaks: number[] } | null>(null)
   const [waveformLoading, setWaveformLoading] = useState(false)
-  const [notes, setNotes] = useState({ industry: '', contentType: '', objective: '', audience: '', note: '' })
+  const [contextByReference, setContextByReference] = useState<Record<string, ContextNotes>>({})
+  const contextKey = id?.toString() ?? 'new'
+  const notes = contextByReference[contextKey] ?? emptyNotes
+  const setNotes = (next: ContextNotes) => setContextByReference(previous => ({ ...previous,[contextKey]:next }))
   const [urlMode, setUrlMode] = useState(false)
   const player = useRef<HTMLVideoElement>(null)
   const file = useRef<HTMLInputElement>(null)
@@ -94,7 +107,7 @@ export default function DeconstructorV3() {
   const details = video?.technical_details
   const duration = details?.container.duration_seconds ?? details?.video.duration_seconds ?? 0
   const anatomy = d.anatomy.data?.provenance.reference_video_id === id ? d.anatomy.data : null
-  const creative = d.intelligence.data
+  const creative = anatomy ? d.intelligence.data : null
   const shots = video?.shots ?? []
   const sections = anatomy?.sections ?? []
   const sceneList = sections.length ? sections.map(section => ({
@@ -106,7 +119,15 @@ export default function DeconstructorV3() {
   })) : shots.map(shot => ({ number: shot.order, start: shot.start_time, end: shot.end_time, role: 'Shot', story: shot.text_elements.map(text => text.text).join(' · '), technical: shot.evidence_summary || '', audio: '' }))
   const waveformPeaks = waveform?.referenceId === id ? waveform.peaks : null
   const activeShot = shots.find(shot => playhead >= shot.start_time && playhead < shot.end_time) ?? shots[selected]
-  const transcript = video?.speech_segments?.map(segment => segment.text).join(' ') ?? ''
+  const speech = video?.speech_segments ?? []
+  const transcript = speech.map(segment => segment.text).join(' ')
+  const timeline: { label: string; items: TimelineItem[] }[] = [
+    {label:'Scenes',items:sceneList.map(scene => ({key:String(scene.number),start:scene.start,end:scene.end,text:`${scene.role} ${scene.number}`}))},
+    {label:'Shots',items:shots.map(shot => ({key:String(shot.id),start:shot.start_time,end:shot.end_time,text:`Shot ${shot.order}`}))},
+    {label:'Text overlays',items:shots.flatMap(shot => shot.text_elements.map(item => ({key:String(item.id),start:item.start_time,end:item.end_time,text:item.text})))},
+    {label:'Speech',items:speech.map(item => ({key:String(item.id),start:item.start_time,end:item.end_time,text:item.text}))},
+    {label:'Transitions',items:(video?.transition_evidence ?? []).map(item => ({key:String(item.id),start:item.boundary_timestamp,end:item.boundary_timestamp,text:'Boundary measurement'}))},
+  ]
   const observedText = shots.flatMap(shot => shot.text_elements.map(item => item.text)).join(' ')
   const metadata = mediaProperties(video)
   const messaging: Finding[] = [
@@ -146,6 +167,7 @@ export default function DeconstructorV3() {
     const newId = await d.addReference(candidate)
     if (newId != null) {
       setSourceScope('')
+      setContextByReference(previous => ({ ...previous,[newId]:notes }))
       selectReference(newId)
       try { setReference((await referenceVideosApi.analyze(newId)).data) }
       catch (error) { setMessage(errorMessage(error, 'Video uploaded. Metadata extraction can be retried in Quick Analysis.')) }
@@ -174,7 +196,7 @@ export default function DeconstructorV3() {
         const name = `Reference ${video.id} excerpt ${a}-${b}s.mp4`
         const uploaded = await uploadApi.upload(new File([excerpt.data],name,{type:'video/mp4'}))
         target = (await referenceVideosApi.ingest(uploaded.data.id)).data
-        setSourceScope(`Excerpt from ${video.original_filename}, ${spanLabel(a,b)}. Times are relative to the excerpt.`)
+        setSourceScope(`Excerpt from ${video.original_filename}, ${spanLabel(a,b)}. Timecodes and technical properties refer to the rendered excerpt.`)
       } else {
         setSourceScope('')
       }
@@ -225,14 +247,14 @@ export default function DeconstructorV3() {
   }
   const send = () => {
     if (!video || !sceneList.length) return
-    const handoff = { referenceId:video.id, scenes:sceneList, messaging, discoverability, metadata, mechanisms:creative?.mechanisms ?? [], provenance:anatomy?.provenance }
+    const handoff = { referenceId:video.id, scenes:sceneList, context:notes, messaging, discoverability, metadata, mechanisms:creative?.mechanisms ?? [], provenance:anatomy?.provenance }
     try {
       sessionStorage.setItem('sg-reconstructor-detected-scenes',JSON.stringify(handoff))
       navigate(`/reconstructor/assets?scene=${sceneList[0].number}&reference=${video.id}`)
     } catch { setMessage('Could not store this Reconstructor handoff in the browser.') }
   }
   const report = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ reference:video?.original_filename, metadata, messaging, discoverability, scenes:sceneList, mechanisms:creative?.mechanisms ?? [] },null,2)],{type:'application/json'}))
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ reference:video?.original_filename, context:notes, metadata, messaging, discoverability, scenes:sceneList, mechanisms:creative?.mechanisms ?? [] },null,2)],{type:'application/json'}))
     const link = document.createElement('a')
     link.href = url
     link.download = `reference-${id}-analysis.json`
@@ -241,13 +263,16 @@ export default function DeconstructorV3() {
   }
   const seek = (seconds: number, index: number) => { setSelected(index); updateTime(seconds) }
   const preview = video ? <video className="dc3-preview" ref={player} src={assetsApi.previewUrl(video.asset_file_path)} controls playsInline preload="metadata" onLoadedMetadata={() => { if(player.current) player.current.currentTime = playhead }} onTimeUpdate={event => setPlayhead(event.currentTarget.currentTime)} aria-label="Read-only reference video" /> : <div className="dc3-placeholder"><Film />Select a reference video to preview</div>
-  const scenes = <div className="dc3-scenes">{sceneList.map((scene,index) => <button type="button" key={scene.number} aria-pressed={playhead >= scene.start && playhead < scene.end} onClick={() => seek(scene.start,index)}><strong>{scene.number}</strong>{shots.find(shot => shot.start_time <= scene.start && shot.end_time > scene.start)?.frames[0] && <img src={assetsApi.previewUrl(shots.find(shot => shot.start_time <= scene.start && shot.end_time > scene.start)!.frames[0].asset_file_path)} alt="" />}<span>{scene.role}<small>{spanLabel(scene.start,scene.end)}</small></span></button>)}{!sceneList.length && <p>Run analysis to detect shots and scenes.</p>}</div>
+  const scenes = <div className="dc3-scenes">{sceneList.map((scene,index) => {
+    const frame = shots.find(shot => shot.start_time <= scene.start && shot.end_time > scene.start)?.frames[0]
+    return <button type="button" key={scene.number} aria-pressed={playhead >= scene.start && playhead < scene.end} onClick={() => seek(scene.start,index)}><strong>{scene.number}</strong>{frame && <img src={assetsApi.previewUrl(frame.asset_file_path)} alt="" />}<span>{scene.role}<small>{spanLabel(scene.start,scene.end)}</small></span></button>
+  })}{!sceneList.length && <p>Run analysis to detect shots and scenes.</p>}</div>
   const row = (label: string, rows: Finding[]) => <Card title={label}><Findings rows={rows} /></Card>
   const tabs = <div className="dc3-modes">{views.map(view => <button key={view} type="button" className={view === mode ? 'chosen' : ''} onClick={() => changeView(view)}>{view}</button>)}</div>
   return <div className={`dc3 ${mode === 'Messaging Intelligence' ? 'dc3-dark' : ''}`}>
     <aside className="dc3-sidebar">
       <Link className="dc3-brand" to="/dashboard"><img src="/social-genius-official-logo.svg" alt="" /><strong>Social Genius</strong><span>Content Studio</span><small>The Positioning People</small></Link>
-      <nav aria-label="Content Studio">{[['Home','/dashboard'],['Campaigns','/dashboard-classic'],['Post Creator','/post-creator-v2'],['Video Studio','/video-studio-v3'],['Deconstructor',root],['Reconstructor','/reconstructor/assets'],['Assets','/assets'],['Templates','/templates'],['Brand Kit','/brands'],['Settings','/settings']].map(([name,url]) => <Link key={name} to={url} aria-current={url === root ? 'page' : undefined}>{url === root ? <ScanSearch /> : <Layers />}{name}</Link>)}</nav>
+      <nav aria-label="Content Studio">{navigation.map(([name,url,Icon]) => <Link key={name} to={url} aria-current={url === root ? 'page' : undefined}><Icon />{name}</Link>)}</nav>
     </aside>
     <main>
       <header className="dc3-banner"><Clapperboard /><div><p>Deconstructor</p><h1>{mode === 'Reference' ? 'Reference Import & Context' : mode}</h1></div><span className="dc3-banner-brand"><img src="/social-genius-official-logo.svg" alt="" /><span><strong>Social Genius</strong><small>The Positioning People</small></span></span></header>
@@ -271,7 +296,15 @@ export default function DeconstructorV3() {
       {mode === 'Selective Analysis' && <div className="dc3-grid">
         <div className="dc3-stack"><Card title="Video Reference">{preview}</Card><Card title="Time Range">
           <label className="dc3-check"><input type="checkbox" checked={range} onChange={event => setRange(event.target.checked)} />Use a specific time range</label>
-          {range && <div className="dc3-context"><label>Start (seconds)<input type="number" min={0} step=".01" value={start} onChange={event => setStart(event.target.value)} /></label><label>End (seconds)<input type="number" min={0} max={duration || undefined} step=".01" value={end} onChange={event => setEnd(event.target.value)} /></label><label>Use scene or shot<select defaultValue="" onChange={event => { const pick = sceneList[Number(event.target.value)]; if(event.target.value && pick) { setStart(String(pick.start));setEnd(String(pick.end)) } }}><option value="">Choose a boundary</option>{sceneList.map((scene,index) => <option key={scene.number} value={index}>{scene.role} {scene.number} · {spanLabel(scene.start,scene.end)}</option>)}</select></label></div>}
+          {range && <div className="dc3-context"><label>Start (seconds)<input type="number" min={0} step=".01" value={start} onChange={event => setStart(event.target.value)} /></label><label>End (seconds)<input type="number" min={0} max={duration || undefined} step=".01" value={end} onChange={event => setEnd(event.target.value)} /></label><label>Use scene or shot<select defaultValue="" onChange={event => {
+            if (!event.target.value) return
+            const [first,last] = event.target.value.split(':')
+            setStart(first)
+            setEnd(last)
+          }}><option value="">Choose a boundary</option>
+            {sections.length > 0 && <optgroup label="Scenes">{sections.map(scene => <option key={scene.number} value={`${scene.start_time}:${scene.end_time}`}>Scene {scene.number} · {spanLabel(scene.start_time,scene.end_time)}</option>)}</optgroup>}
+            {shots.length > 0 && <optgroup label="Shots">{shots.map(shot => <option key={shot.id} value={`${shot.start_time}:${shot.end_time}`}>Shot {shot.order} · {spanLabel(shot.start_time,shot.end_time)}</option>)}</optgroup>}
+          </select></label></div>}
         </Card></div>
         <div className="dc3-stack"><Card title="Select Analysis Modules"><div className="dc3-modules">{modules.map(([key,label,description]) => <label className={select.includes(key) ? 'selected' : ''} key={key}><input type="checkbox" checked={select.includes(key)} onChange={event => setSelect(event.target.checked ? [...select,key] : select.filter(module => module !== key))} /><strong>{label}</strong><small>{description}</small></label>)}</div></Card>
           <Card title="Analysis Scope Summary"><div className="dc3-actions"><span>{select.length} modules · {range ? 'Selected time range' : 'Full video'}</span><button className="chosen" type="button" disabled={!video || busy || !select.length} onClick={() => void run(true)}><Target />Run Selected Analysis</button></div></Card>
@@ -281,6 +314,7 @@ export default function DeconstructorV3() {
         <div className="dc3-stack">{preview}<Card title="Scenes & Timeline">{scenes}</Card></div>
         <div className="dc3-stack">
           <div className="dc3-actions">{mode === 'Deep Analysis' ? <><button className="chosen" disabled={!video || busy} type="button" onClick={() => { if(window.confirm('Run the full analysis pipeline? Configured AI stages may incur provider costs.')) void d.deconstruct() }}>Run Deep Analysis</button><span role="status">{d.progress.headline}</span></> : <button className="chosen" disabled={!video || busy} type="button" onClick={() => void run(false)}><Zap />Run Quick Analysis</button>}<button type="button" disabled={!video} onClick={report}>Export Analysis</button><button type="button" disabled={!sceneList.length || !video} onClick={send}>Send to Reconstructor <ArrowRight /></button></div>
+          {mode === 'Deep Analysis' && d.progress.steps.length > 0 && <details className="dc3-card"><summary>Analysis status by stage</summary><Findings rows={d.progress.steps.map(step => [step.label,[step.status.replace(/_/g,' '),step.note].filter(Boolean).join(' · '),step.status === 'skipped' || step.status === 'failed' ? 'Unavailable' : 'Extracted'])} /></details>}
           {mode === 'Deep Analysis' && <div className="dc3-actions">{(['Overview','Narrative','Transcript','Mechanisms'] as const).map(tab => <button className={tab === deepTab ? 'chosen' : ''} key={tab} onClick={() => setDeepTab(tab)}>{tab}</button>)}</div>}
           {mode === 'Deep Analysis' && deepTab === 'Narrative' ? row('Narrative', messaging) : mode === 'Deep Analysis' && deepTab === 'Transcript' ? row('Transcript', [result('Recognised speech',transcript || null,'Detected')]) : mode === 'Deep Analysis' && deepTab === 'Mechanisms' ? row('Persuasion & Mechanisms', creative?.mechanisms.length ? creative.mechanisms.map((mechanism): Finding => [typeLabel(mechanism),`${mechanism.purpose} · ${evidenceSummary(mechanism)}`,'Inferred']) : [result('Mechanisms',null,'Inferred')]) : <>
             {row('Key Metrics & Metadata',[...metadata,result('Detected shots',shots.length || null,'Detected'),result('Analysed scenes',sections.length || null,'Inferred')])}
@@ -298,7 +332,17 @@ export default function DeconstructorV3() {
         <Card title="Scenes">{scenes}</Card>
         <div className="dc3-stack">{preview}<Card title="Read-only Technical Timeline">
           <label>Playhead <input type="range" min={0} max={duration || 1} step=".01" value={playhead} onChange={event => updateTime(Number(event.target.value))} /></label>
-          <div className="dc3-timeline">{[['Scenes',sceneList],['Shots',shots.map(shot => ({number:shot.order,start:shot.start_time,end:shot.end_time}))]].map(([label, items]) => <div key={label as string}><strong>{label as string}</strong><div>{(items as {number:number;start:number;end:number}[]).map((item,index) => <button key={item.number} type="button" title={spanLabel(item.start,item.end)} style={{ flexGrow:item.end-item.start }} onClick={() => seek(item.start,index)}>{item.number}</button>)}</div></div>)}</div>
+          <div className="dc3-timeline">
+            <div><strong>{time(playhead)}</strong><div className="dc3-ruler">{Array.from({length:5},(_,index) => <span key={index}>{time(duration*index/4)}</span>)}</div></div>
+            {timeline.map(({label, items}) => <div key={label}>
+              <strong>{label}</strong>
+              <div className="dc3-lane">
+                {items.map(item => <button key={item.key} type="button" title={`${item.text} · ${spanLabel(item.start,item.end)}`} aria-label={`Seek to ${item.text} at ${time(item.start)}`} style={{ left:`${Math.min(98,item.start/(duration||1)*100)}%`,width:`max(14px,${(item.end-item.start)/(duration||1)*100}%)` }} onClick={() => updateTime(item.start)}>{item.text}</button>)}
+                {!items.length && <span className="dc3-lane-empty">Unavailable</span>}
+                <i aria-hidden="true" style={{left:`${Math.min(100,playhead/(duration||1)*100)}%`}} />
+              </div>
+            </div>)}
+          </div>
           {waveformPeaks ? <div className="dc3-waveform"><span>Audio waveform</span><svg role="img" aria-label="Audio peaks measured from the reference" viewBox="0 0 180 36" preserveAspectRatio="none">{waveformPeaks.map((peak,index) => <line key={index} x1={index} x2={index} y1={18-peak*17} y2={18+peak*17} />)}<line className="dc3-cursor" x1={playhead/(duration||1)*180} x2={playhead/(duration||1)*180} y1={0} y2={36} /></svg></div> : <button type="button" disabled={!details?.audio.present || waveformLoading} onClick={() => void loadWaveform()}>{waveformLoading ? 'Decoding audio…' : 'Load audio waveform'}</button>}
         </Card></div>
         <div className="dc3-stack">{row('Video Properties',metadata)}{row('Shot Breakdown',[

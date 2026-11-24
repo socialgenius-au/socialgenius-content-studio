@@ -116,3 +116,11 @@
 .dc3-waveform { display:grid; gap:4px; }
 .dc3-waveform svg { height:38px; width:100%; background:#d7f6e2; border-radius:5px; stroke:#15835c; stroke-width:.65; }
 .dc3-waveform .dc3-cursor { stroke:#801dcc; stroke-width:1; }
+
+.dc3-timeline > div > .dc3-ruler { justify-content:space-between; font-size:.72rem; color:var(--quiet); }
+.dc3-timeline > div > .dc3-lane { display:block; min-height:26px; position:relative; overflow:hidden; border-radius:5px; background:var(--tint); }
+.dc3-lane button { position:absolute; top:0; bottom:0; min-width:0; padding:2px 3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; font-size:.72rem; border-color:#b18cdd; }
+.dc3-lane i { position:absolute; top:0; bottom:0; width:1px; background:#892bd7; pointer-events:none; }
+.dc3-lane-empty { padding:4px 7px; display:inline-block; font-size:.72rem; color:var(--quiet); }
+.dc3 details.dc3-card { padding:8px 12px; }
+.dc3 details.dc3-card summary { cursor:pointer; font-weight:720; }
