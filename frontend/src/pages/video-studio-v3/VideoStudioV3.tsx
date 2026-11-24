@@ -9,12 +9,30 @@ export default function VideoStudioV3() {
   const receive = async (event: MessageEvent) => {
    if (event.source !== frame.current?.contentWindow || event.origin !== window.location.origin) return
    const target = frame.current?.contentWindow
+   if (event.data?.type === 'sg-v3-library') {
+    try {
+     const response = await assetsApi.list()
+     const rows = Array.isArray(response.data) ? response.data : response.data.items
+     const assets = (Array.isArray(rows) ? rows : []).slice(0,100).map((a: any)=>({id:a.id,name:a.filename || a.file_name || String(a.file_path || '').split('/').pop(),kind:String(a.file_type || '').split('/')[0]})).filter((a: any)=>Number.isSafeInteger(a.id)&&['video','image','audio'].includes(a.kind))
+     target?.postMessage({type:'sg-v3-library-result',assets},window.location.origin)
+    } catch {target?.postMessage({type:'sg-v3-library-result',error:true},window.location.origin)}
+    return
+   }
+   if (event.data?.type === 'sg-v3-library-download') {
+    try {
+     const id=Number(event.data.id)
+     if(!Number.isSafeInteger(id)||id<=0) throw Error('Invalid asset')
+     const response=await assetsApi.download(id)
+     target?.postMessage({type:'sg-v3-library-media',id,blob:response.data},window.location.origin)
+    } catch {target?.postMessage({type:'sg-v3-library-media',error:true},window.location.origin)}
+    return
+   }
    if (event.data?.type === 'sg-v3-export') {
     const reply = (message: string) => target?.postMessage({type:'sg-v3-export-result',message},window.location.origin)
     try {
      const { clips, width, height, texts = [] } = event.data
      if (!Array.isArray(clips)||!clips.length||clips.length>100||![1080,1920].includes(width)||![1080,1920].includes(height)) throw Error('Invalid export project')
-     if (!Array.isArray(texts)||texts.length>2||texts.some(t=>typeof t.text!=='string'||t.text.length>4000||![t.start_time,t.end_time,t.x,t.y,t.font_size].every(Number.isFinite)||t.start_time<0||t.end_time<=t.start_time)) throw Error('Invalid text layers')
+     if (!Array.isArray(texts)||texts.length>2||texts.some((t: Record<string, any>)=>typeof t.text!=='string'||t.text.length>4000||![t.start_time,t.end_time,t.x,t.y,t.font_size].every(Number.isFinite)||t.start_time<0||t.end_time<=t.start_time)) throw Error('Invalid text layers')
      const video = [], audio = []
      for (const clip of clips) {
       if (!['video','audio'].includes(clip.kind)||!Number.isFinite(clip.start)||!Number.isFinite(clip.duration)||clip.start<0||clip.duration<=0) throw Error('Unsupported clip')
