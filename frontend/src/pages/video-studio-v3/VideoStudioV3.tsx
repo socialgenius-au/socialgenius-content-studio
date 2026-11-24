@@ -12,8 +12,9 @@ export default function VideoStudioV3() {
    if (event.data?.type === 'sg-v3-export') {
     const reply = (message: string) => target?.postMessage({type:'sg-v3-export-result',message},window.location.origin)
     try {
-     const { clips, width, height } = event.data
+     const { clips, width, height, texts = [] } = event.data
      if (!Array.isArray(clips)||!clips.length||clips.length>100||![1080,1920].includes(width)||![1080,1920].includes(height)) throw Error('Invalid export project')
+     if (!Array.isArray(texts)||texts.length>2||texts.some(t=>typeof t.text!=='string'||t.text.length>4000||![t.start_time,t.end_time,t.x,t.y,t.font_size].every(Number.isFinite)||t.start_time<0||t.end_time<=t.start_time)) throw Error('Invalid text layers')
      const video = [], audio = []
      for (const clip of clips) {
       if (!['video','audio'].includes(clip.kind)||!Number.isFinite(clip.start)||!Number.isFinite(clip.duration)||clip.start<0||clip.duration<=0) throw Error('Unsupported clip')
@@ -30,7 +31,7 @@ export default function VideoStudioV3() {
      if(!video.length) throw Error('Add video first')
      video.sort((a,b)=>a.start_time-b.start_time)
      if(video.some((v,i)=>Math.abs(v.start_time-(i?video[i-1].end_time:0))>0.05)) throw Error('Video gaps or overlaps are not supported by this export adapter')
-     const result = await videoExportApi.exportProject({canvas_width:width,canvas_height:height,video_clips:video,audio_tracks:audio,text_overlays:[],media_overlays:[]})
+     const result = await videoExportApi.exportProject({canvas_width:width,canvas_height:height,video_clips:video,audio_tracks:audio,text_overlays:texts,media_overlays:[]})
      const url=URL.createObjectURL(result.data)
      const link=document.createElement('a');link.href=url;link.download='social-genius-v3.mp4';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000)
      reply('MP4 rendered — check downloads')
