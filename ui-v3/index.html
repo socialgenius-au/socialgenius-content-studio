@@ -8,6 +8,7 @@ header{height:50px;flex-shrink:0;border-bottom:1px solid #303247}.toolbar{height
 .clip.empty-slot{background:transparent!important;border:1px dashed #8886;color:inherit;box-shadow:none}
 .clip.empty-slot .trim{display:none}
 [hidden]{display:none!important}
+#app>.rail{grid-column:1}#app>#nav{grid-column:2}#app>main{grid-column:3}.workspace>.left{grid-column:1}.workspace>.right{grid-column:2}
 .authenticated-editor .canvas{background:#000}
 .authenticated-editor .canvas video,.authenticated-editor .canvas img.preview-media{object-fit:contain}
 .authenticated-editor .audio .clip,.authenticated-editor .music .clip{background-image:none}
@@ -280,6 +281,7 @@ const mediaControls=[...mediaPanel.children].filter(item=>item!==mediaPanel.firs
 const toolDetails=document.createElement('div');
 mediaPanel.append(toolDetails);
 function openTextTrack(index){
+ editTabs[0].click();
  textPicker.value=String(index);
  textPicker.onchange();
  $('copy').focus();
@@ -326,6 +328,7 @@ editTabs.forEach((tab,index)=>tab.onclick=()=>{
 const motion=document.createElement('div');
 motion.hidden=true;
 motion.innerHTML='<label>Clip start (seconds) <input id="clip-start" type="number" min="0" max="30" step=".01"></label><label>Clip duration (seconds) <input id="clip-duration" type="number" min=".05" max="30" step=".01"></label>';
+inspector.append(motion);
 function updateClipInputs(){
  const clip=selectedClip;
  $('clip-start').disabled=$('clip-duration').disabled=!clip;
@@ -345,7 +348,6 @@ $('clip-duration').onchange=event=>{
  stop();placeClip(selectedClip,start,boundedClipDuration(selectedClip,start,event.target.valueAsNumber));renderTime();updateClipInputs();checkpoint();
 };
 editTabs[1].addEventListener('click',updateClipInputs);
-inspector.append(motion);
 editTabs[0].click();
 const split=document.createElement('button');
 split.type='button';
