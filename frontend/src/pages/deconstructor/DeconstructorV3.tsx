@@ -9,7 +9,7 @@ import './DeconstructorV3.css'
 
 const root = '/deconstructor-v3'
 const navigation = [
-  ['Home','/dashboard',Home], ['Campaigns','/dashboard-classic',FolderKanban],
+  ['Home','/home',Home], ['Campaigns','/dashboard-classic',FolderKanban],
   ['Post Creator','/post-creator-v2',Image], ['Video Studio','/video-studio-v3',Film],
   ['Deconstructor',root,ScanSearch], ['Reconstructor','/reconstructor/assets',RefreshCw],
   ['Assets','/assets',FolderOpen], ['Templates','/templates',LayoutTemplate],

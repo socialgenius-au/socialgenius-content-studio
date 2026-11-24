@@ -8,7 +8,7 @@ import { Home, FolderKanban, FileText, Image, Images, Clapperboard, ScanSearch, 
 import './ContentBriefPage.css'
 
 const sections = [
-  { label:'Home', url:'/dashboard', icon:Home },
+  { label:'Home', url:'/home', icon:Home },
   { label:'Campaigns', url:'/dashboard-classic', icon:FolderKanban },
   { label:'Create Brief', url:'/create-brief', icon:FileText },
   { label:'Post Creator', url:'/post-creator-v2', icon:Image },

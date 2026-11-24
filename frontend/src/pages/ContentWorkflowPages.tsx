@@ -7,7 +7,7 @@ const labels=['Content Brief','Generate','Edit & Enhance','Publish / Export']
 const destinations=['/create-brief','/create/generate','/create/edit','/create/publish']
 const formatOptions=['Social Post','Carousel','Video']
 const tiers=['Low','Medium','Best']
-const navItems=[{name:'Home',url:'/dashboard',icon:Home},{name:'Create Brief',url:'/create-brief',icon:Sparkles},{name:'Generate',url:'/create/generate',icon:WandSparkles},{name:'Edit & Enhance',url:'/create/edit',icon:Settings2},{name:'Publish / Export',url:'/create/publish',icon:Share2},{name:'Video Studio',url:'/video-studio-v2',icon:Clapperboard}]
+const navItems=[{name:'Home',url:'/home',icon:Home},{name:'Create Brief',url:'/create-brief',icon:Sparkles},{name:'Generate',url:'/create/generate',icon:WandSparkles},{name:'Edit & Enhance',url:'/create/edit',icon:Settings2},{name:'Publish / Export',url:'/create/publish',icon:Share2},{name:'Video Studio',url:'/video-studio-v2',icon:Clapperboard}]
 export default function ContentWorkflowPages(){
   const {stage:stageParam}=useParams()
   const stage:Stage=stageParam==='edit'?'edit':stageParam==='publish'?'publish':'generate'

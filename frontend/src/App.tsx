@@ -23,6 +23,8 @@ import { LoadingState } from './components/common/LoadingState'
 import { LEGACY_STUDIO_ROUTE } from './config/studioRoutes'
 import { legacyStudioRedirectRoutes } from './routes/studioRedirects'
 
+const GuestHome = lazy(() => import('./pages/StudioShowcase').then(module => ({ default: module.GuestHome })))
+const RoleDashboard = lazy(() => import('./pages/RoleDashboard'))
 const StudioHomePreview = lazy(() => import('./pages/StudioHomePreview'))
 const ContentBriefPage = lazy(() => import('./pages/ContentBriefPage'))
 const ContentWorkflowPages = lazy(() => import('./pages/ContentWorkflowPages'))
@@ -74,7 +76,7 @@ function PageFallback() {
 }
 
 function AppRoutes() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
 
   // Public recovery routes must render even if the backend is unavailable.
   // Protected routes retain their own RequireAuth loading guard.
@@ -147,9 +149,10 @@ function AppRoutes() {
       <Route path="/create/:stage" element={<RequireAuth><Suspense fallback={<PageFallback />}><ContentWorkflowPages /></Suspense></RequireAuth>} />
       <Route path="/create-brief" element={<RequireAuth><Suspense fallback={<PageFallback />}><ContentBriefPage /></Suspense></RequireAuth>} />
 
-      {/* Approved Home UI now serves the main dashboard; original dashboard retained at /dashboard-classic. */}
+      {/* The creative home and role dashboards have independent entry points. */}
       <Route path="/studio-home-preview" element={<RequireAuth><ClientProvider><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></ClientProvider></RequireAuth>} />
-      <Route path="/dashboard" element={<RequireAuth><ClientProvider><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></ClientProvider></RequireAuth>} />
+      <Route path="/dashboard" element={<RequireAuth><Suspense fallback={<PageFallback />}><RoleDashboard /></Suspense></RequireAuth>} />
+      <Route path="/home" element={<RequireAuth><ClientProvider><Suspense fallback={<PageFallback />}><StudioHomePreview /></Suspense></ClientProvider></RequireAuth>} />
 
       {/* Creator workspace: full-width editing surface, outside the legacy application sidebar. */}
       <Route path="/carousel-creator" element={<RequireAuth><ClientProvider><Suspense fallback={<PageFallback />}><CarouselCreatorPage /></Suspense></ClientProvider></RequireAuth>} />
@@ -286,7 +289,7 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
-      <Route path="/" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
+      <Route path="/" element={loading ? <PageFallback /> : user ? <Navigate to="/home" replace /> : <Suspense fallback={<PageFallback />}><GuestHome /></Suspense>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

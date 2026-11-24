@@ -100,9 +100,9 @@ describe('navigation and login point at Video Studio V2', () => {
     for (const i of items) expect(i.path, i.id).not.toMatch(/(^|\/)studio$/)
   })
 
-  it('after login the user is sent to Video Studio V2, not /studio', () => {
+  it('after login the user is sent to their dashboard', () => {
     const login = read('components/Login.tsx')
-    expect(login).toContain('navigate(VIDEO_STUDIO_ROUTE)')
+    expect(login).toContain("navigate('/dashboard', { replace: true })")
     expect(login).not.toMatch(/navigate\(\s*['"`]\/studio/)
   })
 
