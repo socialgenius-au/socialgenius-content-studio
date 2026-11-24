@@ -63,7 +63,7 @@ export default function VideoStudioV3() {
      if (!(file instanceof File)) throw new Error('Invalid file')
      const { data } = await uploadApi.upload(file)
      target?.postMessage({type:'sg-v3-upload-result', asset: {
-      id: data.id, name: data.original_filename, kind: data.file_type,
+      id: data.id, name: data.original_filename, kind: file.type.split("/")[0],
      }, file}, window.location.origin)
     } catch {
      target?.postMessage({type:'sg-v3-upload-result', error:true}, window.location.origin)
@@ -71,12 +71,12 @@ export default function VideoStudioV3() {
     return
    }
    if (event.data?.type === 'sg-v3-library-download') {
+    const id=Number(event.data.id)
     try {
-     const id=Number(event.data.id)
      if(!Number.isSafeInteger(id)||id<=0) throw Error('Invalid asset')
      const response=await assetsApi.download(id)
      target?.postMessage({type:'sg-v3-library-media',id,blob:response.data},window.location.origin)
-    } catch {target?.postMessage({type:'sg-v3-library-media',error:true},window.location.origin)}
+    } catch {target?.postMessage({type:'sg-v3-library-media',id,error:true},window.location.origin)}
     return
    }
    if (event.data?.type === 'sg-v3-export') {
