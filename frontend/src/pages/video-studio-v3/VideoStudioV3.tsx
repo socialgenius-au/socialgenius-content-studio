@@ -1,5 +1,6 @@
+import { videoScenePresets } from '../../components/videoTemplatePresets'
 import { useEffect, useRef } from 'react'
-import { assetsApi, generateApi, videoStudioDraftsApi, videoExportApi, uploadApi } from '../../api/client'
+import { assetsApi, brandKitsApi, generateApi, videoStudioDraftsApi, videoExportApi, uploadApi } from '../../api/client'
 import editorHtml from '../../../../ui-v3/index.html?raw'
 type ExportMedia = {
  asset_id: number
@@ -20,6 +21,20 @@ export default function VideoStudioV3() {
   const receive = async (event: MessageEvent) => {
    if (event.source !== frame.current?.contentWindow || event.origin !== window.location.origin) return
    const target = frame.current?.contentWindow
+   if (event.data?.type === 'sg-v3-presets') {
+    target?.postMessage({type:'sg-v3-preset-list',presets:videoScenePresets},window.location.origin)
+    return
+   }
+   if (event.data?.type === 'sg-v3-brand-kits') {
+    try {
+     const { data } = await brandKitsApi.list()
+     const kits = (Array.isArray(data) ? data : []).map((item: {name: string; primary?: string}) => ({name:item.name,color:item.primary}))
+     target?.postMessage({type:'sg-v3-brand-kit-list',kits},window.location.origin)
+    } catch {
+     target?.postMessage({type:'sg-v3-brand-kit-list',kits:[],error:true},window.location.origin)
+    }
+    return
+   }
    if (event.data?.type === 'sg-v3-ai') {
     const prompt = typeof event.data.prompt === 'string' ? event.data.prompt.trim().slice(0, 2000) : ''
     if (!prompt) return
@@ -74,8 +89,9 @@ export default function VideoStudioV3() {
      const video: ExportVideo[] = []
      const upperVideo: ExportVideo[] = []
      const audio: ExportMedia[] = []
+     const overlays = []
      for (const clip of clips) {
-      if (!['video','audio'].includes(clip.kind)||!Number.isFinite(clip.start)||!Number.isFinite(clip.duration)||clip.start<0||clip.duration<=0) throw Error('Unsupported clip')
+      if (!['video','audio','image'].includes(clip.kind)||!Number.isFinite(clip.start)||!Number.isFinite(clip.duration)||clip.start<0||clip.duration<=0) throw Error('Unsupported clip')
       let id = Number(clip.serverId)
       if (!Number.isSafeInteger(id)||id<=0) {
        if (!(clip.blob instanceof Blob)) throw Error('Missing media')
@@ -84,11 +100,13 @@ export default function VideoStudioV3() {
       }
       const trim = clip.trim ?? 0
       if (!Number.isFinite(trim) || trim < 0) throw Error('Invalid clip trim')
-      const item = {asset_id:id,start_time:clip.start,end_time:clip.start+clip.duration,trim_in:trim,volume:clip.muted?0:1}
+      const item = {asset_id:id,start_time:clip.start,end_time:clip.start+clip.duration,trim_in:trim,volume:clip.muted?0:Math.max(0,Math.min(1,Number(clip.volume ?? 1)))}
       if (clip.kind === 'video') {
        if (clip.track !== 0 && clip.track !== 1) throw Error('Invalid video track')
        const track = clip.track === 0 ? video : upperVideo
        track.push({...item,muted:!!clip.muted,speed:1,fit_mode:'fit'})
+      } else if (clip.kind === 'image') {
+       overlays.push({ ...item,x:0,y:0,width:100,height:100,opacity:Math.max(0,Math.min(1,Number(clip.opacity ?? 1))),muted:true })
       } else {
        audio.push(item)
       }
@@ -118,7 +136,7 @@ export default function VideoStudioV3() {
      }
      const result = await videoExportApi.exportProject({
       canvas_width:width,canvas_height:height,video_clips:video,additional_video_clips:additionalVideo,
-      audio_tracks:audio,text_overlays:texts,media_overlays:[],
+      audio_tracks:audio,text_overlays:texts,media_overlays:overlays,
      })
      const url=URL.createObjectURL(result.data)
      const link=document.createElement('a');link.href=url;link.download='social-genius-v3.mp4';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000)

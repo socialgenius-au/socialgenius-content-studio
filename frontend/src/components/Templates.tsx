@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { templatesApi } from '../api/client'
 import type { Template } from '../types'
 import './TemplatesMarketplace.css'
+import { videoScenePresets } from './videoTemplatePresets'
 
 const catalogue: Record<string,string[]> = {
   'Social Posts':['Business Introduction','Product Showcase','Special Offer','Customer Testimonial','Motivational Quote','Before & After','Event Announcement','Educational Tip','New Product Launch','Call-to-Action Post'],
@@ -35,18 +36,7 @@ function DesignPreview({item}:{item:Starter}){
  </div></div>
 }
 
-const videoScenePresets:Record<string,string[]>={
- 'Business Introduction Reel':['Meet our business','What we believe','What we offer','Get in touch'],
- 'Product Demonstration':['Meet the product','See it in action','Why it matters','Try it today'],
- 'Before & After Transformation':['The challenge','Before','The transformation','After'],
- 'Three Quick Tips':['Three tips for you','Tip number one','Tip number two','Tip number three'],
- 'Customer Testimonial Video':['A customer story','The challenge','Their experience','The result'],
- 'Promotional Offer Reel':['Something special','What is included','Why act now','Claim your offer'],
- 'Behind the Scenes':['Come behind the scenes','Our process','Meet the people','The finished result'],
- 'Question & Answer':['You asked us','The question','Our answer','Learn more'],
- 'Problem to Solution Video':['The problem','Why it happens','Our solution','Take the next step'],
- 'Event Highlight':['An unforgettable event','The highlights','The people','See you next time']
-}
+
 const providers=[{name:'Adobe Express',url:'https://www.adobe.com/express/templates',description:'External free and premium design templates; editing and licensing depend on Adobe.'},{name:'Canva',url:'https://www.canva.com/templates/',description:'External free and Pro designs; check Canva terms and use in Canva where required.'},{name:'Pixabay',url:'https://pixabay.com/',description:'Stock images, video and music for filling templates, not a native editable template catalogue.'},{name:'Pexels',url:'https://www.pexels.com/',description:'Stock photos and video for filling templates; check licence and restrictions.'}]
 export default function Templates(){
  const navigate=useNavigate()
