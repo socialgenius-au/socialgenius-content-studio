@@ -230,7 +230,17 @@ function storeText(){textStates[activeText]={text:$('copy').value,style:selected
 function showText(){const nodes=[headline,secondHeadline];textClips.forEach((c,i)=>{const n=nodes[i];if(!n)return;const s=textStates[i];n.textContent=s.text;n.style.cssText=s.style;if(i===1&&!n.style.top)n.style.top='65%';const start=Number(c.dataset.start),end=start+Number(c.dataset.duration);if(authenticatedEditor){c.classList.toggle('empty-slot',!s.text.trim());c.firstChild.textContent=s.text||'Empty'}n.hidden=!s.text.trim()||position<start||position>=end||c.parentElement.classList.contains('track-muted')})}
 const textPicker=document.createElement('select');textPicker.setAttribute('aria-label','Text track');textClips.forEach((c,i)=>textPicker.add(new Option('Text '+(i+1),String(i))));$('copy').before(textPicker);
 textPicker.onchange=()=>{storeText();activeText=Number(textPicker.value);$('copy').value=textStates[activeText].text;showText()};
-$('copy').addEventListener('input',()=>{storeText();showText();checkpoint()});
+$('copy').addEventListener('input',()=>{
+ const clip=textClips[activeText];
+ if(authenticatedEditor&&!textStates[activeText].text.trim()&&$('copy').value.trim()){
+  const start=Math.min(position,29.95);
+  const available=playbackEnd()-start;
+  placeClip(clip,start,Math.min(30-start,available>=.05?Math.min(4,available):4));
+ }
+ storeText();
+ renderTime();
+ checkpoint();
+});
 inspector.addEventListener('change',()=>{storeText();showText();checkpoint()});
 inspector.addEventListener('click',()=>{storeText();showText();checkpoint()});
 const originalSnapshot=snapshot;snapshot=function(){return {...originalSnapshot(),textLayers:textStates.map(s=>({...s}))}};
@@ -408,6 +418,24 @@ brandLink.href='/brands';
 brandLink.target='_top';
 brandLink.textContent='Open Brand Kit';
 document.querySelector('.brand').append(brandLink);
+document.querySelectorAll('.brand .swatches i').forEach(swatch=>{
+ const shade=getComputedStyle(swatch).backgroundColor;
+ swatch.tabIndex=0;
+ swatch.setAttribute('role','button');
+ swatch.setAttribute('aria-label','Apply brand color '+shade);
+ const apply=()=>{
+  selectedTextNode().style.color=shade;
+  storeText();
+  renderTime();
+  checkpoint();
+ };
+ swatch.onclick=apply;
+ swatch.onkeydown=event=>{
+  if(event.key!=='Enter'&&event.key!==' ')return;
+  event.preventDefault();
+  apply();
+ };
+});
 const zoom=document.querySelector('.preview .tabs button');
 zoom.onclick=()=>{
  const enlarged=zoom.textContent==='100%';
