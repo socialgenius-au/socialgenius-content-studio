@@ -109,3 +109,11 @@ Beginning, Previous frame, Next frame, Rewind, Fast forward, End, Play/Pause and
 The Product Demonstration template was found by search, customised and applied as editable titles. The existing main video remained present. An image was assigned to Video 2 and the inspector changed to image fields. Cloud save returned draft 5. After reload, cloud open restored the video, image and customised template title. The downloaded MP4 contained 1080 × 1920 H.264 and AAC with a measured audio peak of −0.3 dBFS. Its 5-second output exposed truncation at the end of the video footage when other tracks ran longer. The export now requests the full occupied timeline duration, and the renderer fills the tail with background and silence before compositing.
 
 Independent audio fade controls, exact inspector value persistence, fullscreen, fine snapping, cross-track drag, and verification of the corrected full-length MP4 remain separate acceptance checks. No production deployment was made.
+
+## Full-duration Railway export verification
+
+The isolated acceptance web and API deployments for `e2b8993` reached SUCCESS. On that frontend, removing the longest clip at 19.50 seconds clamped both time displays to the new project end of 16.00 seconds. Zoom changed the lane width from 719 to 1080 CSS pixels and Zoom Out and Fit restored it. The tested 1363-pixel workspace had no horizontal page overflow. Selecting Education filtered the live template library.
+
+After cloud save, reload and reopen, the draft restored the 5-second video with contrast 12 and saturation −20, the 2-second image at 40% width and 35% height, and the customised template titles. The new export downloaded and decoded successfully. It contained 16.00 seconds of 1080 × 1920 H.264 video and AAC audio, with a measured peak of −0.8 dBFS. Frame inspection confirmed the image overlay near the opening and the final template title at 13 seconds, eight seconds after the base footage ended.
+
+A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-duration export evidence above applies to `e2b8993`. Exact snapping, cross-track pointer movement, fullscreen, and an independent fade track in a browser export remain open. The synthetic audio file chooser timed out in the browser test. No production deployment was performed.
