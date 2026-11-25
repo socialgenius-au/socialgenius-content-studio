@@ -205,7 +205,15 @@ clips.forEach(wireClip);
 
 const localAssets=new Map(), mediaPlayers=new Map();let activeVisual=null;
 const status=document.createElement('div');status.className='media-status';status.setAttribute('role','status');$('media').after(status);
-function assignAsset(asset, explicitClip){const kind=asset.kind;let clip=explicitClip||selectedClip;if(!clip||!(kind==='audio'?['audio','music'].includes(clip.closest('.track').classList[1]):clip.closest('.track').classList.contains('video')))clip=clips.find(c=>c.closest('.track').classList.contains(kind==='audio'?'audio':'video'));if(!clip)return;selectClip(clip);const old=mediaPlayers.get(clip);if(old){old.pause?.();old.remove();mediaPlayers.delete(clip)}clip.classList.remove('empty-slot');clip.dataset.trim='0';delete clip.dataset.sourceDuration;for(const key of Object.keys(propertyDefaults))delete clip.dataset[key];delete clip.dataset.volume;delete clip.dataset.opacity;clip.dataset.asset=asset.id;clip.dataset.label=asset.name;clip.firstChild.textContent=asset.name;const player=document.createElement(kind==='image'?'img':kind);player.src=asset.url;player.preload='metadata';if(kind==='video'){player.playsInline=true;player.muted=false}if(kind==='image')player.className='preview-media';player.hidden=true;canvas.prepend(player);mediaPlayers.set(clip,player);if(kind!=='image'){
+function assignAsset(asset, explicitClip){
+ if(!explicitClip&&!restoring){
+  const compatible=lane=>lane&&(asset.kind==='audio'?['audio','music'].includes(trackKind(lane)):trackKind(lane)==='video');
+  const lane=compatible(selectedClip?.parentElement)?selectedClip.parentElement:laneRows.find(compatible);
+  if(!lane)return;
+  enqueueMediaAppend(asset,lane);
+  return;
+ }
+ const kind=asset.kind;let clip=explicitClip||selectedClip;if(!clip||!(kind==='audio'?['audio','music'].includes(clip.closest('.track').classList[1]):clip.closest('.track').classList.contains('video')))clip=clips.find(c=>c.closest('.track').classList.contains(kind==='audio'?'audio':'video'));if(!clip)return;selectClip(clip);const old=mediaPlayers.get(clip);if(old){old.pause?.();old.remove();mediaPlayers.delete(clip)}clip.classList.remove('empty-slot');clip.dataset.trim='0';delete clip.dataset.sourceDuration;for(const key of Object.keys(propertyDefaults))delete clip.dataset[key];delete clip.dataset.volume;delete clip.dataset.opacity;clip.dataset.asset=asset.id;clip.dataset.label=asset.name;clip.firstChild.textContent=asset.name;const player=document.createElement(kind==='image'?'img':kind);player.src=asset.url;player.preload='metadata';if(kind==='video'){player.playsInline=true;player.muted=false}if(kind==='image')player.className='preview-media';player.hidden=true;canvas.prepend(player);mediaPlayers.set(clip,player);if(kind!=='image'){
  const useSourceDuration=!restoring;
  player.addEventListener('loadedmetadata',()=>{
   if(mediaPlayers.get(clip)!==player)return;
@@ -278,7 +286,7 @@ while(clips.length<s.clips.length){
  clips.push(clip);
 }
 selectedClip=null;
-s.clips.forEach((v,i)=>{const clip=clips[i];if(lanes[v.track])lanes[v.track].append(clip);placeClip(clip,v.start,v.duration);clip.dataset.label=v.label;clip.firstChild.textContent=v.label;clip.classList.toggle('empty-slot',authenticatedEditor&&!v.asset&&v.label==='Empty');const player=mediaPlayers.get(clip);if(player&&clip.dataset.asset!==v.asset){player.pause?.();player.remove();mediaPlayers.delete(clip)}if(!v.asset){delete clip.dataset.asset;clip.style.backgroundImage=''}if(v.asset&&localAssets.has(v.asset)&&!mediaPlayers.has(clip)){selectClip(clip);assignAsset(localAssets.get(v.asset));placeClip(clip,v.start,v.duration)}else if(v.asset&&!localAssets.has(v.asset)){status.textContent='Reattach local media: '+v.label;delete clip.dataset.asset}clip.dataset.trim=String(v.trim||0);clip.dataset.volume=String(v.volume??1);clip.dataset.opacity=String(v.opacity??1);for(const [key,val] of Object.entries(propertyDefaults))clip.dataset[key]=String(v.properties?.[key]??val);if(!v.asset)delete clip.dataset.sourceDuration});lanes.forEach((l,i)=>l.classList.toggle('track-muted',!!s.muted[i]));$('scenes').replaceChildren();s.scenes.forEach(v=>{const b=document.createElement('button');b.className='scene'+(v.selected?' selected':'');const parsed=new DOMParser().parseFromString(v.html,'text/html');b.textContent=parsed.body.textContent;b.dataset.start=String(v.start||0);if(v.end!=null)b.dataset.end=String(v.end);$('scenes').append(b)});position=Math.max(0,s.position);renderTime();restoring=false}
+s.clips.forEach((v,i)=>{const clip=clips[i];if(lanes[v.track])lanes[v.track].append(clip);placeClip(clip,v.start,v.duration);clip.dataset.label=v.label;clip.firstChild.textContent=v.label;clip.classList.toggle('empty-slot',authenticatedEditor&&!v.asset&&v.label==='Empty');const player=mediaPlayers.get(clip);if(player&&clip.dataset.asset!==v.asset){player.pause?.();player.remove();mediaPlayers.delete(clip)}if(!v.asset){delete clip.dataset.asset;clip.style.backgroundImage=''}if(v.asset&&localAssets.has(v.asset)&&!mediaPlayers.has(clip)){selectClip(clip);assignAsset(localAssets.get(v.asset),clip);placeClip(clip,v.start,v.duration)}else if(v.asset&&!localAssets.has(v.asset)){status.textContent='Reattach local media: '+v.label;delete clip.dataset.asset}clip.dataset.trim=String(v.trim||0);clip.dataset.volume=String(v.volume??1);clip.dataset.opacity=String(v.opacity??1);for(const [key,val] of Object.entries(propertyDefaults))clip.dataset[key]=String(v.properties?.[key]??val);if(!v.asset)delete clip.dataset.sourceDuration});lanes.forEach((l,i)=>l.classList.toggle('track-muted',!!s.muted[i]));$('scenes').replaceChildren();s.scenes.forEach(v=>{const b=document.createElement('button');b.className='scene'+(v.selected?' selected':'');const parsed=new DOMParser().parseFromString(v.html,'text/html');b.textContent=parsed.body.textContent;b.dataset.start=String(v.start||0);if(v.end!=null)b.dataset.end=String(v.end);$('scenes').append(b)});position=Math.max(0,s.position);renderTime();restoring=false}
 function checkpoint(){if(restoring)return;const s=snapshot();if(JSON.stringify(history.at(-1))===JSON.stringify(s))return;history.push(s);if(history.length>80)history.shift();future.length=0;updateHistory()}
 const head=document.querySelector('header'), hb=head.querySelectorAll('button'), undo=hb[0],redo=hb[1];function updateHistory(){undo.disabled=history.length<2;redo.disabled=!future.length}
 undo.onclick=()=>{if(history.length<2)return;future.push(history.pop());restore(history.at(-1));updateHistory()};redo.onclick=()=>{if(!future.length)return;const s=future.pop();history.push(s);restore(s);updateHistory()};
@@ -1387,4 +1395,30 @@ const restoreHidden=namedButton('Restore hidden media',()=>{
 libraryButton.after(restoreHidden);
 mediaControls.push(restoreHidden);
 const mediaRemoveStyle=document.createElement('style');mediaRemoveStyle.textContent='.thumb .sg-media-remove{position:absolute;right:4px;top:24px;z-index:5;width:23px;height:23px;display:grid;place-items:center;background:#181522e8;color:white;border:1px solid #aaa;border-radius:5px;font-size:20px;line-height:1;cursor:pointer}.thumb .sg-media-remove:hover,.thumb .sg-media-remove:focus{background:#a5263d;outline:2px solid white}';document.head.append(mediaRemoveStyle);
+
+/* Serialize thumbnail additions per lane, so asynchronous metadata cannot overlap clips. */
+const appendQueues=new Map();
+function enqueueMediaAppend(asset,lane){
+ const previous=appendQueues.get(lane)||Promise.resolve();
+ const task=previous.catch(()=>{}).then(async()=>{
+  let duration=4;
+  if(asset.kind!=='image'){
+   duration=await new Promise((resolve,reject)=>{
+    const probe=document.createElement(asset.kind);
+    const timer=setTimeout(()=>finish(Error('Media metadata timed out')),15000);
+    function finish(error,value){clearTimeout(timer);probe.onloadedmetadata=null;probe.onerror=null;probe.removeAttribute('src');probe.load();error?reject(error):resolve(value)}
+    probe.onloadedmetadata=()=>Number.isFinite(probe.duration)&&probe.duration>0?finish(null,probe.duration):finish(Error('Invalid duration'));
+    probe.onerror=()=>finish(Error('Media could not be read'));
+    probe.preload='metadata';probe.src=asset.url;
+   });
+  }
+  const start=Math.max(0,...clips.filter(c=>c.parentElement===lane&&occupied(c)).map(c=>Number(c.dataset.start)+Number(c.dataset.duration)));
+  if(clips.length>=100&&!clips.some(c=>c.parentElement===lane&&!occupied(c)))throw Error('Project clip limit reached');
+  stop();
+  insertClip({asset:asset.id,duration,trim:0},start,lane);
+  status.textContent=asset.name+' added at '+timeLabel(start)+' on '+lane.closest('.track').firstElementChild.textContent;
+ }).catch(error=>{status.textContent=error.message||'Unable to add media'});
+ appendQueues.set(lane,task);
+ task.then(()=>{if(appendQueues.get(lane)===task)appendQueues.delete(lane)});
+}
 </script></body></html>
