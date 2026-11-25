@@ -316,7 +316,7 @@ export default function DeconstructorV3() {
         if (!start || !end || !Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b <= a || b > duration) throw Error('Enter a start and end within the source duration.')
         const landscape = (details?.video.width ?? 0) >= (details?.video.height ?? 0)
         const excerpt = await videoExportApi.exportProject({
-          canvas_width: landscape ? 1920 : 1080, canvas_height: landscape ? 1080 : 1920,
+          canvas_width: details?.video.width || (landscape ? 1920 : 1080), canvas_height: details?.video.height || (landscape ? 1080 : 1920),
           video_clips: [{asset_id:video.asset_id,start_time:0,end_time:b-a,trim_in:a}],
         })
         const name = `Reference ${video.id} excerpt ${a}-${b}s.mp4`
@@ -451,7 +451,7 @@ export default function DeconstructorV3() {
           </select></label></div>}
         </Card></div>
         <div className="dc3-stack"><Card title="Select Analysis Modules"><label className="dc3-check"><input type="checkbox" checked={select.length === modules.length} onChange={event => setSelect(event.target.checked ? modules.map(([key]) => key) : [])} />Select all available modules</label><p>Combine intelligence modules for a focused analysis. Local uses the SEO report with a location-specific topic.</p><div className="dc3-modules dc3-selective-modules">{modules.map(([key,label,description]) => <label className={select.includes(key) ? 'selected' : ''} key={key}><input type="checkbox" checked={select.includes(key)} onChange={event => setSelect(event.target.checked ? [...select,key] : select.filter(module => module !== key))} /><strong>{label}</strong><small>{description}</small></label>)}</div></Card>
-          <Card title="Analysis Scope Summary"><div className="dc3-actions"><div><strong>{select.length} modules selected</strong><p>{modules.filter(([key]) => select.includes(key)).map(([,label]) => label).join(', ')}</p><small>Scope: {range ? `${start || '0'}–${end || duration}s` : `Full video · ${time(duration)}`} · Selective (Custom) · Processing time varies by module</small></div><button className="chosen" type="button" disabled={!video || busy || !select.length} onClick={() => void run(true)}><Target />Run Selected Analysis</button></div></Card>
+          <Card title="Analysis Scope Summary"><div className="dc3-actions"><div><strong>{select.length} modules selected</strong><p>{modules.filter(([key]) => select.includes(key)).map(([,label]) => label).join(', ')}</p><small>Scope: {range ? `${Number(start || 0).toFixed(2)}–${Number(end || duration).toFixed(2)}s` : `Full video · ${time(duration)}`} · Selective (Custom) · Processing time varies by module</small></div>{select.some(key => ['seo','geo','aeo','local'].includes(key)) && researchTopic.trim().length < 3 && <p role="status">Enter a public research topic before running selected research modules.</p>}<button className="chosen" type="button" disabled={!video || busy || !select.length || (select.some(key => ['seo','geo','aeo','local'].includes(key)) && researchTopic.trim().length < 3)} onClick={() => void run(true)}><Target />Run Selected Analysis</button></div></Card>
         </div>
       </div>}
       {(mode === 'Quick Analysis' || mode === 'Deep Analysis') && <div className="dc3-grid dc3-analysis">
