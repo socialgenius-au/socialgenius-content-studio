@@ -10,8 +10,9 @@ type Selection={source:string;type:MediaType;scene:number;query:string;url:strin
 type HandoffFinding = [label: string, value: string | number | null, evidence: string]
 type HandoffMechanism = {mechanism_id:string; type:string; purpose:string; transferable_principle:string|null}
 type SavedResearch = {topic:string; partial?:boolean; findings:{text:string; citations:{title:string; url:string}[]}[]}
+type MarketingPurpose = {summary:string; confidence:string; scene:{start:number; end:number}; evidence:{kind:string; start:number; end:number; text:string}[]}
 type DetectedScene={number:number;start:number;end:number;role:string;story:string;technical:string;audio:string}
-const readDetected=()=>{try{return JSON.parse(sessionStorage.getItem('sg-reconstructor-detected-scenes')||'null') as {referenceId:number|null;scenes:DetectedScene[]; messaging?:HandoffFinding[]; discoverability?:HandoffFinding[]; metadata?:HandoffFinding[]; mechanisms?:HandoffMechanism[]; research_reports?:Record<string,SavedResearch>}|null}catch{return null}}
+const readDetected=()=>{try{return JSON.parse(sessionStorage.getItem('sg-reconstructor-detected-scenes')||'null') as {referenceId:number|null;scenes:DetectedScene[]; messaging?:HandoffFinding[]; discoverability?:HandoffFinding[]; metadata?:HandoffFinding[]; mechanisms?:HandoffMechanism[]; research_reports?:Record<string,SavedResearch>; messaging_report?:{scenes:MarketingPurpose[]} | null}|null}catch{return null}}
 const key='sg-reconstructor-asset-finder-v1'
 const readSaved=()=>{try{return JSON.parse(sessionStorage.getItem(key)||'{}') as Record<string,unknown>}catch{return {}}}
 export default function ReconstructorAssetFinder(){
@@ -63,6 +64,12 @@ export default function ReconstructorAssetFinder(){
    <Link to={`/deconstructor-v3/${detected.referenceId}?view=Deep%20Analysis`}>Open read-only analysis</Link>
    <Link to={`/deconstructor/${detected.referenceId}`}>Open six-stage reconstruction workflow</Link>
    {([['Messaging',detected.messaging],['Technical metadata',detected.metadata],['Discoverability',detected.discoverability]] as const).map(([label, findings]) => findings?.length ? <details key={label}><summary>{label}</summary><dl>{findings.map(([name,value,evidence]) => <div key={name}><dt>{name}</dt><dd>{value ?? 'Unavailable'} · {evidence}</dd></div>)}</dl></details> : null)}
+   {!!detected.messaging_report?.scenes.length && <details><summary>Scene marketing purposes</summary>
+     {detected.messaging_report.scenes.map(purpose => <div key={purpose.scene.start}>
+       <p><strong>{purpose.scene.start.toFixed(1)}–{purpose.scene.end.toFixed(1)}s</strong> · {purpose.summary} · {purpose.confidence} evidence strength</p>
+       <ul>{purpose.evidence.map((source,index) => <li key={index}>{source.kind} · {source.start.toFixed(1)}–{source.end.toFixed(1)}s · {source.text}</li>)}</ul>
+     </div>)}
+   </details>}
    {Object.entries(detected.research_reports ?? {}).map(([dimension, report]) => (
      <details key={dimension}>
        <summary>{dimension} research · {report.topic}{report.partial ? ' · Partial' : ''}</summary>

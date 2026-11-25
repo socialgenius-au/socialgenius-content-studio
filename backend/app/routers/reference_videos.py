@@ -97,6 +97,7 @@ from app.deps import current_user
 from app.models.analysis_annotation import AnalysisAnnotation
 from app.models.asset import Asset
 from app.models.reference_video import ReferenceVideo
+from app.models.scene import Scene
 from app.models.shot import Shot
 from app.models.shot_frame import ShotFrame
 from app.models.speech_segment import SpeechSegment
@@ -986,6 +987,113 @@ async def run_search_research(
     return payload
 
 
+MESSAGING_CATEGORY = "messaging_intelligence_v1"
+
+
+class MessagingContext(BaseModel):
+    industry: str = Field(default="", max_length=500)
+    contentType: str = Field(default="", max_length=500)
+    objective: str = Field(default="", max_length=500)
+    audience: str = Field(default="", max_length=500)
+    note: str = Field(default="", max_length=1000)
+
+
+async def _saved_messaging(db: AsyncSession, analysis_id: int) -> dict | None:
+    annotation = await db.scalar(select(AnalysisAnnotation).where(
+        AnalysisAnnotation.video_analysis_id == analysis_id,
+        AnalysisAnnotation.category == MESSAGING_CATEGORY,
+    ).order_by(AnalysisAnnotation.id.desc()).limit(1))
+    return annotation.details if annotation else None
+
+
+async def _messaging_reference(db: AsyncSession, reference_id: int, user_id: int):
+    await _require_owned_reference(db, reference_id, user_id)
+    reference = await db.get(ReferenceVideo, reference_id)
+    analysis = await db.scalar(select(VideoAnalysis).where(
+        VideoAnalysis.reference_video_id == reference_id,
+    ).order_by(VideoAnalysis.created_at.desc(), VideoAnalysis.id.desc()).limit(1))
+    if analysis is None:
+        raise HTTPException(409, "Analyse the reference video first.")
+    return reference, analysis.id
+
+
+@router.get("/{reference_video_id}/messaging-intelligence")
+async def get_messaging_intelligence(
+    reference_video_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    _, analysis_id = await _messaging_reference(db, reference_video_id, user.id)
+    return await _saved_messaging(db, analysis_id)
+
+
+@router.post("/{reference_video_id}/messaging-intelligence")
+async def run_messaging_intelligence(
+    reference_video_id: int, context: MessagingContext,
+    db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    from app.services.ai_metering import AiCostControlError
+    from app.services.messaging_intelligence import interpret
+    from app.services.creative_reader.evidence import build_input, load_images
+    from app.services.transcript_alt_svc import build_alternatives_view, load_alternative_rows
+
+    reference, analysis_id = await _messaging_reference(db, reference_video_id, user.id)
+    asset = await db.get(Asset, reference.asset_id)
+    if asset is None:
+        raise HTTPException(404, "Reference media not found.")
+    reference_data = await _to_response(db, reference, asset, video_analysis_id=analysis_id)
+    original = [item.model_dump(mode="json") for item in reference_data.speech_segments]
+    readings = build_alternatives_view(original, await load_alternative_rows(db, analysis_id))
+    preferred = next((item for item in readings["alternatives"] if item["run_id"] == readings["preferred_run_id"]), None)
+    spoken = preferred["segments"] if preferred else original
+    evidence = [
+        {"id": f"speech-{item['id']}", "kind": "speech", "start": item["start_time"], "end": item["end_time"],
+         "text": item["text"][:750], "language": preferred["detected_language"] if preferred else item.get("language"),
+         "reading": preferred["model"] if preferred else "original"}
+        for item in spoken[:48] if item["text"].strip()
+    ]
+    scenes = (await db.scalars(select(Scene).where(Scene.video_analysis_id == analysis_id).order_by(Scene.start_time).limit(30))).all()
+    for number, scene in enumerate(scenes or reference_data.shots[:30], 1):
+        evidence.append({"id": f"scene-{number}", "kind": "scene", "start": scene.start_time,
+                         "end": scene.end_time, "text": f"Section {number}"})
+    for shot in reference_data.shots[:30]:
+        for text in shot.text_elements[:5]:
+            if any(char.isalpha() for char in text.text):
+                evidence.append({"id": f"ocr-{text.id}", "kind": "ocr", "start": text.start_time,
+                                 "end": text.end_time, "text": text.text[:280], "score": text.confidence_score})
+        for obj in shot.visual_objects[:5]:
+            evidence.append({"id": f"visual-{obj.id}", "kind": "visual", "start": obj.start_time,
+                             "end": obj.end_time, "text": obj.label, "score": obj.confidence_score})
+    prepared = build_input(reference_data.model_dump(mode="json"), max_frames=6)
+    images, visual_limitations = await load_images(prepared, 448)
+    evidence.extend({"id": f"frame-{image['frame_id']}", "kind": "frame",
+                     "start": image["timestamp"], "end": image["timestamp"],
+                     "text": f"Sampled frame from shot {image['shot_order']}"} for image in images)
+    if not any(item["kind"] != "scene" for item in evidence):
+        raise HTTPException(409, "Run speech, OCR or visual analysis to gather evidence first.")
+    from hashlib import sha256
+    notes = context.model_dump()
+    fingerprint = sha256(json.dumps([notes, evidence], sort_keys=True).encode()).hexdigest()
+    cached = await _saved_messaging(db, analysis_id)
+    if cached and cached.get("fingerprint") == fingerprint:
+        return cached
+    try:
+        async with asyncio.timeout(100):
+            with ai_scope(reference_video_id=reference_video_id, user_id=user.id, video_analysis_id=analysis_id, reasoner="messaging_intelligence"):
+                report = await interpret(evidence, notes, images)
+    except AiCostControlError as error:
+        raise HTTPException(503, str(error)) from error
+    except TimeoutError as error:
+        raise HTTPException(504, "Messaging analysis exceeded its time limit.") from error
+    except Exception as error:
+        logging.getLogger(__name__).warning("Messaging provider failed: %s", type(error).__name__)
+        raise HTTPException(502, "The provider could not produce a valid messaging report.") from error
+    payload = {**report, "fingerprint": fingerprint, "analysis_id": analysis_id, "limitations": visual_limitations}
+    db.add(AnalysisAnnotation(video_analysis_id=analysis_id, category=MESSAGING_CATEGORY,
+                              start_time=0, end_time=max(item["end"] for item in evidence),
+                              details=payload, certainty="INFERRED", source="anthropic"))
+    await db.commit()
+    return payload
+
+
 class HandoffScene(BaseModel):
     number: int
     start: float = Field(ge=0, allow_inf_nan=False)
@@ -1019,6 +1127,11 @@ async def create_reconstruction_handoff(
         raise HTTPException(422, "Scene end must be after its start.")
     payload = body.model_dump(mode="json")
     payload["research_reports"] = await _latest_saved_research(db, reference_video_id)
+    latest_analysis_id = await db.scalar(select(VideoAnalysis.id).where(
+        VideoAnalysis.reference_video_id == reference_video_id,
+    ).order_by(VideoAnalysis.created_at.desc(), VideoAnalysis.id.desc()).limit(1))
+    if latest_analysis_id is not None:
+        payload["messaging_report"] = await _saved_messaging(db, latest_analysis_id)
     if len(json.dumps(payload).encode()) > 512_000:
         raise HTTPException(413, "The reconstruction handoff exceeds the supported size.")
     handoff = ReferenceReconstructionHandoff(reference_video_id=reference_video_id, payload=payload)

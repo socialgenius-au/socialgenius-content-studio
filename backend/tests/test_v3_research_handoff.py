@@ -15,6 +15,7 @@ async def test_reconstruction_handoff_snapshots_saved_research(monkeypatch):
     ownership = AsyncMock()
     monkeypatch.setattr(routes, "_require_owned_reference", ownership)
     db = MagicMock()
+    db.scalar = AsyncMock(return_value=None)
     db.flush = AsyncMock(side_effect=lambda: setattr(db.add.call_args.args[0], "id", 31))
     db.commit = AsyncMock()
     db.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: [

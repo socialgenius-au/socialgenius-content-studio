@@ -34,6 +34,13 @@ const modules = [
 type Module = typeof modules[number][0]
 type ContextNotes = { industry: string; contentType: string; objective: string; audience: string; note: string }
 const emptyNotes: ContextNotes = { industry: '', contentType: '', objective: '', audience: '', note: '' }
+type MessagingSource = {id:string; kind:string; start:number; end:number; text:string}
+type MessagingFinding = {summary:string; confidence:string; evidence:MessagingSource[]}
+type MessagingReport = {
+  findings: Record<string, MessagingFinding>
+  scenes: (MessagingFinding & {scene:MessagingSource})[]
+  translations: {source:MessagingSource; english:string; confidence:string}[]
+}
 type TimelineItem = { key: string; start: number; end: number; text: string }
 
 const time = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`
@@ -209,6 +216,21 @@ export default function DeconstructorV3() {
     }).catch(error => { if (live) setMessage(errorMessage(error, 'Could not load the reference video.')) })
     return () => { live = false }
   }, [id, d.references.data])
+  const [savedMessaging, setSavedMessaging] = useState<{id:number; report:MessagingReport | null} | null>(null)
+  const [interpreting, setInterpreting] = useState(false)
+  const semantic = savedMessaging?.id === id ? savedMessaging?.report : null
+  useEffect(() => {
+    if (!id || mode !== 'Messaging Intelligence') return
+    let live = true
+    referenceVideosApi.messagingIntelligence(id).then(({data}) => {
+      if (live) setSavedMessaging({id, report:data})
+    }).catch(error => { if (live) setMessage(errorMessage(error, 'Could not load saved messaging analysis.')) })
+    return () => { live = false }
+  }, [id, mode])
+  const interpretMessaging = async (targetId: number) => {
+    const {data} = await referenceVideosApi.runMessagingIntelligence(targetId, notes)
+    setSavedMessaging({id:targetId, report:data})
+  }
   const video = reference?.id === id ? reference : null
   useEffect(() => {
     if (!video?.original_url) return
@@ -272,7 +294,7 @@ export default function DeconstructorV3() {
   const pain = roleEvidence(/pain.point|customer.challenge|frustration/i) || speechCue(/\b(?:difficult|takes? too long|time.consuming|mushkil|moshkil|pareshani)\b|मुश्किल|परेशानी|مشکل|پریشانی/iu)
   const action = speechCue(/(?:^|[.!?]\s+)\s*(?:buy|order|shop|subscribe|download|try)\s|\b(?:order karein|kharidein|try karo)\b|ऑर्डर करें|अभी खरीदें|آرڈر کریں/iu)
   const messageEvidence = roleEvidence(/core.message|main.message|value.proposition/i)
-  const messaging: Finding[] = [
+  const legacyMessaging: Finding[] = [
     result('Business objective', notes.objective || roleEvidence(/objective|campaign.goal/i), notes.objective ? 'Extracted' : 'Inferred'),
     result('Strategy and positioning', roleEvidence(/positioning|differentiation|strategy/i), 'Inferred'),
     result('Core message', messageEvidence || anatomy?.video.creative?.summary, 'Inferred'),
@@ -290,6 +312,15 @@ export default function DeconstructorV3() {
     result('Trust signals', roleEvidence(/trust|testimonial|social.proof/i), 'Inferred'),
     result('Call to action', roleEvidence(/call.to.action|^cta$/i) || sectionMessage(sections.find(section => section.interpretive.cta_role && sectionMessage(section))) || action, 'Inferred'),
   ]
+  const marketingText = (finding: MessagingFinding) =>
+    `${finding.summary} · ${finding.confidence} evidence strength · ${finding.evidence.map(source =>
+      `${source.kind} ${spanLabel(source.start, source.end)}: ${source.text}`).join(' | ')}`
+  const messaging = semantic || mode === 'Messaging Intelligence' ? legacyMessaging.map(([label,value,evidence]): Finding => {
+    const finding = semantic?.findings[label]
+    if (finding) return result(label, marketingText(finding), 'Inferred')
+    if (evidence === 'Extracted' || evidence === 'Detected') return [label,value,evidence]
+    return result(label, null, 'Unavailable')
+  }) : legacyMessaging
   const discoverability: Finding[] = [
     result('Published URL', video?.original_url, 'Extracted'),
     result('Platform', publishedEvidence?.provider, 'Extracted'),
@@ -385,6 +416,7 @@ export default function DeconstructorV3() {
       if (needsFrames) await referenceVideosApi.analyzeFrames(targetId)
       if (needsText) await referenceVideosApi.analyzeText(targetId)
       if (needsSpeech) await referenceVideosApi.analyzeSpeech(targetId)
+      if (custom && select.includes('messaging')) await interpretMessaging(targetId)
       if (researchSelected) {
         const reports = {...(await referenceVideosApi.searchResearch(targetId)).data} as Partial<Record<ResearchDimension, ResearchReport>>
         const dimensions = researchDimensions.filter(dimension =>
@@ -547,6 +579,17 @@ export default function DeconstructorV3() {
         </div>
       </div>}
       {mode === 'Messaging Intelligence' && <>
+        <div className="dc3-actions">
+          <button className="chosen" type="button" disabled={!video || busy || interpreting} onClick={async () => {
+            if (!video) return
+            setInterpreting(true)
+            setMessage('')
+            try { await interpretMessaging(video.id) }
+            catch (error) { setMessage(errorMessage(error, 'Messaging analysis could not be completed.')) }
+            finally { setInterpreting(false) }
+          }}>{interpreting ? 'Analysing messaging…' : 'Run Messaging Analysis'}</button>
+          <small>Uses saved speech, OCR, visual detections and scene evidence.</small>
+        </div>
         <Card title="Speech Recognition">
           <div className="dc3-actions">
             <label>Speech language <select value={speechLanguage} onChange={event => setSpeechLanguage(event.target.value)}>
@@ -558,10 +601,16 @@ export default function DeconstructorV3() {
             <button type="button" disabled={!video || busy} onClick={() => void rereadSpeech()}>Read speech with multilingual model</button>
           </div>
           {speechReading && <><small>Unverified machine reading{speechReading.detected_language ? ` · ${speechReading.detected_language}` : ''}</small><p dir="auto">{speechReading.text}</p></>}
+          {!!semantic?.translations.length && <details><summary>English translation · machine interpreted</summary>
+            {semantic.translations.map(item => <p key={item.source.id}>
+              <strong>{spanLabel(item.source.start,item.source.end)}</strong> {item.english} · {item.confidence} evidence strength
+            </p>)}
+          </details>}
         </Card>
         <div className="dc3-grid">{preview}{row('Core Message',messaging.filter(([label]) => ['Core message','Recognised speech (machine reading)','Target audience','Emotional triggers','Storytelling','Call to action'].includes(label)))}</div>
         <div className="dc3-actions">{(['Strategy','Hook','Problem','Solution','Storytelling','Persuasion','Audience'] as const).map(tab => <button className={tab === messageTab ? 'chosen' : ''} type="button" key={tab} onClick={() => setMessageTab(tab)}>{tab}</button>)}<button type="button" disabled={!sceneList.length || !video || sending} onClick={() => void send()}>Send to Reconstructor <ArrowRight /></button></div>
-        <div className="dc3-grid">{row(`${messageTab} Evidence`,messaging.filter(([label]) => ({Strategy:['Business objective','Strategy and positioning','Problem','Solution','Benefits'],Hook:['Hook'],Problem:['Problem','Customer pain points'],Solution:['Solution','Benefits','Value proposition'],Storytelling:['Storytelling','Core message','Call to action'],Persuasion:['Persuasion mechanisms','Emotional triggers','Trust signals'],Audience:['Target audience']}[messageTab].includes(label))))}<Card title="Messaging Structure & Evidence"><button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>
+        <div className="dc3-grid">{row(`${messageTab} Evidence`,messaging.filter(([label]) => ({Strategy:['Business objective','Strategy and positioning','Problem','Solution','Benefits'],Hook:['Hook'],Problem:['Problem','Customer pain points'],Solution:['Solution','Benefits','Value proposition'],Storytelling:['Storytelling','Core message','Call to action'],Persuasion:['Persuasion mechanisms','Emotional triggers','Trust signals'],Audience:['Target audience']}[messageTab].includes(label))))}<Card title="Messaging Structure & Evidence">{!!semantic?.scenes.length && <Findings rows={semantic.scenes.map(item =>
+          result(`Marketing purpose · ${spanLabel(item.scene.start,item.scene.end)}`,marketingText(item),'Inferred'))} />}<button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>
       </>}
       {mode === 'Technical Intelligence' && <div className="dc3-technical">
         <Card title="Scenes">{scenes}</Card>

@@ -159,6 +159,9 @@ type TranscriptAlternatives = {
 
 export const referenceVideosApi = {
   importPublished: (url: string) => api.post('/reference-videos/published-import', { url, rights_confirmed: true }, { timeout: 125_000 }),
+  messagingIntelligence: (id: number) => api.get(`/reference-videos/${id}/messaging-intelligence`),
+  runMessagingIntelligence: (id: number, context: Record<string,string>) =>
+    api.post(`/reference-videos/${id}/messaging-intelligence`, context, {timeout:110000}),
   searchResearch: (id: number) => api.get(`/reference-videos/${id}/search-research`),
   runSearchResearch: (id: number, topic: string, dimension: string) =>
     api.post(`/reference-videos/${id}/search-research`, {topic, dimension}, {timeout: 120_000}),
