@@ -69,6 +69,7 @@ type ResearchDimension = typeof researchDimensions[number]
 type ResearchReport = {
   topic: string
   researched_at: string
+  partial?: boolean
   findings: {text: string; citations: {url:string; title:string}[]}[]
 }
 
@@ -110,7 +111,7 @@ function ExternalResearch({referenceId}: {referenceId: number}) {
       const report = reports[dimension]
       return report && <details key={dimension} open>
         <summary>{dimension} · {report.topic}</summary>
-        <small>{new Date(report.researched_at).toLocaleString()} · Web-cited findings</small>
+        <small>{new Date(report.researched_at).toLocaleString()} · {report.partial ? 'Partial web-cited findings' : 'Web-cited findings'}</small>
         {report.findings.map((finding,index) => <div key={index}>
           <p>{finding.text}</p>
           <ul>{finding.citations.map((source,sourceIndex) =>
