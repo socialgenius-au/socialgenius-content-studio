@@ -49,7 +49,7 @@ function mediaProperties(reference: ReferenceVideo | null): Finding[] {
     result('File name', reference?.original_filename, 'Extracted'),
     result('Duration', facts?.container.duration_seconds != null ? time(facts.container.duration_seconds) : null, 'Extracted'),
     result('Resolution', picture?.width && picture?.height ? `${picture.width} × ${picture.height}` : null, 'Extracted'),
-    result('Aspect ratio', picture?.display_aspect_ratio, 'Extracted'),
+    result('Aspect ratio', picture?.display_aspect_ratio && picture.display_aspect_ratio !== 'N/A' ? picture.display_aspect_ratio : picture?.width && picture?.height ? (() => { const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a; const divisor = gcd(picture.width, picture.height); return `${picture.width / divisor}:${picture.height / divisor} (pixel dimensions)` })() : null, 'Extracted'),
     result('Frame rate', picture?.average_frame_rate != null ? `${picture.average_frame_rate} fps` : null, 'Extracted'),
     result('Format / codec', [facts?.container.format_name, picture?.codec_name].filter(Boolean).join(' / '), 'Extracted'),
     result('Audio', audio?.present ? [audio.codec_name, audio.channel_layout, audio.sample_rate_hz && `${audio.sample_rate_hz} Hz`].filter(Boolean).join(' · ') : audio ? 'No audio stream' : null, 'Extracted'),
@@ -350,7 +350,13 @@ export default function DeconstructorV3() {
     setSending(true)
     const handoff = { referenceId:video.id, scenes:sceneList, context:notes, messaging, discoverability, metadata, mechanisms:creative?.mechanisms ?? [], provenance:anatomy?.provenance }
     try {
-      const {data} = await referenceVideosApi.createHandoff(video.id,handoff)
+      const {data: savedResearch} = await referenceVideosApi.searchResearch(video.id)
+      const researchEvidence = discoverability.map(([label, value, evidence]): Finding => {
+        const dimension = researchDimensions.find(item => item === label)
+        const report = dimension ? (savedResearch as Partial<Record<ResearchDimension, ResearchReport>>)[dimension] : undefined
+        return report?.findings.length ? [label, `${report.topic} · ${report.partial ? 'Partial research' : 'Web research'} · ${report.findings.map(finding => `${finding.text} (${finding.citations.map(source => `${source.title}: ${source.url}`).join('; ')})`).join('\n')}`, 'Researched'] : [label, value, evidence]
+      })
+      const {data} = await referenceVideosApi.createHandoff(video.id,{...handoff, discoverability: researchEvidence})
       navigate(`/reconstructor/assets?scene=${sceneList[0].number}&reference=${video.id}&handoff=${data.id}`)
     } catch (error) { setMessage(errorMessage(error, 'Could not save this Reconstructor handoff.')) }
     finally { setSending(false) }
