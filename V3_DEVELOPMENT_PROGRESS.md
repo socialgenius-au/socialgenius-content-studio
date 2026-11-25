@@ -145,3 +145,8 @@ A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-du
 - Selective hashtag analysis now runs the OCR dependencies without invoking speech recognition.
 - Commit 5c37a91 reached SUCCESS on Railway acceptance. A browser download from the 16:9 canvas measured 1920 × 1080 H.264/AAC and 5.055 seconds. The independent three-track browser run was blocked by the browser file-picker timeout, so the overlapping audio measurements are from local FFmpeg regression.
 - The full backend run reached about 29% against isolated PostgreSQL before the test process was killed. A per-file rerun exposed an obsolete blueprint test expectation. The test now verifies rejection of references to nonexistent sections while retaining the non-blocking check for mismatches between valid sections.
+
+## Local research and retention regression
+
+- Discoverability and Selective Analysis now request a dedicated Local research report using the existing cited search and persistence path. Local reports no longer overwrite or substitute for SEO reports. Existing SEO, GEO and AEO reports remain reusable.
+- Updated retention regression fixtures to distinguish a saved device or completed zero-device classification from an interrupted attempt. The latter remains retryable when a provider is available.

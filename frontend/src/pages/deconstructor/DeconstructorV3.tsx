@@ -29,7 +29,7 @@ const modules = [
   ['seo', 'SEO', 'Live cited search research.'],
   ['geo', 'GEO', 'Live cited generative search research.'],
   ['aeo', 'AEO', 'Live cited answer-engine research.'],
-  ['local', 'Local', 'Location-specific SEO research using a public topic.'],
+  ['local', 'Local', 'Cited location-specific research using a public topic.'],
 ] as const
 type Module = typeof modules[number][0]
 type ContextNotes = { industry: string; contentType: string; objective: string; audience: string; note: string }
@@ -77,7 +77,7 @@ function sourceTerms(text: string) {
   return [...terms.entries()].sort((a,b) => b[1] - a[1]).slice(0,12).map(([word]) => word)
 }
 
-const researchDimensions = ['SEO', 'GEO', 'AEO'] as const
+const researchDimensions = ['SEO', 'GEO', 'AEO', 'Local'] as const
 type ResearchDimension = typeof researchDimensions[number]
 type ResearchReport = {
   topic: string
@@ -90,6 +90,7 @@ const researchReportTitles = {
   SEO: 'Search topics and related keywords',
   GEO: 'Source coverage for generative answers',
   AEO: 'Questions and cited answers',
+  Local: 'Location-specific sources and search topics',
 } satisfies Record<ResearchDimension, string>
 
 function ExternalResearch({referenceId, onReports}: {referenceId: number; onReports: (reports: Partial<Record<ResearchDimension, ResearchReport>>) => void}) {
@@ -307,7 +308,7 @@ export default function DeconstructorV3() {
     result('Secondary keyword candidates (frequency ranked)', detectedTerms.slice(3).join(' · '), 'Detected'),
     result('Long-tail phrase candidates (observed speech)', speech.map(segment => segment.text.trim()).filter(value => value.split(/\s+/).length >= 3 && value.split(/\s+/).length <= 8 && readableOverlay(value)).filter((value,index,all) => all.indexOf(value) === index).slice(0,8).join(' · '), 'Detected'),
     result('Research topic candidates', [...new Set(researchDimensions.map(dimension => savedReports?.id === id ? savedReports.reports[dimension]?.topic : undefined).filter(Boolean))].join(' · '), 'Researched'),
-    ...['Publication date', 'Views', 'Likes', 'Semantic keyword validation', 'Geographic and local search'].map(label => result(label, null, 'Researched')),
+    ...['Publication date', 'Views', 'Likes', 'Semantic keyword validation'].map(label => result(label, null, 'Researched')),
     ...researchDimensions.map(dimension => { const report = savedReports?.id === id ? savedReports.reports[dimension] : undefined; return result(dimension, report?.findings.length ? `${report.partial ? 'Partial research' : 'Research saved'} · ${report.findings.length} cited findings · ${report.topic}` : null, 'Researched') }),
   ]
   const busy = working || d.busy !== null
@@ -387,7 +388,7 @@ export default function DeconstructorV3() {
       if (researchSelected) {
         const reports = {...(await referenceVideosApi.searchResearch(targetId)).data} as Partial<Record<ResearchDimension, ResearchReport>>
         const dimensions = researchDimensions.filter(dimension =>
-          select.includes(dimension.toLowerCase() as Module) || (dimension === 'SEO' && select.includes('local')))
+          select.includes(dimension.toLowerCase() as Module))
         for (const dimension of dimensions) {
           const saved = reports[dimension]
           if (saved && !saved.partial && saved.topic.trim().toLowerCase() === researchTopic.trim().toLowerCase()) continue
@@ -526,7 +527,7 @@ export default function DeconstructorV3() {
             {shots.length > 0 && <optgroup label="Shots">{shots.map(shot => <option key={shot.id} value={`${shot.start_time}:${shot.end_time}`}>Shot {shot.order} · {spanLabel(shot.start_time,shot.end_time)}</option>)}</optgroup>}
           </select></label></div>}
         </Card></div>
-        <div className="dc3-stack"><Card title="Select Analysis Modules"><label className="dc3-check"><input type="checkbox" checked={select.length === modules.length} onChange={event => setSelect(event.target.checked ? modules.map(([key]) => key) : [])} />Select all available modules</label><p>Combine intelligence modules for a focused analysis. Local uses the SEO report with a location-specific topic.</p><div className="dc3-modules dc3-selective-modules">{modules.map(([key,label,description]) => <label className={select.includes(key) ? 'selected' : ''} key={key}><input type="checkbox" checked={select.includes(key)} onChange={event => setSelect(event.target.checked ? [...select,key] : select.filter(module => module !== key))} /><strong>{label}</strong><small>{description}</small></label>)}</div></Card>
+        <div className="dc3-stack"><Card title="Select Analysis Modules"><label className="dc3-check"><input type="checkbox" checked={select.length === modules.length} onChange={event => setSelect(event.target.checked ? modules.map(([key]) => key) : [])} />Select all available modules</label><p>Combine intelligence modules for a focused analysis. Include a location in the topic for Local research.</p><div className="dc3-modules dc3-selective-modules">{modules.map(([key,label,description]) => <label className={select.includes(key) ? 'selected' : ''} key={key}><input type="checkbox" checked={select.includes(key)} onChange={event => setSelect(event.target.checked ? [...select,key] : select.filter(module => module !== key))} /><strong>{label}</strong><small>{description}</small></label>)}</div></Card>
           <Card title="Analysis Scope Summary"><div className="dc3-actions"><div><strong>{select.length} modules selected</strong><p>{modules.filter(([key]) => select.includes(key)).map(([,label]) => label).join(', ')}</p><small>Scope: {range ? `${Number(start || 0).toFixed(2)}–${Number(end || duration).toFixed(2)}s` : `Full video · ${time(duration)}`} · Selective (Custom) · Processing time varies by module</small></div>{select.some(key => ['seo','geo','aeo','local'].includes(key)) && researchTopic.trim().length < 3 && <p role="status">Enter a public research topic before running selected research modules.</p>}<button className="chosen" type="button" disabled={!video || busy || !select.length || (select.some(key => ['seo','geo','aeo','local'].includes(key)) && researchTopic.trim().length < 3)} onClick={() => void run(true)}><Target />Run Selected Analysis</button></div></Card>
         </div>
       </div>}

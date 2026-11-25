@@ -872,7 +872,7 @@ async def reference_publication(reference_video_id: int, db: AsyncSession = Depe
 
 class SearchResearchRequest(BaseModel):
     topic: str = Field(min_length=3, max_length=160)
-    dimension: Literal["SEO", "GEO", "AEO"]
+    dimension: Literal["SEO", "GEO", "AEO", "Local"]
 
 
 @router.get("/{reference_video_id}/search-research")
@@ -905,6 +905,7 @@ async def run_search_research(
     focus = {
         "SEO": "Describe observed search topics and competing pages; distinguish related keywords from measured rankings or volume.",
         "GEO": "Identify attributable authorities and source coverage for generative answers; do not claim visibility on any other engine.",
+        "Local": "Identify location-specific search topics and cite relevant pages for the market named in the topic. State when the topic does not establish a location. Do not infer location from the user or claim measured local demand.",
         "AEO": "Identify questions supported by retrieved pages and cite concise evidence-based answers; do not claim featured-snippet placement.",
     }[body.dimension]
     system = (

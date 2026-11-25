@@ -407,8 +407,11 @@ async def test_existing_results_are_left_untouched_even_with_no_orchestration_re
                 db.add(AnalysisAnnotation(video_analysis_id=va_id, shot_id=None, category=cat, start_time=0.0, end_time=3.0,
                                           details={}, certainty="MEASURED", source="test"))
             db.add(StrategicInsight(video_analysis_id=va_id, category="hook", description="d", details={}, certainty="INFERRED"))
-            # A LEGACY (pre-acceptance-gate) retention attempt still counts as existing: upgrading it is a
-            # paid re-run that must be an explicit force_ai, never a silent side effect.
+            # The completed classification has a saved device. Older attempt evidence
+            # alongside the result must not trigger another paid run.
+            db.add(AnalysisAnnotation(video_analysis_id=va_id, shot_id=None, category="retention_device",
+                                      start_time=5.0, end_time=6.0, details={"device_type": "text_reveal"},
+                                      certainty="INFERRED", source="test"))
             db.add(AnalysisAnnotation(video_analysis_id=va_id, shot_id=None, category="retention_reasoning_attempt",
                                       start_time=5.0, end_time=5.0, details={"device_type": "text_reveal", "prompt_version": "v2"},
                                       certainty="INFERRED", source="test"))
@@ -431,12 +434,15 @@ async def test_existing_results_are_left_untouched_even_with_no_orchestration_re
             await cleanup(db, asset_id, rv_id)
 
 
-async def test_existing_results_report_already_complete_even_when_the_ai_reasoner_is_not_configured(ai_off):
+@pytest.mark.parametrize("completed", [False, True])
+async def test_retention_completion_distinguishes_attempts_from_finished_runs(ai_off, completed):
     from app.models.analysis_annotation import AnalysisAnnotation
 
     async with _TestSessionLocal() as db:
         user = await _existing_test_user(db)
         manual = {s.key: "complete" for s in STAGES if s.kind == "endpoint"}
+        if completed:
+            manual["retention_classification_complete"] = True
         rv_id, asset_id, va_id = await make_reference(db, user, va_status="complete", pass_status=manual)
         try:
             db.add(AnalysisAnnotation(video_analysis_id=va_id, shot_id=None, category="retention_reasoning_attempt",
@@ -445,7 +451,7 @@ async def test_existing_results_report_already_complete_even_when_the_ai_reasone
             await db.commit()
             report = await run_deconstruction(db, user, rv_id, runners=fake_runners([]))
             by_key = {s["key"]: s for s in report["stages"]}
-            assert by_key["retention_devices"]["status"] == "already_complete"  # data exists: not "skipped"
+            assert by_key["retention_devices"]["status"] == ("already_complete" if completed else "skipped")
             assert by_key["hook_classification"]["status"] == "skipped"  # nothing exists and AI is off
         finally:
             await cleanup(db, asset_id, rv_id)
