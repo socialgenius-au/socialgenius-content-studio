@@ -24,7 +24,7 @@ describe('app shell navigation on small screens', () => {
     expect(h).toContain('aria-label="Main navigation"')
     expect(h).toContain('data-testid="nav-backdrop"')
     expect(h).toContain('aria-label="Close navigation"')
-    expect(h).toMatch(/fixed inset-y-0 left-0 z-50 w-60/)
+    expect(h).toMatch(/fixed inset-y-0 left-0 z-50 w-64/)
     expect(h).toContain('max-w-[85vw]')
     expect(h).toContain('Dashboard')                                   // the full labels, not the icon rail
     expect(h).not.toContain('Collapse')                                // the desktop rail toggle is not offered inside the drawer
@@ -36,9 +36,9 @@ describe('app shell navigation on small screens', () => {
     delete store['sg.sidebarCollapsed']
   })
 
-  it('on desktop nothing changes: a permanent 240px column with the Collapse control and no backdrop', () => {
+  it('on desktop the navigation is a permanent sidebar with the Collapse control and no backdrop', () => {
     const h = html({})
-    expect(h).toContain('w-60')
+    expect(h).toContain('w-[248px]')
     expect(h).toContain('Collapse')
     expect(h).toContain('Dashboard')
     expect(h).not.toContain('nav-backdrop')
@@ -49,7 +49,7 @@ describe('app shell navigation on small screens', () => {
   it('on desktop the saved icon-rail preference still applies', () => {
     store['sg.sidebarCollapsed'] = '1'
     const h = html({})
-    expect(h).toContain('w-[60px]')
+    expect(h).toContain('w-[76px]')
     expect(h).not.toContain('>Dashboard<')
     delete store['sg.sidebarCollapsed']
   })
@@ -73,14 +73,14 @@ describe('wiring', () => {
     expect(app).toContain('<Sidebar narrow={narrow} open={navOpen}')
     expect(app).toContain('<TopBar showMenuButton={narrow} onOpenMenu')
     expect(app).toMatch(/useEffect\(\(\) => \{ setNavOpen\(false\) \}, \[pathname, narrow\]\)/)
-    expect(app).toContain('p-4 sm:p-6')                                   // less padding on phones
+    expect(app).toContain('p-5 sm:p-8')                                   // less padding on phones
   })
   it('the top bar has an Open navigation button only when asked, and hides the breadcrumbs below the lg breakpoint so the header fits', () => {
     expect(top).toContain('aria-label="Open navigation"')
     expect(top).toContain('{showMenuButton && (')
     expect(top).toContain('<div className="hidden lg:block"><Breadcrumbs /></div>')
     expect(top).toContain('<span className="hidden lg:inline">AI Companion</span>')       // icon-only below lg, so the header fits a 768px tablet
-    expect(top).toContain('className="h-8 w-36 pl-8 lg:w-48"')
+    expect(top).toMatch(/className="[^"]*w-40[^"]*pl-8 lg:w-64/)
     expect((top.match(/shrink-0/g) ?? []).length).toBeGreaterThanOrEqual(5)             // the icon buttons keep their tap size instead of being squashed
   })
 })

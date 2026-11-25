@@ -247,11 +247,10 @@ describe('slide view', () => {
 describe('wiring', () => {
   const app = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8')
   const nav = readFileSync(new URL('../../config/navigation.ts', import.meta.url), 'utf8')
-  it('the carousel route lives inside the app shell (so phones get the navigation drawer) and has a Growth navigation entry', () => {
+  it('registers a protected full-width carousel workspace and a navigation entry', () => {
     expect(app).toContain("const CarouselCreatorPage = lazy(() => import('./pages/carousel-creator/CarouselCreatorPage'))")
-    const shellEnd = app.indexOf('</Route>', app.indexOf('path="/carousel-creator"'))
-    expect(app.indexOf('path="/carousel-creator"')).toBeGreaterThan(app.indexOf('<AppShell />'))
-    expect(shellEnd).toBeGreaterThan(app.indexOf('path="/carousel-creator"'))
+    expect(app).toMatch(/<Route path="\/carousel-creator" element=\{<RequireAuth><ClientProvider><Suspense[^\n]*<CarouselCreatorPage \/>/)
+    expect(app.indexOf('path="/carousel-creator"')).toBeLessThan(app.indexOf('<AppShell />'))
     expect(nav).toContain("id: 'carousel-creator', label: 'Carousel Creator'")
     expect(nav).toContain("path: '/carousel-creator'")
   })

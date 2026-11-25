@@ -136,3 +136,10 @@ A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-du
 - Railway acceptance at 80d6910 downloaded a 6.50-second, 1080 × 1920 H.264/AAC MP4 from the existing V3 Manual Acceptance Test draft. FFmpeg measured effectively silent audio (−91 dB peak) in this draft. Audible source mixing remains to be verified on the current build.
 - Reference 5 reopened with four saved scenes and transliterated machine speech. A follow-up adds timestamped cues for explicitly expressed difficulty and calls to action in English, Hindi, Urdu and common Roman spellings. Machine readings are shown independently of semantic findings and kept separate from the original data.
 - Updated frontend build passed. Regression results matched baseline (1,637 passed, 25 skipped, seven existing failures).
+
+## Regression and audio mixing follow-up
+
+- The Reference 5 browser export on Railway acceptance produced a 10.03-second 1080 × 1920 H.264/AAC MP4. FFmpeg measured embedded source audio at −16.3 dBFS mean and −0.5 dBFS peak.
+- Updated responsive shell assertions for the V3 dimensions and the protected full-width carousel route. The carousel now constrains its wide-screen grid row to the available height. The frontend suite reported 1,644 passed and 25 skipped.
+- Added real FFmpeg landscape renders with three overlapping audio tracks. Both variants passed, checking relative volumes, a muted second track, first-track fades, delayed music and output duration.
+- Selective hashtag analysis now runs the OCR dependencies without invoking speech recognition.

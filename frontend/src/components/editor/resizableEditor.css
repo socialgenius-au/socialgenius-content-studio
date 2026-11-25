@@ -10,3 +10,5 @@
 .sg-carousel-resizable-layout>div,.sg-carousel-resizable-layout>aside{min-width:0}
 .sg-carousel-resizable-layout>aside{overflow:auto}
 @media(max-width:900px){.pcv2-editor-grid{display:flex!important;flex-direction:column}.pcv2-editor-grid>.sg-editor-resize-handle,.sg-carousel-resizable-layout>.sg-editor-resize-handle{display:none}.sg-carousel-resizable-layout{display:flex;flex-direction:column;gap:12px}.pcv2-editor-left,.pcv2-editor-right{max-height:400px}}
+
+@media (min-width:1280px){.sg-carousel-resizable-layout{grid-template-rows:minmax(0,1fr);min-height:0}}

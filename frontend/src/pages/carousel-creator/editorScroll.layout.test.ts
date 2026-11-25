@@ -10,12 +10,15 @@ const read = (rel: string) => readFileSync(join(here, rel), 'utf8')
 describe('editor panels scroll on their own (wide layout)', () => {
   const page = read('CarouselCreatorPage.tsx')
   const film = read('components/Filmstrip.tsx')
+  const layout = read('../../components/editor/resizableEditor.css')
   const stage = read('components/StageCanvas.tsx')
 
   it('the editor owns a bounded height, and the three-panel grid fills what is left under any banner', () => {
     expect(page).toContain('data-testid="carousel-editor"')
     expect(page).toMatch(/flex flex-col gap-3 xl:h-\[calc\(100dvh-[\d.]+rem\)\] xl:min-h-\[\d+px\]" data-testid="carousel-editor"/)
-    expect(page).toMatch(/className="grid [^"]*xl:min-h-0 xl:flex-1 [^"]*xl:grid-rows-\[minmax\(0,1fr\)\]"/)
+    expect(page).toContain('className="sg-carousel-resizable-layout xl:min-h-0 xl:flex-1"')
+    expect(layout).toMatch(/\.sg-carousel-resizable-layout\{display:grid;grid-template-columns:/)
+    expect(layout).toMatch(/\.sg-carousel-resizable-layout\{grid-template-rows:minmax\(0,1fr\);min-height:0\}/)
     expect(page).not.toMatch(/xl:h-\[calc\(100vh-11rem\)\]/)            // the old fixed height that pushed the panels below the fold on short or zoomed windows
     expect(page).not.toContain('xl:min-h-[560px]')
   })

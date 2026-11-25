@@ -196,3 +196,45 @@ def test_layers_that_outlast_the_timeline_do_not_shorten_it(long_sources, tmp_pa
     for tag, clips, total in (("contig", [_clip(long_sources["A"], 0, 3, 1), _clip(long_sources["B"], 3, 7, 1)], 210), ("gapped", [_clip(long_sources["A"], 0, 3, 1), _clip(long_sources["B"], 4, 7, 1)], 210)):
         out = _render(_project(clips, **{**_layers(tmp_path, long_sources["A"]), "audio_tracks": []}), tmp_path, f"past_{tag}")      # every layer runs to 9 s on a 7 s timeline
         assert len(_frames(out)) == total, tag
+
+
+@pytest.mark.parametrize("mute_second", [False, True])
+def test_landscape_export_mixes_three_independent_tracks(long_sources, tmp_path, mute_second):
+    tracks = []
+    for frequency, start, end, volume, fade_in, fade_out in [
+        (310, 0.0, 3.0, 0.8, 0.5, 0.5),
+        (490, 0.5, 2.5, 0.0 if mute_second else 0.2, 0.0, 0.0),
+        (710, 1.0, 4.0, 0.4, 0.0, 0.0),
+    ]:
+        path = tmp_path / f"{frequency}.wav"
+        subprocess.run([
+            ffmpeg_svc.FFMPEG_BIN, "-y", "-v", "error", "-f", "lavfi",
+            "-i", f"sine=frequency={frequency}:sample_rate=44100:duration=4", str(path),
+        ], check=True)
+        tracks.append(dict(path=str(path), start_time=start, end_time=end, trim_in=0,
+                           volume=volume, fade_in=fade_in, fade_out=fade_out))
+
+    output = _render(_project(
+        [_clip(long_sources["A"], 0, 4, 0)],
+        canvas_width=320, canvas_height=180, audio_tracks=tracks,
+    ), tmp_path, "landscape_mix")
+    decoded = _audio(output)
+
+    def amplitude(frequency, start, end):
+        values, hop, _ = _tone_amp(decoded, frequency)
+        return np.median(values[round(start / hop):round(end / hop)])
+
+    voice = amplitude(310, 1.2, 2.2)
+    second = amplitude(490, 1.2, 2.2)
+    music = amplitude(710, 1.2, 2.2)
+    assert voice > 0.025
+    assert 0.40 < music / voice < 0.60
+    if mute_second:
+        assert second < 0.002
+    else:
+        assert 0.18 < second / voice < 0.32
+    assert amplitude(310, 0.05, 0.15) < voice * 0.45
+    assert amplitude(310, 2.85, 2.95) < voice * 0.45
+    assert amplitude(710, 0.7, 0.9) < 0.002
+    assert amplitude(710, 3.3, 3.8) > 0.015
+    assert abs(ffmpeg_svc_duration(output) - 4) < 0.03

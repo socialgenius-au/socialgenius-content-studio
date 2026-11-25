@@ -377,13 +377,13 @@ export default function DeconstructorV3() {
       }
       const targetId = target.id
       await referenceVideosApi.analyze(targetId)
-      const speechAndText = custom && (select.includes('messaging') || select.includes('discoverability') || select.includes('keywords') || select.includes('hashtags'))
-      if (!custom || select.includes('technical') || speechAndText) await referenceVideosApi.analyzeStructure(targetId)
-      if (custom && (select.includes('technical') || speechAndText)) await referenceVideosApi.analyzeFrames(targetId)
-      if (speechAndText) {
-        await referenceVideosApi.analyzeText(targetId)
-        await referenceVideosApi.analyzeSpeech(targetId)
-      }
+      const needsSpeech = custom && select.some(key => ['messaging', 'discoverability', 'keywords'].includes(key))
+      const needsText = needsSpeech || (custom && select.includes('hashtags'))
+      const needsFrames = needsText || (custom && select.includes('technical'))
+      if (!custom || needsFrames) await referenceVideosApi.analyzeStructure(targetId)
+      if (needsFrames) await referenceVideosApi.analyzeFrames(targetId)
+      if (needsText) await referenceVideosApi.analyzeText(targetId)
+      if (needsSpeech) await referenceVideosApi.analyzeSpeech(targetId)
       if (researchSelected) {
         const reports = {...(await referenceVideosApi.searchResearch(targetId)).data} as Partial<Record<ResearchDimension, ResearchReport>>
         const dimensions = researchDimensions.filter(dimension =>
