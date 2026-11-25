@@ -153,6 +153,10 @@ export const assetsApi = {
 // Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. Takes an asset_id already
 // returned by uploadApi.upload — never uploads a file itself; see reference_videos.py's own
 // module docstring on the backend for exact scope.
+type TranscriptAlternatives = {
+  alternatives: {model:string; language_hint:string | null; detected_language:string | null; text:string}[]
+}
+
 export const referenceVideosApi = {
   importPublished: (url: string) => api.post('/reference-videos/published-import', { url, rights_confirmed: true }, { timeout: 125_000 }),
   searchResearch: (id: number) => api.get(`/reference-videos/${id}/search-research`),
@@ -181,6 +185,8 @@ export const referenceVideosApi = {
   // semantic classification/font ID/translation — see reference_videos.py's own module docstring
   // for exact scope.
   analyzeText: (id: number) => api.post(`/reference-videos/${id}/analyze-text`),
+  transcriptAlternatives: (id: number) => api.get<TranscriptAlternatives>(`/reference-videos/${id}/transcript-alternatives`),
+  runTranscriptAlternative: (id: number, language: string) => api.post<TranscriptAlternatives>(`/reference-videos/${id}/transcript-alternatives`, undefined, {params:{language:language || undefined}, timeout:180000}),
   analyzeSpeech: (id: number) => api.post(`/reference-videos/${id}/analyze-speech`),
 }
 

@@ -66,12 +66,12 @@ function readableOverlay(text: string): boolean {
   const value = text.trim()
   const tokens = value.split(/\s+/)
   const numeric = tokens.filter(token => /^[-+]?\d+(?:\.\d+)?$/.test(token)).length
-  return /\p{L}{2,}/u.test(value) && !(tokens.length >= 5 && numeric / tokens.length >= 0.5)
+  return /\p{L}\p{M}*\p{L}/u.test(value) && !(tokens.length >= 5 && numeric / tokens.length >= 0.5)
 }
 function sourceTerms(text: string) {
   const ignore = new Set(['about','above','after','again','are','and','before','from','have','here','into','just','more','only','some','than','that','them','then','there','these','they','this','those','what','when','where','which','will','with','would','your','you'])
   const terms = new Map<string, number>()
-  for (const word of text.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []) {
+  for (const word of text.normalize("NFC").toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]{3,}/gu) ?? []) {
     if (/\p{L}/u.test(word) && !ignore.has(word)) terms.set(word, (terms.get(word) ?? 0) + 1)
   }
   return [...terms.entries()].sort((a,b) => b[1] - a[1]).slice(0,12).map(([word]) => word)
@@ -85,6 +85,12 @@ type ResearchReport = {
   partial?: boolean
   findings: {text: string; citations: {url:string; title:string}[]}[]
 }
+
+const researchReportTitles = {
+  SEO: 'Search topics and related keywords',
+  GEO: 'Source coverage for generative answers',
+  AEO: 'Questions and cited answers',
+} satisfies Record<ResearchDimension, string>
 
 function ExternalResearch({referenceId, onReports}: {referenceId: number; onReports: (reports: Partial<Record<ResearchDimension, ResearchReport>>) => void}) {
   const [topic, setTopic] = useState('')
@@ -127,6 +133,7 @@ function ExternalResearch({referenceId, onReports}: {referenceId: number; onRepo
       return report && <details key={dimension} open>
         <summary>{dimension} · {report.topic}</summary>
         <small>{new Date(report.researched_at).toLocaleString()} · {report.partial ? 'Partial web-cited findings' : 'Web-cited findings'}</small>
+        <h3>{researchReportTitles[dimension]}</h3>
         {report.findings.map((finding,index) => <div key={index}>
           <p>{finding.text}</p>
           <ul>{finding.citations.map((source,sourceIndex) =>
@@ -151,6 +158,19 @@ export default function DeconstructorV3() {
   const [working, setWorking] = useState(false)
   const [select, setSelect] = useState<Module[]>(['technical','metadata'])
   const [researchTopic, setResearchTopic] = useState('')
+  const [speechLanguage, setSpeechLanguage] = useState('')
+  const [speechReadings, setSpeechReadings] = useState<{id:number; data: Awaited<ReturnType<typeof referenceVideosApi.transcriptAlternatives>>['data']} | null>(null)
+  const speechReading = speechReadings && speechReadings.id === id ? speechReadings.data.alternatives.find(
+    reading => reading.model === 'small' && reading.language_hint === (speechLanguage || null),
+  ) : undefined
+  useEffect(() => {
+    if (!id || mode !== 'Messaging Intelligence') return
+    let current = true
+    referenceVideosApi.transcriptAlternatives(id).then(({data}) => {
+      if (current) setSpeechReadings({id, data})
+    }).catch(() => { /* A reference may not have transcript evidence yet. */ })
+    return () => { current = false }
+  }, [id, mode])
   const [range, setRange] = useState(false)
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
@@ -227,7 +247,7 @@ export default function DeconstructorV3() {
   ]
   const observedText = shots.flatMap(shot => shot.text_elements.filter(item => readableOverlay(item.text)).map(item => item.text)).join(' ')
   const detectedTerms = sourceTerms(`${transcript} ${observedText}`)
-  const visibleHashtags = [...new Set(observedText.match(/#[\p{L}\p{N}_]+/gu) ?? [])]
+  const visibleHashtags = [...new Set(observedText.match(/#[\p{L}\p{N}_][\p{L}\p{M}\p{N}_]*/gu) ?? [])]
   const metadata = mediaProperties(video)
   const messaging: Finding[] = [
     result('Business objective', notes.objective || null, 'Extracted'),
@@ -257,7 +277,7 @@ export default function DeconstructorV3() {
     result('Detected visual entities', [...new Set(shots.flatMap(shot => (shot.visual_objects ?? []).map(item => item.label)))].join(' · '), 'Detected'),
     result('Searchable terms in recognised speech', sourceTerms(transcript).join(' · '), 'Detected'),
     result('Searchable terms in on-screen text', sourceTerms(observedText).join(' · '), 'Detected'),
-    result('Questions in recognised speech', speech.filter(segment => segment.text.includes('?')).slice(0,6).map(segment => `${time(segment.start_time)} · ${segment.text}`).join(' / '), 'Detected'),
+    result('Questions in recognised speech', speech.filter(segment => /[?؟？]/u.test(segment.text)).slice(0,6).map(segment => `${time(segment.start_time)} · ${segment.text}`).join(' / '), 'Detected'),
     ...['Publication date', 'Views', 'Likes', 'Primary / secondary keywords', 'Long-tail and semantic keywords', 'Geographic and local search'].map(label => result(label, null, 'Researched')),
     ...researchDimensions.map(dimension => { const report = savedReports?.id === id ? savedReports.reports[dimension] : undefined; return result(dimension, report?.findings.length ? `${report.partial ? 'Partial research' : 'Research saved'} · ${report.findings.length} cited findings · ${report.topic}` : null, 'Researched') }),
   ]
@@ -336,16 +356,43 @@ export default function DeconstructorV3() {
         await referenceVideosApi.analyzeSpeech(targetId)
       }
       if (researchSelected) {
-        if (select.includes('seo') || select.includes('local')) await referenceVideosApi.runSearchResearch(targetId, researchTopic.trim(), 'SEO')
-        if (select.includes('geo')) await referenceVideosApi.runSearchResearch(targetId, researchTopic.trim(), 'GEO')
-        if (select.includes('aeo')) await referenceVideosApi.runSearchResearch(targetId, researchTopic.trim(), 'AEO')
+        const reports = {...(await referenceVideosApi.searchResearch(targetId)).data} as Partial<Record<ResearchDimension, ResearchReport>>
+        const dimensions = researchDimensions.filter(dimension =>
+          select.includes(dimension.toLowerCase() as Module) || (dimension === 'SEO' && select.includes('local')))
+        for (const dimension of dimensions) {
+          const saved = reports[dimension]
+          if (saved && !saved.partial && saved.topic.trim().toLowerCase() === researchTopic.trim().toLowerCase()) continue
+          reports[dimension] = (await referenceVideosApi.runSearchResearch(targetId, researchTopic.trim(), dimension)).data
+        }
+        setSavedReports({id:targetId, reports})
       }
       setReference((await referenceVideosApi.get(targetId)).data)
-      if (targetId !== id) selectReference(targetId,researchSelected ? 'Discoverability' : 'Quick Analysis')
-      else changeView(researchSelected ? 'Discoverability' : 'Quick Analysis')
+      const resultView = researchSelected || (custom && select.some(key => ['discoverability','keywords','hashtags'].includes(key)))
+        ? 'Discoverability'
+        : custom && select.includes('messaging') ? 'Messaging Intelligence'
+        : custom && select.includes('technical') ? 'Technical Intelligence' : 'Quick Analysis'
+      if (targetId !== id) selectReference(targetId,resultView)
+      else changeView(resultView)
       setMessage(custom ? 'Selected analysis completed.' : 'Quick Analysis completed.')
     } catch (error) {
       setMessage(errorMessage(error, error instanceof Error ? error.message : 'Analysis could not be completed.'))
+    } finally {
+      setWorking(false)
+    }
+  }
+  const rereadSpeech = async () => {
+    if (!video || busy) return
+    setWorking(true)
+    setMessage('')
+    try {
+      await referenceVideosApi.analyze(video.id)
+      await referenceVideosApi.analyzeSpeech(video.id)
+      const {data} = await referenceVideosApi.runTranscriptAlternative(video.id, speechLanguage)
+      const reading = data.alternatives.find(alternative => alternative.language_hint === (speechLanguage || null) && alternative.model === 'small')
+      setSpeechReadings({id:video.id, data})
+      if (!reading) setMessage('No alternative speech segments were detected.')
+    } catch (error) {
+      setMessage(errorMessage(error, 'The speech reading could not be completed.'))
     } finally {
       setWorking(false)
     }
@@ -469,6 +516,18 @@ export default function DeconstructorV3() {
         </div>
       </div>}
       {mode === 'Messaging Intelligence' && <>
+        <Card title="Speech Recognition">
+          <div className="dc3-actions">
+            <label>Speech language <select value={speechLanguage} onChange={event => setSpeechLanguage(event.target.value)}>
+              <option value="">Detect automatically</option>
+              <option value="en">English</option><option value="hi">Hindi</option>
+              <option value="ur">Urdu</option><option value="ar">Arabic</option>
+              <option value="es">Spanish</option><option value="fr">French</option>
+            </select></label>
+            <button type="button" disabled={!video || busy} onClick={() => void rereadSpeech()}>Read speech with multilingual model</button>
+          </div>
+          {speechReading && <><small>Unverified machine reading{speechReading.detected_language ? ` · ${speechReading.detected_language}` : ''}</small><p dir="auto">{speechReading.text}</p></>}
+        </Card>
         <div className="dc3-grid">{preview}{row('Core Message',messaging.filter(([label]) => ['Core message','Target audience','Emotional triggers','Storytelling','Call to action'].includes(label)))}</div>
         <div className="dc3-actions">{(['Strategy','Hook','Problem','Solution','Storytelling','Persuasion','Audience'] as const).map(tab => <button className={tab === messageTab ? 'chosen' : ''} type="button" key={tab} onClick={() => setMessageTab(tab)}>{tab}</button>)}<button type="button" disabled={!sceneList.length || !video || sending} onClick={() => void send()}>Send to Reconstructor <ArrowRight /></button></div>
         <div className="dc3-grid">{row(`${messageTab} Evidence`,messaging.filter(([label]) => ({Strategy:['Business objective','Strategy and positioning','Problem','Solution','Benefits'],Hook:['Hook'],Problem:['Problem'],Solution:['Solution','Benefits'],Storytelling:['Storytelling','Core message','Call to action'],Persuasion:['Persuasion mechanisms','Emotional triggers','Trust signals'],Audience:['Target audience']}[messageTab].includes(label))))}<Card title="Messaging Structure & Evidence"><button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>

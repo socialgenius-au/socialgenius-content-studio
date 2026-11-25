@@ -117,3 +117,11 @@ The isolated acceptance web and API deployments for `e2b8993` reached SUCCESS. O
 After cloud save, reload and reopen, the draft restored the 5-second video with contrast 12 and saturation −20, the 2-second image at 40% width and 35% height, and the customised template titles. The new export downloaded and decoded successfully. It contained 16.00 seconds of 1080 × 1920 H.264 video and AAC audio, with a measured peak of −0.8 dBFS. Frame inspection confirmed the image overlay near the opening and the final template title at 13 seconds, eight seconds after the base footage ended.
 
 A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-duration export evidence above applies to `e2b8993`. Exact snapping, cross-track pointer movement, fullscreen, and an independent fade track in a browser export remain open. The synthetic audio file chooser timed out in the browser test. No production deployment was performed.
+
+## V3 analysis follow-up from 66e2737
+
+- Selective Analysis routes to the requested evidence view. Selecting external research reuses complete saved reports for the same reference, dimension and topic.
+- Discoverability groups the existing citations by research purpose. Devanagari and Arabic-script combining marks are preserved when detecting terms and hashtags.
+- Messaging Intelligence exposes the existing local Whisper small transcript alternative with optional language guidance. It preserves the original and reloads saved alternative readings.
+- Baseline frontend verification at 66e2737 reported 1,637 passed, 25 skipped and 7 failed. The failures cover responsive shell wiring and carousel layout.
+- Reference 4's three saved cited reports reopened on Railway acceptance. Full OCR and speech accuracy, approved design matching, and the complete current-build editor export workflow require further verification.
