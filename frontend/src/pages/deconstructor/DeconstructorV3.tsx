@@ -61,11 +61,18 @@ function mediaProperties(reference: ReferenceVideo | null): Finding[] {
     result('Audio', audio?.present ? [audio.codec_name, audio.channel_layout, audio.sample_rate_hz && `${audio.sample_rate_hz} Hz`].filter(Boolean).join(' · ') : audio ? 'No audio stream' : null, 'Extracted'),
   ]
 }
+// Display guard only: retain raw evidence in storage for diagnostic review.
+function readableOverlay(text: string): boolean {
+  const value = text.trim()
+  const tokens = value.split(/\s+/)
+  const numeric = tokens.filter(token => /^[-+]?\d+(?:\.\d+)?$/.test(token)).length
+  return /\p{L}{2,}/u.test(value) && !(tokens.length >= 5 && numeric / tokens.length >= 0.5)
+}
 function sourceTerms(text: string) {
   const ignore = new Set(['about','above','after','again','are','and','before','from','have','here','into','just','more','only','some','than','that','them','then','there','these','they','this','those','what','when','where','which','will','with','would','your','you'])
   const terms = new Map<string, number>()
   for (const word of text.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []) {
-    if (!ignore.has(word)) terms.set(word, (terms.get(word) ?? 0) + 1)
+    if (/\p{L}/u.test(word) && !ignore.has(word)) terms.set(word, (terms.get(word) ?? 0) + 1)
   }
   return [...terms.entries()].sort((a,b) => b[1] - a[1]).slice(0,12).map(([word]) => word)
 }
@@ -79,7 +86,7 @@ type ResearchReport = {
   findings: {text: string; citations: {url:string; title:string}[]}[]
 }
 
-function ExternalResearch({referenceId}: {referenceId: number}) {
+function ExternalResearch({referenceId, onReports}: {referenceId: number; onReports: (reports: Partial<Record<ResearchDimension, ResearchReport>>) => void}) {
   const [topic, setTopic] = useState('')
   const [reports, setReports] = useState<Partial<Record<ResearchDimension, ResearchReport>>>({})
   const [pending, setPending] = useState<ResearchDimension | null>(null)
@@ -87,7 +94,7 @@ function ExternalResearch({referenceId}: {referenceId: number}) {
   useEffect(() => {
     let live = true
     referenceVideosApi.searchResearch(referenceId).then(({data}) => {
-      if (live) setReports(data)
+      if (live) { setReports(data); onReports(data); setTopic(previous => previous || Object.values(data as Partial<Record<ResearchDimension, ResearchReport>>).find(report => report?.topic)?.topic || '') }
     }).catch(error => {if (live) setMessage(errorMessage(error, 'Saved research could not be loaded.'))})
     return () => {live = false}
   }, [referenceId])
@@ -97,7 +104,9 @@ function ExternalResearch({referenceId}: {referenceId: number}) {
     setMessage('')
     try {
       const {data} = await referenceVideosApi.runSearchResearch(referenceId, topic.trim(), dimension)
-      setReports(previous => ({...previous, [dimension]:data}))
+      const updated = {...reports, [dimension]:data}
+      setReports(updated)
+      onReports(updated)
     } catch (error) {
       setMessage(errorMessage(error, 'Web research was unavailable.'))
     } finally {
@@ -184,6 +193,13 @@ export default function DeconstructorV3() {
     }).catch(() => { /* Provider evidence remains unavailable. */ })
     return () => {live = false}
   }, [video?.id, video?.original_url])
+  const [savedReports, setSavedReports] = useState<{id:number; reports: Partial<Record<ResearchDimension, ResearchReport>>} | null>(null)
+  useEffect(() => {
+    if (!id) return
+    let live = true
+    referenceVideosApi.searchResearch(id).then(({data}) => { if (live) setSavedReports({id, reports:data}) }).catch(() => {})
+    return () => { live = false }
+  }, [id])
   const publishedEvidence = publication?.id === video?.id ? publication : null
   const details = video?.technical_details
   const duration = details?.container.duration_seconds ?? details?.video.duration_seconds ?? 0
@@ -194,10 +210,10 @@ export default function DeconstructorV3() {
   const sceneList = sections.length ? sections.map(section => ({
     number: section.number, start: section.start_time, end: section.end_time,
     role: section.interpretive.narrative_role || 'Scene',
-    story: section.speech_reading?.text || section.transcript_excerpt || section.on_screen_text.map(text => text.text).join(' · '),
+    story: section.speech_reading?.text || section.transcript_excerpt || section.on_screen_text.filter(text => readableOverlay(text.text)).map(text => text.text).join(' · '),
     technical: `${section.pacing.shot_count} detected shots`,
     audio: section.audio.audio_stream_present ? 'Audio stream detected' : '',
-  })) : shots.map(shot => ({ number: shot.order, start: shot.start_time, end: shot.end_time, role: 'Shot', story: shot.text_elements.map(text => text.text).join(' · '), technical: shot.evidence_summary || '', audio: '' }))
+  })) : shots.map(shot => ({ number: shot.order, start: shot.start_time, end: shot.end_time, role: 'Shot', story: shot.text_elements.filter(text => readableOverlay(text.text)).map(text => text.text).join(' · '), technical: shot.evidence_summary || '', audio: '' }))
   const waveformPeaks = waveform?.referenceId === id ? waveform.peaks : null
   const activeShot = shots.find(shot => playhead >= shot.start_time && playhead < shot.end_time) ?? shots[selected]
   const speech = video?.speech_segments ?? []
@@ -205,11 +221,11 @@ export default function DeconstructorV3() {
   const timeline: { label: string; items: TimelineItem[] }[] = [
     {label:'Scenes',items:sceneList.map(scene => ({key:String(scene.number),start:scene.start,end:scene.end,text:`${scene.role} ${scene.number}`}))},
     {label:'Shots',items:shots.map(shot => ({key:String(shot.id),start:shot.start_time,end:shot.end_time,text:`Shot ${shot.order}`}))},
-    {label:'Text overlays',items:shots.flatMap(shot => shot.text_elements.map(item => ({key:String(item.id),start:item.start_time,end:item.end_time,text:item.text})))},
+    {label:'Text overlays',items:shots.flatMap(shot => shot.text_elements.filter(item => readableOverlay(item.text)).map(item => ({key:String(item.id),start:item.start_time,end:item.end_time,text:item.text})))},
     {label:'Speech',items:speech.map(item => ({key:String(item.id),start:item.start_time,end:item.end_time,text:item.text}))},
     {label:'Transitions',items:(video?.transition_evidence ?? []).map(item => ({key:String(item.id),start:item.boundary_timestamp,end:item.boundary_timestamp,text:'Boundary measurement'}))},
   ]
-  const observedText = shots.flatMap(shot => shot.text_elements.map(item => item.text)).join(' ')
+  const observedText = shots.flatMap(shot => shot.text_elements.filter(item => readableOverlay(item.text)).map(item => item.text)).join(' ')
   const detectedTerms = sourceTerms(`${transcript} ${observedText}`)
   const visibleHashtags = [...new Set(observedText.match(/#[\p{L}\p{N}_]+/gu) ?? [])]
   const metadata = mediaProperties(video)
@@ -242,7 +258,8 @@ export default function DeconstructorV3() {
     result('Searchable terms in recognised speech', sourceTerms(transcript).join(' · '), 'Detected'),
     result('Searchable terms in on-screen text', sourceTerms(observedText).join(' · '), 'Detected'),
     result('Questions in recognised speech', speech.filter(segment => segment.text.includes('?')).slice(0,6).map(segment => `${time(segment.start_time)} · ${segment.text}`).join(' / '), 'Detected'),
-    ...['Publication date', 'Views', 'Likes', 'Primary / secondary keywords', 'Long-tail and semantic keywords', 'SEO', 'GEO', 'AEO', 'Geographic and local search'].map(label => result(label, null, 'Researched')),
+    ...['Publication date', 'Views', 'Likes', 'Primary / secondary keywords', 'Long-tail and semantic keywords', 'Geographic and local search'].map(label => result(label, null, 'Researched')),
+    ...researchDimensions.map(dimension => { const report = savedReports?.id === id ? savedReports.reports[dimension] : undefined; return result(dimension, report?.findings.length ? `${report.partial ? 'Partial research' : 'Research saved'} · ${report.findings.length} cited findings · ${report.topic}` : null, 'Researched') }),
   ]
   const busy = working || d.busy !== null
   const selectReference = (newId: number, view: View = 'Reference') => {
@@ -476,7 +493,7 @@ export default function DeconstructorV3() {
         <div className="dc3-stack">{row('Video Properties',metadata)}{row('Shot Breakdown',[
           result('Time range',activeShot?spanLabel(activeShot.start_time,activeShot.end_time):null,'Detected'),
           result('Shot evidence',activeShot?.evidence_summary,'Detected'),
-          result('Text overlays',activeShot?.text_elements.map(item => item.text).join(' · '),'Detected'),
+          result('Text overlays',activeShot?.text_elements.filter(item => readableOverlay(item.text)).map(item => item.text).join(' · '),'Detected'),
           result('Voice-over / speech',activeShot ? speech.filter(segment => segment.start_time < activeShot.end_time && segment.end_time > activeShot.start_time).map(segment => segment.text).join(' ') : null,'Detected'),
           result('Transition measurements',activeShot ? (video?.transition_evidence ?? []).filter(item => item.boundary_timestamp >= activeShot.start_time && item.boundary_timestamp <= activeShot.end_time).length : null,'Detected'),
           result('Measured picture motion',activeShot?.global_motion_evidence ? `${activeShot.global_motion_evidence.frame_pair_count} frame pairs sampled at ${activeShot.global_motion_evidence.sampling_fps} fps` : null,'Detected'),
@@ -485,7 +502,7 @@ export default function DeconstructorV3() {
           ...['Camera angles','Camera movement','Framing','Lighting','Animations','Music identification'].map(label => result(label,null,'Unavailable')),
         ])}</div>
       </div>}
-      {mode === 'Discoverability' && <div className="dc3-grid">{preview}<div className="dc3-stack">{row('Source and Discoverability Evidence', discoverability)}{video && <ExternalResearch key={video.id} referenceId={video.id} />}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched. Detected terms and questions describe the source content. Search ranking, generative answer visibility and local demand require independent evidence.</p></Card></div></div>}
+      {mode === 'Discoverability' && <div className="dc3-grid">{preview}<div className="dc3-stack">{row('Source and Discoverability Evidence', discoverability)}{video && <ExternalResearch key={video.id} referenceId={video.id} onReports={reports => setSavedReports({id:video.id,reports})} />}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched. Detected terms and questions describe the source content. Search ranking, generative answer visibility and local demand require independent evidence.</p></Card></div></div>}
     </main>
   </div>
 }
