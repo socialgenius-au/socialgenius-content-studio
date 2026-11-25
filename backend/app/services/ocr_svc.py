@@ -30,6 +30,12 @@ canonical grouping" design review for the full reasoning this module implements)
 """
 import asyncio
 import difflib
+import csv
+import io
+import os
+from collections import defaultdict
+
+from app.config import settings
 
 import easyocr
 import numpy as np
@@ -54,6 +60,46 @@ def _get_reader(languages: list[str]) -> "easyocr.Reader":
     return _readers[key]
 
 
+async def _detect_tesseract(image_path: str) -> list[dict]:
+    process = await asyncio.create_subprocess_exec(
+        "tesseract", image_path, "stdout", "-l", "eng+hin+urd+ara", "--psm", "11", "tsv",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        env={**os.environ, "OMP_THREAD_LIMIT": "1"},
+    )
+    try:
+        output, _ = await asyncio.wait_for(process.communicate(), timeout=15)
+    except (TimeoutError, asyncio.CancelledError):
+        if process.returncode is None:
+            process.kill()
+        await process.wait()
+        raise
+    if process.returncode:
+        raise RuntimeError("Tesseract could not analyse this frame")
+    lines = defaultdict(list)
+    for row in csv.DictReader(io.StringIO(output.decode()), delimiter="\t"):
+        word = (row.get("text") or "").strip()
+        if row["level"] != "5" or not word:
+            continue
+        confidence = float(row["conf"])
+        if confidence < 0:
+            continue
+        x, y, width, height = (int(row[key]) for key in ("left", "top", "width", "height"))
+        lines[tuple(row[key] for key in ("block_num", "par_num", "line_num"))].append(
+            (word, confidence, x, y, x + width, y + height),
+        )
+    return [
+        {
+            "text": " ".join(word[0] for word in words),
+            "confidence": sum(word[1] for word in words) / (100 * len(words)),
+            "bbox_px": (min(word[2] for word in words), min(word[3] for word in words),
+                        max(word[4] for word in words), max(word[5] for word in words)),
+            "language_group": ["en", "hi", "ur", "ar"],
+            "source": "tesseract",
+        }
+        for words in lines.values()
+    ]
+
+
 async def detect_text_in_frame(image_path: str) -> list[dict]:
     """Runs EasyOCR against one frame image, once per language group in OCR_LANGUAGE_GROUPS, and
     returns every detection from every group as one flat list. Detections from different groups
@@ -71,10 +117,12 @@ async def detect_text_in_frame(image_path: str) -> list[dict]:
     Runs EasyOCR's own (synchronous, blocking, CPU-bound) inference via asyncio.to_thread — never
     call reader.readtext directly on the event loop.
     """
+    if settings.REFERENCE_OCR_ENGINE == "tesseract":
+        return await _detect_tesseract(image_path)
     img = np.array(Image.open(image_path).convert("RGB"))
     results: list[dict] = []
     for languages in OCR_LANGUAGE_GROUPS:
-        reader = _get_reader(languages)
+        reader = await asyncio.to_thread(_get_reader, languages)
         detections = await asyncio.to_thread(reader.readtext, img)
         for bbox_points, text, confidence in detections:
             if not text.strip():

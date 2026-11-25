@@ -1501,6 +1501,7 @@ async def analyze_reference_video_text(
                         "text": r["text"], "confidence": r["confidence"],
                         "bbox_norm": bbox_norm, "timestamp": c["timestamp"],
                         "language_group": r["language_group"],
+                        "source": r.get("source", "easyocr"),
                         "style": ffmpeg_svc.compute_text_region_style(c["file_path"], r["bbox_px"]),
                         "file_path": c["file_path"], "existing_asset_id": c["existing_asset_id"],
                         "is_new": c["is_new"],
@@ -1595,7 +1596,7 @@ async def analyze_reference_video_text(
         return new_asset_id_by_path[detection["file_path"]]
 
     def _evidence_summary(detection: dict, member_count: int) -> str:
-        base = f"EasyOCR ({'+'.join(detection['language_group'])}) confidence={detection['confidence']:.3f}."
+        base = f"{detection['source']} ({'+'.join(detection['language_group'])}) confidence={detection['confidence']:.3f}."
         if member_count > 1:
             base += f" Canonical (highest-confidence) reading of an Occurrence Group with {member_count} raw observation(s)."
         return base
@@ -1620,7 +1621,7 @@ async def analyze_reference_video_text(
                 start_time=head_detection["timestamp"], end_time=head_detection["timestamp"],
                 certainty="MEASURED",
                 confidence_score=head_detection["confidence"],
-                source="easyocr",
+                source=head_detection["source"],
                 source_frame_asset_id=head_source_asset_id,
                 style_details=head_detection["style"],
                 evidence_summary=_evidence_summary(head_detection, len(group)),
@@ -1642,7 +1643,7 @@ async def analyze_reference_video_text(
                     start_time=member_detection["timestamp"], end_time=member_detection["timestamp"],
                     certainty="MEASURED",
                     confidence_score=member_detection["confidence"],
-                    source="easyocr",
+                    source=member_detection["source"],
                     source_frame_asset_id=member_source_asset_id,
                     style_details=member_detection["style"],
                     evidence_summary=_evidence_summary(member_detection, 1),

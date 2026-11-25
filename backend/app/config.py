@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # already worked before this provider-neutral layer existed.
     OPENAI_API_KEY: str = ""
     PEXELS_API_KEY: str = ""
+    REFERENCE_OCR_ENGINE: str = "easyocr"
     GOOGLE_AI_API_KEY: str = ""
 
     # ── Stage 10.2B — Semantic Boundary Reasoner (app/services/semantic_reasoner/) ────────────
