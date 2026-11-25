@@ -249,20 +249,21 @@ export default function DeconstructorV3() {
   const detectedTerms = sourceTerms(`${transcript} ${observedText}`)
   const visibleHashtags = [...new Set(observedText.match(/#[\p{L}\p{N}_][\p{L}\p{M}\p{N}_]*/gu) ?? [])]
   const metadata = mediaProperties(video)
+  const sectionMessage = (section: typeof sections[number] | undefined) => section?.speech_reading?.text?.trim() || section?.transcript_excerpt?.trim() || section?.on_screen_text.filter(item => readableOverlay(item.text)).map(item => item.text).join(' · ') || null
   const messaging: Finding[] = [
     result('Business objective', notes.objective || null, 'Extracted'),
     result('Strategy and positioning', anatomy?.video.creative?.summary, 'Inferred'),
     result('Core message', anatomy?.video.creative?.summary, 'Inferred'),
     result('Hook', creative?.hook ? hookSummary(creative.hook) : null, 'Inferred'),
-    result('Problem', sections.find(section => /problem/i.test(section.interpretive.narrative_role ?? ''))?.transcript_excerpt, 'Inferred'),
-    result('Solution', sections.find(section => /solution/i.test(section.interpretive.narrative_role ?? ''))?.transcript_excerpt, 'Inferred'),
-    result('Benefits', sections.find(section => /benefit/i.test(section.interpretive.narrative_role ?? ''))?.transcript_excerpt, 'Inferred'),
+    result('Problem', sectionMessage(sections.find(section => /problem/i.test(section.interpretive.narrative_role ?? ''))), 'Inferred'),
+    result('Solution', sectionMessage(sections.find(section => /solution/i.test(section.interpretive.narrative_role ?? ''))), 'Inferred'),
+    result('Benefits', sectionMessage(sections.find(section => /benefit/i.test(section.interpretive.narrative_role ?? ''))), 'Inferred'),
     result('Storytelling', creative?.narrative?.arc_text, 'Inferred'),
     result('Persuasion mechanisms', creative?.mechanisms.map(typeLabel).join(' · '), 'Inferred'),
     result('Emotional triggers', [...new Set(sections.flatMap(section => section.interpretive.emotional_function || []))].join(' · '), 'Inferred'),
     result('Target audience', notes.audience || null, 'Extracted'),
-    result('Trust signals', sections.find(section => /trust/i.test(section.interpretive.narrative_role ?? ''))?.transcript_excerpt, 'Inferred'),
-    result('Call to action', sections.find(section => section.interpretive.cta_role)?.transcript_excerpt, 'Inferred'),
+    result('Trust signals', sectionMessage(sections.find(section => /trust/i.test(section.interpretive.narrative_role ?? ''))), 'Inferred'),
+    result('Call to action', sectionMessage(sections.find(section => section.interpretive.cta_role)), 'Inferred'),
   ]
   const discoverability: Finding[] = [
     result('Published URL', video?.original_url, 'Extracted'),
