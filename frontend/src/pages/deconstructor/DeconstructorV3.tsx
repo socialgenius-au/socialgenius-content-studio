@@ -278,7 +278,9 @@ export default function DeconstructorV3() {
     result('Searchable terms in recognised speech', sourceTerms(transcript).join(' · '), 'Detected'),
     result('Searchable terms in on-screen text', sourceTerms(observedText).join(' · '), 'Detected'),
     result('Questions in recognised speech', speech.filter(segment => /[?؟？]/u.test(segment.text)).slice(0,6).map(segment => `${time(segment.start_time)} · ${segment.text}`).join(' / '), 'Detected'),
-    ...['Publication date', 'Views', 'Likes', 'Primary / secondary keywords', 'Long-tail and semantic keywords', 'Geographic and local search'].map(label => result(label, null, 'Researched')),
+    result('Primary keyword candidates (frequency ranked)', detectedTerms.slice(0,3).join(' · '), 'Detected'),
+    result('Secondary keyword candidates (frequency ranked)', detectedTerms.slice(3).join(' · '), 'Detected'),
+    ...['Publication date', 'Views', 'Likes', 'Long-tail and semantic keywords', 'Geographic and local search'].map(label => result(label, null, 'Researched')),
     ...researchDimensions.map(dimension => { const report = savedReports?.id === id ? savedReports.reports[dimension] : undefined; return result(dimension, report?.findings.length ? `${report.partial ? 'Partial research' : 'Research saved'} · ${report.findings.length} cited findings · ${report.topic}` : null, 'Researched') }),
   ]
   const busy = working || d.busy !== null
