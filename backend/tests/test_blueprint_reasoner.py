@@ -1193,8 +1193,11 @@ def test_the_two_mismatches_seen_in_the_second_real_response_are_notes():
     assert ("mechanism_section_mapping_mismatch", "M02") in codes and ("mechanism_section_mapping_mismatch", "M03") in codes
 
 
-def test_a_disposition_that_names_a_nonexistent_section_or_no_matching_section_is_also_only_a_note():
-    validate(edit(lambda p: p["mechanism_dispositions"][0].update(applied_in_sections=[1, 2, 9])))
+def test_a_disposition_cannot_reference_a_nonexistent_section():
+    rejects(edit(lambda p: p["mechanism_dispositions"][0].update(applied_in_sections=[1, 2, 9])), "nonexistent section")
+
+
+def test_a_disposition_with_no_matching_authoritative_section_is_a_note():
     validate(edit(lambda p: p["sections"][2].update(mechanisms_applied=[])))      # M02 declares section 3, but no section lists M02
     notes = quality_notes(decide(edit(lambda p: p["sections"][2].update(mechanisms_applied=[]))), default_ctx())
     assert any(n["code"] == "mechanism_section_mapping_mismatch" and n["mechanism_id"] == "M02" and n["authoritative_sections"] == [] for n in notes)
