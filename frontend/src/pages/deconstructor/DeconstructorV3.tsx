@@ -106,6 +106,11 @@ function ExternalResearch({referenceId, onReports}: {referenceId: number; onRepo
   }, [referenceId])
   async function research(dimension: ResearchDimension) {
     if (pending || topic.trim().length < 3) return
+    const saved = reports[dimension]
+    if (saved && !saved.partial && saved.findings.length && saved.topic.trim().toLowerCase() === topic.trim().toLowerCase()) {
+      setMessage(`Reusing saved ${dimension} research for this topic.`)
+      return
+    }
     setPending(dimension)
     setMessage('')
     try {
