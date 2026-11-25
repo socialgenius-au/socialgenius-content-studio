@@ -155,3 +155,7 @@ A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-du
 
 - New Reconstructor handoffs snapshot the latest saved report for each research dimension in structured form with its citations. Reconstructor displays the snapshots with clickable source links. Earlier handoffs still display their existing evidence.
 - Analysis JSON exports now include the saved research reports with their original findings and citations. These reads do not initiate new paid research.
+
+- Railway acceptance at `d018b7c` passed the Reference 4 flow through Reconstructor, Video Studio, cloud save, reopen and MP4 export. SEO, GEO and AEO arrived as discrete research reports with source links. Draft 11 restored the 21.8-second scene and its footage. FFprobe verified a 21.8-second 1080 × 1920 H.264/AAC MP4.
+- The Media Library uploader successfully loaded three test tones, avoiding the iframe file-picker timeout. Video Studio placed them on Audio 1, Audio 2 and Music, and retained independent gains and Audio 1 fades. Browser automation timed out before live playback and combined export could be measured.
+- The frontend passed 1,644 tests with 25 skipped. The structured handoff regression passed. Eight historic-media backend checks require the original RV5127 and RV146 evidence absent from the isolated database. Full V3 sign-off remains open.
