@@ -30,7 +30,7 @@ from app.services.retention_reasoner.contract import (
 
 from .base import RetentionReasonerProvider
 
-MAX_RESPONSE_TOKENS = 1024
+MAX_RESPONSE_TOKENS = 2048
 
 # Stage 11.4 — the explicit, stable reasoning-contract version for SYSTEM_PROMPT below. Bumped by
 # hand every time SYSTEM_PROMPT's own text meaningfully changes, mirroring HOOK_PROMPT_VERSION's
@@ -198,7 +198,7 @@ given -- never invent, guess, or renumber an id.
 recognition -- reason from the actual text itself, never treat the language label as ground truth.
 - If you can reason directly in the original language of the text, do so; keep any internal \
 translation as private working reasoning only, never presented as if it were transcribed evidence.
-- Keep your reasoning concise (1-3 sentences) and free of any of the prohibited claims above.
+- Keep your reasoning under 80 words (1-3 sentences) and free of any of the prohibited claims above.
 
 Valid device_type values: {device_types}
 Valid probable_attention_function values (required when is_retention_device is true, null otherwise): {function_values}
