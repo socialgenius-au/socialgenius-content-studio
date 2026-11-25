@@ -1354,4 +1354,37 @@ const iconToolbarStyle=document.createElement('style');iconToolbarStyle.textCont
 .sg-zoom-controls input{width:100px;accent-color:#9462f5}
 .sg-zoom-controls .sg-tool-icon{width:16px;height:16px}
 `;document.head.append(iconToolbarStyle);
+
+/* Non-destructive media removal: preserve assets referenced by saved projects. */
+const hiddenMediaIds=new Set();
+const originalAddMediaCard=addMediaCard;
+addMediaCard=function(item){
+ const id=item.url?item.id:'server-'+item.id;
+ if(hiddenMediaIds.has(id))return;
+ originalAddMediaCard(item);
+};
+const originalRenderMediaCard=renderMediaCard;
+renderMediaCard=function(button,asset){
+ originalRenderMediaCard(button,asset);
+ const id=asset.url?asset.id:'server-'+asset.id;
+ const remove=document.createElement('span');
+ remove.className='sg-media-remove';remove.textContent='×';remove.title='Remove from this media panel';remove.setAttribute('role','button');remove.setAttribute('aria-label','Remove '+asset.name+' from media panel');remove.tabIndex=0;
+ function hide(event){
+  event.preventDefault();event.stopPropagation();
+  if(!confirm('Remove '+asset.name+' from this media panel? Existing timeline clips and saved library files will be preserved.'))return;
+  hiddenMediaIds.add(id);cardObserver.unobserve(button);mediaCards.delete(id);button.remove();
+  status.textContent='Removed from media panel. Use Restore hidden media to show it again.';
+ }
+ remove.addEventListener('click',hide);remove.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' ')hide(event)});
+ button.append(remove);
+};
+const restoreHidden=namedButton('Restore hidden media',()=>{
+ hiddenMediaIds.clear();
+ for(const item of libraryRows.values())addMediaCard(localAssets.get('server-'+item.id)||item);
+ for(const asset of localAssets.values())addMediaCard(asset);
+ status.textContent='Hidden media restored';
+});
+libraryButton.after(restoreHidden);
+mediaControls.push(restoreHidden);
+const mediaRemoveStyle=document.createElement('style');mediaRemoveStyle.textContent='.thumb .sg-media-remove{position:absolute;right:4px;top:24px;z-index:5;width:23px;height:23px;display:grid;place-items:center;background:#181522e8;color:white;border:1px solid #aaa;border-radius:5px;font-size:20px;line-height:1;cursor:pointer}.thumb .sg-media-remove:hover,.thumb .sg-media-remove:focus{background:#a5263d;outline:2px solid white}';document.head.append(mediaRemoveStyle);
 </script></body></html>
