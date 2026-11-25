@@ -1,4 +1,4 @@
-from app.services.messaging_intelligence import MessagingReport, validated_report
+from app.services.messaging_intelligence import MessagingReport, parse_report, validated_report
 
 
 def test_report_links_observed_evidence_and_rejects_invented_or_off_scene_support():
@@ -26,3 +26,12 @@ def test_report_links_observed_evidence_and_rejects_invented_or_off_scene_suppor
     assert result["scenes"][0]["evidence"] == [speech]
     assert result["translations"][0]["source"] == speech
     assert len(result["translations"]) == 1
+
+
+
+def test_parse_report_preserves_valid_siblings_of_a_malformed_finding():
+    report = parse_report({"findings": [
+        {"topic": "Core message", "summary": "Valid", "evidence_ids": ["speech-1"], "confidence": "high"},
+        {"topic": "Solution", "summary": "Invalid", "evidence_ids": [], "confidence": "certain"},
+    ]})
+    assert [item.topic for item in report.findings] == ["Core message"]

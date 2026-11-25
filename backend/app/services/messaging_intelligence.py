@@ -2,7 +2,7 @@
 import json
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.config import settings
 from app.services.claude import get_client
@@ -70,6 +70,23 @@ def validated_report(report: MessagingReport, evidence: list[dict]) -> dict:
     return {"findings": findings, "scenes": list(scenes.values()), "translations": list(translations.values())}
 
 
+def parse_report(payload: dict) -> MessagingReport:
+    groups = {}
+    for key, model, limit in (
+        ("findings", Finding, 15), ("scenes", ScenePurpose, 30), ("translations", Translation, 48),
+    ):
+        items = payload.get(key)
+        groups[key] = []
+        if not isinstance(items, list):
+            continue
+        for item in items[:limit]:
+            try:
+                groups[key].append(model.model_validate(item))
+            except ValidationError:
+                continue
+    return MessagingReport(**groups)
+
+
 async def interpret(evidence: list[dict], context: dict, images: list[dict]) -> dict:
     content = [{"type": "text", "text": json.dumps({"context": context, "evidence": evidence}, ensure_ascii=False)}]
     for image in images:
@@ -100,5 +117,8 @@ async def interpret(evidence: list[dict], context: dict, images: list[dict]) -> 
         raise ValueError("Messaging report exceeded output limit")
     for block in response.content:
         if block.type == "tool_use" and block.name == "report_messaging":
-            return validated_report(MessagingReport.model_validate(block.input), evidence)
+            report = validated_report(parse_report(block.input), evidence)
+            if any(report.values()):
+                return report
+            raise ValueError("No valid evidence-linked findings or translations")
     raise ValueError("No structured messaging report returned")
