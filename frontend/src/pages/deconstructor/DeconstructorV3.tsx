@@ -33,13 +33,13 @@ type TimelineItem = { key: string; start: number; end: number; text: string }
 const time = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`
 const spanLabel = (start: number, end: number) => `${time(start)} – ${time(end)}`
 const result = (label: string, value: string | number | null | undefined, source: Evidence): Finding =>
-  [label, value ?? 'Unavailable', value == null || value === '' ? 'Unavailable' : source]
+  [label, value == null || value === '' ? 'Unavailable' : value, value == null || value === '' ? 'Unavailable' : source]
 
 function Card({ title, children, className = '' }: { title: string; children: ReactNode; className?: string }) {
   return <section className={`dc3-card ${className}`}><h2>{title}</h2><div className="dc3-card-content">{children}</div></section>
 }
 function Findings({ rows }: { rows: Finding[] }) {
-  return <dl className="dc3-findings">{rows.map(([label, value, source]) => <div key={label}><dt>{label}</dt><dd>{value || 'Unavailable'}</dd><dd><span className={`dc3-badge dc3-${source.toLowerCase()}`}>{source}</span></dd></div>)}</dl>
+  return <dl className="dc3-findings">{rows.map(([label, value, source]) => <div key={label}><dt>{label}</dt><dd>{value ?? 'Unavailable'}</dd><dd><span className={`dc3-badge dc3-${source.toLowerCase()}`}>{source}</span></dd></div>)}</dl>
 }
 function mediaProperties(reference: ReferenceVideo | null): Finding[] {
   const facts = reference?.technical_details
@@ -87,7 +87,8 @@ export default function DeconstructorV3() {
   const [playhead, setPlayhead] = useState(0)
   const [waveform, setWaveform] = useState<{ referenceId: number; peaks: number[] } | null>(null)
   const [waveformLoading, setWaveformLoading] = useState(false)
-  const [contextByReference, setContextByReference] = useState<Record<string, ContextNotes>>({})
+  const [contextByReference, setContextByReference] = useState<Record<string, ContextNotes>>(() => { try { return JSON.parse(sessionStorage.getItem('sg-dc3-context') || '{}') } catch { return {} } })
+  useEffect(() => { try { sessionStorage.setItem('sg-dc3-context', JSON.stringify(contextByReference)) } catch { /* Context remains available in memory. */ } }, [contextByReference])
   const contextKey = id?.toString() ?? 'new'
   const notes = contextByReference[contextKey] ?? emptyNotes
   const setNotes = (next: ContextNotes) => setContextByReference(previous => ({ ...previous,[contextKey]:next }))
@@ -349,8 +350,8 @@ export default function DeconstructorV3() {
           result('Time range',activeShot?spanLabel(activeShot.start_time,activeShot.end_time):null,'Detected'),
           result('Shot evidence',activeShot?.evidence_summary,'Detected'),
           result('Text overlays',activeShot?.text_elements.map(item => item.text).join(' · '),'Detected'),
-          result('Voice-over / speech',transcript || null,'Detected'),
-          result('Transition measurements',video?.transition_evidence?.length || null,'Detected'),
+          result('Voice-over / speech',activeShot ? speech.filter(segment => segment.start_time < activeShot.end_time && segment.end_time > activeShot.start_time).map(segment => segment.text).join(' ') : null,'Detected'),
+          result('Transition measurements',activeShot ? (video?.transition_evidence ?? []).filter(item => item.boundary_timestamp >= activeShot.start_time && item.boundary_timestamp <= activeShot.end_time).length : null,'Detected'),
           result('Audio waveform',waveformPeaks?'Measured from decoded audio':null,'Detected'),
           ...['Camera angles','Camera movement','Framing','Lighting','Animations','Music identification'].map(label => result(label,null,'Unavailable')),
         ])}</div>
