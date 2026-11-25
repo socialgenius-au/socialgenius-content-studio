@@ -880,6 +880,10 @@ async def get_search_research(
     reference_video_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
 ):
     await _require_owned_reference(db, reference_video_id, user.id)
+    return await _latest_saved_research(db, reference_video_id)
+
+
+async def _latest_saved_research(db: AsyncSession, reference_video_id: int) -> dict:
     rows = (await db.scalars(select(ReferenceSearchResearch).where(
         ReferenceSearchResearch.reference_video_id == reference_video_id,
     ).order_by(ReferenceSearchResearch.id.desc()).limit(50))).all()
@@ -1014,6 +1018,7 @@ async def create_reconstruction_handoff(
     if any(scene.end <= scene.start for scene in body.scenes):
         raise HTTPException(422, "Scene end must be after its start.")
     payload = body.model_dump(mode="json")
+    payload["research_reports"] = await _latest_saved_research(db, reference_video_id)
     if len(json.dumps(payload).encode()) > 512_000:
         raise HTTPException(413, "The reconstruction handoff exceeds the supported size.")
     handoff = ReferenceReconstructionHandoff(reference_video_id=reference_video_id, payload=payload)

@@ -150,3 +150,8 @@ A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-du
 
 - Discoverability and Selective Analysis now request a dedicated Local research report using the existing cited search and persistence path. Local reports no longer overwrite or substitute for SEO reports. Existing SEO, GEO and AEO reports remain reusable.
 - Updated retention regression fixtures to distinguish a saved device or completed zero-device classification from an interrupted attempt. The latter remains retryable when a provider is available.
+
+## Structured research handoff
+
+- New Reconstructor handoffs snapshot the latest saved report for each research dimension in structured form with its citations. Reconstructor displays the snapshots with clickable source links. Earlier handoffs still display their existing evidence.
+- Analysis JSON exports now include the saved research reports with their original findings and citations. These reads do not initiate new paid research.

@@ -9,8 +9,9 @@ type Provider='all'|'pexels'|'pixabay'
 type Selection={source:string;type:MediaType;scene:number;query:string;url:string;title:string;addedAt:string;assetId?:number;assetPath?:string}
 type HandoffFinding = [label: string, value: string | number | null, evidence: string]
 type HandoffMechanism = {mechanism_id:string; type:string; purpose:string; transferable_principle:string|null}
+type SavedResearch = {topic:string; partial?:boolean; findings:{text:string; citations:{title:string; url:string}[]}[]}
 type DetectedScene={number:number;start:number;end:number;role:string;story:string;technical:string;audio:string}
-const readDetected=()=>{try{return JSON.parse(sessionStorage.getItem('sg-reconstructor-detected-scenes')||'null') as {referenceId:number|null;scenes:DetectedScene[]; messaging?:HandoffFinding[]; discoverability?:HandoffFinding[]; metadata?:HandoffFinding[]; mechanisms?:HandoffMechanism[]}|null}catch{return null}}
+const readDetected=()=>{try{return JSON.parse(sessionStorage.getItem('sg-reconstructor-detected-scenes')||'null') as {referenceId:number|null;scenes:DetectedScene[]; messaging?:HandoffFinding[]; discoverability?:HandoffFinding[]; metadata?:HandoffFinding[]; mechanisms?:HandoffMechanism[]; research_reports?:Record<string,SavedResearch>}|null}catch{return null}}
 const key='sg-reconstructor-asset-finder-v1'
 const readSaved=()=>{try{return JSON.parse(sessionStorage.getItem(key)||'{}') as Record<string,unknown>}catch{return {}}}
 export default function ReconstructorAssetFinder(){
@@ -62,6 +63,17 @@ export default function ReconstructorAssetFinder(){
    <Link to={`/deconstructor-v3/${detected.referenceId}?view=Deep%20Analysis`}>Open read-only analysis</Link>
    <Link to={`/deconstructor/${detected.referenceId}`}>Open six-stage reconstruction workflow</Link>
    {([['Messaging',detected.messaging],['Technical metadata',detected.metadata],['Discoverability',detected.discoverability]] as const).map(([label, findings]) => findings?.length ? <details key={label}><summary>{label}</summary><dl>{findings.map(([name,value,evidence]) => <div key={name}><dt>{name}</dt><dd>{value ?? 'Unavailable'} · {evidence}</dd></div>)}</dl></details> : null)}
+   {Object.entries(detected.research_reports ?? {}).map(([dimension, report]) => (
+     <details key={dimension}>
+       <summary>{dimension} research · {report.topic}{report.partial ? ' · Partial' : ''}</summary>
+       {report.findings.map((finding, index) => <div key={index}>
+         <p>{finding.text}</p>
+         <ul>{finding.citations.filter(source => /^https?:\/\//i.test(source.url)).map(source =>
+           <li key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a></li>
+         )}</ul>
+       </div>)}
+     </details>
+   ))}
    {!!detected.mechanisms?.length && <details><summary>Mechanisms</summary><ul>{detected.mechanisms.map(item => <li key={item.mechanism_id}>{item.purpose}{item.transferable_principle && ` · ${item.transferable_principle}`}</li>)}</ul></details>}
  </section>}
  <div className="raf-analysis"><div className="raf-analysis-actions"><button onClick={()=>setShowStory(!showStory)}>{showStory?'Hide':'Show'} Story</button><button onClick={()=>setShowTechnical(!showTechnical)}>{showTechnical?'Hide':'Show'} Technical</button></div>{showStory&&<section><h3>Story prompt</h3><p>{active?.story||'What is this scene communicating? Describe the hook, problem, solution or CTA you want to preserve or change.'}</p><button onClick={()=>setQuery('Scene '+scene+' visual illustrating the story message')}>Use story as search starting point</button></section>}{showTechnical&&<section><h3>Technical prompt</h3><p>{active?.technical||'Describe the camera framing, movement, lighting, mood, visual style or audio requirements.'}</p><button onClick={()=>setQuery('Scene '+scene+' cinematic close-up professional lighting')}>Use technical search starting point</button></section>}</div>

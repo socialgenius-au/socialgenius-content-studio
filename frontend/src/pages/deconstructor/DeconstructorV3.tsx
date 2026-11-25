@@ -458,19 +458,20 @@ export default function DeconstructorV3() {
     setSending(true)
     const handoff = { referenceId:video.id, scenes:sceneList, context:notes, messaging, discoverability, metadata, mechanisms:creative?.mechanisms ?? [], provenance:anatomy?.provenance }
     try {
-      const {data: savedResearch} = await referenceVideosApi.searchResearch(video.id)
-      const researchEvidence = discoverability.map(([label, value, evidence]): Finding => {
-        const dimension = researchDimensions.find(item => item === label)
-        const report = dimension ? (savedResearch as Partial<Record<ResearchDimension, ResearchReport>>)[dimension] : undefined
-        return report?.findings.length ? [label, `${report.topic} · ${report.partial ? 'Partial research' : 'Web research'} · ${report.findings.map(finding => `${finding.text} (${finding.citations.map(source => `${source.title}: ${source.url}`).join('; ')})`).join('\n')}`, 'Researched'] : [label, value, evidence]
-      })
-      const {data} = await referenceVideosApi.createHandoff(video.id,{...handoff, discoverability: researchEvidence})
+      const {data} = await referenceVideosApi.createHandoff(video.id,handoff)
       navigate(`/reconstructor/assets?scene=${sceneList[0].number}&reference=${video.id}&handoff=${data.id}`)
     } catch (error) { setMessage(errorMessage(error, 'Could not save this Reconstructor handoff.')) }
     finally { setSending(false) }
   }
-  const report = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ reference:video?.original_filename, context:notes, metadata, messaging, discoverability, scenes:sceneList, mechanisms:creative?.mechanisms ?? [] },null,2)],{type:'application/json'}))
+  const report = async () => {
+    if (!video) return
+    let researchReports = savedReports?.id === video.id ? savedReports.reports : {}
+    try {
+      researchReports = (await referenceVideosApi.searchResearch(video.id)).data
+    } catch {
+      setMessage('Could not refresh saved research. The download includes locally loaded evidence.')
+    }
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ reference:video?.original_filename, context:notes, metadata, messaging, discoverability, research_reports:researchReports, scenes:sceneList, mechanisms:creative?.mechanisms ?? [] },null,2)],{type:'application/json'}))
     const link = document.createElement('a')
     link.href = url
     link.download = `reference-${id}-analysis.json`
