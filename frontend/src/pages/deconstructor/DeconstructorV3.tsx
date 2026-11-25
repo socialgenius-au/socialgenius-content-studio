@@ -64,6 +64,64 @@ function sourceTerms(text: string) {
   return [...terms.entries()].sort((a,b) => b[1] - a[1]).slice(0,12).map(([word]) => word)
 }
 
+const researchDimensions = ['SEO', 'GEO', 'AEO'] as const
+type ResearchDimension = typeof researchDimensions[number]
+type ResearchReport = {
+  topic: string
+  researched_at: string
+  findings: {text: string; citations: {url:string; title:string}[]}[]
+}
+
+function ExternalResearch({referenceId}: {referenceId: number}) {
+  const [topic, setTopic] = useState('')
+  const [reports, setReports] = useState<Partial<Record<ResearchDimension, ResearchReport>>>({})
+  const [pending, setPending] = useState<ResearchDimension | null>(null)
+  const [message, setMessage] = useState('')
+  useEffect(() => {
+    let live = true
+    referenceVideosApi.searchResearch(referenceId).then(({data}) => {
+      if (live) setReports(data)
+    }).catch(error => {if (live) setMessage(errorMessage(error, 'Saved research could not be loaded.'))})
+    return () => {live = false}
+  }, [referenceId])
+  async function research(dimension: ResearchDimension) {
+    if (pending || topic.trim().length < 3) return
+    setPending(dimension)
+    setMessage('')
+    try {
+      const {data} = await referenceVideosApi.runSearchResearch(referenceId, topic.trim(), dimension)
+      setReports(previous => ({...previous, [dimension]:data}))
+    } catch (error) {
+      setMessage(errorMessage(error, 'Web research was unavailable.'))
+    } finally {
+      setPending(null)
+    }
+  }
+  return <Card title="External search research">
+    <label>Public search topic <input value={topic} onChange={event => setTopic(event.target.value)} maxLength={160} /></label>
+    <p>The topic is sent to Claude for live web search. Each report includes cited sources. Rankings, search volume and visibility on other answer engines require separate measurements.</p>
+    <div className="dc3-actions">{researchDimensions.map(dimension =>
+      <button key={dimension} type="button" disabled={!!pending || topic.trim().length < 3} onClick={() => void research(dimension)}>
+        {pending === dimension ? `Researching ${dimension}…` : `Research ${dimension}`}
+      </button>
+    )}</div>
+    {message && <p role="status">{message}</p>}
+    {researchDimensions.map(dimension => {
+      const report = reports[dimension]
+      return report && <details key={dimension} open>
+        <summary>{dimension} · {report.topic}</summary>
+        <small>{new Date(report.researched_at).toLocaleString()} · Web-cited findings</small>
+        {report.findings.map((finding,index) => <div key={index}>
+          <p>{finding.text}</p>
+          <ul>{finding.citations.map((source,sourceIndex) =>
+            <li key={sourceIndex}><a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a></li>
+          )}</ul>
+        </div>)}
+      </details>
+    })}
+  </Card>
+}
+
 export default function DeconstructorV3() {
   const { referenceVideoId } = useParams()
   const id = referenceVideoId && /^\d+$/.test(referenceVideoId) ? Number(referenceVideoId) : null
@@ -405,7 +463,7 @@ export default function DeconstructorV3() {
           ...['Camera angles','Camera movement','Framing','Lighting','Animations','Music identification'].map(label => result(label,null,'Unavailable')),
         ])}</div>
       </div>}
-      {mode === 'Discoverability' && <div className="dc3-grid">{preview}<div className="dc3-stack">{row('Source and Discoverability Evidence', discoverability)}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched. Detected terms and questions describe the source content. Search ranking, generative answer visibility and local demand require independent evidence.</p></Card></div></div>}
+      {mode === 'Discoverability' && <div className="dc3-grid">{preview}<div className="dc3-stack">{row('Source and Discoverability Evidence', discoverability)}{video && <ExternalResearch key={video.id} referenceId={video.id} />}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched. Detected terms and questions describe the source content. Search ranking, generative answer visibility and local demand require independent evidence.</p></Card></div></div>}
     </main>
   </div>
 }

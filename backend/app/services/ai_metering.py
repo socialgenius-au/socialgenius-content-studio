@@ -108,7 +108,10 @@ def ceiling_usd(price: Price, est_input_tokens: int, max_tokens: int) -> tuple[f
     return est_in, est_in + max_tokens * price.out / 1_000_000
 
 
-def settled_cost_usd(model: str, usage) -> float:
+WEB_SEARCH_COST_USD = 0.01
+
+
+def settled_cost_usd(model: str, usage, max_searches: int = 0) -> float:
     i = int(getattr(usage, "input_tokens", 0) or 0)
     o = int(getattr(usage, "output_tokens", 0) or 0)
     cr = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
@@ -116,7 +119,9 @@ def settled_cost_usd(model: str, usage) -> float:
     p = price_for(model, i + cr + cw)
     if p is None:
         raise AiCostControlError("unknown_model", f"No price for model '{model}'.")
-    return (i * p.in_ + o * p.out + cr * p.cache_read + cw * p.cache_write) / 1_000_000
+    search_usage = getattr(getattr(usage, "server_tool_use", None), "web_search_requests", None)
+    searches = max_searches if search_usage is None else search_usage
+    return (i * p.in_ + o * p.out + cr * p.cache_read + cw * p.cache_write) / 1_000_000 + searches * WEB_SEARCH_COST_USD
 
 
 def request_hash(kwargs: dict) -> str:
@@ -269,7 +274,16 @@ async def metered_create(get_inner, kwargs: dict):
         raise AiCostControlError("unknown_model", msg)
     if max_tokens <= 0:
         raise AiCostControlError("no_max_tokens", "A request without max_tokens has no cost ceiling, so it was refused.")
+    max_searches = 0
+    for tool in kwargs.get("tools") or []:
+        if isinstance(tool, dict) and str(tool.get("type", "")).startswith("web_search_"):
+            uses = tool.get("max_uses")
+            if type(uses) is not int or not 1 <= uses <= 10:
+                raise AiCostControlError("unbounded_search", "Web search requires a bounded max_uses.")
+            max_searches += uses
     est_in_usd, ceiling = ceiling_usd(price, est_tokens, max_tokens)
+    search_ceiling = max_searches * WEB_SEARCH_COST_USD
+    ceiling += search_ceiling
     try:
         inner = get_inner()
     except AiCostControlError as exc:
@@ -298,18 +312,18 @@ async def metered_create(get_inner, kwargs: dict):
         try:
             message = await inner.messages.create(**kwargs)
         except asyncio.CancelledError:
-            await asyncio.shield(_settle(row_id, status="failed", cost=est_in_usd, error="cancelled"))
+            await asyncio.shield(_settle(row_id, status="failed", cost=est_in_usd + search_ceiling, error="cancelled"))
             raise
         except Exception as exc:         # noqa: BLE001
             retryable, maybe_billed, what = _classify_failure(exc)
-            await _settle(row_id, status="failed", cost=est_in_usd if maybe_billed else 0.0, error=what)
+            await _settle(row_id, status="failed", cost=est_in_usd + search_ceiling if maybe_billed else 0.0, error=what)
             if retryable and attempt <= settings.AI_RETRY_MAX:
                 await asyncio.sleep(BACKOFF_SECONDS[min(attempt - 1, len(BACKOFF_SECONDS) - 1)])
                 continue
             raise
         usage = getattr(message, "usage", None)
         try:
-            cost = settled_cost_usd(model, usage)
+            cost = settled_cost_usd(model, usage, max_searches)
         except AiCostControlError:
             cost = ceiling               # unreadable usage: keep the full reservation as the cost
         try:

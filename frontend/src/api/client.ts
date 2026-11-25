@@ -155,6 +155,9 @@ export const assetsApi = {
 // module docstring on the backend for exact scope.
 export const referenceVideosApi = {
   importPublished: (url: string) => api.post('/reference-videos/published-import', { url, rights_confirmed: true }, { timeout: 125_000 }),
+  searchResearch: (id: number) => api.get(`/reference-videos/${id}/search-research`),
+  runSearchResearch: (id: number, topic: string, dimension: string) =>
+    api.post(`/reference-videos/${id}/search-research`, {topic, dimension}, {timeout: 120_000}),
   publication: (id: number) => api.get(`/reference-videos/${id}/publication`),
   createHandoff: (id: number, payload: unknown) => api.post(`/reference-videos/${id}/reconstruction-handoffs`, payload),
   handoff: (id: number, handoffId: number) => api.get(`/reference-videos/${id}/reconstruction-handoffs/${handoffId}`),

@@ -95,3 +95,13 @@ class ReferenceReconstructionHandoff(Base):
         ForeignKey("reference_videos.id", ondelete="CASCADE"), index=True,
     )
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class ReferenceSearchResearch(Base):
+    __tablename__ = "reference_search_research"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reference_video_id: Mapped[int] = mapped_column(
+        ForeignKey("reference_videos.id", ondelete="CASCADE"), index=True,
+    )
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
