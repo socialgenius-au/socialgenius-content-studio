@@ -264,14 +264,21 @@ export default function DeconstructorV3() {
       .some(label => label && role.test(label)) && sectionMessage(item))
     return section ? `${spanLabel(section.start_time, section.end_time)} · ${sectionMessage(section)}` : null
   }
+  const speechCue = (cue: RegExp) => {
+    const segment = speech.find(item => cue.test(item.text))
+    return segment ? `${spanLabel(segment.start_time, segment.end_time)} · ${segment.text}` : null
+  }
+  const pain = roleEvidence(/pain.point|customer.challenge|frustration/i) || speechCue(/\b(?:difficult|takes? too long|time.consuming|mushkil|moshkil|pareshani)\b|मुश्किल|परेशानी|مشکل|پریشانی/iu)
+  const action = speechCue(/(?:^|[.!?]\s+)\s*(?:buy|order|shop|subscribe|download|try)\s|\b(?:order karein|kharidein|try karo)\b|ऑर्डर करें|अभी खरीदें|آرڈر کریں/iu)
   const messageEvidence = roleEvidence(/core.message|main.message|value.proposition/i)
   const messaging: Finding[] = [
     result('Business objective', notes.objective || roleEvidence(/objective|campaign.goal/i), notes.objective ? 'Extracted' : 'Inferred'),
     result('Strategy and positioning', roleEvidence(/positioning|differentiation|strategy/i), 'Inferred'),
     result('Core message', messageEvidence || anatomy?.video.creative?.summary, 'Inferred'),
+    result('Recognised speech (machine reading)', speechReading?.text || transcript, 'Detected'),
     result('Hook', creative?.hook ? hookSummary(creative.hook) : roleEvidence(/hook/i), 'Inferred'),
-    result('Customer pain points', roleEvidence(/pain.point|customer.challenge|frustration/i), 'Inferred'),
-    result('Problem', roleEvidence(/problem/i), 'Inferred'),
+    result('Customer pain points', pain, 'Inferred'),
+    result('Problem', roleEvidence(/problem/i) || pain, 'Inferred'),
     result('Solution', roleEvidence(/solution/i), 'Inferred'),
     result('Benefits', roleEvidence(/benefit/i), 'Inferred'),
     result('Value proposition', roleEvidence(/value.proposition|unique.selling/i), 'Inferred'),
@@ -280,7 +287,7 @@ export default function DeconstructorV3() {
     result('Emotional triggers', [...new Set(sections.flatMap(section => section.interpretive.emotional_function || []))].join(' · '), 'Inferred'),
     result('Target audience', notes.audience || roleEvidence(/target.audience|audience.address/i), notes.audience ? 'Extracted' : 'Inferred'),
     result('Trust signals', roleEvidence(/trust|testimonial|social.proof/i), 'Inferred'),
-    result('Call to action', roleEvidence(/call.to.action|^cta$/i) || sectionMessage(sections.find(section => section.interpretive.cta_role && sectionMessage(section))), 'Inferred'),
+    result('Call to action', roleEvidence(/call.to.action|^cta$/i) || sectionMessage(sections.find(section => section.interpretive.cta_role && sectionMessage(section))) || action, 'Inferred'),
   ]
   const discoverability: Finding[] = [
     result('Published URL', video?.original_url, 'Extracted'),
@@ -550,7 +557,7 @@ export default function DeconstructorV3() {
           </div>
           {speechReading && <><small>Unverified machine reading{speechReading.detected_language ? ` · ${speechReading.detected_language}` : ''}</small><p dir="auto">{speechReading.text}</p></>}
         </Card>
-        <div className="dc3-grid">{preview}{row('Core Message',messaging.filter(([label]) => ['Core message','Target audience','Emotional triggers','Storytelling','Call to action'].includes(label)))}</div>
+        <div className="dc3-grid">{preview}{row('Core Message',messaging.filter(([label]) => ['Core message','Recognised speech (machine reading)','Target audience','Emotional triggers','Storytelling','Call to action'].includes(label)))}</div>
         <div className="dc3-actions">{(['Strategy','Hook','Problem','Solution','Storytelling','Persuasion','Audience'] as const).map(tab => <button className={tab === messageTab ? 'chosen' : ''} type="button" key={tab} onClick={() => setMessageTab(tab)}>{tab}</button>)}<button type="button" disabled={!sceneList.length || !video || sending} onClick={() => void send()}>Send to Reconstructor <ArrowRight /></button></div>
         <div className="dc3-grid">{row(`${messageTab} Evidence`,messaging.filter(([label]) => ({Strategy:['Business objective','Strategy and positioning','Problem','Solution','Benefits'],Hook:['Hook'],Problem:['Problem','Customer pain points'],Solution:['Solution','Benefits','Value proposition'],Storytelling:['Storytelling','Core message','Call to action'],Persuasion:['Persuasion mechanisms','Emotional triggers','Trust signals'],Audience:['Target audience']}[messageTab].includes(label))))}<Card title="Messaging Structure & Evidence"><button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>
       </>}

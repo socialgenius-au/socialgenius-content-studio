@@ -133,3 +133,6 @@ A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-du
 - Hashtag candidates now require letters and a word boundary. The raw OCR evidence remains available for investigation.
 - Video Studio Export starts the existing MP4 renderer directly, avoiding the browser confirmation that blocked the previous acceptance run.
 - Baseline at 0074c05: 1,637 frontend tests passed, 25 skipped and 7 failed in responsive shell and carousel checks. Full backend regression, Reference 5 OCR and speech accuracy, parity with the approved UI, structured semantic keyword validation and complete acceptance remain open.
+- Railway acceptance at 80d6910 downloaded a 6.50-second, 1080 × 1920 H.264/AAC MP4 from the existing V3 Manual Acceptance Test draft. FFmpeg measured effectively silent audio (−91 dB peak) in this draft. Audible source mixing remains to be verified on the current build.
+- Reference 5 reopened with four saved scenes and transliterated machine speech. A follow-up adds timestamped cues for explicitly expressed difficulty and calls to action in English, Hindi, Urdu and common Roman spellings. Machine readings are shown independently of semantic findings and kept separate from the original data.
+- Updated frontend build passed. Regression results matched baseline (1,637 passed, 25 skipped, seven existing failures).
