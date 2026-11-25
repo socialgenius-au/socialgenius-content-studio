@@ -1,6 +1,6 @@
 """Evidence-linked marketing interpretation for reference videos."""
 import json
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -80,6 +80,21 @@ def parse_report(payload: dict) -> MessagingReport:
         if not isinstance(items, list):
             continue
         for item in items[:limit]:
+            if not isinstance(item, dict):
+                continue
+            item = item.copy()
+            if isinstance(item.get("evidence_ids"), list):
+                item["evidence_ids"] = list(dict.fromkeys(key for key in item["evidence_ids"] if isinstance(key, str)))[:6]
+            if isinstance(item.get("confidence"), str):
+                item["confidence"] = item["confidence"].strip().lower()
+            if model is Finding and isinstance(item.get("topic"), str):
+                topic = item["topic"].strip().lower()
+                item["topic"] = next(
+                    (value for value in get_args(Finding.model_fields["topic"].annotation) if value.lower() == topic),
+                    item["topic"],
+                )
+            if model is ScenePurpose and type(item.get("scene_id")) is int:
+                item["scene_id"] = f"scene-{item['scene_id']}"
             try:
                 groups[key].append(model.model_validate(item))
             except ValidationError:
@@ -103,6 +118,8 @@ async def interpret(evidence: list[dict], context: dict, images: list[dict]) -> 
             "Use speech, OCR, observed visual labels and scene timings together where available. Visual labels may be noisy. "
             "Treat user context as guidance, not proof. Distinguish stated benefits from inferred positioning. "
             "Name the hook type and explain why it works. Only report a CTA when an action is requested. "
+            "Evaluate every topic listed in the tool schema and include all supported topics. "
+            "Use the exact scene ID for each scene. Use short summaries and at most four evidence IDs per item. "
             "Omit unsupported topics. Confidence is qualitative evidence strength, not a probability. "
             "For each supported scene give its marketing purpose with overlapping evidence IDs. Translate each intelligible "
             "speech segment into English, preserving mixed-language meaning and product names. Omit unintelligible segments. "

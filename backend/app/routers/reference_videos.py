@@ -1071,7 +1071,7 @@ async def run_messaging_intelligence(
         raise HTTPException(409, "Run speech, OCR or visual analysis to gather evidence first.")
     from hashlib import sha256
     notes = context.model_dump()
-    fingerprint = sha256(json.dumps([notes, evidence], sort_keys=True).encode()).hexdigest()
+    fingerprint = sha256(json.dumps([2, notes, evidence], sort_keys=True).encode()).hexdigest()
     cached = await _saved_messaging(db, analysis_id)
     if cached and cached.get("fingerprint") == fingerprint:
         return cached
