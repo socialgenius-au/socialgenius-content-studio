@@ -1288,4 +1288,70 @@ for(const lane of laneRows){
   probe.preload='metadata';probe.src=asset.url;
  };
 }
+
+/* Icon toolbar: retain the original buttons and handlers. */
+const toolbarPaths={
+'Select':'<path d="m4 3 15 8-7 2-3 7z"/>',
+'Cut':'<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8 8 13 13M8 16 21 3"/>',
+'Split at playhead':'<path d="M12 3v18M3 8l4 4-4 4M21 8l-4 4 4 4"/>',
+'Trim':'<path d="M6 3v15h15M3 6h15v15"/>',
+'Copy':'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>',
+'Paste':'<rect x="5" y="5" width="14" height="16" rx="2"/><rect x="9" y="2" width="6" height="5" rx="1"/>',
+'Duplicate':'<rect x="8" y="8" width="12" height="12" rx="2"/><rect x="4" y="4" width="12" height="12" rx="2"/>',
+'Delete':'<path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>',
+'Ripple delete':'<path d="M4 5h16M8 5V3h8v2M7 5l1 14h8l1-14M3 12h4m10 0h4"/>',
+'Undo':'<path d="m8 5-5 5 5 5M3 10h11a6 6 0 0 1 0 12"/>',
+'Redo':'<path d="m16 5 5 5-5 5M21 10H10a6 6 0 0 0 0 12"/>',
+'Snap':'<path d="M4 4v10a8 8 0 0 0 16 0V4h-5v10a3 3 0 0 1-6 0V4z"/>',
+'Beginning':'<path d="M5 4v16M19 4 7 12l12 8z"/>',
+'Rewind':'<path d="m12 5-9 7 9 7zM21 5l-9 7 9 7z" fill="currentColor"/>',
+'Previous frame':'<path d="M5 5v14M18 5 8 12l10 7z"/>',
+'Play / Pause':'<circle cx="12" cy="12" r="10"/><path d="m10 7 7 5-7 5z" fill="currentColor"/>',
+'Next frame':'<path d="M19 5v14M6 5l10 7-10 7z"/>',
+'Fast forward':'<path d="m3 5 9 7-9 7zM12 5l9 7-9 7z" fill="currentColor"/>',
+'End':'<path d="M19 4v16M5 4l12 8-12 8z"/>',
+'Fullscreen':'<path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/>',
+'Zoom out':'<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6M7 10h6"/>',
+'Zoom in':'<circle cx="10" cy="10" r="6"/><path d="m15 15 6 6M7 10h6m-3-3v6"/>',
+'Fit timeline':'<path d="M3 5v14m18-14v14M5 12h14m-11-3-3 3 3 3m8-6 3 3-3 3"/>'
+};
+function decorateToolbarButton(button){
+ const label=button.textContent.trim(),path=toolbarPaths[label];
+ if(!path)return;
+ button.setAttribute('aria-label',label);button.title=button.title||label;
+ const icon=document.createElement('span');icon.className='sg-tool-icon';icon.setAttribute('aria-hidden','true');
+ icon.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+path+'</svg>';
+ const caption=document.createElement('span');caption.className='sg-tool-label';caption.textContent=label;
+ button.replaceChildren(icon,caption);
+}
+timelineToolbar.classList.add('sg-edit-toolbar');transport.classList.add('sg-transport');
+for(const button of [...timelineToolbar.querySelectorAll('button'),...transport.querySelectorAll('button')])decorateToolbarButton(button);
+const zoomRow=document.createElement('div');zoomRow.className='sg-zoom-row';
+const zoomLabel=document.createElement('span');zoomLabel.textContent='Timeline zoom';
+const zoomSlider=document.createElement('input');zoomSlider.type='range';zoomSlider.min='1';zoomSlider.max='8';zoomSlider.step='.1';zoomSlider.value=String(zoomFactor);zoomSlider.setAttribute('aria-label','Timeline zoom');
+zoomSlider.oninput=()=>{zoomFactor=Number(zoomSlider.value);refreshRuler()};
+const zoomControls=document.createElement('div');zoomControls.className='sg-zoom-controls';
+const zoomButtons=[...timelineToolbar.querySelectorAll('button')].filter(b=>['Zoom out','Zoom in','Fit timeline'].includes(b.getAttribute('aria-label')));
+zoomControls.append(zoomButtons[0],zoomSlider,zoomButtons[1],zoomButtons[2]);zoomRow.append(zoomLabel,zoomControls);transport.after(zoomRow);
+for(const b of zoomButtons)b.addEventListener('click',()=>{zoomSlider.value=String(zoomFactor)});
+const playIcon=play.querySelector('.sg-tool-icon svg');
+function syncTransportIcon(){const path=playing?'<circle cx="12" cy="12" r="10"/><path d="M9 7v10m6-10v10" stroke-width="3"/>':toolbarPaths['Play / Pause'];if(playIcon.innerHTML!==path)playIcon.innerHTML=path;}
+const previousIconRender=renderTime;renderTime=function(){previousIconRender();syncTransportIcon();zoomSlider.value=String(zoomFactor)};
+play.addEventListener('click',syncTransportIcon);
+const iconToolbarStyle=document.createElement('style');iconToolbarStyle.textContent=`
+.sg-edit-toolbar,.sg-transport,.sg-zoom-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:4px 8px;margin:0;flex-shrink:0}
+.sg-edit-toolbar{border-bottom:1px solid #38394b}
+.sg-edit-toolbar button,.sg-transport button,.sg-zoom-controls button{display:inline-flex;align-items:center;justify-content:center;flex-direction:column;gap:2px;background:transparent;border:1px solid transparent;border-radius:6px;padding:3px 6px;min-width:30px;color:inherit}
+.sg-edit-toolbar button:hover,.sg-transport button:hover,.sg-zoom-controls button:hover{background:#35334a;border-color:#59546e}
+.sg-tool-icon{display:inline-flex;width:19px;height:19px;align-items:center;justify-content:center;pointer-events:none}
+.sg-tool-icon svg{width:100%;height:100%;pointer-events:none}
+.sg-tool-label{font-size:10px;line-height:12px;white-space:nowrap;pointer-events:none}
+.sg-transport{justify-content:center;gap:8px}
+.sg-transport .sg-tool-label,.sg-zoom-controls .sg-tool-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.sg-transport button[aria-label="Play / Pause"] .sg-tool-icon{width:25px;height:25px}
+.sg-zoom-row{justify-content:space-between;font-size:11px}
+.sg-zoom-controls{display:flex;align-items:center;gap:4px}
+.sg-zoom-controls input{width:100px;accent-color:#9462f5}
+.sg-zoom-controls .sg-tool-icon{width:16px;height:16px}
+`;document.head.append(iconToolbarStyle);
 </script></body></html>
