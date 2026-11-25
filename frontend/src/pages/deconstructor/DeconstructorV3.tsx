@@ -241,6 +241,10 @@ export default function DeconstructorV3() {
   })) : shots.map(shot => ({ number: shot.order, start: shot.start_time, end: shot.end_time, role: 'Shot', story: shot.text_elements.filter(text => readableOverlay(text.text)).map(text => text.text).join(' · '), technical: shot.evidence_summary || '', audio: '' }))
   const waveformPeaks = waveform?.referenceId === id ? waveform.peaks : null
   const activeShot = shots.find(shot => playhead >= shot.start_time && playhead < shot.end_time) ?? shots[selected]
+  const activeSection = activeShot && sections.find(section =>
+    activeShot.start_time < section.end_time && activeShot.end_time > section.start_time &&
+    section.creative?.shot_reads.some(read => read.shot_order === activeShot.order))
+  const activeShotReading = activeSection?.creative?.shot_reads.find(read => read.shot_order === activeShot?.order)
   const speech = video?.speech_segments ?? []
   const transcript = speech.map(segment => segment.text).join(' ')
   const timeline: { label: string; items: TimelineItem[] }[] = [
@@ -252,23 +256,31 @@ export default function DeconstructorV3() {
   ]
   const observedText = shots.flatMap(shot => shot.text_elements.filter(item => readableOverlay(item.text)).map(item => item.text)).join(' ')
   const detectedTerms = sourceTerms(`${transcript} ${observedText}`)
-  const visibleHashtags = [...new Set(observedText.match(/#[\p{L}\p{N}_][\p{L}\p{M}\p{N}_]*/gu) ?? [])]
+  const visibleHashtags = [...new Set(observedText.match(/(?<![\p{L}\p{N}_])#[\p{L}\p{N}_][\p{L}\p{M}\p{N}_]*/gu) ?? [])].filter(tag => /\p{L}\p{M}*\p{L}/u.test(tag))
   const metadata = mediaProperties(video)
   const sectionMessage = (section: typeof sections[number] | undefined) => section?.speech_reading?.text?.trim() || section?.transcript_excerpt?.trim() || section?.on_screen_text.filter(item => readableOverlay(item.text)).map(item => item.text).join(' · ') || null
+  const roleEvidence = (role: RegExp) => {
+    const section = sections.find(item => [item.interpretive.messaging_role, item.interpretive.narrative_role]
+      .some(label => label && role.test(label)) && sectionMessage(item))
+    return section ? `${spanLabel(section.start_time, section.end_time)} · ${sectionMessage(section)}` : null
+  }
+  const messageEvidence = roleEvidence(/core.message|main.message|value.proposition/i)
   const messaging: Finding[] = [
-    result('Business objective', notes.objective || null, 'Extracted'),
-    result('Strategy and positioning', anatomy?.video.creative?.summary, 'Inferred'),
-    result('Core message', anatomy?.video.creative?.summary, 'Inferred'),
-    result('Hook', creative?.hook ? hookSummary(creative.hook) : null, 'Inferred'),
-    result('Problem', sectionMessage(sections.find(section => /problem/i.test(section.interpretive.narrative_role ?? ''))), 'Inferred'),
-    result('Solution', sectionMessage(sections.find(section => /solution/i.test(section.interpretive.narrative_role ?? ''))), 'Inferred'),
-    result('Benefits', sectionMessage(sections.find(section => /benefit/i.test(section.interpretive.narrative_role ?? ''))), 'Inferred'),
-    result('Storytelling', creative?.narrative?.arc_text, 'Inferred'),
+    result('Business objective', notes.objective || roleEvidence(/objective|campaign.goal/i), notes.objective ? 'Extracted' : 'Inferred'),
+    result('Strategy and positioning', roleEvidence(/positioning|differentiation|strategy/i), 'Inferred'),
+    result('Core message', messageEvidence || anatomy?.video.creative?.summary, 'Inferred'),
+    result('Hook', creative?.hook ? hookSummary(creative.hook) : roleEvidence(/hook/i), 'Inferred'),
+    result('Customer pain points', roleEvidence(/pain.point|customer.challenge|frustration/i), 'Inferred'),
+    result('Problem', roleEvidence(/problem/i), 'Inferred'),
+    result('Solution', roleEvidence(/solution/i), 'Inferred'),
+    result('Benefits', roleEvidence(/benefit/i), 'Inferred'),
+    result('Value proposition', roleEvidence(/value.proposition|unique.selling/i), 'Inferred'),
+    result('Storytelling', creative?.narrative?.arc_text || anatomy?.video.narrative?.arc_text, 'Inferred'),
     result('Persuasion mechanisms', creative?.mechanisms.map(typeLabel).join(' · '), 'Inferred'),
     result('Emotional triggers', [...new Set(sections.flatMap(section => section.interpretive.emotional_function || []))].join(' · '), 'Inferred'),
-    result('Target audience', notes.audience || null, 'Extracted'),
-    result('Trust signals', sectionMessage(sections.find(section => /trust/i.test(section.interpretive.narrative_role ?? ''))), 'Inferred'),
-    result('Call to action', sectionMessage(sections.find(section => section.interpretive.cta_role)), 'Inferred'),
+    result('Target audience', notes.audience || roleEvidence(/target.audience|audience.address/i), notes.audience ? 'Extracted' : 'Inferred'),
+    result('Trust signals', roleEvidence(/trust|testimonial|social.proof/i), 'Inferred'),
+    result('Call to action', roleEvidence(/call.to.action|^cta$/i) || sectionMessage(sections.find(section => section.interpretive.cta_role && sectionMessage(section))), 'Inferred'),
   ]
   const discoverability: Finding[] = [
     result('Published URL', video?.original_url, 'Extracted'),
@@ -520,7 +532,7 @@ export default function DeconstructorV3() {
           {mode === 'Deep Analysis' && <div className="dc3-actions">{(['Overview','Scenes','Narrative','Messaging','Persuasion','Emotions','Technical','Transcript','Keywords','Mechanisms'] as const).map(tab => <button className={tab === deepTab ? 'chosen' : ''} key={tab} onClick={() => setDeepTab(tab)}>{tab}</button>)}</div>}
           {mode === 'Deep Analysis' && deepTab === 'Scenes' ? <Card title="Scene evidence">{scenes}</Card> : mode === 'Deep Analysis' && deepTab === 'Messaging' ? row('Messaging', messaging) : mode === 'Deep Analysis' && deepTab === 'Persuasion' ? row('Persuasion', messaging.filter(([label]) => ['Persuasion mechanisms','Trust signals','Call to action'].includes(label))) : mode === 'Deep Analysis' && deepTab === 'Emotions' ? row('Emotional evidence', messaging.filter(([label]) => label === 'Emotional triggers')) : mode === 'Deep Analysis' && deepTab === 'Technical' ? <>{row('Technical properties',metadata)}<button type="button" onClick={() => changeView('Technical Intelligence')}>Open Technical Intelligence</button></> : mode === 'Deep Analysis' && deepTab === 'Keywords' ? row('Discoverability evidence',discoverability) : mode === 'Deep Analysis' && deepTab === 'Narrative' ? row('Narrative', messaging) : mode === 'Deep Analysis' && deepTab === 'Transcript' ? row('Transcript', [result('Recognised speech',transcript || null,'Detected')]) : mode === 'Deep Analysis' && deepTab === 'Mechanisms' ? row('Persuasion & Mechanisms', creative?.mechanisms.length ? creative.mechanisms.map((mechanism): Finding => [typeLabel(mechanism),`${mechanism.purpose} · ${evidenceSummary(mechanism)}`,'Inferred']) : [result('Mechanisms',null,'Inferred')]) : <>
             <div className="dc3-evidence-legend">{(['Extracted','Detected','Inferred','Researched','Unavailable'] as const).map(label => <span key={label} className={`dc3-badge dc3-${label.toLowerCase()}`}>{label}</span>)}</div><div className="dc3-overview"><div className="dc3-stack">
-            {row('Executive Summary',messaging.filter(([label]) => ['Core message','Hook','Target audience','Call to action'].includes(label)))}<Card title="Video Architecture at a Glance"><div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small></button>)}</div>{!sceneList.length && <p>Run analysis to populate the architecture.</p>}</Card>{row('Key Findings', messaging.filter(([label]) => ['Problem','Solution','Benefits','Persuasion mechanisms','Emotional triggers'].includes(label)))}</div><div className="dc3-stack">{row('Key Metrics & Metadata',[...metadata,result('Detected shots',shots.length || null,'Detected'),result('Analysed scenes',sections.length || null,'Inferred')])}{row('Persuasion & Mechanisms – Top 5',creative?.mechanisms.length ? creative.mechanisms.slice(0,5).map((mechanism): Finding => [typeLabel(mechanism),mechanism.purpose,'Inferred']) : [result('Mechanisms',null,'Inferred')])}{row('Discoverability Snapshot',discoverability.filter(([label]) => ['Frequently detected terms','Hashtags visible in the video','SEO','GEO','AEO'].includes(label)))}</div></div>
+            {row('Executive Summary',messaging.filter(([label]) => ['Core message','Hook','Target audience','Business objective','Call to action'].includes(label)))}<Card title="Video Architecture at a Glance"><div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small></button>)}</div>{!sceneList.length && <p>Run analysis to populate the architecture.</p>}</Card>{row('Key Findings', messaging.filter(([label]) => ['Problem','Solution','Benefits','Persuasion mechanisms','Emotional triggers'].includes(label)))}</div><div className="dc3-stack">{row('Key Metrics & Metadata',[...metadata,result('Detected shots',shots.length || null,'Detected'),result('Analysed scenes',sections.length || null,'Inferred')])}{row('Persuasion & Mechanisms – Top 5',creative?.mechanisms.length ? creative.mechanisms.slice(0,5).map((mechanism): Finding => [typeLabel(mechanism),mechanism.purpose,'Inferred']) : [result('Mechanisms',null,'Inferred')])}{row('Discoverability Snapshot',discoverability.filter(([label]) => ['Frequently detected terms','Hashtags visible in the video','SEO','GEO','AEO'].includes(label)))}</div></div>
             <div className="dc3-modules">{([['Messaging Intelligence',MessageSquare],['Technical Intelligence',Aperture],['Discoverability',Globe]] as const).map(([view,Icon]) => <button type="button" key={view} onClick={() => changeView(view)}><Icon />{view}<ArrowRight /></button>)}</div>
           </>}
         </div>
@@ -540,7 +552,7 @@ export default function DeconstructorV3() {
         </Card>
         <div className="dc3-grid">{preview}{row('Core Message',messaging.filter(([label]) => ['Core message','Target audience','Emotional triggers','Storytelling','Call to action'].includes(label)))}</div>
         <div className="dc3-actions">{(['Strategy','Hook','Problem','Solution','Storytelling','Persuasion','Audience'] as const).map(tab => <button className={tab === messageTab ? 'chosen' : ''} type="button" key={tab} onClick={() => setMessageTab(tab)}>{tab}</button>)}<button type="button" disabled={!sceneList.length || !video || sending} onClick={() => void send()}>Send to Reconstructor <ArrowRight /></button></div>
-        <div className="dc3-grid">{row(`${messageTab} Evidence`,messaging.filter(([label]) => ({Strategy:['Business objective','Strategy and positioning','Problem','Solution','Benefits'],Hook:['Hook'],Problem:['Problem'],Solution:['Solution','Benefits'],Storytelling:['Storytelling','Core message','Call to action'],Persuasion:['Persuasion mechanisms','Emotional triggers','Trust signals'],Audience:['Target audience']}[messageTab].includes(label))))}<Card title="Messaging Structure & Evidence"><button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>
+        <div className="dc3-grid">{row(`${messageTab} Evidence`,messaging.filter(([label]) => ({Strategy:['Business objective','Strategy and positioning','Problem','Solution','Benefits'],Hook:['Hook'],Problem:['Problem','Customer pain points'],Solution:['Solution','Benefits','Value proposition'],Storytelling:['Storytelling','Core message','Call to action'],Persuasion:['Persuasion mechanisms','Emotional triggers','Trust signals'],Audience:['Target audience']}[messageTab].includes(label))))}<Card title="Messaging Structure & Evidence"><button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>
       </>}
       {mode === 'Technical Intelligence' && <div className="dc3-technical">
         <Card title="Scenes">{scenes}</Card>
@@ -562,13 +574,16 @@ export default function DeconstructorV3() {
         <div className="dc3-stack">{row('Video Properties',metadata)}{row('Shot Breakdown',[
           result('Time range',activeShot?spanLabel(activeShot.start_time,activeShot.end_time):null,'Detected'),
           result('Shot evidence',activeShot?.evidence_summary,'Detected'),
+          result('Framing',activeShotReading?.framing,'Inferred'),
+          result('Visual subject',activeShotReading?.focal_subject,'Inferred'),
+          result('Visual interpretation',activeShotReading?.notes,'Inferred'),
           result('Text overlays',activeShot?.text_elements.filter(item => readableOverlay(item.text)).map(item => item.text).join(' · '),'Detected'),
           result('Voice-over / speech',activeShot ? speech.filter(segment => segment.start_time < activeShot.end_time && segment.end_time > activeShot.start_time).map(segment => segment.text).join(' ') : null,'Detected'),
           result('Transition measurements',activeShot ? (video?.transition_evidence ?? []).filter(item => item.boundary_timestamp >= activeShot.start_time && item.boundary_timestamp <= activeShot.end_time).length : null,'Detected'),
           result('Measured picture motion',activeShot?.global_motion_evidence ? `${activeShot.global_motion_evidence.frame_pair_count} frame pairs sampled at ${activeShot.global_motion_evidence.sampling_fps} fps` : null,'Detected'),
           result('Silence intervals in reference',video?.audio_structure?.audio_stream_present ? video.audio_structure.silence_count : null,'Detected'),
           result('Audio waveform',waveformPeaks?'Measured from decoded audio':null,'Detected'),
-          ...['Camera angles','Camera movement','Framing','Lighting','Animations','Music identification'].map(label => result(label,null,'Unavailable')),
+          ...['Camera angles','Camera movement','Lighting','Colour characteristics','Animations','Music identification','Sound effects'].map(label => result(label,null,'Unavailable')),
         ])}</div>
       </div>}
       {mode === 'Discoverability' && <div className="dc3-grid">{preview}<div className="dc3-stack">{row('Source and Discoverability Evidence', discoverability)}{video && <ExternalResearch key={video.id} referenceId={video.id} onReports={reports => setSavedReports({id:video.id,reports})} />}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched. Detected terms and questions describe the source content. Search ranking, generative answer visibility and local demand require independent evidence.</p></Card></div></div>}

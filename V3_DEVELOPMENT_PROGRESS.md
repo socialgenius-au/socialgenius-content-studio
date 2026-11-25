@@ -125,3 +125,11 @@ A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-du
 - Messaging Intelligence exposes the existing local Whisper small transcript alternative with optional language guidance. It preserves the original and reloads saved alternative readings.
 - Baseline frontend verification at 66e2737 reported 1,637 passed, 25 skipped and 7 failed. The failures cover responsive shell wiring and carousel layout.
 - Reference 4's three saved cited reports reopened on Railway acceptance. Full OCR and speech accuracy, approved design matching, and the complete current-build editor export workflow require further verification.
+
+## Follow-up from 0074c05
+
+- Messaging now uses both messaging and narrative classifications and displays the time range with matching speech or overlay evidence. Added Customer pain points and Value proposition. Unsupported fields remain Unavailable.
+- Technical Intelligence displays stored shot-specific framing, focal subject and visual notes when available.
+- Hashtag candidates now require letters and a word boundary. The raw OCR evidence remains available for investigation.
+- Video Studio Export starts the existing MP4 renderer directly, avoiding the browser confirmation that blocked the previous acceptance run.
+- Baseline at 0074c05: 1,637 frontend tests passed, 25 skipped and 7 failed in responsive shell and carousel checks. Full backend regression, Reference 5 OCR and speech accuracy, parity with the approved UI, structured semantic keyword validation and complete acceptance remain open.
