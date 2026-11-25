@@ -24,6 +24,12 @@ const modules = [
   ['messaging', 'Messaging Intelligence', 'Transcribe speech and detect on-screen text.'],
   ['discoverability', 'Discoverability Intelligence', 'Find terms and hashtags visible in the video.'],
   ['metadata', 'Metadata', 'Probe video, audio and container properties.'],
+  ['keywords', 'Keywords', 'Extract terms from speech and visible text.'],
+  ['hashtags', 'Hashtags', 'Detect hashtags present in the reference.'],
+  ['seo', 'SEO', 'Live cited search research.'],
+  ['geo', 'GEO', 'Live cited generative search research.'],
+  ['aeo', 'AEO', 'Live cited answer-engine research.'],
+  ['local', 'Local', 'Location-specific SEO research using a public topic.'],
 ] as const
 type Module = typeof modules[number][0]
 type ContextNotes = { industry: string; contentType: string; objective: string; audience: string; note: string }
@@ -135,6 +141,7 @@ export default function DeconstructorV3() {
   const [message, setMessage] = useState('')
   const [working, setWorking] = useState(false)
   const [select, setSelect] = useState<Module[]>(['technical','metadata'])
+  const [researchTopic, setResearchTopic] = useState('')
   const [range, setRange] = useState(false)
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
@@ -282,6 +289,8 @@ export default function DeconstructorV3() {
     setWorking(true)
     setMessage('')
     try {
+      const researchSelected = custom && select.some(key => ['seo','geo','aeo','local'].includes(key))
+      if (researchSelected && researchTopic.trim().length < 3) throw Error('Enter a public research topic, including a location for Local research.')
       let target = video
       if (custom && !select.length) throw Error('Select at least one analysis module.')
       if (custom && range) {
@@ -302,16 +311,21 @@ export default function DeconstructorV3() {
       }
       const targetId = target.id
       await referenceVideosApi.analyze(targetId)
-      const speechAndText = custom && (select.includes('messaging') || select.includes('discoverability'))
+      const speechAndText = custom && (select.includes('messaging') || select.includes('discoverability') || select.includes('keywords') || select.includes('hashtags'))
       if (!custom || select.includes('technical') || speechAndText) await referenceVideosApi.analyzeStructure(targetId)
       if (custom && (select.includes('technical') || speechAndText)) await referenceVideosApi.analyzeFrames(targetId)
       if (speechAndText) {
         await referenceVideosApi.analyzeText(targetId)
         await referenceVideosApi.analyzeSpeech(targetId)
       }
+      if (researchSelected) {
+        if (select.includes('seo') || select.includes('local')) await referenceVideosApi.runSearchResearch(targetId, researchTopic.trim(), 'SEO')
+        if (select.includes('geo')) await referenceVideosApi.runSearchResearch(targetId, researchTopic.trim(), 'GEO')
+        if (select.includes('aeo')) await referenceVideosApi.runSearchResearch(targetId, researchTopic.trim(), 'AEO')
+      }
       setReference((await referenceVideosApi.get(targetId)).data)
-      if (targetId !== id) selectReference(targetId,'Quick Analysis')
-      else changeView('Quick Analysis')
+      if (targetId !== id) selectReference(targetId,researchSelected ? 'Discoverability' : 'Quick Analysis')
+      else changeView(researchSelected ? 'Discoverability' : 'Quick Analysis')
       setMessage(custom ? 'Selected analysis completed.' : 'Quick Analysis completed.')
     } catch (error) {
       setMessage(errorMessage(error, error instanceof Error ? error.message : 'Analysis could not be completed.'))
@@ -407,8 +421,8 @@ export default function DeconstructorV3() {
         <footer className="dc3-footer"><span><Target /> Messaging, technical production and discoverability</span><button className="chosen" disabled={!video || busy} type="button" onClick={() => void run(false)}>Begin Quick Analysis <ArrowRight /></button></footer>
       </div>}
       {mode === 'Selective Analysis' && <div className="dc3-grid">
-        <div className="dc3-stack"><Card title="Video Reference">{preview}</Card><Card title="Time Range">
-          <label className="dc3-check"><input type="checkbox" checked={range} onChange={event => setRange(event.target.checked)} />Use a specific time range</label>
+        <div className="dc3-stack"><Card title="Video Reference">{preview}<strong>{video?.original_filename}</strong><small>{time(duration)} · {shots.length} shots</small></Card><Card title="Analysis Focus (Optional)"><label>Public research topic / location<input value={researchTopic} maxLength={160} onChange={event => setResearchTopic(event.target.value)} placeholder="Topic and location for SEO, GEO, AEO or Local" /></label><small>Used for selected external research; not a general AI instruction.</small></Card><Card title="Time Range">
+          <label className="dc3-check"><input type="checkbox" checked={range} onChange={event => {setRange(event.target.checked); if(event.target.checked){setStart('0');setEnd(String(duration))}}} />Use a specific time range</label>
           {range && <div className="dc3-context"><label>Start (seconds)<input type="number" min={0} step=".01" value={start} onChange={event => setStart(event.target.value)} /></label><label>End (seconds)<input type="number" min={0} max={duration || undefined} step=".01" value={end} onChange={event => setEnd(event.target.value)} /></label><label>Use scene or shot<select defaultValue="" onChange={event => {
             if (!event.target.value) return
             const [first,last] = event.target.value.split(':')
@@ -419,8 +433,8 @@ export default function DeconstructorV3() {
             {shots.length > 0 && <optgroup label="Shots">{shots.map(shot => <option key={shot.id} value={`${shot.start_time}:${shot.end_time}`}>Shot {shot.order} · {spanLabel(shot.start_time,shot.end_time)}</option>)}</optgroup>}
           </select></label></div>}
         </Card></div>
-        <div className="dc3-stack"><Card title="Select Analysis Modules"><label className="dc3-check"><input type="checkbox" checked={select.length === modules.length} onChange={event => setSelect(event.target.checked ? modules.map(([key]) => key) : [])} />Select all available modules</label><div className="dc3-modules">{modules.map(([key,label,description]) => <label className={select.includes(key) ? 'selected' : ''} key={key}><input type="checkbox" checked={select.includes(key)} onChange={event => setSelect(event.target.checked ? [...select,key] : select.filter(module => module !== key))} /><strong>{label}</strong><small>{description}</small></label>)}</div></Card>
-          <Card title="Analysis Scope Summary"><div className="dc3-actions"><span>{select.length} modules · {range ? 'Selected time range' : 'Full video'}</span><button className="chosen" type="button" disabled={!video || busy || !select.length} onClick={() => void run(true)}><Target />Run Selected Analysis</button></div></Card>
+        <div className="dc3-stack"><Card title="Select Analysis Modules"><label className="dc3-check"><input type="checkbox" checked={select.length === modules.length} onChange={event => setSelect(event.target.checked ? modules.map(([key]) => key) : [])} />Select all available modules</label><p>Combine intelligence modules for a focused analysis. Local uses the SEO report with a location-specific topic.</p><div className="dc3-modules dc3-selective-modules">{modules.map(([key,label,description]) => <label className={select.includes(key) ? 'selected' : ''} key={key}><input type="checkbox" checked={select.includes(key)} onChange={event => setSelect(event.target.checked ? [...select,key] : select.filter(module => module !== key))} /><strong>{label}</strong><small>{description}</small></label>)}</div></Card>
+          <Card title="Analysis Scope Summary"><div className="dc3-actions"><div><strong>{select.length} modules selected</strong><p>{modules.filter(([key]) => select.includes(key)).map(([,label]) => label).join(', ')}</p><small>Scope: {range ? `${start || '0'}–${end || duration}s` : `Full video · ${time(duration)}`} · Selective (Custom) · Processing time varies by module</small></div><button className="chosen" type="button" disabled={!video || busy || !select.length} onClick={() => void run(true)}><Target />Run Selected Analysis</button></div></Card>
         </div>
       </div>}
       {(mode === 'Quick Analysis' || mode === 'Deep Analysis') && <div className="dc3-grid dc3-analysis">
