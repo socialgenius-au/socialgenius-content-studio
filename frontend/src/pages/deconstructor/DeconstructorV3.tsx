@@ -280,7 +280,9 @@ export default function DeconstructorV3() {
     result('Questions in recognised speech', speech.filter(segment => /[?؟？]/u.test(segment.text)).slice(0,6).map(segment => `${time(segment.start_time)} · ${segment.text}`).join(' / '), 'Detected'),
     result('Primary keyword candidates (frequency ranked)', detectedTerms.slice(0,3).join(' · '), 'Detected'),
     result('Secondary keyword candidates (frequency ranked)', detectedTerms.slice(3).join(' · '), 'Detected'),
-    ...['Publication date', 'Views', 'Likes', 'Long-tail and semantic keywords', 'Geographic and local search'].map(label => result(label, null, 'Researched')),
+    result('Long-tail phrase candidates (observed speech)', speech.map(segment => segment.text.trim()).filter(value => value.split(/\s+/).length >= 3 && value.split(/\s+/).length <= 8 && readableOverlay(value)).filter((value,index,all) => all.indexOf(value) === index).slice(0,8).join(' · '), 'Detected'),
+    result('Research topic candidates', [...new Set(researchDimensions.map(dimension => savedReports?.id === id ? savedReports.reports[dimension]?.topic : undefined).filter(Boolean))].join(' · '), 'Researched'),
+    ...['Publication date', 'Views', 'Likes', 'Semantic keyword validation', 'Geographic and local search'].map(label => result(label, null, 'Researched')),
     ...researchDimensions.map(dimension => { const report = savedReports?.id === id ? savedReports.reports[dimension] : undefined; return result(dimension, report?.findings.length ? `${report.partial ? 'Partial research' : 'Research saved'} · ${report.findings.length} cited findings · ${report.topic}` : null, 'Researched') }),
   ]
   const busy = working || d.busy !== null
