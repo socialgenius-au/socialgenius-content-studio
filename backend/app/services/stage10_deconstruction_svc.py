@@ -105,6 +105,19 @@ async def run_stage10_pipeline(db: AsyncSession, video_analysis_id: int) -> Stag
             CandidateReasoningRecord(result=result, source_nominations=candidate["source_nominations"]),
         )
     scene_reasoning_results = await load_latest_reasoning_results(db, video_analysis_id)
+    reference = await db.get(ReferenceVideo, video_analysis.reference_video_id)
+    duration = reference.duration if reference else None
+    if duration is not None:
+        # Preserve provider decisions in their durable store. Edge candidates belong to the
+        # opening or closing scene and cannot serve as standalone scene cuts.
+        margin = CANDIDATE_MERGE_WINDOW_SECONDS
+        scene_reasoning_results = [
+            record for record in scene_reasoning_results
+            if not (
+                0 <= record.result.candidate_timestamp <= duration
+                and min(record.result.candidate_timestamp, duration - record.result.candidate_timestamp) < margin
+            )
+        ]
     scenes = await construct_and_persist_scenes(db, video_analysis_id, scene_reasoning_results)
 
     # --- Story Beat Construction (Stage 10.3, locked methodology at ffa0fe5) ---
