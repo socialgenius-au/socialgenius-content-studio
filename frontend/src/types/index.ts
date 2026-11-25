@@ -204,6 +204,7 @@ export interface ShotSummary {
   text_elements: TextElementSummary[]
   // Stage 8's raw visual-object detections for this Shot (COCO labels only). Optional: older responses and fixtures do not carry it.
   visual_objects?: VisualObjectSummary[]
+  global_motion_evidence?: { sampling_fps: number; frame_pair_count: number } | null
 }
 
 // One raw Stage-8 detection (a local COCO object detector): a label, a bounding box and a score for ONE sampled frame. It is evidence that a region
@@ -301,6 +302,7 @@ export interface ReferenceVideo {
   transition_evidence?: TransitionEvidenceSummary[]
   // Stage 7's speech-recognition evidence: video-level transcript segments (a local speech recogniser's output, with its own quality diagnostics). Optional: older responses and fixtures do not carry it.
   speech_segments?: SpeechSegmentSummary[]
+  audio_structure?: { audio_stream_present: boolean; silence_count: number } | null
 }
 
 // One measured window around one Shot boundary: how the picture and brightness changed across a few sampled frames. It carries NO transition name -- the analysis

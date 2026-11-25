@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     # two stay "" (falsy) until/unless that provider is selected, exactly like ANTHROPIC_API_KEY
     # already worked before this provider-neutral layer existed.
     OPENAI_API_KEY: str = ""
+    PEXELS_API_KEY: str = ""
     GOOGLE_AI_API_KEY: str = ""
 
     # ── Stage 10.2B — Semantic Boundary Reasoner (app/services/semantic_reasoner/) ────────────

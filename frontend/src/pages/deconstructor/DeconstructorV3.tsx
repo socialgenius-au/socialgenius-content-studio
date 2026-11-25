@@ -93,6 +93,10 @@ export default function DeconstructorV3() {
   const notes = contextByReference[contextKey] ?? emptyNotes
   const setNotes = (next: ContextNotes) => setContextByReference(previous => ({ ...previous,[contextKey]:next }))
   const [urlMode, setUrlMode] = useState(false)
+  const [publishedUrl, setPublishedUrl] = useState('')
+  const [rightsConfirmed, setRightsConfirmed] = useState(false)
+  const [publication, setPublication] = useState<{id:number; creator?:string; provider?:string; provider_video_id?:string} | null>(null)
+  const [sending, setSending] = useState(false)
   const player = useRef<HTMLVideoElement>(null)
   const file = useRef<HTMLInputElement>(null)
 
@@ -105,6 +109,16 @@ export default function DeconstructorV3() {
     return () => { live = false }
   }, [id, d.references.data])
   const video = reference?.id === id ? reference : null
+  useEffect(() => {
+    if (!video?.original_url) return
+    const id = video.id
+    let live = true
+    referenceVideosApi.publication(id).then(({data}) => {
+      if (live && data) setPublication({...data,id})
+    }).catch(() => { /* Provider evidence remains unavailable. */ })
+    return () => {live = false}
+  }, [video?.id, video?.original_url])
+  const publishedEvidence = publication?.id === video?.id ? publication : null
   const details = video?.technical_details
   const duration = details?.container.duration_seconds ?? details?.video.duration_seconds ?? 0
   const anatomy = d.anatomy.data?.provenance.reference_video_id === id ? d.anatomy.data : null
@@ -130,6 +144,8 @@ export default function DeconstructorV3() {
     {label:'Transitions',items:(video?.transition_evidence ?? []).map(item => ({key:String(item.id),start:item.boundary_timestamp,end:item.boundary_timestamp,text:'Boundary measurement'}))},
   ]
   const observedText = shots.flatMap(shot => shot.text_elements.map(item => item.text)).join(' ')
+  const detectedTerms = sourceTerms(`${transcript} ${observedText}`)
+  const visibleHashtags = [...new Set(observedText.match(/#[\p{L}\p{N}_]+/gu) ?? [])]
   const metadata = mediaProperties(video)
   const messaging: Finding[] = [
     result('Business objective', notes.objective || null, 'Extracted'),
@@ -148,12 +164,18 @@ export default function DeconstructorV3() {
   ]
   const discoverability: Finding[] = [
     result('Published URL', video?.original_url, 'Extracted'),
+    result('Platform', publishedEvidence?.provider, 'Extracted'),
+    result('Publisher', publishedEvidence?.creator, 'Extracted'),
+    result('Platform video ID', publishedEvidence?.provider_video_id, 'Extracted'),
     result('Published title', null, 'Extracted'),
     result('Published description', null, 'Extracted'),
-    result('Frequently detected terms', sourceTerms(`${transcript} ${observedText}`).join(' · '), 'Detected'),
-    result('Hashtags visible in the video', [...new Set(observedText.match(/#[\p{L}\p{N}_]+/gu) ?? [])].join(' · '), 'Detected'),
+    result('Frequently detected terms', detectedTerms.join(' · '), 'Detected'),
+    result('Hashtags visible in the video', visibleHashtags.join(' · '), 'Detected'),
     result('Published hashtags', null, 'Extracted'),
     result('Detected visual entities', [...new Set(shots.flatMap(shot => (shot.visual_objects ?? []).map(item => item.label)))].join(' · '), 'Detected'),
+    result('Searchable terms in recognised speech', sourceTerms(transcript).join(' · '), 'Detected'),
+    result('Searchable terms in on-screen text', sourceTerms(observedText).join(' · '), 'Detected'),
+    result('Questions in recognised speech', speech.filter(segment => segment.text.includes('?')).slice(0,6).map(segment => `${time(segment.start_time)} · ${segment.text}`).join(' / '), 'Detected'),
     ...['Publication date', 'Views', 'Likes', 'Primary / secondary keywords', 'Long-tail and semantic keywords', 'SEO', 'GEO', 'AEO', 'Geographic and local search'].map(label => result(label, null, 'Researched')),
   ]
   const busy = working || d.busy !== null
@@ -172,6 +194,24 @@ export default function DeconstructorV3() {
       selectReference(newId)
       try { setReference((await referenceVideosApi.analyze(newId)).data) }
       catch (error) { setMessage(errorMessage(error, 'Video uploaded. Metadata extraction can be retried in Quick Analysis.')) }
+    }
+  }
+  const importPublished = async () => {
+    if (busy || !rightsConfirmed) return
+    setWorking(true)
+    setMessage('')
+    try {
+      const {data} = await referenceVideosApi.importPublished(publishedUrl.trim())
+      const publishedId = data.id as number
+      setContextByReference(previous => ({...previous,[publishedId]:notes}))
+      selectReference(publishedId)
+      setReference(data)
+      const metadata = await referenceVideosApi.analyze(publishedId)
+      setReference(metadata.data)
+    } catch (error) {
+      setMessage(errorMessage(error, 'Published source import could not be completed.'))
+    } finally {
+      setWorking(false)
     }
   }
   const updateTime = (seconds: number) => {
@@ -246,13 +286,15 @@ export default function DeconstructorV3() {
       setWaveformLoading(false)
     }
   }
-  const send = () => {
-    if (!video || !sceneList.length) return
+  const send = async () => {
+    if (!video || !sceneList.length || sending) return
+    setSending(true)
     const handoff = { referenceId:video.id, scenes:sceneList, context:notes, messaging, discoverability, metadata, mechanisms:creative?.mechanisms ?? [], provenance:anatomy?.provenance }
     try {
-      sessionStorage.setItem('sg-reconstructor-detected-scenes',JSON.stringify(handoff))
-      navigate(`/reconstructor/assets?scene=${sceneList[0].number}&reference=${video.id}`)
-    } catch { setMessage('Could not store this Reconstructor handoff in the browser.') }
+      const {data} = await referenceVideosApi.createHandoff(video.id,handoff)
+      navigate(`/reconstructor/assets?scene=${sceneList[0].number}&reference=${video.id}&handoff=${data.id}`)
+    } catch (error) { setMessage(errorMessage(error, 'Could not save this Reconstructor handoff.')) }
+    finally { setSending(false) }
   }
   const report = () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify({ reference:video?.original_filename, context:notes, metadata, messaging, discoverability, scenes:sceneList, mechanisms:creative?.mechanisms ?? [] },null,2)],{type:'application/json'}))
@@ -282,7 +324,12 @@ export default function DeconstructorV3() {
       {mode === 'Reference' && <div className="dc3-import">
         <Card title="Video Reference">
           <div className="dc3-actions"><button type="button" onClick={() => setUrlMode(false)}>Upload Video File</button><button type="button" onClick={() => setUrlMode(true)}>Published Video URL</button></div>
-          {urlMode ? <p>Published URL ingestion is unavailable. Upload a video file you can analyse.</p> : <div className="dc3-drop" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); void importVideo(event.dataTransfer.files[0]) }}>
+          {urlMode ? <form className="dc3-drop" onSubmit={event => {event.preventDefault(); void importPublished()}}>
+            <label>Published Pexels video URL <input type="url" required value={publishedUrl} onChange={event => setPublishedUrl(event.target.value)} placeholder="https://www.pexels.com/video/…" /></label>
+            <label><input type="checkbox" checked={rightsConfirmed} onChange={event => setRightsConfirmed(event.target.checked)} /> I am authorised to analyse this video.</label>
+            <button type="submit" disabled={busy || !rightsConfirmed || !publishedUrl.trim()}>Import published video</button>
+            <small>For other platforms, upload a licensed video file.</small>
+          </form> : <div className="dc3-drop" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); void importVideo(event.dataTransfer.files[0]) }}>
             <UploadCloud /><button type="button" disabled={busy} onClick={() => file.current?.click()}>{busy ? 'Working…' : 'Browse or drop a video file'}</button><input ref={file} type="file" accept="video/*" hidden onChange={event => void importVideo(event.currentTarget.files?.[0])} />
           </div>}
           {preview}
@@ -314,7 +361,7 @@ export default function DeconstructorV3() {
       {(mode === 'Quick Analysis' || mode === 'Deep Analysis') && <div className="dc3-grid">
         <div className="dc3-stack">{preview}<Card title="Scenes & Timeline">{scenes}</Card></div>
         <div className="dc3-stack">
-          <div className="dc3-actions">{mode === 'Deep Analysis' ? <><button className="chosen" disabled={!video || busy} type="button" onClick={() => { if(window.confirm('Run the full analysis pipeline? Configured AI stages may incur provider costs.')) void d.deconstruct() }}>Run Deep Analysis</button><span role="status">{d.progress.headline}</span></> : <button className="chosen" disabled={!video || busy} type="button" onClick={() => void run(false)}><Zap />Run Quick Analysis</button>}<button type="button" disabled={!video} onClick={report}>Export Analysis</button><button type="button" disabled={!sceneList.length || !video} onClick={send}>Send to Reconstructor <ArrowRight /></button></div>
+          <div className="dc3-actions">{mode === 'Deep Analysis' ? <><button className="chosen" disabled={!video || busy} type="button" onClick={() => { if(window.confirm('Run the full analysis pipeline? Configured AI stages may incur provider costs.')) void d.deconstruct() }}>Run Deep Analysis</button><span role="status">{d.progress.headline}</span></> : <button className="chosen" disabled={!video || busy} type="button" onClick={() => void run(false)}><Zap />Run Quick Analysis</button>}<button type="button" disabled={!video} onClick={report}>Export Analysis</button><button type="button" disabled={!sceneList.length || !video || sending} onClick={() => void send()}>Send to Reconstructor <ArrowRight /></button></div>
           {mode === 'Deep Analysis' && d.progress.steps.length > 0 && <details className="dc3-card"><summary>Analysis status by stage</summary><Findings rows={d.progress.steps.map(step => [step.label,[step.status.replace(/_/g,' '),step.note].filter(Boolean).join(' · '),step.status === 'skipped' || step.status === 'failed' ? 'Unavailable' : 'Extracted'])} /></details>}
           {mode === 'Deep Analysis' && <div className="dc3-actions">{(['Overview','Scenes','Narrative','Messaging','Persuasion','Emotions','Technical','Transcript','Keywords','Mechanisms'] as const).map(tab => <button className={tab === deepTab ? 'chosen' : ''} key={tab} onClick={() => setDeepTab(tab)}>{tab}</button>)}</div>}
           {mode === 'Deep Analysis' && deepTab === 'Scenes' ? <Card title="Scene evidence">{scenes}</Card> : mode === 'Deep Analysis' && deepTab === 'Messaging' ? row('Messaging', messaging) : mode === 'Deep Analysis' && deepTab === 'Persuasion' ? row('Persuasion', messaging.filter(([label]) => ['Persuasion mechanisms','Trust signals','Call to action'].includes(label))) : mode === 'Deep Analysis' && deepTab === 'Emotions' ? row('Emotional evidence', messaging.filter(([label]) => label === 'Emotional triggers')) : mode === 'Deep Analysis' && deepTab === 'Technical' ? <>{row('Technical properties',metadata)}<button type="button" onClick={() => changeView('Technical Intelligence')}>Open Technical Intelligence</button></> : mode === 'Deep Analysis' && deepTab === 'Keywords' ? row('Discoverability evidence',discoverability) : mode === 'Deep Analysis' && deepTab === 'Narrative' ? row('Narrative', messaging) : mode === 'Deep Analysis' && deepTab === 'Transcript' ? row('Transcript', [result('Recognised speech',transcript || null,'Detected')]) : mode === 'Deep Analysis' && deepTab === 'Mechanisms' ? row('Persuasion & Mechanisms', creative?.mechanisms.length ? creative.mechanisms.map((mechanism): Finding => [typeLabel(mechanism),`${mechanism.purpose} · ${evidenceSummary(mechanism)}`,'Inferred']) : [result('Mechanisms',null,'Inferred')]) : <>
@@ -326,7 +373,7 @@ export default function DeconstructorV3() {
       </div>}
       {mode === 'Messaging Intelligence' && <>
         <div className="dc3-grid">{preview}{row('Core Message',messaging.filter(([label]) => ['Core message','Target audience','Emotional triggers','Storytelling','Call to action'].includes(label)))}</div>
-        <div className="dc3-actions">{(['Strategy','Hook','Problem','Solution','Storytelling','Persuasion','Audience'] as const).map(tab => <button className={tab === messageTab ? 'chosen' : ''} type="button" key={tab} onClick={() => setMessageTab(tab)}>{tab}</button>)}<button type="button" disabled={!sceneList.length || !video} onClick={send}>Send to Reconstructor <ArrowRight /></button></div>
+        <div className="dc3-actions">{(['Strategy','Hook','Problem','Solution','Storytelling','Persuasion','Audience'] as const).map(tab => <button className={tab === messageTab ? 'chosen' : ''} type="button" key={tab} onClick={() => setMessageTab(tab)}>{tab}</button>)}<button type="button" disabled={!sceneList.length || !video || sending} onClick={() => void send()}>Send to Reconstructor <ArrowRight /></button></div>
         <div className="dc3-grid">{row(`${messageTab} Evidence`,messaging.filter(([label]) => ({Strategy:['Business objective','Strategy and positioning','Problem','Solution','Benefits'],Hook:['Hook'],Problem:['Problem'],Solution:['Solution','Benefits'],Storytelling:['Storytelling','Core message','Call to action'],Persuasion:['Persuasion mechanisms','Emotional triggers','Trust signals'],Audience:['Target audience']}[messageTab].includes(label))))}<Card title="Messaging Structure & Evidence"><button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>
       </>}
       {mode === 'Technical Intelligence' && <div className="dc3-technical">
@@ -352,11 +399,13 @@ export default function DeconstructorV3() {
           result('Text overlays',activeShot?.text_elements.map(item => item.text).join(' · '),'Detected'),
           result('Voice-over / speech',activeShot ? speech.filter(segment => segment.start_time < activeShot.end_time && segment.end_time > activeShot.start_time).map(segment => segment.text).join(' ') : null,'Detected'),
           result('Transition measurements',activeShot ? (video?.transition_evidence ?? []).filter(item => item.boundary_timestamp >= activeShot.start_time && item.boundary_timestamp <= activeShot.end_time).length : null,'Detected'),
+          result('Measured picture motion',activeShot?.global_motion_evidence ? `${activeShot.global_motion_evidence.frame_pair_count} frame pairs sampled at ${activeShot.global_motion_evidence.sampling_fps} fps` : null,'Detected'),
+          result('Silence intervals in reference',video?.audio_structure?.audio_stream_present ? video.audio_structure.silence_count : null,'Detected'),
           result('Audio waveform',waveformPeaks?'Measured from decoded audio':null,'Detected'),
           ...['Camera angles','Camera movement','Framing','Lighting','Animations','Music identification'].map(label => result(label,null,'Unavailable')),
         ])}</div>
       </div>}
-      {mode === 'Discoverability' && <div className="dc3-grid">{preview}<div className="dc3-stack">{row('Source and Discoverability Evidence', discoverability)}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched.</p></Card></div></div>}
+      {mode === 'Discoverability' && <div className="dc3-grid">{preview}<div className="dc3-stack">{row('Source and Discoverability Evidence', discoverability)}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched. Detected terms and questions describe the source content. Search ranking, generative answer visibility and local demand require independent evidence.</p></Card></div></div>}
     </main>
   </div>
 }

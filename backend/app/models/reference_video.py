@@ -76,3 +76,22 @@ class ReferenceVideo(Base):
         Index("ix_reference_videos_user_id", "user_id"),
         Index("ix_reference_videos_asset_id", "asset_id"),
     )
+
+
+class ReferencePublication(Base):
+    __tablename__ = "reference_publications"
+
+    reference_video_id: Mapped[int] = mapped_column(
+        ForeignKey("reference_videos.id", ondelete="CASCADE"), primary_key=True,
+    )
+    evidence: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class ReferenceReconstructionHandoff(Base):
+    __tablename__ = "reference_reconstruction_handoffs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reference_video_id: Mapped[int] = mapped_column(
+        ForeignKey("reference_videos.id", ondelete="CASCADE"), index=True,
+    )
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)

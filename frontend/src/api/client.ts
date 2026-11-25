@@ -154,6 +154,10 @@ export const assetsApi = {
 // returned by uploadApi.upload — never uploads a file itself; see reference_videos.py's own
 // module docstring on the backend for exact scope.
 export const referenceVideosApi = {
+  importPublished: (url: string) => api.post('/reference-videos/published-import', { url, rights_confirmed: true }, { timeout: 125_000 }),
+  publication: (id: number) => api.get(`/reference-videos/${id}/publication`),
+  createHandoff: (id: number, payload: unknown) => api.post(`/reference-videos/${id}/reconstruction-handoffs`, payload),
+  handoff: (id: number, handoffId: number) => api.get(`/reference-videos/${id}/reconstruction-handoffs/${handoffId}`),
   ingest:  (asset_id: number) => api.post('/reference-videos/', { asset_id }),
   get:     (id: number)       => api.get(`/reference-videos/${id}`),
   // Restoration path (post-Stage-3 defect fix): the caller's own ReferenceVideos, newest first

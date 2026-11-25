@@ -73,7 +73,18 @@ and write the fresh set, all in one transaction — no orphaned files, no partia
 ever presented.
 """
 from datetime import datetime, timezone
+
+import asyncio
+import json
 from pathlib import Path
+from uuid import uuid4
+
+import httpx
+from pydantic import BaseModel, Field
+
+from app.config import settings
+from app.models.reference_video import ReferencePublication, ReferenceReconstructionHandoff
+from app.services.reference_source import SourceUnavailable, download_published_video
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import delete, select, update
@@ -791,6 +802,123 @@ async def ingest_reference_video(
     await db.refresh(rv)
 
     return await _to_response(db, rv, asset)
+
+
+class PublishedImport(BaseModel):
+    url: str = Field(min_length=10, max_length=2048)
+    rights_confirmed: bool
+
+
+@router.post("/published-import", response_model=ReferenceVideoResponse, status_code=201)
+async def import_published_reference(
+    body: PublishedImport, db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    if not body.rights_confirmed:
+        raise HTTPException(422, "Confirm you are authorised to use this video.")
+    target = Path(settings.UPLOAD_DIR) / str(user.id) / f"{uuid4().hex}.mp4"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    committed = False
+    try:
+        async with asyncio.timeout(90):
+            url, size, evidence = await download_published_video(body.url.strip(), target)
+        try:
+            details = await ffmpeg_svc.probe_technical_metadata(str(target), file_size_bytes=size)
+        except ffmpeg_svc.TechnicalProbeError as error:
+            raise HTTPException(422, "The provider returned unreadable video media.") from error
+        if not details["video"]["width"] or not details["video"]["height"]:
+            raise HTTPException(422, "The provider file has no readable video stream.")
+        asset = Asset(
+            user_id=user.id, original_filename=f"pexels-{evidence['provider_video_id']}.mp4",
+            stored_filename=target.name, file_path=str(target), file_type="video",
+            mime_type="video/mp4", file_size=size,
+        )
+        db.add(asset)
+        await db.flush()
+        video = ReferenceVideo(
+            user_id=user.id, asset_id=asset.id, source="url", original_url=url, rights_status="licensed",
+        )
+        db.add(video)
+        await db.flush()
+        db.add_all([VideoAnalysis(reference_video_id=video.id), ReferencePublication(reference_video_id=video.id, evidence=evidence)])
+        await db.commit()
+        committed = True
+        await db.refresh(video)
+        return await _to_response(db, video, asset)
+    except SourceUnavailable as error:
+        raise HTTPException(503 if not settings.PEXELS_API_KEY and "needs an authorised" in str(error) else 422, str(error)) from error
+    except (httpx.HTTPError, TimeoutError) as error:
+        raise HTTPException(502, "Pexels could not provide the video. Check the source and acceptance API access.") from error
+    finally:
+        if not committed:
+            target.unlink(missing_ok=True)
+
+
+async def _require_owned_reference(db: AsyncSession, reference_id: int, user_id: int) -> None:
+    owned = await db.scalar(select(ReferenceVideo.id).where(
+        ReferenceVideo.id == reference_id, ReferenceVideo.user_id == user_id,
+    ))
+    if owned is None:
+        raise HTTPException(404, "Reference video not found")
+
+
+@router.get("/{reference_video_id}/publication")
+async def reference_publication(reference_video_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    await _require_owned_reference(db, reference_video_id, user.id)
+    publication = await db.get(ReferencePublication, reference_video_id)
+    return publication.evidence if publication else None
+
+
+class HandoffScene(BaseModel):
+    number: int
+    start: float = Field(ge=0, allow_inf_nan=False)
+    end: float = Field(gt=0, allow_inf_nan=False)
+    role: str
+    story: str
+    technical: str
+    audio: str
+
+
+Finding = tuple[str, str | int | float | None, str]
+
+
+class ReconstructionHandoff(BaseModel):
+    scenes: list[HandoffScene] = Field(min_length=1, max_length=1000)
+    context: dict = Field(default_factory=dict)
+    messaging: list[Finding] = Field(default_factory=list)
+    discoverability: list[Finding] = Field(default_factory=list)
+    metadata: list[Finding] = Field(default_factory=list)
+    mechanisms: list = Field(default_factory=list)
+    provenance: dict | None = None
+
+
+@router.post("/{reference_video_id}/reconstruction-handoffs", status_code=201)
+async def create_reconstruction_handoff(
+    reference_video_id: int, body: ReconstructionHandoff,
+    db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    await _require_owned_reference(db, reference_video_id, user.id)
+    if any(scene.end <= scene.start for scene in body.scenes):
+        raise HTTPException(422, "Scene end must be after its start.")
+    payload = body.model_dump(mode="json")
+    if len(json.dumps(payload).encode()) > 512_000:
+        raise HTTPException(413, "The reconstruction handoff exceeds the supported size.")
+    handoff = ReferenceReconstructionHandoff(reference_video_id=reference_video_id, payload=payload)
+    db.add(handoff)
+    await db.flush()
+    handoff_id = handoff.id
+    await db.commit()
+    return {"id": handoff_id}
+
+
+@router.get("/{reference_video_id}/reconstruction-handoffs/{handoff_id}")
+async def get_reconstruction_handoff(
+    reference_video_id: int, handoff_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    await _require_owned_reference(db, reference_video_id, user.id)
+    handoff = await db.get(ReferenceReconstructionHandoff, handoff_id)
+    if handoff is None or handoff.reference_video_id != reference_video_id:
+        raise HTTPException(404, "Reconstruction handoff not found")
+    return {**handoff.payload, "referenceId": reference_video_id}
 
 
 @router.get("/{reference_video_id}", response_model=ReferenceVideoResponse)

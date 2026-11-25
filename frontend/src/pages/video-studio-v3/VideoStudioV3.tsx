@@ -1,6 +1,6 @@
 import { videoScenePresets } from '../../components/videoTemplatePresets'
 import { useEffect, useRef } from 'react'
-import { assetsApi, brandKitsApi, generateApi, videoStudioDraftsApi, videoExportApi, uploadApi } from '../../api/client'
+import { referenceVideosApi, assetsApi, brandKitsApi, generateApi, videoStudioDraftsApi, videoExportApi, uploadApi } from '../../api/client'
 import editorHtml from '../../../../ui-v3/index.html?raw'
 type ExportMedia = {
  asset_id: number
@@ -206,6 +206,18 @@ export default function VideoStudioV3() {
      target?.postMessage({type:'sg-v3-server-result',draft,media,message:'V3 server draft loaded'},window.location.origin)
     } catch { target?.postMessage({type:'sg-v3-server-result',message:'V3 draft or its assigned media unavailable'},window.location.origin) }
     finally { draftRequestPending = false }
+    return
+   }
+   if(event.data?.type === 'sg-v3-import-analysis') {
+    const params = new URLSearchParams(window.location.search)
+    const referenceId = Number(params.get('reference'))
+    const handoffId = Number(params.get('handoff'))
+    try {
+     const {data} = await referenceVideosApi.handoff(referenceId,handoffId)
+     if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',scenes:data.scenes},window.location.origin)
+    } catch {
+     if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',error:true},window.location.origin)
+    }
     return
    }
    if(event.data?.type !== 'sg-v3-import-assets') return
