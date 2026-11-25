@@ -149,6 +149,7 @@ async def classify_and_persist_retention_devices(db: AsyncSession, video_analysi
         db.add(row)
         persisted_rows.append(row)
 
+    video_analysis.pass_status = {**(video_analysis.pass_status or {}), "retention_classification_complete": True}
     await db.commit()
     for row in persisted_rows:
         await db.refresh(row)

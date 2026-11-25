@@ -310,8 +310,8 @@ async def claim_orchestration(db: AsyncSession, user: User, reference_video_id: 
 
 async def _has_existing_results(db: AsyncSession, key: str, video_analysis_id: int) -> bool:
     """Whether a derived stage already has persisted results for this exact VideoAnalysis, read from the
-    data itself. ANY retention attempt (pre- or post-acceptance-gate) counts: upgrading legacy attempts
-    is a paid re-run and must be an explicit `force_ai`, never a silent side effect."""
+    data itself. Retention attempts can be saved before later candidates fail, so only
+    a completed classification or persisted effective devices attest to a finished run."""
     from sqlalchemy import func
 
     from app.models.analysis_annotation import AnalysisAnnotation
@@ -346,7 +346,8 @@ async def _has_existing_results(db: AsyncSession, key: str, video_analysis_id: i
             StrategicInsight.video_analysis_id == video_analysis_id, StrategicInsight.category == "hook",
         ))).scalar_one() > 0
     if key == "retention_devices":
-        return await annotations("retention_reasoning_attempt") or await annotations("retention_device")
+        analysis = await db.get(VideoAnalysis, video_analysis_id, populate_existing=True)
+        return bool(analysis and (analysis.pass_status or {}).get("retention_classification_complete")) or await annotations("retention_device")
     return False
 
 
@@ -498,6 +499,10 @@ async def _run_stage(spec: StageSpec, ctx: RunContext, results: dict[str, dict],
             return outcome(ALREADY_COMPLETE)
     else:
         prior_ok = (prior.get(spec.key) or {}).get("status") in _OK_FOR_DEPENDENTS
+        if spec.key == "retention_devices":
+            # Legacy "already complete" could be written after one successful candidate
+            # followed by a failed candidate. A recorded fully complete run is valid.
+            prior_ok = (prior.get(spec.key) or {}).get("status") == COMPLETE
         existing = prior_ok or await ctx.has_results(spec.key)
         if existing:
             upstream_changed = any(results[d]["status"] == COMPLETE for d in spec.depends_on + spec.after)
