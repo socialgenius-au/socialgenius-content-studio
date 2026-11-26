@@ -1366,9 +1366,12 @@ REPORT_LIBRARY_CATEGORY = "deconstructor_library_report"
 
 
 async def _report_snapshot(db, reference, analysis_id, body):
+    asset = await db.get(Asset, reference.asset_id)
+    if asset is None:
+        raise HTTPException(404, "Reference media not found.")
     publication = await db.get(ReferencePublication, reference.id)
     return {
-        **body.model_dump(mode="json"), "reference": reference.original_filename,
+        **body.model_dump(mode="json"), "reference": asset.original_filename,
         "original_url": reference.original_url, "publication": publication.evidence if publication else None,
         "analysis_id": analysis_id, "research_reports": await _latest_saved_research(db, reference.id),
         "messaging_report": await _saved_messaging(db, analysis_id),
