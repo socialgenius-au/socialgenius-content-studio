@@ -647,13 +647,13 @@ export default function DeconstructorV3() {
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 60000)
   }
-  const reportAction = async (action: 'pdf' | 'save' | 'history', reportId?: number) => {
+  const reportAction = async (action: 'pdf' | 'appendix' | 'save' | 'history', reportId?: number) => {
     if (!video || reportBusy) return
     setReportBusy(true)
     try {
-      if (action === 'pdf') {
-        const {data} = await referenceVideosApi.analysisPdf(video.id, reportBody)
-        downloadBlob(data, `reference-${video.id}-analysis.pdf`)
+      if (action === 'pdf' || action === 'appendix') {
+        const {data} = await referenceVideosApi.analysisPdf(video.id, reportBody, action === 'appendix')
+        downloadBlob(data, `reference-${video.id}-analysis${action === 'appendix' ? '-with-appendix' : ''}.pdf`)
       } else if (action === 'save') {
         await referenceVideosApi.saveLibraryReport(video.id, reportBody)
         await loadHistory(video.id)
@@ -670,6 +670,7 @@ export default function DeconstructorV3() {
   }
   const printReport = () => void reportAction('pdf')
   const analysisTools = <div className="dc3-actions dc3-report-actions">
+    <button type="button" disabled={!video || reportBusy} onClick={() => void reportAction('appendix')}>PDF with Evidence Appendix</button>
     <button type="button" disabled={!video || reportBusy} onClick={() => void reportAction('history')}>Analysis History</button>
     <button type="button" disabled={!video || reportBusy} onClick={() => void reportAction('save')}>Save to Library</button>
   </div>

@@ -169,7 +169,7 @@ export const referenceVideosApi = {
   analysisHistory: (id: number) => api.get(`/reference-videos/${id}/analysis-history`),
   saveLibraryReport: (id: number, body: unknown) => api.post(`/reference-videos/${id}/library-reports`, body),
   openLibraryReport: (id: number, reportId: number) => api.get(`/reference-videos/${id}/library-reports/${reportId}`),
-  analysisPdf: (id: number, body: unknown) => api.post(`/reference-videos/${id}/analysis-pdf`, body, {responseType: 'blob', timeout: 90000}),
+  analysisPdf: (id: number, body: unknown, appendix = false) => api.post(`/reference-videos/${id}/analysis-pdf`, body, {params: {appendix}, responseType: 'blob', timeout: 90000}),
   discoverabilityIntelligence: (id: number) => api.get(`/reference-videos/${id}/discoverability-intelligence`),
   runDiscoverabilityIntelligence: (id: number, market: string) =>
     api.post(`/reference-videos/${id}/discoverability-intelligence`, {market}, {timeout: 100000}),

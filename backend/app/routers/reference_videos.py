@@ -1434,7 +1434,7 @@ async def reopen_library_report(reference_video_id: int, report_id: int, db: Asy
 
 
 @router.post("/{reference_video_id}/analysis-pdf")
-async def export_analysis_pdf(reference_video_id: int, body: ReportContext, db: AsyncSession = Depends(get_db),
+async def export_analysis_pdf(reference_video_id: int, body: ReportContext, appendix: bool = False, db: AsyncSession = Depends(get_db),
                               user: User = Depends(current_user)):
     from fastapi.responses import Response
     from app.services.deconstructor_pdf import render_report
@@ -1443,7 +1443,7 @@ async def export_analysis_pdf(reference_video_id: int, body: ReportContext, db: 
     payload = await _report_snapshot(db, reference, analysis_id, body)
     if len(json.dumps(payload).encode()) > 1_500_000:
         raise HTTPException(413, "This analysis report exceeds the supported size.")
-    pdf = await asyncio.to_thread(render_report, payload)
+    pdf = await asyncio.to_thread(render_report, payload, appendix)
     return Response(pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="reference-{reference_video_id}-analysis.pdf"'})
 

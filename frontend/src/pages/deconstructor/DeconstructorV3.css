@@ -214,3 +214,14 @@
   .dc3-global-search { flex:1; width:auto; }
   .dc3-global > a { font-size:.75rem; }
 }
+
+@media(max-width:720px) {
+  .dc3-modes { align-items:stretch; }
+  .dc3-modes button { flex:1 1 132px; min-height:42px; justify-content:flex-start; }
+  .dc3-actions button,.dc3-footer button { min-height:42px; }
+  .dc3-technical > .dc3-stack,.dc3-import > .dc3-stack { grid-column:1; }
+  .dc3-technical > .dc3-stack:last-child { grid-column:1; }
+  .dc3-card-content,.dc3-story button { overflow-wrap:anywhere; }
+  .dc3-findings > div { grid-template-columns:minmax(70px,1fr) minmax(0,1.3fr); }
+  .dc3-findings > div > dd:last-child { grid-column:2; }
+}
