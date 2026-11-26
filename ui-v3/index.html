@@ -350,7 +350,7 @@ window.addEventListener('message',event=>{
    if(length<duration-.001)missing++;
    const overlayId=Number(plan.direction?.['Scene '+scene.number+' · Overlay asset']);
    const overlay=localAssets.get('server-'+overlayId),overlayLane=laneRows.filter(l=>trackKind(l)==='video')[1];
-   if(overlayId&&overlay&&['video','image'].includes(overlay.kind)&&overlayLane&&clips.length<100&&!clips.some(c=>c.parentElement===overlayLane&&occupied(c)&&start<Number(c.dataset.start)+Number(c.dataset.duration)&&start+duration>Number(c.dataset.start)))insertClip({asset:overlay.id,duration,trim:0,volume:0},start,overlayLane,false);
+   if(overlayId&&overlay&&['video','image'].includes(overlay.kind)&&overlayLane&&clips.length<100&&!clips.some(c=>c.parentElement===overlayLane&&occupied(c)&&start<Number(c.dataset.start)+Number(c.dataset.duration)&&start+duration>Number(c.dataset.start))){const prefix='Scene '+scene.number+' · ',size=Math.max(5,Math.min(100,Number(plan.direction?.[prefix+'Overlay size'])||30));insertClip({asset:overlay.id,duration,trim:0,volume:0,properties:{imageX:100-size,imageY:0,imageWidth:size,imageHeight:size,transition:plan.direction?.[prefix+'Overlay animation']||'Hard cut',transitionDuration:Math.min(duration,Math.max(0,Number(plan.direction?.[prefix+'Overlay duration']??.6)||0))}},start,overlayLane,false);}
   });
   const direction=plan.direction||{};
   const textLanes=laneRows.filter(l=>trackKind(l)==='text'),audioLanes=laneRows.filter(l=>trackKind(l)==='audio'),musicLane=laneRows.find(l=>trackKind(l)==='music');
