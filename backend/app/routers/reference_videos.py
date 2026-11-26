@@ -1362,6 +1362,89 @@ class ReconstructionHandoff(BaseModel):
     provenance: dict | None = None
 
 
+REPORT_LIBRARY_CATEGORY = "deconstructor_library_report"
+
+
+async def _report_snapshot(db, reference, analysis_id, body):
+    publication = await db.get(ReferencePublication, reference.id)
+    return {
+        **body.model_dump(mode="json"), "reference": reference.original_filename,
+        "original_url": reference.original_url, "publication": publication.evidence if publication else None,
+        "analysis_id": analysis_id, "research_reports": await _latest_saved_research(db, reference.id),
+        "messaging_report": await _saved_messaging(db, analysis_id),
+        "technical_report": await _saved_technical(db, analysis_id),
+        "discoverability_report": await _saved_discoverability(db, analysis_id),
+    }
+
+
+class ReportContext(BaseModel):
+    context: MessagingContext = Field(default_factory=MessagingContext)
+    metadata: list[Finding] = Field(default_factory=list, max_length=50)
+    scenes: list[HandoffScene] = Field(default_factory=list, max_length=1000)
+    mechanisms: list = Field(default_factory=list, max_length=200)
+
+
+@router.get("/{reference_video_id}/analysis-history")
+async def list_analysis_history(reference_video_id: int, db: AsyncSession = Depends(get_db),
+                                user: User = Depends(current_user)):
+    await _require_owned_reference(db, reference_video_id, user.id)
+    runs = (await db.scalars(select(VideoAnalysis).where(VideoAnalysis.reference_video_id == reference_video_id)
+                            .order_by(VideoAnalysis.id.desc()).limit(50))).all()
+    saved = (await db.scalars(select(AnalysisAnnotation).join(VideoAnalysis).where(
+        VideoAnalysis.reference_video_id == reference_video_id,
+        AnalysisAnnotation.category == REPORT_LIBRARY_CATEGORY,
+    ).order_by(AnalysisAnnotation.id.desc()).limit(50))).all()
+    return {"runs": [{"id": run.id, "status": run.status, "tier": run.analysis_tier, "created_at": run.created_at,
+                      "stages": run.pass_status} for run in runs],
+            "saved_reports": [{"id": row.id, "saved_at": row.created_at, "analysis_id": row.video_analysis_id}
+                              for row in saved]}
+
+
+@router.post("/{reference_video_id}/library-reports", status_code=201)
+async def save_library_report(reference_video_id: int, body: ReportContext, db: AsyncSession = Depends(get_db),
+                              user: User = Depends(current_user)):
+    reference, analysis_id = await _messaging_reference(db, reference_video_id, user.id)
+    payload = await _report_snapshot(db, reference, analysis_id, body)
+    if len(json.dumps(payload).encode()) > 1_500_000:
+        raise HTTPException(413, "This analysis report exceeds the supported size.")
+    row = AnalysisAnnotation(video_analysis_id=analysis_id, category=REPORT_LIBRARY_CATEGORY,
+                             start_time=0, end_time=reference.duration or 0, details=payload,
+                             certainty="OBSERVED", source="report_library")
+    db.add(row)
+    await db.flush()
+    report_id = row.id
+    await db.commit()
+    return {"id": report_id}
+
+
+@router.get("/{reference_video_id}/library-reports/{report_id}")
+async def reopen_library_report(reference_video_id: int, report_id: int, db: AsyncSession = Depends(get_db),
+                                user: User = Depends(current_user)):
+    await _require_owned_reference(db, reference_video_id, user.id)
+    row = await db.scalar(select(AnalysisAnnotation).join(VideoAnalysis).where(
+        VideoAnalysis.reference_video_id == reference_video_id, AnalysisAnnotation.id == report_id,
+        AnalysisAnnotation.category == REPORT_LIBRARY_CATEGORY,
+    ))
+    if row is None:
+        raise HTTPException(404, "Saved report not found.")
+    return row.details
+
+
+@router.post("/{reference_video_id}/analysis-pdf")
+async def export_analysis_pdf(reference_video_id: int, body: ReportContext, db: AsyncSession = Depends(get_db),
+                              user: User = Depends(current_user)):
+    from fastapi.responses import Response
+    from app.services.deconstructor_pdf import render_report
+
+    reference, analysis_id = await _messaging_reference(db, reference_video_id, user.id)
+    payload = await _report_snapshot(db, reference, analysis_id, body)
+    if len(json.dumps(payload).encode()) > 1_500_000:
+        raise HTTPException(413, "This analysis report exceeds the supported size.")
+    pdf = await asyncio.to_thread(render_report, payload)
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="reference-{reference_video_id}-analysis.pdf"'})
+
+
 @router.post("/{reference_video_id}/reconstruction-handoffs", status_code=201)
 async def create_reconstruction_handoff(
     reference_video_id: int, body: ReconstructionHandoff,

@@ -1,7 +1,7 @@
 import { DiscoverabilityReport, type DiscoverabilityReportData } from './DiscoverabilityReport'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Aperture, ArrowRight, Clapperboard, Film, FolderKanban, FolderOpen, Globe, Home, Image, LayoutTemplate, MessageSquare, Palette, RefreshCw, ScanSearch, Settings, Target, UploadCloud, Zap } from 'lucide-react'
+import { Aperture, ArrowRight, Clapperboard, Search, UserCircle, Film, FolderKanban, FolderOpen, Globe, Home, Image, LayoutTemplate, MessageSquare, Palette, RefreshCw, ScanSearch, Settings, Target, UploadCloud, Zap } from 'lucide-react'
 import { assetsApi, referenceVideosApi, uploadApi, videoExportApi } from '../../api/client'
 import type { ReferenceVideo } from '../../types'
 import { errorMessage, useDeconstructor } from './useDeconstructor'
@@ -244,17 +244,20 @@ export default function DeconstructorV3() {
     }).catch(error => { if (live && error?.response?.status !== 409) setMessage(errorMessage(error, 'Could not load saved technical analysis.')) })
     return () => { live = false }
   }, [id])
+  const analyzeTechnical = async (targetId: number) => {
+    let current = (await referenceVideosApi.get(targetId)).data as ReferenceVideo
+    if (!current.shots.some(shot => shot.frames.length)) current = (await referenceVideosApi.analyzeFrames(targetId)).data
+    if (!current.shots.some(shot => shot.global_motion_evidence)) current = (await referenceVideosApi.analyzeGlobalMotion(targetId)).data
+    if (current.shots.length > 1 && !current.transition_evidence?.length) current = (await referenceVideosApi.analyzeTransitionEvidence(targetId)).data
+    const {data} = await referenceVideosApi.runTechnicalIntelligence(targetId)
+    setReference(previous => previous?.id === targetId ? current : previous)
+    setSavedTechnical({id:targetId, report: data})
+  }
   const runTechnical = async () => {
     if (!id || technicalRun !== null) return
     setTechnicalRun(id)
     try {
-      let current = (await referenceVideosApi.get(id)).data as ReferenceVideo
-      if (!current.shots.some(shot => shot.frames.length)) current = (await referenceVideosApi.analyzeFrames(id)).data
-      if (!current.shots.some(shot => shot.global_motion_evidence)) current = (await referenceVideosApi.analyzeGlobalMotion(id)).data
-      if (current.shots.length > 1 && !current.transition_evidence?.length) current = (await referenceVideosApi.analyzeTransitionEvidence(id)).data
-      const {data} = await referenceVideosApi.runTechnicalIntelligence(id)
-      setReference(previous => previous?.id === id ? current : previous)
-      setSavedTechnical({id, report: data})
+      await analyzeTechnical(id)
       setMessage('Technical evidence and interpretations saved.')
     } catch (error) {
       setMessage(errorMessage(error, 'Technical analysis could not be saved.'))
@@ -487,6 +490,7 @@ export default function DeconstructorV3() {
       if (needsText) await referenceVideosApi.analyzeText(targetId)
       if (needsSpeech) await referenceVideosApi.analyzeSpeech(targetId)
       if (custom && select.includes('messaging')) await interpretMessaging(targetId)
+      if (custom && select.includes('technical')) await analyzeTechnical(targetId)
       if (researchSelected) {
         const reports = {...(await referenceVideosApi.searchResearch(targetId)).data} as Partial<Record<ResearchDimension, ResearchReport>>
         const dimensions = researchDimensions.filter(dimension =>
@@ -591,6 +595,16 @@ export default function DeconstructorV3() {
     return <button type="button" key={scene.number} aria-pressed={playhead >= scene.start && playhead < scene.end} onClick={() => seek(scene.start,index)}><strong>{scene.number}</strong>{frame && <img src={assetsApi.previewUrl(frame.asset_file_path)} alt="" />}<span>{scene.role}<small>{spanLabel(scene.start,scene.end)}</small></span></button>
   })}{!sceneList.length && <p>Run analysis to detect shots and scenes.</p>}</div>
   const row = (label: string, rows: Finding[]) => <Card title={label}><Findings rows={rows} /></Card>
+  const [referenceQuery,setReferenceQuery] = useState('')
+  const matchingReferences = referenceQuery.trim() ? (d.references.data ?? []).filter(item =>
+    item.original_filename.toLowerCase().includes(referenceQuery.trim().toLowerCase())).slice(0,8) : []
+  const activeTechnicalScene = technicalReport?.scenes.find(scene => scene.start <= playhead && playhead < scene.end)
+  const technicalSceneIndex = activeTechnicalScene ? technicalReport!.scenes.indexOf(activeTechnicalScene) : -1
+  const quickMetrics: [string,ReactNode][] = [
+    ['Duration',duration ? time(duration) : 'Unavailable'], ['Scenes',sceneList.length], ['Shots',shots.length],
+    ['Aspect ratio',metadata.find(([label]) => label === 'Aspect ratio')?.[1]], ['Audio',details?.audio.present ? 'Stream present' : 'Unavailable'],
+    ['Captions',shots.some(shot => shot.text_elements.length) ? 'Text detected' : 'Unavailable'],
+  ]
   const referenceFrame = shots.find(shot => shot.frames.length)?.frames[0]
   const thumbnail = referenceFrame && assetsApi.previewUrl(referenceFrame.asset_file_path)
   const labels: Record<View, string> = {
@@ -613,19 +627,94 @@ export default function DeconstructorV3() {
       aria-current={view === mode ? 'page' : undefined} className={view === mode ? 'chosen' : ''}
       onClick={() => changeView(view)}><Icon aria-hidden="true" />{view}</button> })}
   </nav>
-  const printReport = () => window.print()
+  const [reportBusy, setReportBusy] = useState(false)
+  const [history, setHistory] = useState<{
+    referenceId:number
+    runs:{id:number; status:string; tier:string; created_at:string; stages:Record<string,unknown>}[]
+    saved_reports:{id:number; saved_at:string; analysis_id:number}[]
+  } | null>(null)
+  const [snapshot, setSnapshot] = useState<{referenceId:number; data: Record<string,unknown>} | null>(null)
+  const reportBody = {context:notes, metadata, scenes:sceneList, mechanisms:creative?.mechanisms ?? []}
+  const loadHistory = async (referenceId: number) => {
+    const {data} = await referenceVideosApi.analysisHistory(referenceId)
+    setHistory({referenceId,...data})
+  }
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  }
+  const reportAction = async (action: 'pdf' | 'save' | 'history', reportId?: number) => {
+    if (!video || reportBusy) return
+    setReportBusy(true)
+    try {
+      if (action === 'pdf') {
+        const {data} = await referenceVideosApi.analysisPdf(video.id, reportBody)
+        downloadBlob(data, `reference-${video.id}-analysis.pdf`)
+      } else if (action === 'save') {
+        await referenceVideosApi.saveLibraryReport(video.id, reportBody)
+        await loadHistory(video.id)
+        setMessage('Analysis report saved to Library.')
+      } else if (reportId) {
+        const {data} = await referenceVideosApi.openLibraryReport(video.id, reportId)
+        setSnapshot({referenceId:video.id,data})
+      } else {
+        await loadHistory(video.id)
+      }
+    } catch (error) {
+      setMessage(errorMessage(error, 'The report action could not be completed.'))
+    } finally { setReportBusy(false) }
+  }
+  const printReport = () => void reportAction('pdf')
+  const analysisTools = <div className="dc3-actions dc3-report-actions">
+    <button type="button" disabled={!video || reportBusy} onClick={() => void reportAction('history')}>Analysis History</button>
+    <button type="button" disabled={!video || reportBusy} onClick={() => void reportAction('save')}>Save to Library</button>
+  </div>
   return <div data-view={mode} className={`dc3 ${mode === 'Messaging Intelligence' ? 'dc3-dark' : ''}`}>
     <aside className="dc3-sidebar">
       <Link className="dc3-brand" to="/dashboard"><img src="/social-genius-official-logo.svg" alt="" /><strong>Social Genius</strong><span>Content Studio</span><small>The Positioning People</small></Link>
       <nav aria-label="Content Studio">{navigation.map(([name,url,Icon]) => <Link key={name} to={url} aria-current={url === root ? 'page' : undefined}><Icon />{name}</Link>)}</nav>
     </aside>
     <main>
+      <div className="dc3-global">
+        <div className="dc3-global-search"><Search aria-hidden="true" />
+          <input aria-label="Search saved references" placeholder="Search saved references…" value={referenceQuery}
+            onChange={event => setReferenceQuery(event.target.value)} />
+          {referenceQuery.trim() && <div className="dc3-search-results">
+            {matchingReferences.length ? matchingReferences.map(item => <button key={item.id} type="button"
+              onClick={() => {setReferenceQuery('');selectReference(item.id)}}>{item.original_filename}</button>) : <p>No matching references.</p>}
+            <button type="button" onClick={() => setReferenceQuery('')}>Close search</button>
+          </div>}
+        </div>
+        <Link to="/dashboard"><UserCircle aria-hidden="true" /> Workspace dashboard</Link>
+      </div>
       <header className="dc3-banner"><Clapperboard /><div>
         {mode === 'Reference' ? <><h1>De<span>constructor</span></h1><p>Analyse, understand and learn from video content.</p></> :
           <><h1>{mode.endsWith('Intelligence') ? mode.replace(' Intelligence', '') : 'Deconstructor'} <span>{mode.endsWith('Intelligence') ? 'Intelligence' : mode}</span></h1><p>{labels[mode]}</p></>}
         </div><span className="dc3-banner-brand"><img src="/social-genius-official-logo.svg" alt="" /><span><strong>Social Genius</strong><small>The Positioning People</small></span></span>
       </header>
       {tabs}
+      {video && ['Quick Analysis','Deep Analysis','Insights & Learnings'].includes(mode) && analysisTools}
+      {history?.referenceId === id && <Card title="Analysis History">
+        <button type="button" onClick={() => {setHistory(null);setSnapshot(null)}}>Close history</button>
+        {history.runs.map(run => <details key={run.id}><summary>Run {run.id} · {run.tier} · {run.status} · {new Date(run.created_at).toLocaleString()}</summary>
+          <pre>{JSON.stringify(run.stages,null,2)}</pre></details>)}
+        <h3>Saved Library reports</h3>
+        {history.saved_reports.map(item => <button key={item.id} disabled={reportBusy} type="button"
+          onClick={() => void reportAction('history',item.id)}>Open report {item.id} · {new Date(item.saved_at).toLocaleString()}</button>)}
+        {!history.saved_reports.length && <p>No saved reports for this reference.</p>}
+      </Card>}
+      {snapshot?.referenceId === id && <Card title="Saved Analysis Report">
+        <div className="dc3-actions"><button type="button" onClick={() => setSnapshot(null)}>Close saved report</button>
+          <button type="button" onClick={() => downloadBlob(new Blob([JSON.stringify(snapshot.data,null,2)],{type:'application/json'}), `reference-${id}-saved-analysis.json`)}>Download saved JSON</button></div>
+        <p>{String(snapshot.data.reference)} · Analysis {String(snapshot.data.analysis_id)}</p>
+        {snapshot.data.discoverability_report != null && <DiscoverabilityReport report={snapshot.data.discoverability_report as DiscoverabilityReportData} seek={updateTime} />}
+        {snapshot.data.messaging_report != null && <details><summary>Saved Messaging Intelligence</summary><pre>{JSON.stringify(snapshot.data.messaging_report,null,2)}</pre></details>}
+        {snapshot.data.technical_report != null && <details><summary>Saved Technical Intelligence</summary><pre>{JSON.stringify(snapshot.data.technical_report,null,2)}</pre></details>}
+      </Card>}
       {(message || d.actionError || sourceScope) && <p className="dc3-status" role="status">{message || d.actionError}{sourceScope && <><br />{sourceScope}</>}</p>}
       {mode === 'Reference' && <><div className="dc3-section-heading"><FolderKanban /><div><h2>Reference Import &amp; Context</h2><p>{labels.Reference}</p></div></div><div className="dc3-import">
         <Card title="Video Reference">
@@ -666,17 +755,39 @@ export default function DeconstructorV3() {
       </div>}
       {(mode === 'Quick Analysis' || mode === 'Deep Analysis') && <div className="dc3-grid dc3-analysis">
         <div className="dc3-reference-strip"><strong>{video?.original_filename ?? 'Select a reference'}</strong><span>{duration ? time(duration) : '—'} · {shots.length} detected shots</span></div>
-        <div className="dc3-stack">{preview}<Card title="Scenes & Timeline">{scenes}</Card></div>
+        <div className="dc3-stack">{preview}{mode === 'Quick Analysis' ?
+          <div className="dc3-quick-metrics">{quickMetrics.map(([label,value]) => <div key={label}><small>{label}</small><strong>{value ?? 'Unavailable'}</strong></div>)}</div> :
+          <Card title="Scenes & Timeline">{scenes}</Card>}</div>
         <div className="dc3-stack">
           <div className="dc3-actions">{mode === 'Deep Analysis' ? <><button className="chosen" disabled={!video || busy} type="button" onClick={() => { if(window.confirm('Run the full analysis pipeline? Configured AI stages may incur provider costs.')) void d.deconstruct() }}>Run Deep Analysis</button><span role="status">{d.progress.headline}</span></> : <button className="chosen" disabled={!video || busy} type="button" onClick={() => void run(false)}><Zap />Run Quick Analysis</button>}<button type="button" disabled={!video || busy} onClick={async () => { if (!video) return; setInterpreting(true); setMessage(''); try { await interpretMessaging(video.id); setMessage('Marketing interpretation saved.'); } catch (error) { setMessage(errorMessage(error, 'Marketing interpretation could not be completed.')); } finally { setInterpreting(false); } }}>Generate Marketing Summary</button><button type="button" disabled={!video} onClick={report}>Export JSON</button><button type="button" disabled={!video} onClick={printReport}>Export Analysis (PDF)</button><button type="button" disabled={!sceneList.length || !video || sending} onClick={() => void send()}>Send to Reconstructor <ArrowRight /></button></div>
           {mode === 'Deep Analysis' && d.progress.steps.length > 0 && <details className="dc3-card"><summary>Analysis status by stage</summary><Findings rows={d.progress.steps.map(step => [step.label,[step.status.replace(/_/g,' '),step.note].filter(Boolean).join(' · '),step.status === 'skipped' || step.status === 'failed' ? 'Unavailable' : 'Extracted'])} /></details>}
           {mode === 'Deep Analysis' && <div className="dc3-actions">{(['Overview','Scenes','Narrative','Messaging','Persuasion','Emotions','Technical','Transcript','Keywords','Mechanisms'] as const).map(tab => <button className={tab === deepTab ? 'chosen' : ''} key={tab} onClick={() => setDeepTab(tab)}>{tab}</button>)}</div>}
-          {mode === 'Deep Analysis' && deepTab === 'Scenes' ? <Card title="Scene evidence">{scenes}</Card> : mode === 'Deep Analysis' && deepTab === 'Messaging' ? row('Messaging', messaging) : mode === 'Deep Analysis' && deepTab === 'Persuasion' ? row('Persuasion', displayMessaging.filter(([label]) => ['Persuasion mechanisms','Trust signals','Call to action'].includes(label))) : mode === 'Deep Analysis' && deepTab === 'Emotions' ? row('Emotional evidence', displayMessaging.filter(([label]) => label === 'Emotional triggers')) : mode === 'Deep Analysis' && deepTab === 'Technical' ? <>{row('Technical properties',metadata)}<button type="button" onClick={() => changeView('Technical Intelligence')}>Open Technical Intelligence</button></> : mode === 'Deep Analysis' && deepTab === 'Keywords' ? <>{row('Discoverability evidence',discoverability)}{structuredReport && <DiscoverabilityReport key={id} report={structuredReport} seek={updateTime} />}</> : mode === 'Deep Analysis' && deepTab === 'Narrative' ? row('Narrative', messaging) : mode === 'Deep Analysis' && deepTab === 'Transcript' ? row('Transcript', [result('Recognised speech',transcript || null,'Detected')]) : mode === 'Deep Analysis' && deepTab === 'Mechanisms' ? row('Persuasion & Mechanisms', creative?.mechanisms.length ? creative.mechanisms.map((mechanism): Finding => [typeLabel(mechanism),`${mechanism.purpose} · ${evidenceSummary(mechanism)}`,'Inferred']) : [result('Mechanisms',null,'Inferred')]) : <>
+          {mode === 'Quick Analysis' ? <>
+            {row('Executive Summary',[
+              ...displayMessaging.filter(([label]) => ['Core message','Target audience','Hook'].includes(label)),
+              result('Content type',notes.contentType,'Extracted'),
+              result('Primary keywords',structuredReport?.sections.Keywords?.filter(item => item.group === 'Primary').map(item => item.label).join(' · '),'Inferred'),
+            ])}
+            <Card title="Additional Insights">
+              <details><summary>Communication flow</summary><Findings rows={displayMessaging.filter(([label]) => ['Problem','Solution','Call to action'].includes(label))} /></details>
+              <details><summary>Scene and shot overview</summary>{scenes}</details>
+              <details><summary>Production highlights</summary><Findings rows={metadata} /></details>
+              <details><summary>Discoverability snapshot</summary><Findings rows={discoverability.filter(([label]) => ['SEO','GEO','AEO'].includes(label))} /></details>
+              <button type="button" onClick={() => changeView('Insights & Learnings')}>Key Takeaways &amp; Learnings</button>
+            </Card>
+          </> : mode === 'Deep Analysis' && deepTab === 'Scenes' ? <Card title="Scene evidence">{scenes}</Card> : mode === 'Deep Analysis' && deepTab === 'Messaging' ? row('Messaging', messaging) : mode === 'Deep Analysis' && deepTab === 'Persuasion' ? row('Persuasion', displayMessaging.filter(([label]) => ['Persuasion mechanisms','Trust signals','Call to action'].includes(label))) : mode === 'Deep Analysis' && deepTab === 'Emotions' ? row('Emotional evidence', displayMessaging.filter(([label]) => label === 'Emotional triggers')) : mode === 'Deep Analysis' && deepTab === 'Technical' ? <>{row('Technical properties',metadata)}<button type="button" onClick={() => changeView('Technical Intelligence')}>Open Technical Intelligence</button></> : mode === 'Deep Analysis' && deepTab === 'Keywords' ? <>{row('Discoverability evidence',discoverability)}{structuredReport && <DiscoverabilityReport key={id} report={structuredReport} seek={updateTime} />}</> : mode === 'Deep Analysis' && deepTab === 'Narrative' ? row('Narrative', messaging) : mode === 'Deep Analysis' && deepTab === 'Transcript' ? row('Transcript', [result('Recognised speech',transcript || null,'Detected')]) : mode === 'Deep Analysis' && deepTab === 'Mechanisms' ? row('Persuasion & Mechanisms', creative?.mechanisms.length ? creative.mechanisms.map((mechanism): Finding => [typeLabel(mechanism),`${mechanism.purpose} · ${evidenceSummary(mechanism)}`,'Inferred']) : [result('Mechanisms',null,'Inferred')]) : <>
             <div className="dc3-evidence-legend">{(['Extracted','Detected','Inferred','Researched','Unavailable'] as const).map(label => <span key={label} className={`dc3-badge dc3-${label.toLowerCase()}`}>{label}</span>)}</div><div className="dc3-overview"><div className="dc3-stack">
             {row('Executive Summary',displayMessaging.filter(([label]) => ['Core message','Hook','Target audience','Business objective','Call to action'].includes(label)))}<Card title="Video Architecture at a Glance"><div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small></button>)}</div>{!sceneList.length && <p>Run analysis to populate the architecture.</p>}</Card>{row('Key Findings', displayMessaging.filter(([label]) => ['Problem','Solution','Benefits','Persuasion mechanisms','Emotional triggers'].includes(label)))}</div><div className="dc3-stack">{row('Key Metrics & Metadata',[...metadata,result('Detected shots',shots.length || null,'Detected'),result('Analysed scenes',sections.length || null,'Inferred')])}{row('Persuasion & Mechanisms – Top 5',creative?.mechanisms.length ? creative.mechanisms.slice(0,5).map((mechanism): Finding => [typeLabel(mechanism),mechanism.purpose,'Inferred']) : [result('Mechanisms',null,'Inferred')])}{structuredReport?.sections.Summary?.map(item => <p key={item.label}><strong>{item.label}</strong> · {item.detail}</p>)}{row('Discoverability Snapshot',discoverability.filter(([label]) => ['Frequently detected terms','Hashtags visible in the video','SEO','GEO','AEO'].includes(label)))}</div></div>
             <div className="dc3-modules">{([['Messaging Intelligence',MessageSquare],['Technical Intelligence',Aperture],['Discoverability',Globe]] as const).map(([view,Icon]) => <button type="button" key={view} onClick={() => changeView(view)}><Icon />{view}<ArrowRight /></button>)}</div>
           </>}
         </div>
+      </div>}
+      {mode === 'Quick Analysis' && <div className="dc3-quick-links">
+        {([['Messaging Intelligence',MessageSquare,'Understand the message and audience'],
+           ['Technical Intelligence',Aperture,'Review the production and scene evidence'],
+           ['Discoverability',Globe,'Review search and audience opportunities']] as const).map(([view,Icon,description]) =>
+          <button type="button" key={view} onClick={() => changeView(view)}><Icon /><span><strong>{view}</strong><small>{description}</small></span><ArrowRight /></button>)}
+        <button className="chosen" type="button" onClick={() => changeView('Deep Analysis')}>View Deep Analysis <ArrowRight /></button>
       </div>}
       {mode === 'Messaging Intelligence' && <>
         <div className="dc3-actions">
@@ -700,7 +811,16 @@ export default function DeconstructorV3() {
             {purpose.emotional_trigger && <p>Emotional trigger · {purpose.emotional_trigger}</p>}
             {purpose.narrative_contribution && <p>Narrative contribution · {purpose.narrative_contribution}</p>}
           </>, 'Inferred'] : result(label,null,'Unavailable')
-        })} />}<button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>
+        })} />}<button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story dc3-messaging-story">{sceneList.map((scene,index) => {
+          const frame = shots.find(shot => shot.start_time <= scene.start && shot.end_time > scene.start)?.frames[0]
+          const purpose = semantic?.scenes.find(item => item.scene.id === `scene-${scene.number}`)
+          return <button type="button" key={scene.number} aria-pressed={playhead >= scene.start && playhead < scene.end}
+            onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small>
+            {frame && <img src={assetsApi.previewUrl(frame.asset_file_path)} alt="" />}
+            <span>{purpose?.messaging || scene.story || 'Evidence unavailable'}</span>
+            {purpose?.emotional_trigger && <small>{purpose.emotional_trigger}</small>}
+          </button>
+        })}</div>}</Card></div>
         <details className="dc3-card"><summary>Speech Recognition</summary>
         <div className="dc3-card-content">
           <div className="dc3-actions">
@@ -741,6 +861,16 @@ export default function DeconstructorV3() {
           {waveformPeaks ? <div className="dc3-waveform"><span>Audio waveform</span><svg role="img" aria-label="Audio peaks measured from the reference" viewBox="0 0 180 36" preserveAspectRatio="none">{waveformPeaks.map((peak,index) => <line key={index} x1={index} x2={index} y1={18-peak*17} y2={18+peak*17} />)}<line className="dc3-cursor" x1={playhead/(duration||1)*180} x2={playhead/(duration||1)*180} y1={0} y2={36} /></svg></div> : <button type="button" disabled={!details?.audio.present || waveformLoading} onClick={() => void loadWaveform()}>{waveformLoading ? 'Decoding audio…' : 'Load audio waveform'}</button>}
         </Card></div>
         <div className="dc3-stack">
+        <Card title={activeTechnicalScene ? `Scene ${activeTechnicalScene.number} – Technical Breakdown` : 'Scene Technical Breakdown'}>
+          {activeTechnicalScene ? <>
+            <div className="dc3-actions">
+              <button type="button" disabled={technicalSceneIndex <= 0} onClick={() => updateTime(technicalReport!.scenes[technicalSceneIndex-1].start)}>Previous scene</button>
+              <strong>{spanLabel(activeTechnicalScene.start,activeTechnicalScene.end)}</strong>
+              <button type="button" disabled={technicalSceneIndex >= technicalReport!.scenes.length-1} onClick={() => updateTime(technicalReport!.scenes[technicalSceneIndex+1].start)}>Next scene</button>
+            </div>
+            <TechnicalSceneEvidence scene={activeTechnicalScene} seek={updateTime} />
+          </> : <p>Select a scene with saved technical findings.</p>}
+        </Card>
         <Card title="Audio Intelligence">
           {technicalReport?.audio?.length ? <TechnicalAudioEvidence events={technicalReport.audio} seek={updateTime} /> :
             <p>{technicalReport?.audio_status === 'classified' ? 'No supported audio classifications.' :
@@ -804,23 +934,6 @@ export default function DeconstructorV3() {
           <button type="button" disabled={!video} onClick={() => void report()}>Download analysis JSON</button>
           {structuredReport && <DiscoverabilityReport key={id} report={structuredReport} seek={updateTime} />}
         </Card>{row('Source and Discoverability Evidence', discoverability)}{video && <ExternalResearch key={video.id} referenceId={video.id} onReports={reports => setSavedReports({id:video.id,reports})} />}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched. Detected terms and questions describe the source content. Search ranking, generative answer visibility and local demand require independent evidence.</p></Card></div></div>}
-      {video && <article className="dc3-print-report">
-        <h1>Deconstructor Analysis</h1><p>{video.original_filename} · {time(duration)}</p>
-        <h2>Source metadata</h2><Findings rows={metadata} />
-        <h2>Messaging Intelligence</h2><Findings rows={messaging} />
-        {semantic && Object.entries(semantic.findings).map(([topic, finding]) =>
-          <section key={topic}><h3>{topic}</h3><p>{finding.summary} · {finding.confidence} confidence</p></section>)}
-        <h2>Technical Intelligence</h2>
-        {technicalReport?.scenes.map(scene => <section key={scene.number}>
-          <h3>Scene {scene.number} · {spanLabel(scene.start, scene.end)}</h3><p>{scene.summary}</p>
-        </section>)}
-        <h2>Discoverability Intelligence</h2>
-        {structuredReport && Object.entries(structuredReport.sections).map(([section, entries]) =>
-          <section key={section}><h3>{section}</h3>{entries.map((entry,index) =>
-            <div key={index}><p><strong>{entry.label}</strong> · {entry.detail} · {entry.confidence} confidence</p>
-              {entry.evidence.flatMap(item => item.citations ?? []).map((citation,index) =>
-                <p key={index}>{citation.title} · {citation.url}</p>)}</div>)}</section>)}
-      </article>}
     </main>
   </div>
 }
