@@ -166,6 +166,9 @@ export const referenceVideosApi = {
   messagingIntelligence: (id: number) => api.get(`/reference-videos/${id}/messaging-intelligence`),
   runMessagingIntelligence: (id: number, context: Record<string,string>) =>
     api.post(`/reference-videos/${id}/messaging-intelligence`, context, {timeout:110000}),
+  discoverabilityIntelligence: (id: number) => api.get(`/reference-videos/${id}/discoverability-intelligence`),
+  runDiscoverabilityIntelligence: (id: number, market: string) =>
+    api.post(`/reference-videos/${id}/discoverability-intelligence`, {market}, {timeout: 100000}),
   searchResearch: (id: number) => api.get(`/reference-videos/${id}/search-research`),
   runSearchResearch: (id: number, topic: string, dimension: string) =>
     api.post(`/reference-videos/${id}/search-research`, {topic, dimension}, {timeout: 120_000}),

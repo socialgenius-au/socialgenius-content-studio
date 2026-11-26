@@ -174,3 +174,8 @@ A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-du
 
 - Added local timestamped YAMNet audio classification, optional pulse estimation, scene summaries with bounded evidence, and audio and scene views in Reconstructor. OCR keeps the original reading and score, and high-confidence object readings require more than one frame.
 - Four technical unit checks passed. Live model, multilingual OCR accuracy and Reference 4/5 browser acceptance require verification in Railway.
+
+### Discoverability Intelligence V3
+
+- Added saved, structured discoverability synthesis from publication metadata, original and translated speech, OCR, supported visual findings, Messaging Intelligence and saved web citations. Added report tabs, timestamp links, JSON export and Reconstructor handoff.
+- The existing Technical Intelligence accuracy and approved-design checks remain open for final Deconstructor acceptance, including multilingual OCR, object accuracy and positive environmental sound and sound-effect fixtures.

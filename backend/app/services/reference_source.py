@@ -65,7 +65,14 @@ async def download_published_video(url: str, destination) -> tuple[str, int, dic
     if len(header) < 12 or header[4:8] != b"ftyp":
         raise SourceUnavailable("The provider rendition is not a supported MP4 container.")
     source = f"https://www.pexels.com/video/{video_id}/"
+    published = {key: item[key] for key in ("title", "description", "published_at")
+                 if isinstance(item.get(key), str) and item[key].strip()}
+    published.update({key: item[key] for key in ("views", "likes", "comments", "shares")
+                      if type(item.get(key)) is int and item[key] >= 0})
+    if isinstance(item.get("hashtags"), list):
+        published["hashtags"] = [tag for tag in item["hashtags"] if isinstance(tag, str) and tag.startswith("#")]
     return source, size, {
+        **published,
         "provider": "Pexels",
         "provider_video_id": video_id,
         "creator": (item.get("user") or {}).get("name"),

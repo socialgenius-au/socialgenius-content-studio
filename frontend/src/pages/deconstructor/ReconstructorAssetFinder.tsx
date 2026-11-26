@@ -1,3 +1,4 @@
+import { DiscoverabilityReport, type DiscoverabilityReportData } from './DiscoverabilityReport'
 import { TechnicalAudioEvidence, TechnicalSceneEvidence, TechnicalShotEvidence, type TechnicalReport } from './technicalReport'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -13,7 +14,7 @@ type HandoffMechanism = {mechanism_id:string; type:string; purpose:string; trans
 type SavedResearch = {topic:string; partial?:boolean; findings:{text:string; citations:{title:string; url:string}[]}[]}
 type MarketingPurpose = {summary:string; confidence:string; scene:{start:number; end:number}; evidence:{kind:string; start:number; end:number; text:string}[]}
 type DetectedScene={number:number;start:number;end:number;role:string;story:string;technical:string;audio:string}
-const readDetected=()=>{try{return JSON.parse(sessionStorage.getItem('sg-reconstructor-detected-scenes')||'null') as {referenceId:number|null;scenes:DetectedScene[]; messaging?:HandoffFinding[]; discoverability?:HandoffFinding[]; metadata?:HandoffFinding[]; mechanisms?:HandoffMechanism[]; research_reports?:Record<string,SavedResearch>; technical_report?:TechnicalReport | null; messaging_report?:{scenes:MarketingPurpose[]} | null}|null}catch{return null}}
+const readDetected=()=>{try{return JSON.parse(sessionStorage.getItem('sg-reconstructor-detected-scenes')||'null') as {referenceId:number|null;scenes:DetectedScene[]; messaging?:HandoffFinding[]; discoverability?:HandoffFinding[]; metadata?:HandoffFinding[]; mechanisms?:HandoffMechanism[]; research_reports?:Record<string,SavedResearch>; discoverability_report?:DiscoverabilityReportData | null; technical_report?:TechnicalReport | null; messaging_report?:{scenes:MarketingPurpose[]} | null}|null}catch{return null}}
 const key='sg-reconstructor-asset-finder-v1'
 const readSaved=()=>{try{return JSON.parse(sessionStorage.getItem(key)||'{}') as Record<string,unknown>}catch{return {}}}
 export default function ReconstructorAssetFinder(){
@@ -81,6 +82,9 @@ export default function ReconstructorAssetFinder(){
        <p><strong>{purpose.scene.start.toFixed(1)}–{purpose.scene.end.toFixed(1)}s</strong> · {purpose.summary} · {purpose.confidence} evidence strength</p>
        <ul>{purpose.evidence.map((source,index) => <li key={index}>{source.kind} · {source.start.toFixed(1)}–{source.end.toFixed(1)}s · {source.text}</li>)}</ul>
      </div>)}
+   </details>}
+   {detected.discoverability_report && <details><summary>Discoverability Intelligence</summary>
+     <DiscoverabilityReport report={detected.discoverability_report} />
    </details>}
    {Object.entries(detected.research_reports ?? {}).map(([dimension, report]) => (
      <details key={dimension}>

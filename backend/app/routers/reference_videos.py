@@ -906,6 +906,14 @@ async def run_search_research(
     topic = body.topic.strip()
     if len(topic) < 3:
         raise HTTPException(422, "Enter a public search topic.")
+    candidates = (await db.scalars(select(ReferenceSearchResearch).where(
+        ReferenceSearchResearch.reference_video_id == reference_video_id,
+    ).order_by(ReferenceSearchResearch.id.desc()))).all()
+    for row in candidates:
+        report = row.payload
+        if (report["dimension"] == body.dimension and not report.get("partial")
+                and report.get("findings") and report["topic"].strip().casefold() == topic.casefold()):
+            return report
     focus = {
         "SEO": "Describe observed search topics and competing pages; distinguish related keywords from measured rankings or volume.",
         "GEO": "Identify attributable authorities and source coverage for generative answers; do not claim visibility on any other engine.",
@@ -1230,6 +1238,103 @@ async def run_technical_intelligence(
     return payload
 
 
+DISCOVERABILITY_CATEGORY = "discoverability_intelligence_v1"
+
+
+class DiscoverabilityContext(BaseModel):
+    market: str = Field(default="", max_length=160)
+
+
+async def _saved_discoverability(db: AsyncSession, analysis_id: int) -> dict | None:
+    annotation = await db.scalar(select(AnalysisAnnotation).where(
+        AnalysisAnnotation.video_analysis_id == analysis_id,
+        AnalysisAnnotation.category == DISCOVERABILITY_CATEGORY,
+    ).order_by(AnalysisAnnotation.id.desc()).limit(1))
+    return annotation.details if annotation else None
+
+
+@router.get("/{reference_video_id}/discoverability-intelligence")
+async def get_discoverability_intelligence(
+    reference_video_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    _, analysis_id = await _messaging_reference(db, reference_video_id, user.id)
+    return await _saved_discoverability(db, analysis_id)
+
+
+@router.post("/{reference_video_id}/discoverability-intelligence")
+async def run_discoverability_intelligence(
+    reference_video_id: int, context: DiscoverabilityContext,
+    db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    from app.services.ai_metering import AiCostControlError
+    from app.services.discoverability_intelligence import evidence_fingerprint, synthesize
+
+    reference, analysis_id = await _messaging_reference(db, reference_video_id, user.id)
+    asset = await db.get(Asset, reference.asset_id)
+    if asset is None:
+        raise HTTPException(404, "Reference media not found.")
+    data = await _to_response(db, reference, asset, video_analysis_id=analysis_id)
+    publication = await db.get(ReferencePublication, reference_video_id)
+    published = publication.evidence if publication else {}
+    evidence = []
+    for key in ("creator", "provider", "title", "description", "hashtags"):
+        if value := published.get(key):
+            evidence.append({"id": f"publication-{key}", "kind": "publication", "text": str(value)[:700]})
+    for row in data.speech_segments[:20]:
+        evidence.append({"id": f"speech-{row.id}", "kind": "speech", "text": row.text[:350],
+                         "start": row.start_time, "end": row.end_time})
+    for shot in data.shots[:15]:
+        for row in shot.text_elements[:4]:
+            if sum(char.isalpha() for char in row.text) >= 3:
+                evidence.append({"id": f"ocr-{row.id}", "kind": "ocr", "text": row.text[:220],
+                                 "start": row.start_time, "end": row.end_time})
+    messaging = await _saved_messaging(db, analysis_id) or {}
+    for index, item in enumerate(messaging.get("translations", [])[:14]):
+        source = item["source"]
+        evidence.append({"id": f"translation-{index}", "kind": "translated speech", "text": item["english"][:350],
+                         "start": source["start"], "end": source["end"]})
+    for index, (label, item) in enumerate(messaging.get("findings", {}).items()):
+        evidence.append({"id": f"message-{index}", "kind": "messaging interpretation",
+                         "text": f"{label}: {item['summary']}"[:400]})
+    technical = await _saved_technical(db, analysis_id) or {}
+    for shot in technical.get("shots", [])[:15]:
+        for item in shot.get("findings", []):
+            if item["topic"] == "Visible objects" and item["confidence"] == "high":
+                evidence.append({"id": f"visual-{shot['number']}", "kind": "visual interpretation",
+                                 "text": item["summary"][:300], "start": shot["start"], "end": shot["end"]})
+    research = await _latest_saved_research(db, reference_video_id)
+    for dimension, report in research.items():
+        for index, item in enumerate(report["findings"][:5]):
+            evidence.append({"id": f"{dimension}-{index}", "kind": "web research", "dimension": dimension,
+                             "text": item["text"][:1100], "citations": item["citations"][:6], "topic": report["topic"]})
+    if not evidence:
+        raise HTTPException(409, "Gather source evidence or run cited research first.")
+    market = context.market.strip()
+    digest = evidence_fingerprint(evidence, market)
+    cached = await _saved_discoverability(db, analysis_id)
+    if cached and cached.get("fingerprint") == digest:
+        return cached
+    try:
+        async with asyncio.timeout(90):
+            with ai_scope(reference_video_id=reference_video_id, user_id=user.id, video_analysis_id=analysis_id,
+                          reasoner="discoverability_intelligence"):
+                sections = await synthesize(evidence, market)
+    except AiCostControlError as error:
+        raise HTTPException(503, str(error)) from error
+    except TimeoutError as error:
+        raise HTTPException(504, "Discoverability analysis exceeded its time limit.") from error
+    except Exception as error:
+        logging.getLogger(__name__).warning("Discoverability synthesis failed: %s", type(error).__name__)
+        raise HTTPException(502, "The provider did not return an evidence-supported report.") from error
+    payload = {"sections": sections, "market": market, "fingerprint": digest, "publication": published,
+               "original_url": reference.original_url}
+    db.add(AnalysisAnnotation(video_analysis_id=analysis_id, category=DISCOVERABILITY_CATEGORY,
+                              start_time=0, end_time=reference.duration or 0,
+                              details=payload, certainty="INFERRED", source="anthropic"))
+    await db.commit()
+    return payload
+
+
 class HandoffScene(BaseModel):
     number: int
     start: float = Field(ge=0, allow_inf_nan=False)
@@ -1269,6 +1374,7 @@ async def create_reconstruction_handoff(
     if latest_analysis_id is not None:
         payload["messaging_report"] = await _saved_messaging(db, latest_analysis_id)
         payload["technical_report"] = await _saved_technical(db, latest_analysis_id)
+        payload["discoverability_report"] = await _saved_discoverability(db, latest_analysis_id)
     if len(json.dumps(payload).encode()) > 512_000:
         raise HTTPException(413, "The reconstruction handoff exceeds the supported size.")
     handoff = ReferenceReconstructionHandoff(reference_video_id=reference_video_id, payload=payload)
