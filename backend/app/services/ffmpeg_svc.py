@@ -371,8 +371,22 @@ async def composite_media_overlays(
             f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=0x00000000[{scaled}]"
         )
         filter_parts.append(f"[{scaled}]format=rgba,colorchannelmixer=aa={opacity}[{faded}]")
+        source = faded
+        x_expr = str(x)
+        seconds = max(0, min(float(ov.get("animation_duration", 0)), end-start))
+        effect = ov.get("animation", "None")
+        if ov.get("is_image") and seconds > 0:
+            if effect == "Fade":
+                source = f"ov{i}anim"
+                filter_parts.append(f"[{faded}]fade=t=in:st={start}:d={seconds}:alpha=1[{source}]")
+            elif effect == "Slide":
+                x_expr = f"'{x}+{w}*max(0,1-(t-{start})/{seconds})'"
+            elif effect == "Zoom":
+                source = f"ov{i}anim"
+                factor = f"0.5+0.5*clip((t-{start})/{seconds},0,1)"
+                filter_parts.append(f"[{faded}]scale=w='max(2,trunc(iw*({factor})/2)*2)':h='max(2,trunc(ih*({factor})/2)*2)':eval=frame[{source}]")
         filter_parts.append(
-            f"[{base_label}][{faded}]overlay=x={x}:y={y}:enable='gte(t,{start})*lt(t,{end})'[{merged}]"
+            f"[{base_label}][{source}]overlay=x={x_expr}:y={y}:enable='gte(t,{start})*lt(t,{end})'[{merged}]"
         )
         base_label = merged
 
