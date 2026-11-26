@@ -15,3 +15,13 @@
 .raf-production-summary{border:1px solid #dec8ef;border-radius:10px;padding:14px;background:#faf5ff}.raf-production-summary>p{border-bottom:1px solid #eee2f7;padding:6px 0;margin:0}.raf-production-summary span{color:#28844d;font-weight:bold}
 .raf-production-summary .raf-columns{grid-template-columns:repeat(3,minmax(0,1fr));font-size:12px}
 @media(max-width:850px){.raf-ai-layout{grid-template-columns:1fr}.raf-ai-reference,.raf-ai-direction,.raf-ai-step-1 .raf-ai-reference,.raf-ai-step-1 .raf-ai-direction{grid-column:1;grid-row:auto}.raf-ai-reference{order:-1}}
+
+.raf-marketer-steps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin:12px 0}
+.raf-marketer-steps button{min-height:52px;text-align:left;font-size:11px;line-height:1.4}
+.raf-screen-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0 14px;border-bottom:1px solid #e5d4f5;margin-bottom:14px}
+.raf-screen-heading small{font-size:10px;letter-spacing:1.5px;color:#8150ac;font-weight:700}.raf-screen-heading h2{margin:5px 0}.raf-screen-heading>span{background:#f4e7ff;color:#60259a;border-radius:20px;padding:8px 12px;font-size:11px}
+.raf-marketer-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}.raf-marketer-visual,.raf-marketer-inspector{min-width:0;border:1px solid #e1d2ef;background:white;border-radius:10px;padding:12px}.raf-marketer-visual>h3,.raf-marketer-inspector>h3{font-size:14px;color:#4c1d77;margin:0 0 12px}.raf-marketer-visual video{max-height:330px;object-fit:contain;background:#21142e}.raf-marketer-visual .raf-panel,.raf-marketer-inspector .raf-panel{padding:10px;margin-bottom:8px}
+.raf-marketer-step-3 .raf-marketer-layout,.raf-marketer-step-5 .raf-marketer-layout{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
+.raf-marketer-step-10 .raf-marketer-layout,.raf-marketer-step-11 .raf-marketer-layout{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)}
+.raf-platform-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}.raf-platform-grid button{min-height:44px}
+@media(max-width:1000px){.raf-marketer-steps{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:850px){.raf-marketer-layout,.raf-marketer-step-3 .raf-marketer-layout,.raf-marketer-step-5 .raf-marketer-layout,.raf-marketer-step-10 .raf-marketer-layout,.raf-marketer-step-11 .raf-marketer-layout{grid-template-columns:1fr}.raf-screen-heading{flex-wrap:wrap}}@media(max-width:480px){.raf-marketer-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
