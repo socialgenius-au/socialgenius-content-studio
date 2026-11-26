@@ -1246,11 +1246,15 @@ class DiscoverabilityContext(BaseModel):
 
 
 async def _saved_discoverability(db: AsyncSession, analysis_id: int) -> dict | None:
+    from app.services.discoverability_intelligence import with_executive_summary
+
     annotation = await db.scalar(select(AnalysisAnnotation).where(
         AnalysisAnnotation.video_analysis_id == analysis_id,
         AnalysisAnnotation.category == DISCOVERABILITY_CATEGORY,
     ).order_by(AnalysisAnnotation.id.desc()).limit(1))
-    return annotation.details if annotation else None
+    if annotation is None:
+        return None
+    return {**annotation.details, "sections": with_executive_summary(annotation.details["sections"])}
 
 
 @router.get("/{reference_video_id}/discoverability-intelligence")

@@ -19,3 +19,13 @@ def test_research_requires_same_dimension_and_existing_hashtags_require_verbatim
     assert [entry["label"] for entry in report["Hashtags"]] == ["#RealBrand"]
     assert report["SEO"][0]["evidence"][0]["citations"] == sources[1]["citations"]
     assert evidence_fingerprint(sources, "Sydney") != evidence_fingerprint(sources, "Bengaluru")
+
+
+def test_summary_fallback_preserves_original_evidence_and_scope():
+    from app.services.discoverability_intelligence import with_executive_summary
+
+    entry = {"group": "Title", "label": "Suggested title", "scope": "recommendation",
+             "evidence": [{"id": "speech-1"}]}
+    source = {"Recommendations": [entry]}
+    assert with_executive_summary(source)["Summary"] == [{**entry, "group": "Recommendations"}]
+    assert "Summary" not in source

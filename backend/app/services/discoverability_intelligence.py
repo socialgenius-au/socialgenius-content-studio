@@ -69,6 +69,19 @@ def link_entries(raw_entries, evidence):
     return sections
 
 
+def with_executive_summary(sections):
+    """Provide a grounded overview when the provider omits the summary section."""
+    if sections.get("Summary"):
+        return sections
+    summary = []
+    for section in ("Keywords", "SEO", "Recommendations", "AEO", "GEO", "Local", "Hashtags"):
+        if entries := sections.get(section):
+            summary.append({**entries[0], "group": section})
+        if len(summary) == 3:
+            break
+    return {**sections, "Summary": summary} if summary else sections
+
+
 async def synthesize(evidence, market):
     response = await get_client().messages.create(
         model=settings.HOOK_REASONER_MODEL, max_tokens=7200,
@@ -97,5 +110,5 @@ async def synthesize(evidence, market):
             if isinstance(entries, list):
                 sections = link_entries(entries[:48], evidence)
                 if sections:
-                    return sections
+                    return with_executive_summary(sections)
     raise ValueError("No complete evidence-supported discoverability entries")
