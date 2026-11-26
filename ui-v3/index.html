@@ -376,7 +376,7 @@ window.addEventListener('message',event=>{
     const font=['Arial','Inter','Roboto','Montserrat','Georgia'].includes(direction[prefix+' Typography'])?direction[prefix+' Typography']:'Arial';
     const color=/^#[0-9a-f]{6}$/i.test(direction[prefix+' Text colour']||'')?direction[prefix+' Text colour']:'#ffffff';
     const size=number(direction[prefix+' Font size'],24,8,160);
-    insertClip({text:{text:value,style:'top:'+(i?75:45)+'%;font-family:'+font+';font-size:'+size+'px;color:'+color+';border:0;'},duration},start,lane,false);textCount++;
+    insertClip({text:{text:value,animation:direction[prefix+' Text animation']||'None',animationDuration:number(direction[prefix+' Animation duration'],0,0,duration),style:'top:'+(i?75:45)+'%;font-family:'+font+';font-size:'+size+'px;color:'+color+';border:0;'},duration},start,lane,false);textCount++;
    }
    addAudio('Scene '+scene.number,start,duration);
   }
@@ -468,8 +468,8 @@ function refreshTextPicker(){
  }));
  textPicker.value=String(activeText);
 }
-function storeText(){textStates[activeText]={text:$('copy').value,style:selectedTextNode().style.cssText}}
-function showText(){textClips.forEach((c,i)=>{const n=textNodes[i],s=textStates[i];if(!n||!s||!c.parentElement)return;n.textContent=s.text;n.style.cssText=s.style;if(i===1&&!n.style.top)n.style.top='65%';const start=Number(c.dataset.start),end=start+Number(c.dataset.duration);if(authenticatedEditor){c.classList.toggle('empty-slot',!s.text.trim());c.firstChild.textContent=s.text||'Empty';c.setAttribute('aria-label',(s.text||'Empty')+', start '+start.toFixed(1)+' seconds, duration '+(end-start).toFixed(1)+' seconds')}n.hidden=!s.text.trim()||position<start||position>=end||c.parentElement.classList.contains('track-muted')})}
+function storeText(){textStates[activeText]={...textStates[activeText],text:$('copy').value,style:selectedTextNode().style.cssText}}
+function showText(){textClips.forEach((c,i)=>{const n=textNodes[i],s=textStates[i];if(!n||!s||!c.parentElement)return;n.textContent=s.text;n.style.cssText=s.style;if(i===1&&!n.style.top)n.style.top='65%';const start=Number(c.dataset.start),end=start+Number(c.dataset.duration);if(authenticatedEditor){c.classList.toggle('empty-slot',!s.text.trim());c.firstChild.textContent=s.text||'Empty';c.setAttribute('aria-label',(s.text||'Empty')+', start '+start.toFixed(1)+' seconds, duration '+(end-start).toFixed(1)+' seconds')}n.hidden=!s.text.trim()||position<start||position>=end||c.parentElement.classList.contains('track-muted');const effect=s.animation||'None',seconds=Math.max(0,Math.min(end-start,Number(s.animationDuration)||0)),progress=seconds?Math.max(0,Math.min(1,(position-start)/seconds)):1;if(!n.hidden&&progress<1){if(effect==='Fade')n.style.opacity=String(progress);if(effect==='Slide')n.style.transform=(n.style.transform||'')+' translateY('+((1-progress)*30)+'px)';if(effect==='Scale'||effect==='Logo reveal')n.style.transform=(n.style.transform||'')+' scale('+(0.5+0.5*progress)+')';if(effect==='Typewriter')n.textContent=Array.from(s.text).slice(0,Math.floor(Array.from(s.text).length*progress)).join('');if(effect==='Kinetic'){n.style.letterSpacing=((1-progress)*8)+'px';n.style.opacity=String(progress)}}})}
 const textPicker=document.createElement('select');textPicker.setAttribute('aria-label','Text track');textClips.forEach((c,i)=>textPicker.add(new Option('Text '+(i+1),String(i))));$('copy').before(textPicker);
 textPicker.onchange=()=>{storeText();activeText=Number(textPicker.value);$('copy').value=textStates[activeText].text;showText()};
 $('copy').addEventListener('input',()=>{
