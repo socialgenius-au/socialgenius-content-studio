@@ -585,7 +585,7 @@ export default function DeconstructorV3() {
             if (!video) return
             setInterpreting(true)
             setMessage('')
-            try { await interpretMessaging(video.id) }
+            try { await referenceVideosApi.analyze(video.id); await referenceVideosApi.analyzeStructure(video.id); await referenceVideosApi.analyzeFrames(video.id); await referenceVideosApi.analyzeText(video.id); await referenceVideosApi.analyzeSpeech(video.id); await interpretMessaging(video.id); await d.reload(); setMessage('Messaging analysis saved. Review the evidence and confidence for each finding.') }
             catch (error) { setMessage(errorMessage(error, 'Messaging analysis could not be completed.')) }
             finally { setInterpreting(false) }
           }}>{interpreting ? 'Analysing messaging…' : 'Run Messaging Analysis'}</button>
