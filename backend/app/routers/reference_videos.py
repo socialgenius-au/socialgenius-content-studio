@@ -1154,7 +1154,8 @@ async def run_technical_intelligence(
     reference_video_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
 ):
     from app.services.ai_metering import AiCostControlError
-    from app.services.technical_intelligence import fingerprint, interpret_shots, prepare_shots
+    from app.services.technical_audio import analyze_audio
+    from app.services.technical_intelligence import fingerprint, interpret_shots, prepare_shots, summarize_scenes
 
     reference, analysis_id = await _messaging_reference(db, reference_video_id, user.id)
     asset = await db.get(Asset, reference.asset_id)
@@ -1173,19 +1174,44 @@ async def run_technical_intelligence(
         "shots": [shot["order"] for shot in data["shots"]
                   if shot["start_time"] < section["end_time"] and shot["end_time"] > section["start_time"]],
     } for section in sections]
+    if not scenes:
+        scenes = [{"number": shot["order"], "start": shot["start_time"], "end": shot["end_time"],
+                   "shots": [shot["order"]], "boundary_source": "shot"}
+                  for shot in data["shots"]]
     cached = await _saved_technical(db, analysis_id)
+    audio, audio_status = [], "no_stream"
     try:
         async with asyncio.timeout(105):
             shots, images, limitations = await prepare_shots(data["shots"], data["transition_evidence"])
             digest = fingerprint(shots, scenes)
-            if cached and cached.get("fingerprint") == digest:
+            if cached and cached.get("fingerprint") == digest and cached.get("version") == 2 and cached.get("audio_status") != "unavailable":
                 return cached
             if not any(shot["sources"] for shot in shots):
                 raise HTTPException(409, "No sampled frames or technical measurements are available.")
-            with ai_scope(reference_video_id=reference_video_id, user_id=user.id,
-                          video_analysis_id=analysis_id, reasoner="technical_intelligence"):
-                async for _ in interpret_shots(shots, images):
-                    pass
+            if cached and cached.get("fingerprint") == digest:
+                shots = cached["shots"]
+            else:
+                with ai_scope(reference_video_id=reference_video_id, user_id=user.id,
+                              video_analysis_id=analysis_id, reasoner="technical_intelligence"):
+                    async for _ in interpret_shots(shots, images):
+                        pass
+            details = data.get("technical_details") or {}
+            if (details.get("audio") or {}).get("present"):
+                try:
+                    async with asyncio.timeout(25):
+                        audio, notes = await analyze_audio(asset.file_path, reference.duration or shots[-1]["end"])
+                    limitations.extend(notes)
+                    for event in audio:
+                        boundaries = [item["boundary_timestamp"] for item in data["transition_evidence"]
+                                      if event["start"] <= item["boundary_timestamp"] < event["end"]]
+                        if event["kind"] == "effect" and boundaries:
+                            event["purpose"] = f"Overlaps a measured visual boundary at {boundaries[0]:.2f}s; may accent the edit."
+                            event["purpose_confidence"] = "low"
+                    audio_status = "classified"
+                except Exception as error:
+                    logging.getLogger(__name__).warning("Technical audio unavailable: %s", type(error).__name__)
+                    limitations.append("The reference mix could not be classified.")
+                    audio_status = "unavailable"
     except AiCostControlError as error:
         raise HTTPException(503, str(error)) from error
     except TimeoutError as error:
@@ -1195,7 +1221,8 @@ async def run_technical_intelligence(
     except Exception as error:
         logging.getLogger(__name__).warning("Technical analysis failed: %s", type(error).__name__)
         raise HTTPException(502, "The provider could not produce a valid technical report.") from error
-    payload = {"shots": shots, "scenes": scenes, "fingerprint": digest, "limitations": limitations}
+    payload = {"version": 2, "shots": shots, "scenes": summarize_scenes(scenes, shots, audio),
+               "audio": audio, "audio_status": audio_status, "fingerprint": digest, "limitations": limitations}
     db.add(AnalysisAnnotation(video_analysis_id=analysis_id, category=TECHNICAL_CATEGORY,
                               start_time=0, end_time=max(shot["end"] for shot in shots),
                               details=payload, certainty="INFERRED", source="anthropic"))

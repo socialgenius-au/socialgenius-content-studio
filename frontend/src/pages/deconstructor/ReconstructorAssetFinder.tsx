@@ -1,4 +1,4 @@
-import { TechnicalShotEvidence, type TechnicalReport } from './technicalReport'
+import { TechnicalAudioEvidence, TechnicalSceneEvidence, TechnicalShotEvidence, type TechnicalReport } from './technicalReport'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Check, ExternalLink, Image, Music2, Search, Sparkles, Upload, Video, X } from 'lucide-react'
@@ -66,6 +66,11 @@ export default function ReconstructorAssetFinder(){
    <Link to={`/deconstructor/${detected.referenceId}`}>Open six-stage reconstruction workflow</Link>
    {([['Messaging',detected.messaging],['Technical metadata',detected.metadata],['Discoverability',detected.discoverability]] as const).map(([label, findings]) => findings?.length ? <details key={label}><summary>{label}</summary><dl>{findings.map(([name,value,evidence]) => <div key={name}><dt>{name}</dt><dd>{value ?? 'Unavailable'} · {evidence}</dd></div>)}</dl></details> : null)}
    {!!detected.technical_report?.shots.length && <details><summary>Technical Intelligence</summary>
+     {detected.technical_report.scenes.filter(item => !active || item.number === active.number).map(item =>
+       <details key={item.number}><summary>Scene {item.number} summary</summary><TechnicalSceneEvidence scene={item} /></details>)}
+     {!!detected.technical_report.audio?.length && <details><summary>Reference audio findings</summary>
+       <TechnicalAudioEvidence events={detected.technical_report.audio} />
+     </details>}
      {detected.technical_report.shots.filter(shot => !active || (shot.start < active.end && shot.end > active.start)).map(shot => <details key={shot.number}>
        <summary>Shot {shot.number} · {shot.start.toFixed(2)}–{shot.end.toFixed(2)}s</summary>
        <TechnicalShotEvidence shot={shot} />

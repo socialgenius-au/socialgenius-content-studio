@@ -5,7 +5,7 @@ import { assetsApi, referenceVideosApi, uploadApi, videoExportApi } from '../../
 import type { ReferenceVideo } from '../../types'
 import { errorMessage, useDeconstructor } from './useDeconstructor'
 import { evidenceSummary, hookSummary, typeLabel } from './intelligence'
-import { TechnicalShotEvidence, type TechnicalReport } from './technicalReport'
+import { TechnicalAudioEvidence, TechnicalSceneEvidence, TechnicalShotEvidence, type TechnicalReport } from './technicalReport'
 import './DeconstructorV3.css'
 
 const root = '/deconstructor-v3'
@@ -303,6 +303,8 @@ export default function DeconstructorV3() {
     {label:'Shots',items:shots.map(shot => ({key:String(shot.id),start:shot.start_time,end:shot.end_time,text:`Shot ${shot.order}`}))},
     {label:'Text overlays',items:shots.flatMap(shot => shot.text_elements.filter(item => readableOverlay(item.text)).map(item => ({key:String(item.id),start:item.start_time,end:item.end_time,text:item.text})))},
     {label:'Speech',items:speech.map(item => ({key:String(item.id),start:item.start_time,end:item.end_time,text:item.text}))},
+    {label:'Music and sounds',items:(technicalReport?.audio ?? []).filter(event => event.kind !== 'speech')
+      .map((event, index) => ({key:String(index),start:event.start,end:event.end,text:event.label}))},
     {label:'Transitions',items:(video?.transition_evidence ?? []).map(item => ({key:String(item.id),start:item.boundary_timestamp,end:item.boundary_timestamp,text:'Boundary measurement'}))},
   ]
   const observedText = shots.flatMap(shot => shot.text_elements.filter(item => readableOverlay(item.text)).map(item => item.text)).join(' ')
@@ -681,6 +683,11 @@ export default function DeconstructorV3() {
           {waveformPeaks ? <div className="dc3-waveform"><span>Audio waveform</span><svg role="img" aria-label="Audio peaks measured from the reference" viewBox="0 0 180 36" preserveAspectRatio="none">{waveformPeaks.map((peak,index) => <line key={index} x1={index} x2={index} y1={18-peak*17} y2={18+peak*17} />)}<line className="dc3-cursor" x1={playhead/(duration||1)*180} x2={playhead/(duration||1)*180} y1={0} y2={36} /></svg></div> : <button type="button" disabled={!details?.audio.present || waveformLoading} onClick={() => void loadWaveform()}>{waveformLoading ? 'Decoding audio…' : 'Load audio waveform'}</button>}
         </Card></div>
         <div className="dc3-stack">{row('Video Properties',metadata)}
+        <Card title="Audio Intelligence">
+          {technicalReport?.audio?.length ? <TechnicalAudioEvidence events={technicalReport.audio} seek={updateTime} /> :
+            <p>{technicalReport?.audio_status === 'classified' ? 'No supported audio classifications.' :
+              technicalReport?.audio_status === 'no_stream' ? 'No source audio stream.' : 'Audio classifications unavailable.'}</p>}
+        </Card>
         <Card title="Technical findings">
           <button type="button" disabled={!shots.length || technicalRun !== null} onClick={() => void runTechnical()}>{technicalRun !== null ? 'Analysing shots…' : 'Run Technical Intelligence'}</button>
           <button type="button" disabled={!sceneList.length || sending} onClick={() => void send()}>Send to Reconstructor</button>
@@ -691,8 +698,9 @@ export default function DeconstructorV3() {
             <TechnicalShotEvidence shot={shot} seek={updateTime} />
           </details>)}
           {technicalReport?.scenes.map(scene => <details key={scene.number}>
-            <summary>Scene {scene.number} · {spanLabel(scene.start, scene.end)}</summary>
+            <summary>{scene.boundary_source === 'shot' ? 'Shot partition' : 'Scene'} {scene.number} · {spanLabel(scene.start, scene.end)}</summary>
             <button type="button" onClick={() => updateTime(scene.start)}>Seek to scene</button>
+            <TechnicalSceneEvidence scene={scene} seek={updateTime} />
             {technicalReport.shots.filter(shot => scene.shots.includes(shot.number)).map(shot =>
               <details key={shot.number}><summary>Shot {shot.number}</summary><TechnicalShotEvidence shot={shot} seek={updateTime} /></details>)}
           </details>)}
@@ -708,7 +716,6 @@ export default function DeconstructorV3() {
           result('Measured picture motion',activeShot?.global_motion_evidence ? `${activeShot.global_motion_evidence.frame_pair_count} frame pairs sampled at ${activeShot.global_motion_evidence.sampling_fps} fps` : null,'Detected'),
           result('Silence intervals in reference',video?.audio_structure?.audio_stream_present ? video.audio_structure.silence_count : null,'Detected'),
           result('Audio waveform',waveformPeaks?'Measured from decoded audio':null,'Detected'),
-          result('Background music and sound effects',null,'Unavailable'),
         ])}</div>
       </div>}
       {mode === 'Discoverability' && <div className="dc3-grid">{preview}<div className="dc3-stack">{row('Source and Discoverability Evidence', discoverability)}{video && <ExternalResearch key={video.id} referenceId={video.id} onReports={reports => setSavedReports({id:video.id,reports})} />}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched. Detected terms and questions describe the source content. Search ranking, generative answer visibility and local demand require independent evidence.</p></Card></div></div>}

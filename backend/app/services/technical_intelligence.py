@@ -56,8 +56,11 @@ def link_findings(items: list, sources: list[dict]) -> dict:
             continue
         if item.topic in ("Animation", "Camera movement") and "motion" not in kinds:
             continue
+        confidence = item.confidence
+        if item.topic == "Visible objects" and confidence == "high" and sum(row["kind"] == "frame" for row in support) < 2:
+            confidence = "medium"
         findings.setdefault(item.shot, {}).setdefault(item.topic, {
-            "topic": item.topic, "summary": item.summary, "confidence": item.confidence, "evidence": support,
+            "topic": item.topic, "summary": item.summary, "confidence": confidence, "evidence": support,
         })
     return findings
 
@@ -100,14 +103,14 @@ async def prepare_shots(shots: list[dict], transitions: list[dict]) -> tuple[lis
         for text in shot.get("text_elements", [])[:12]:
             if any(char.isalpha() for char in text["text"]):
                 sources.append({"id": f"ocr-{text['id']}", "kind": "ocr", "start": text["start_time"],
-                                "end": text["end_time"], "text": text["text"][:280]})
+                                "end": text["end_time"], "text": text["text"][:280], "score": text.get("confidence_score")})
         evidence.append({"number": order, "start": start, "end": end,
                          "sources": [dict(source, shot=order) for source in sources]})
     return evidence, images, limitations
 
 
 def fingerprint(evidence: list, scenes: list) -> str:
-    return hashlib.sha256(json.dumps([1, evidence, scenes], sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps([2, evidence, scenes], sort_keys=True).encode()).hexdigest()
 
 
 async def interpret_shots(shots: list, images: list) -> AsyncIterator[list[dict]]:
@@ -132,7 +135,7 @@ async def interpret_shots(shots: list, images: list) -> AsyncIterator[list[dict]
                 "Use only same-shot evidence IDs. For each supported topic document concrete cues and qualitative confidence. "
                 "Classify camera angle, shot size, framing, composition, visible lighting and colour separately. Distinguish "
                 "camera movement from subject motion. For transition and animation, describe only what temporal evidence supports. "
-                "Recognise visible objects with specific visual cues. Transcribe legible text verbatim in its original script "
+                "Recognise only clearly visible objects with specific visual cues; do not guess product type from context. Transcribe legible text verbatim in its original script "
                 "including mixed-language overlays. OCR is a candidate reading. Use the frame to confirm it; omit ambiguous text. "
                 "Omit unsupported topics and avoid unsupported brand or identity claims. Use short summaries."
             ),
@@ -150,3 +153,33 @@ async def interpret_shots(shots: list, images: list) -> AsyncIterator[list[dict]
         for shot in batch:
             shot["findings"] = list(linked.get(shot["number"], {}).values())
         yield batch
+
+
+def summarize_scenes(scenes: list[dict], shots: list[dict], audio: list[dict]) -> list[dict]:
+    """Build scene-local readings using only evidence that actually intersects the scene."""
+    summaries = []
+    for scene in scenes:
+        start, end = scene["start"], scene["end"]
+        findings = []
+        for shot in shots:
+            if shot["number"] not in scene["shots"]:
+                continue
+            for finding in shot.get("findings", []):
+                if all(source["start"] < end and (source["end"] > start or source["start"] == start)
+                       for source in finding["evidence"]):
+                    findings.append({**finding, "shot": shot["number"]})
+        events = [event for event in audio if event["start"] < end and event["end"] > start]
+        topics = list(dict.fromkeys(finding["topic"] for finding in findings))
+        picture = f"Supported visual readings: {', '.join(topics)}." if topics else "Visual interpretation unavailable."
+        picture_topics = {"Camera angle", "Camera movement", "Shot type", "Framing and composition",
+                          "Lighting", "Colour", "Transition", "Animation"}
+        highlights = {}
+        for finding in findings:
+            if finding["topic"] in picture_topics and finding.get("summary"):
+                highlights.setdefault(finding["topic"], finding["summary"])
+        if highlights:
+            picture = " ".join(f"{topic}: {summary.rstrip('.')}." for topic, summary in highlights.items())
+        sound = ", ".join(dict.fromkeys(event["label"] for event in events))
+        summaries.append({**scene, "summary": f"{picture} Audio: {sound or 'no supported classification'}.",
+                          "findings": findings, "audio": events})
+    return summaries

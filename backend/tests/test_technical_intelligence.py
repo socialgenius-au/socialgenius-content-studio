@@ -30,3 +30,28 @@ def test_findings_require_same_shot_and_appropriate_evidence():
     assert linked[1]["Lighting"]["evidence"] == [frame]
     assert linked[1]["Camera movement"]["evidence"] == [motion]
     assert 2 not in linked
+
+
+def test_audio_windows_keep_overlapping_speech_and_music_separate():
+    from app.services.technical_audio import collect_events
+
+    events = collect_events([(0, [("Music", .8), ("Speech", .6), ("Rain", .1)]),
+                             (.48, [("Music", .7), ("Rain", .8)])], 1.2)
+    assert [(item["kind"], item["start"], item["end"]) for item in events] == [
+        ("speech", 0, .975), ("music", 0, 1.2), ("ambience", .48, 1.2),
+    ]
+    assert events[1]["confidence"] == "high"
+
+
+def test_scene_summary_drops_visual_readings_outside_boundary():
+    from app.services.technical_intelligence import summarize_scenes
+
+    scenes = [{"number": 1, "start": 0, "end": 2, "shots": [1]}]
+    shots = [{"number": 1, "findings": [
+        {"topic": "Colour", "evidence": [{"start": 1, "end": 1}]},
+        {"topic": "Lighting", "evidence": [{"start": 2, "end": 2}]},
+    ]}]
+    audio = [{"label": "Rain", "start": .6, "end": 2.2}, {"label": "Speech", "start": 2, "end": 3}]
+    summary, = summarize_scenes(scenes, shots, audio)
+    assert "Colour" in summary["summary"] and "Lighting" not in summary["summary"]
+    assert summary["audio"] == audio[:1]

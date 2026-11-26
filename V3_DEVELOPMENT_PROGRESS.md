@@ -171,3 +171,6 @@ A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-du
 - Added shot-level technical interpretations from sampled reference frames, OCR candidates, global motion and transition measurements. Report evidence carries original timestamps and separates measured frame metrics from qualitative interpretations.
 - Added saved reports, scene grouping, timestamp seeking and Reconstructor handoff. Existing Messaging Intelligence processing remains in place.
 - Local checks include sampled colour metrics, evidence validation and a frontend build. Acceptance on References 4 and 5, scene-level synthesis, and music and sound-effects classification remain open.
+
+- Added local timestamped YAMNet audio classification, optional pulse estimation, scene summaries with bounded evidence, and audio and scene views in Reconstructor. OCR keeps the original reading and score, and high-confidence object readings require more than one frame.
+- Four technical unit checks passed. Live model, multilingual OCR accuracy and Reference 4/5 browser acceptance require verification in Railway.
