@@ -12,7 +12,7 @@ type ExportMedia = {
  fade_out?: number
 }
 
-type ExportVideo = ExportMedia & { muted: boolean; speed: number; fit_mode: 'fit' | 'fill'; crop_x: number; crop_y: number; contrast: number; saturation: number }
+type ExportVideo = ExportMedia & { muted: boolean; speed: number; fit_mode: 'fit' | 'fill'; crop_x: number; crop_y: number; contrast: number; saturation: number; transition?: string; transition_duration?: number }
 
 export default function VideoStudioV3() {
  const frame = useRef<HTMLIFrameElement>(null)
@@ -114,7 +114,9 @@ export default function VideoStudioV3() {
       if (clip.kind === 'video') {
        if (clip.track !== 0 && clip.track !== 1) throw Error('Invalid video track')
        const track = clip.track === 0 ? video : upperVideo
-       track.push({...item,muted,speed:1,contrast:effect(props.contrast),saturation:effect(props.saturation),fit_mode:props.fitMode==='fill'?'fill':'fit',crop_x:percent(props.cropX,50),crop_y:percent(props.cropY,50)})
+       const transitions: Record<string,string> = {'Fade':'fade_black','Dissolve':'dissolve','Cross-dissolve':'dissolve','Wipe':'wipe','Slide':'slide','Push':'push','Zoom':'zoom_punch'}
+       const seconds = fade(props.transitionDuration)
+       track.push({...item,transition:seconds>0?(transitions[String(props.transition)]||'cut'):'cut',transition_duration:seconds,muted,speed:1,contrast:effect(props.contrast),saturation:effect(props.saturation),fit_mode:props.fitMode==='fill'?'fill':'fit',crop_x:percent(props.cropX,50),crop_y:percent(props.cropY,50)})
       } else if (clip.kind === 'image') {
        overlays.push({ ...item,x:percent(props.imageX,0),y:percent(props.imageY,0),width:percent(props.imageWidth,100,1),height:percent(props.imageHeight,100,1),opacity:Math.max(0,Math.min(1,Number(clip.opacity ?? 1))),muted:true })
       } else {
@@ -143,6 +145,12 @@ export default function VideoStudioV3() {
        const start = Math.max(clip.start_time,baseEnd)
        video.push({...clip,start_time:start,trim_in:clip.trim_in+start-clip.start_time})
       }
+     }
+     // Reconstructor stores entrance effects; the join planner reads the outgoing clip.
+     for (let i=0;i<video.length;i++) {
+      const incoming=video[i+1]
+      video[i].transition=incoming?.transition||'cut'
+      video[i].transition_duration=incoming?.transition_duration||0
      }
      const result = await videoExportApi.exportProject({
       canvas_width:width,canvas_height:height,video_clips:video,additional_video_clips:additionalVideo,
