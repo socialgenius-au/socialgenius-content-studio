@@ -905,6 +905,14 @@ async def composite_image_overlays(input_path: str, overlays: list[dict], user_i
             filter_parts.append(f"[{i}:v]format=rgba,fade=t=in:st={ov['start']}:d={seconds}:alpha=1[{source}]")
         if seconds > 0 and effect == "Slide":
             y = f"'{ov['y']}+30*max(0,1-(t-{ov['start']})/{seconds})'"
+        if seconds > 0 and effect in ("Scale", "Logo reveal"):
+            source = f"scaleimg{i}"
+            factor = f"0.5+0.5*clip((t-{ov['start']})/{seconds},0,1)"
+            filter_parts.append(f"[{i}:v]format=rgba,scale=w='max(2,trunc(iw*({factor})/2)*2)':h='max(2,trunc(ih*({factor})/2)*2)':eval=frame[{source}]")
+        if seconds > 0 and effect == "Kinetic":
+            source = f"kineticimg{i}"
+            filter_parts.append(f"[{i}:v]format=rgba,fade=t=in:st={ov['start']}:d={seconds}:alpha=1[{source}]")
+            y = f"'{ov['y']}-18*sin(PI*clip((t-{ov['start']})/{seconds},0,1))'"
         filter_parts.append(
             f"[{base_label}][{source}]overlay=x={ov['x']}:y={y}:"
             f"enable='gte(t,{ov['start']})*lt(t,{ov['end']})'[{merged}]"
@@ -978,9 +986,21 @@ async def _build_text_overlay_pngs(text_overlays: list[dict], cw: int, ch: int, 
         path, _w, _h = await asyncio.to_thread(canvas_render_svc.render_text_overlay_png, item, cw, ch, user_id)
         x = 0 if full else round(cw * item.get("x", 0) / 100)
         y = round(ch * item.get("y", 0) / 100)
-        overlays.append({"path": str(path), "start": t["start_time"], "end": t["end_time"], "x": x, "y": y,
+        seconds = max(0, min(float(t.get("animation_duration", 0)), t["end_time"] - t["start_time"]))
+        start = t["start_time"]
+        if t.get("animation") == "Typewriter" and seconds > 0 and item.get("text"):
+            # Bound PNG inputs per layer; longer strings reveal in groups.
+            chars = list(item["text"])
+            steps = min(12, len(chars))
+            for j in range(1, steps):
+                partial = dict(item, text="".join(chars[:max(1, len(chars)*j//steps)]))
+                partial_path, _, _ = await asyncio.to_thread(canvas_render_svc.render_text_overlay_png, partial, cw, ch, user_id)
+                overlays.append({"path": str(partial_path), "start": start+seconds*j/steps,
+                                 "end": start+seconds*(j+1)/steps, "x": x, "y": y})
+            start += seconds
+        overlays.append({"path": str(path), "start": start, "end": t["end_time"], "x": x, "y": y,
                          "animation": t.get("animation", "None"),
-                         "animation_duration": max(0, min(float(t.get("animation_duration", 0)), t["end_time"] - t["start_time"]))})
+                         "animation_duration": seconds})
     return overlays
 
 
