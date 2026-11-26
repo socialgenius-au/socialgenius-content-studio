@@ -77,6 +77,14 @@ function readableOverlay(text: string): boolean {
   const numeric = tokens.filter(token => /^[-+]?\d+(?:\.\d+)?$/.test(token)).length
   return /\p{L}\p{M}*\p{L}/u.test(value) && !(tokens.length >= 5 && numeric / tokens.length >= 0.5)
 }
+function prominentOcrCandidate(item: {text: string; confidence_score: number | null; observations: {text: string}[]}) {
+  const text = item.text.trim().normalize('NFC')
+  if (!readableOverlay(text)) return false
+  const letters = text.match(/\p{L}/gu)?.length ?? 0
+  if (letters < 4) return false
+  const repeats = item.observations.filter(observation => observation.text.trim().normalize('NFC') === text).length
+  return (item.confidence_score ?? 0) >= .75 || repeats >= 2
+}
 function sourceTerms(text: string) {
   const ignore = new Set(['about','above','after','again','are','and','before','from','have','here','into','just','more','only','some','than','that','them','then','there','these','they','this','those','what','when','where','which','will','with','would','your','you'])
   const terms = new Map<string, number>()
@@ -322,7 +330,7 @@ export default function DeconstructorV3() {
   const timeline: { label: string; items: TimelineItem[] }[] = [
     {label:'Scenes',items:sceneList.map(scene => ({key:String(scene.number),start:scene.start,end:scene.end,text:`${scene.role} ${scene.number}`}))},
     {label:'Shots',items:shots.map(shot => ({key:String(shot.id),start:shot.start_time,end:shot.end_time,text:`Shot ${shot.order}`}))},
-    {label:'Text overlays',items:shots.flatMap(shot => shot.text_elements.filter(item => readableOverlay(item.text)).map(item => ({key:String(item.id),start:item.start_time,end:item.end_time,text:item.text})))},
+    {label:'OCR candidates',items:shots.flatMap(shot => shot.text_elements.filter(prominentOcrCandidate).map(item => ({key:String(item.id),start:item.start_time,end:item.end_time,text:item.text})))},
     {label:'Speech',items:speech.map(item => ({key:String(item.id),start:item.start_time,end:item.end_time,text:item.text}))},
     ...([['Camera angles','Camera angle'], ['Framing','Framing and composition'], ['Animations','Animation']] as const).map(([label, topic]) => ({
       label,
@@ -333,7 +341,7 @@ export default function DeconstructorV3() {
       .map((event, index) => ({key:String(index),start:event.start,end:event.end,text:event.label}))},
     {label:'Transitions',items:(video?.transition_evidence ?? []).map(item => ({key:String(item.id),start:item.boundary_timestamp,end:item.boundary_timestamp,text:'Boundary measurement'}))},
   ]
-  const observedText = shots.flatMap(shot => shot.text_elements.filter(item => readableOverlay(item.text)).map(item => item.text)).join(' ')
+  const observedText = shots.flatMap(shot => shot.text_elements.filter(prominentOcrCandidate).map(item => item.text)).join(' ')
   const detectedTerms = sourceTerms(`${transcript} ${observedText}`)
   const visibleHashtags = [...new Set(observedText.match(/(?<![\p{L}\p{N}_])#[\p{L}\p{N}_][\p{L}\p{M}\p{N}_]*/gu) ?? [])].filter(tag => /\p{L}\p{M}*\p{L}/u.test(tag))
   const metadata = mediaProperties(video)
@@ -398,9 +406,9 @@ export default function DeconstructorV3() {
     result('Published title', publishedEvidence?.title, 'Extracted'),
     result('Published description', publishedEvidence?.description, 'Extracted'),
     result('Frequently detected terms', detectedTerms.join(' · '), 'Detected'),
-    result('Hashtags visible in the video', visibleHashtags.join(' · '), 'Detected'),
+    result('Hashtag candidates from OCR', visibleHashtags.join(' · '), 'Detected'),
     result('Published hashtags', publishedEvidence?.hashtags?.join(' · '), 'Extracted'),
-    result('Detected visual entities', [...new Set(shots.flatMap(shot => (shot.visual_objects ?? []).map(item => item.label)))].join(' · '), 'Detected'),
+    result('Machine object candidates', [...new Set(shots.flatMap(shot => (shot.visual_objects ?? []).map(item => item.label)))].join(' · '), 'Detected'),
     result('Searchable terms in recognised speech', sourceTerms(transcript).join(' · '), 'Detected'),
     result('Searchable terms in on-screen text', sourceTerms(observedText).join(' · '), 'Detected'),
     result('Questions in recognised speech', speech.filter(segment => /[?؟？]/u.test(segment.text)).slice(0,6).map(segment => `${time(segment.start_time)} · ${segment.text}`).join(' / '), 'Detected'),
@@ -778,7 +786,7 @@ export default function DeconstructorV3() {
             </Card>
           </> : mode === 'Deep Analysis' && deepTab === 'Scenes' ? <Card title="Scene evidence">{scenes}</Card> : mode === 'Deep Analysis' && deepTab === 'Messaging' ? row('Messaging', messaging) : mode === 'Deep Analysis' && deepTab === 'Persuasion' ? row('Persuasion', displayMessaging.filter(([label]) => ['Persuasion mechanisms','Trust signals','Call to action'].includes(label))) : mode === 'Deep Analysis' && deepTab === 'Emotions' ? row('Emotional evidence', displayMessaging.filter(([label]) => label === 'Emotional triggers')) : mode === 'Deep Analysis' && deepTab === 'Technical' ? <>{row('Technical properties',metadata)}<button type="button" onClick={() => changeView('Technical Intelligence')}>Open Technical Intelligence</button></> : mode === 'Deep Analysis' && deepTab === 'Keywords' ? <>{row('Discoverability evidence',discoverability)}{structuredReport && <DiscoverabilityReport key={id} report={structuredReport} seek={updateTime} />}</> : mode === 'Deep Analysis' && deepTab === 'Narrative' ? row('Narrative', messaging) : mode === 'Deep Analysis' && deepTab === 'Transcript' ? row('Transcript', [result('Recognised speech',transcript || null,'Detected')]) : mode === 'Deep Analysis' && deepTab === 'Mechanisms' ? row('Persuasion & Mechanisms', creative?.mechanisms.length ? creative.mechanisms.map((mechanism): Finding => [typeLabel(mechanism),`${mechanism.purpose} · ${evidenceSummary(mechanism)}`,'Inferred']) : [result('Mechanisms',null,'Inferred')]) : <>
             <div className="dc3-evidence-legend">{(['Extracted','Detected','Inferred','Researched','Unavailable'] as const).map(label => <span key={label} className={`dc3-badge dc3-${label.toLowerCase()}`}>{label}</span>)}</div><div className="dc3-overview"><div className="dc3-stack">
-            {row('Executive Summary',displayMessaging.filter(([label]) => ['Core message','Hook','Target audience','Business objective','Call to action'].includes(label)))}<Card title="Video Architecture at a Glance"><div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small></button>)}</div>{!sceneList.length && <p>Run analysis to populate the architecture.</p>}</Card>{row('Key Findings', displayMessaging.filter(([label]) => ['Problem','Solution','Benefits','Persuasion mechanisms','Emotional triggers'].includes(label)))}</div><div className="dc3-stack">{row('Key Metrics & Metadata',[...metadata,result('Detected shots',shots.length || null,'Detected'),result('Analysed scenes',sections.length || null,'Inferred')])}{row('Persuasion & Mechanisms – Top 5',creative?.mechanisms.length ? creative.mechanisms.slice(0,5).map((mechanism): Finding => [typeLabel(mechanism),mechanism.purpose,'Inferred']) : [result('Mechanisms',null,'Inferred')])}{structuredReport?.sections.Summary?.map(item => <p key={item.label}><strong>{item.label}</strong> · {item.detail}</p>)}{row('Discoverability Snapshot',discoverability.filter(([label]) => ['Frequently detected terms','Hashtags visible in the video','SEO','GEO','AEO'].includes(label)))}</div></div>
+            {row('Executive Summary',displayMessaging.filter(([label]) => ['Core message','Hook','Target audience','Business objective','Call to action'].includes(label)))}<Card title="Video Architecture at a Glance"><div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small></button>)}</div>{!sceneList.length && <p>Run analysis to populate the architecture.</p>}</Card>{row('Key Findings', displayMessaging.filter(([label]) => ['Problem','Solution','Benefits','Persuasion mechanisms','Emotional triggers'].includes(label)))}</div><div className="dc3-stack">{row('Key Metrics & Metadata',[...metadata,result('Detected shots',shots.length || null,'Detected'),result('Analysed scenes',sections.length || null,'Inferred')])}{row('Persuasion & Mechanisms – Top 5',creative?.mechanisms.length ? creative.mechanisms.slice(0,5).map((mechanism): Finding => [typeLabel(mechanism),mechanism.purpose,'Inferred']) : [result('Mechanisms',null,'Inferred')])}{structuredReport?.sections.Summary?.map(item => <p key={item.label}><strong>{item.label}</strong> · {item.detail}</p>)}{row('Discoverability Snapshot',discoverability.filter(([label]) => ['Frequently detected terms','Hashtag candidates from OCR','SEO','GEO','AEO'].includes(label)))}</div></div>
             <div className="dc3-modules">{([['Messaging Intelligence',MessageSquare],['Technical Intelligence',Aperture],['Discoverability',Globe]] as const).map(([view,Icon]) => <button type="button" key={view} onClick={() => changeView(view)}><Icon />{view}<ArrowRight /></button>)}</div>
           </>}
         </div>
@@ -893,13 +901,24 @@ export default function DeconstructorV3() {
             {technicalReport.shots.filter(shot => scene.shots.includes(shot.number)).map(shot =>
               <details key={shot.number}><summary>Shot {shot.number}</summary><TechnicalShotEvidence shot={shot} seek={updateTime} /></details>)}
           </details>)}
-        </Card>{row('Shot Breakdown',[
+        </Card>
+        {!!activeShot?.text_elements.length && <Card title="Raw OCR evidence">
+          <details><summary>All recognizer readings for the active shot</summary>
+            <p>Machine readings may contain incorrect characters or words.</p>
+            <ul>{activeShot.text_elements.map(item => <li key={item.id}>
+              <button type="button" onClick={() => updateTime(item.start_time)}>{time(item.start_time)}</button>
+              {' '}<span dir="auto">{item.text}</span>
+              {item.confidence_score !== null && <small> · engine confidence {Math.round(item.confidence_score * 100)}%</small>}
+            </li>)}</ul>
+          </details>
+        </Card>}
+        {row('Shot Breakdown',[
           result('Time range',activeShot?spanLabel(activeShot.start_time,activeShot.end_time):null,'Detected'),
           result('Shot evidence',activeShot?.evidence_summary,'Detected'),
           result('Framing',activeShotReading?.framing,'Inferred'),
           result('Visual subject',activeShotReading?.focal_subject,'Inferred'),
           result('Visual interpretation',activeShotReading?.notes,'Inferred'),
-          result('Text overlays',activeShot?.text_elements.filter(item => readableOverlay(item.text)).map(item => item.text).join(' · '),'Detected'),
+          result('OCR candidates',activeShot?.text_elements.filter(prominentOcrCandidate).map(item => item.text).join(' · '),'Detected'),
           result('Voice-over / speech',activeShot ? speech.filter(segment => segment.start_time < activeShot.end_time && segment.end_time > activeShot.start_time).map(segment => segment.text).join(' ') : null,'Detected'),
           result('Transition measurements',activeShot ? (video?.transition_evidence ?? []).filter(item => item.boundary_timestamp >= activeShot.start_time && item.boundary_timestamp <= activeShot.end_time).length : null,'Detected'),
           result('Measured picture motion',activeShot?.global_motion_evidence ? `${activeShot.global_motion_evidence.frame_pair_count} frame pairs sampled at ${activeShot.global_motion_evidence.sampling_fps} fps` : null,'Detected'),
