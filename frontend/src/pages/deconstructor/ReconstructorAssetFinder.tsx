@@ -100,7 +100,10 @@ export default function ReconstructorAssetFinder(){
 
  const [audioScope,setAudioScope]=useState<'scene'|'continuous'>('scene')
  const [audioLayer,setAudioLayer]=useState<'voice'|'music'|'effects'|'original'>('voice')
- const uploadFile=async()=>{if(!file||uploading)return;setUploading(true);setMessage('Uploading media to project asset library…');try{const response=await uploadApi.upload(file);const asset=response.data as Asset;setSelected(old=>[...old,{source:'My Media',type,scene,query,url:'',title:file.name,addedAt:new Date().toISOString(),assetId:asset.id,assetPath:asset.file_path}]);setFile(null);setMessage('Uploaded successfully to asset library and added to Scene '+scene+' review. No timeline changes have been made.')}catch(e){setMessage('Upload failed: '+(e instanceof Error?e.message:'Unknown error'))}finally{setUploading(false)}}
+ const uploadFile=async()=>{if(!file||uploading)return;setUploading(true);setMessage('Uploading media to project asset library…');try{const response=await uploadApi.upload(file);const asset=response.data as Asset;
+ const mime=(asset.file_type||file.type).split('/')[0];
+ const uploadedType:MediaType=mime==='image'?'images':mime==='video'?'videos':mime==='audio'?'audio':type;
+ setSelected(old=>[...old,{source:'My Media',type:uploadedType,scene,query,url:'',title:file.name,addedAt:new Date().toISOString(),assetId:asset.id,assetPath:asset.file_path}]);setFile(null);setMessage('Uploaded successfully to asset library and added to Scene '+scene+' review. No timeline changes have been made.')}catch(e){setMessage('Upload failed: '+(e instanceof Error?e.message:'Unknown error'))}finally{setUploading(false)}}
  const [scenePlan,setScenePlan]=useState<DetectedScene[]|null>(()=>{try{return JSON.parse(sessionStorage.getItem(draftKey+':scenes')||'null')}catch{return null}})
  const plannedScenes=scenePlan??activeScenes
  const [planHistory,setPlanHistory]=useState<DetectedScene[][]>([])
