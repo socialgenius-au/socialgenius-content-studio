@@ -382,7 +382,7 @@ window.addEventListener('message',event=>{
   }
   addAudio('Entire video',offset,Math.max(0,...scenes.map(x=>Number(x.end)||0)));
   commitEdit();
-  status.textContent=placed+' video scenes, '+textCount+' text clips and '+audioCount+' audio clips imported; '+missing+' scenes need footage; '+skipped+' unavailable or overlapping clips skipped. Transitions and animations are not imported yet.';
+  status.textContent=placed+' video scenes, '+textCount+' text clips and '+audioCount+' audio clips imported; '+missing+' scenes need footage; '+skipped+' unavailable or overlapping clips skipped. Preview effects imported where supported; export effects require verification.';
   return;
  }
  importAnalysedScenes(event.data.scenes);
@@ -494,6 +494,7 @@ restore=function(s){
  while(textNodes.length>current.length&&textNodes.length>2)textNodes.pop().remove();
  textStates.splice(0,textStates.length,...current.map((_,i)=>({
   text:String(s?.textLayers?.[i]?.text||''),style:String(s?.textLayers?.[i]?.style||''),
+  animation:String(s?.textLayers?.[i]?.animation||'None'),animationDuration:Math.max(0,Number(s?.textLayers?.[i]?.animationDuration)||0),
  })));
  current.forEach((_,i)=>ensureTextNode(i));
  activeText=0;refreshTextPicker();$('copy').value=textStates[0]?.text||'';renderTime();refreshRuler();
