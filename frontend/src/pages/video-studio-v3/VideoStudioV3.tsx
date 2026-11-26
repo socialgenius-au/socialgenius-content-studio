@@ -108,7 +108,9 @@ export default function VideoStudioV3() {
        typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(60, value)) : 0
       const effect = (value: unknown) =>
        typeof value === 'number' && Number.isFinite(value) ? Math.max(-100, Math.min(100, value)) : 0
-      const item = {asset_id:id,start_time:clip.start,end_time:clip.start+clip.duration,trim_in:trim,volume:muted?0:Math.max(0,Math.min(1,Number(clip.volume ?? 1)))}
+      const requestedVolume = Number(clip.volume ?? 1)
+      if (!Number.isFinite(requestedVolume)) throw Error('Invalid clip volume')
+      const item = {asset_id:id,start_time:clip.start,end_time:clip.start+clip.duration,trim_in:trim,volume:muted?0:Math.max(0,Math.min(1,requestedVolume))}
       const percent = (value: unknown, fallback: number, min = 0) =>
        typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(100, value)) : fallback
       if (clip.kind === 'video') {
@@ -120,7 +122,10 @@ export default function VideoStudioV3() {
       } else if (clip.kind === 'image') {
        overlays.push({ ...item,animation:['Fade','Slide','Zoom'].includes(String(props.transition))?String(props.transition):'None',animation_duration:fade(props.transitionDuration),x:percent(props.imageX,0),y:percent(props.imageY,0),width:percent(props.imageWidth,100,1),height:percent(props.imageHeight,100,1),opacity:Math.max(0,Math.min(1,Number(clip.opacity ?? 1))),muted:true })
       } else {
-       audio.push({...item,fade_in:fade(props.fadeIn),fade_out:fade(props.fadeOut)})
+       const fadeIn = Math.min(clip.duration,fade(props.fadeIn))
+       const fadeOut = Math.min(clip.duration,fade(props.fadeOut))
+       const scale = Math.min(1,clip.duration/(fadeIn+fadeOut || 1))
+       audio.push({...item,fade_in:fadeIn*scale,fade_out:fadeOut*scale})
       }
      }
      if (!video.length) video.push(...upperVideo.splice(0))
