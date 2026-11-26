@@ -315,12 +315,12 @@ export default function DeconstructorV3() {
   const marketingText = (finding: MessagingFinding) =>
     `${finding.summary} · ${finding.confidence} evidence strength · ${finding.evidence.map(source =>
       `${source.kind} ${spanLabel(source.start, source.end)}: ${source.text}`).join(' | ')}`
-  const messaging = semantic || mode === 'Messaging Intelligence' ? legacyMessaging.map(([label,value,evidence]): Finding => {
+  const messaging = legacyMessaging.map(([label,value,evidence]): Finding => {
     const finding = semantic?.findings[label]
     if (finding) return result(label, marketingText(finding), 'Inferred')
     if (evidence === 'Extracted' || evidence === 'Detected') return [label,value,evidence]
     return result(label, null, 'Unavailable')
-  }) : legacyMessaging
+  })
   const discoverability: Finding[] = [
     result('Published URL', video?.original_url, 'Extracted'),
     result('Platform', publishedEvidence?.provider, 'Extracted'),
