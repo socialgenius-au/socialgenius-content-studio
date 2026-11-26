@@ -120,6 +120,8 @@ class ExportTextOverlay(BaseModel):
 
 
 class ExportMediaOverlay(BaseModel):
+    animation: Literal['None', 'Fade', 'Slide', 'Zoom'] = 'None'
+    animation_duration: float = Field(default=0, ge=0, le=60)
     asset_id: int
     start_time: float
     end_time: float
