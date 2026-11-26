@@ -115,8 +115,8 @@ def fingerprint(evidence: list, scenes: list) -> str:
 
 async def interpret_shots(shots: list, images: list) -> AsyncIterator[list[dict]]:
     # Limit each response independently so one dense reference cannot truncate every shot.
-    for offset in range(0, len(shots), 4):
-        batch = shots[offset:offset + 4]
+    for offset in range(0, len(shots), 2):
+        batch = shots[offset:offset + 2]
         sources = [source for shot in batch for source in shot["sources"]]
         if not sources:
             continue
@@ -137,7 +137,7 @@ async def interpret_shots(shots: list, images: list) -> AsyncIterator[list[dict]
                 "camera movement from subject motion. For transition and animation, describe only what temporal evidence supports. "
                 "Recognise only clearly visible objects with specific visual cues; do not guess product type from context. Transcribe legible text verbatim in its original script "
                 "including mixed-language overlays. OCR is a candidate reading. Use the frame to confirm it; omit ambiguous text. "
-                "Omit unsupported topics and avoid unsupported brand or identity claims. Use short summaries."
+                "Omit unsupported topics and avoid unsupported brand or identity claims. Return at most one finding per topic per shot. Keep each summary below 160 characters and cite at most three sources."
             ),
             messages=[{"role": "user", "content": content}],
             tools=[{"name": "report_technical", "description": "Return time-aligned technical readings.",
@@ -147,9 +147,15 @@ async def interpret_shots(shots: list, images: list) -> AsyncIterator[list[dict]
         )
         block = next((block for block in response.content
                       if block.type == "tool_use" and block.name == "report_technical"), None)
-        if response.stop_reason == "max_tokens" or block is None or not isinstance(block.input.get("findings"), list):
-            raise ValueError("No complete technical report returned")
-        linked = link_findings(block.input["findings"], sources)
+        payload = block.input if block is not None else None
+        if response.stop_reason == "max_tokens" or not isinstance(payload, dict) or not isinstance(payload.get("findings"), list):
+            if len(batch) == 1:
+                raise ValueError(f"No complete technical report returned ({response.stop_reason})")
+            for shot in batch:
+                async for recovered in interpret_shots([shot], images):
+                    yield recovered
+            continue
+        linked = link_findings(payload["findings"], sources)
         for shot in batch:
             shot["findings"] = list(linked.get(shot["number"], {}).values())
         yield batch
