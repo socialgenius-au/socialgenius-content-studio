@@ -896,8 +896,17 @@ async def composite_image_overlays(input_path: str, overlays: list[dict], user_i
     base_label = "0:v"
     for i, ov in enumerate(overlays, start=1):
         merged = f"img{i}"
+        source = f"{i}:v"
+        y = str(ov["y"])
+        seconds = float(ov.get("animation_duration", 0))
+        effect = ov.get("animation", "None")
+        if seconds > 0 and effect == "Fade":
+            source = f"fadeimg{i}"
+            filter_parts.append(f"[{i}:v]format=rgba,fade=t=in:st={ov['start']}:d={seconds}:alpha=1[{source}]")
+        if seconds > 0 and effect == "Slide":
+            y = f"'{ov['y']}+30*max(0,1-(t-{ov['start']})/{seconds})'"
         filter_parts.append(
-            f"[{base_label}][{i}:v]overlay=x={ov['x']}:y={ov['y']}:"
+            f"[{base_label}][{source}]overlay=x={ov['x']}:y={y}:"
             f"enable='gte(t,{ov['start']})*lt(t,{ov['end']})'[{merged}]"
         )
         base_label = merged
@@ -969,7 +978,9 @@ async def _build_text_overlay_pngs(text_overlays: list[dict], cw: int, ch: int, 
         path, _w, _h = await asyncio.to_thread(canvas_render_svc.render_text_overlay_png, item, cw, ch, user_id)
         x = 0 if full else round(cw * item.get("x", 0) / 100)
         y = round(ch * item.get("y", 0) / 100)
-        overlays.append({"path": str(path), "start": t["start_time"], "end": t["end_time"], "x": x, "y": y})
+        overlays.append({"path": str(path), "start": t["start_time"], "end": t["end_time"], "x": x, "y": y,
+                         "animation": t.get("animation", "None"),
+                         "animation_duration": max(0, min(float(t.get("animation_duration", 0)), t["end_time"] - t["start_time"]))})
     return overlays
 
 
