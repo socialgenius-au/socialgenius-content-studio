@@ -230,7 +230,17 @@ export default function VideoStudioV3() {
         media.push({id:item.assetId,name:String(item.title||'Asset'),kind:item.type==='images'?'image':item.type==='videos'?'video':'audio',blob})
        } catch { /* Missing media is reported by timeline importer. */ }
       }
-      if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',scenes,blueprint:{...blueprint,scenes},media},window.location.origin)
+      let sourceAssetId: number | null = null
+      try {
+       const {data:reference}=await referenceVideosApi.get(referenceId)
+       const id=Number(reference.asset_id)
+       if(Number.isSafeInteger(id)&&id>0){
+        const {data:blob}=await assetsApi.download(id)
+        media.push({id,name:'Original reference footage',kind:'video',blob})
+        sourceAssetId=id
+       }
+      } catch { /* Source unavailable; importer reports missing footage. */ }
+      if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',scenes,blueprint:{...blueprint,scenes,sourceAssetId},media},window.location.origin)
       return
      }
      const {data} = await referenceVideosApi.handoff(referenceId,handoffId)
