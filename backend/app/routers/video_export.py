@@ -89,6 +89,8 @@ async def export_project(
     for t in sorted(body.text_overlays, key=lambda t: t.order):
         text_overlays.append({
             "text": t.text,
+            "animation": t.animation,
+            "animation_duration": t.animation_duration,
             "order": t.order,
             "start_time": t.start_time,
             "end_time": t.end_time,
