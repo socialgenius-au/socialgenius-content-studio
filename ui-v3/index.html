@@ -331,9 +331,15 @@ window.addEventListener('message',event=>{
    if(!Number.isFinite(start)||!Number.isFinite(duration)||duration<=0)return;
    const b=document.createElement('button');b.className='scene'+(i===0?' selected':'');b.textContent=String(scene.number)+' · '+String(scene.role||'Scene')+' · '+duration.toFixed(1)+'s';b.title=String(scene.story||'');b.dataset.start=String(start);b.dataset.end=String(start+duration);$('scenes').append(b);
    const id=plan.replacement?.['Scene '+scene.number];
-   const asset=localAssets.get('server-'+id);
-   if(!asset||!['video','image'].includes(asset.kind)||clips.length>=100){missing++;return}
-   insertClip({asset:asset.id,duration,trim:0,volume:1},start,lane,false);placed++;
+   const asset=localAssets.get('server-'+(id||plan.sourceAssetId));
+   const trim=id?0:Number(scene.sourceStart),sourceLength=Number(scene.sourceEnd)-trim;
+   if(!asset||!['video','image'].includes(asset.kind)||clips.length>=100||!Number.isFinite(trim)||trim<0||(!id&&sourceLength<=0)){missing++;return}
+   const length=id?duration:Math.min(duration,sourceLength);
+   insertClip({asset:asset.id,duration:length,trim,volume:1},start,lane,false);placed++;
+   if(length<duration-.001)missing++;
+   const overlayId=Number(plan.direction?.['Scene '+scene.number+' · Overlay asset']);
+   const overlay=localAssets.get('server-'+overlayId),overlayLane=laneRows.filter(l=>trackKind(l)==='video')[1];
+   if(overlayId&&overlay&&['video','image'].includes(overlay.kind)&&overlayLane&&clips.length<100&&!clips.some(c=>c.parentElement===overlayLane&&occupied(c)&&start<Number(c.dataset.start)+Number(c.dataset.duration)&&start+duration>Number(c.dataset.start)))insertClip({asset:overlay.id,duration,trim:0,volume:0},start,overlayLane,false);
   });
   const direction=plan.direction||{};
   const textLanes=laneRows.filter(l=>trackKind(l)==='text'),audioLanes=laneRows.filter(l=>trackKind(l)==='audio'),musicLane=laneRows.find(l=>trackKind(l)==='music');
