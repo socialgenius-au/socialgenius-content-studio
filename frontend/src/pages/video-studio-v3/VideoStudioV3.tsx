@@ -12,7 +12,7 @@ type ExportMedia = {
  fade_out?: number
 }
 
-type ExportVideo = ExportMedia & { muted: boolean; speed: number; fit_mode: 'fit' | 'fill'; crop_x: number; crop_y: number; contrast: number; saturation: number; transition?: string; transition_duration?: number }
+type ExportVideo = ExportMedia & { muted: boolean; speed: number; fit_mode: 'fit' | 'fill'; crop_x: number; crop_y: number; contrast: number; saturation: number; transition?: string; transition_duration?: number; insert_x?: number; insert_y?: number; insert_width?: number; insert_height?: number }
 
 export default function VideoStudioV3() {
  const frame = useRef<HTMLIFrameElement>(null)
@@ -116,7 +116,7 @@ export default function VideoStudioV3() {
        const track = clip.track === 0 ? video : upperVideo
        const transitions: Record<string,string> = {'Fade':'fade_black','Dissolve':'dissolve','Cross-dissolve':'dissolve','Wipe':'wipe','Slide':'slide','Push':'push','Zoom':'zoom_punch'}
        const seconds = fade(props.transitionDuration)
-       track.push({...item,transition:seconds>0?(transitions[String(props.transition)]||'cut'):'cut',transition_duration:seconds,muted,speed:1,contrast:effect(props.contrast),saturation:effect(props.saturation),fit_mode:props.fitMode==='fill'?'fill':'fit',crop_x:percent(props.cropX,50),crop_y:percent(props.cropY,50)})
+       track.push({...item,transition:seconds>0?(transitions[String(props.transition)]||'cut'):'cut',transition_duration:seconds,muted,speed:1,contrast:effect(props.contrast),saturation:effect(props.saturation),fit_mode:props.fitMode==='fill'?'fill':'fit',crop_x:percent(props.cropX,50),crop_y:percent(props.cropY,50),...(clip.track===1?{insert_x:percent(props.imageX,0),insert_y:percent(props.imageY,0),insert_width:percent(props.imageWidth,100,1),insert_height:percent(props.imageHeight,100,1)}:{})})
       } else if (clip.kind === 'image') {
        overlays.push({ ...item,animation:['Fade','Slide','Zoom'].includes(String(props.transition))?String(props.transition):'None',animation_duration:fade(props.transitionDuration),x:percent(props.imageX,0),y:percent(props.imageY,0),width:percent(props.imageWidth,100,1),height:percent(props.imageHeight,100,1),opacity:Math.max(0,Math.min(1,Number(clip.opacity ?? 1))),muted:true })
       } else {
@@ -136,7 +136,7 @@ export default function VideoStudioV3() {
      for (const clip of upperVideo) {
       if (clip.start_time < baseEnd) {
        const visible = {...clip,end_time:Math.min(clip.end_time,baseEnd)}
-       additionalVideo.push({...visible,insert_x:0,insert_y:0,insert_width:100,insert_height:100})
+       additionalVideo.push({...visible,insert_x:visible.insert_x??0,insert_y:visible.insert_y??0,insert_width:visible.insert_width??100,insert_height:visible.insert_height??100})
        if (!clip.muted && (await assetsApi.hasAudioStream(clip.asset_id)).data.has_audio) {
         audio.push(visible)
        }
