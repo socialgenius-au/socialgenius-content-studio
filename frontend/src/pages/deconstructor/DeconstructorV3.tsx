@@ -342,7 +342,7 @@ export default function DeconstructorV3() {
     ...['Publication date', 'Views', 'Likes', 'Semantic keyword validation'].map(label => result(label, null, 'Researched')),
     ...researchDimensions.map(dimension => { const report = savedReports?.id === id ? savedReports.reports[dimension] : undefined; return result(dimension, report?.findings.length ? `${report.partial ? 'Partial research' : 'Research saved'} · ${report.findings.length} cited findings · ${report.topic}` : null, 'Researched') }),
   ]
-  const busy = working || d.busy !== null
+  const busy = working || interpreting || d.busy !== null
   const selectReference = (newId: number, view: View = 'Reference') => {
     setSelected(0)
     setPlayhead(0)
@@ -452,6 +452,7 @@ export default function DeconstructorV3() {
       const {data} = await referenceVideosApi.runTranscriptAlternative(video.id, speechLanguage)
       const reading = data.alternatives.find(alternative => alternative.language_hint === (speechLanguage || null) && alternative.model === 'small')
       setSpeechReadings({id:video.id, data})
+      if (reading) setMessage('Speech reading saved. Run Messaging Analysis again to refresh the marketing interpretation.')
       if (!reading) setMessage('No alternative speech segments were detected.')
     } catch (error) {
       setMessage(errorMessage(error, 'The speech reading could not be completed.'))
@@ -503,7 +504,7 @@ export default function DeconstructorV3() {
     } catch {
       setMessage('Could not refresh saved research. The download includes locally loaded evidence.')
     }
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ reference:video?.original_filename, context:notes, metadata, messaging, discoverability, research_reports:researchReports, scenes:sceneList, mechanisms:creative?.mechanisms ?? [] },null,2)],{type:'application/json'}))
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ reference:video?.original_filename, context:notes, metadata, messaging, messaging_report:semantic, discoverability, research_reports:researchReports, scenes:sceneList, mechanisms:creative?.mechanisms ?? [] },null,2)],{type:'application/json'}))
     const link = document.createElement('a')
     link.href = url
     link.download = `reference-${id}-analysis.json`
