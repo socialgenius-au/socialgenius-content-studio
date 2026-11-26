@@ -222,7 +222,15 @@ export default function VideoStudioV3() {
        const start=cursor;cursor+=duration
        return {...item,sourceStart:item.start,sourceEnd:item.end,start,end:cursor}
       })
-      if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',scenes,blueprint:{...blueprint,scenes}},window.location.origin)
+      const media = []
+      for (const item of (Array.isArray(blueprint.assets)?blueprint.assets:[]).slice(0,60)) {
+       if (!Number.isSafeInteger(item.assetId)||item.assetId<=0) continue
+       try {
+        const {data:blob}=await assetsApi.download(item.assetId)
+        media.push({id:item.assetId,name:String(item.title||'Asset'),kind:item.type==='images'?'image':item.type==='videos'?'video':'audio',blob})
+       } catch { /* Missing media is reported by timeline importer. */ }
+      }
+      if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',scenes,blueprint:{...blueprint,scenes},media},window.location.origin)
       return
      }
      const {data} = await referenceVideosApi.handoff(referenceId,handoffId)
