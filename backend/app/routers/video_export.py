@@ -213,6 +213,8 @@ async def export_project(
         media_overlays.append({
             "path": path,
             "is_image": asset.file_type == "image",
+            "animation": o.animation,
+            "animation_duration": o.animation_duration,
             "order": o.order,
             "start": o.start_time,
             "end": o.end_time,
