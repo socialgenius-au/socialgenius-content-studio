@@ -220,7 +220,7 @@ export default function DeconstructorV3() {
   const [interpreting, setInterpreting] = useState(false)
   const semantic = savedMessaging?.id === id ? savedMessaging?.report : null
   useEffect(() => {
-    if (!id || mode !== 'Messaging Intelligence') return
+    if (!id) return
     let live = true
     referenceVideosApi.messagingIntelligence(id).then(({data}) => {
       if (live) setSavedMessaging({id, report:data})
