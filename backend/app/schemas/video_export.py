@@ -70,6 +70,8 @@ class ExportAdditionalVideoClip(BaseModel):
 
 
 class ExportTextOverlay(BaseModel):
+    animation: Literal['None', 'Fade', 'Slide', 'Typewriter', 'Scale', 'Kinetic', 'Logo reveal'] = 'None'
+    animation_duration: float = Field(default=0, ge=0, le=60)
     text: str
     start_time: float
     end_time: float
