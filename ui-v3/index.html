@@ -308,6 +308,37 @@ importReview.onclick=()=>{
 window.addEventListener('message',event=>{
  if(!authenticatedEditor||event.source!==parent||event.origin!==parent.location.origin||event.data?.type!=='sg-v3-analysis-result')return;
  if(event.data.error){status.textContent='Could not load the saved handoff';return}
+ if(event.data.blueprint){
+  const plan=event.data.blueprint;
+  const scenes=event.data.scenes;
+  if(!Array.isArray(scenes)||!scenes.length)return;
+  if(!confirm('Import reconstruction storyboard and append its available replacement media to the video timeline? Existing clips are preserved.'))return;
+  for(const v of event.data.media||[]){
+   if(!(v.blob instanceof Blob)||!['image','video','audio'].includes(v.kind))continue;
+   const id='server-'+v.id;
+   if(localAssets.has(id))continue;
+   const asset={id,name:v.name,kind:v.kind,url:URL.createObjectURL(v.blob)};
+   localAssets.set(id,asset);
+   const b=document.createElement('button');b.className='thumb';b.dataset.kind=v.kind;b.textContent=v.name;b.onclick=()=>{assignAsset(asset);checkpoint()};$('media').append(b);
+  }
+  const lane=laneRows.find(l=>trackKind(l)==='video');
+  if(!lane){status.textContent='Video track unavailable';return}
+  const offset=Math.max(0,...clips.filter(c=>c.parentElement===lane&&occupied(c)).map(c=>Number(c.dataset.start)+Number(c.dataset.duration)));
+  let placed=0,missing=0;
+  $('scenes').replaceChildren();
+  scenes.forEach((scene,i)=>{
+   const start=Number(scene.start)+offset,duration=Number(scene.end)-Number(scene.start);
+   if(!Number.isFinite(start)||!Number.isFinite(duration)||duration<=0)return;
+   const b=document.createElement('button');b.className='scene'+(i===0?' selected':'');b.textContent=String(scene.number)+' · '+String(scene.role||'Scene')+' · '+duration.toFixed(1)+'s';b.title=String(scene.story||'');b.dataset.start=String(start);b.dataset.end=String(start+duration);$('scenes').append(b);
+   const id=plan.replacement?.['Scene '+scene.number];
+   const asset=localAssets.get('server-'+id);
+   if(!asset||!['video','image'].includes(asset.kind)||clips.length>=100){missing++;return}
+   insertClip({asset:asset.id,duration,trim:0,volume:1},start,lane,false);placed++;
+  });
+  commitEdit();
+  status.textContent=placed+' replacement scenes placed; '+missing+' scenes need source footage or manual assignment. Audio and text not imported yet.';
+  return;
+ }
  importAnalysedScenes(event.data.scenes);
 });
 
