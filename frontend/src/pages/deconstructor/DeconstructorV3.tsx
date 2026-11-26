@@ -489,7 +489,7 @@ export default function DeconstructorV3() {
   const send = async () => {
     if (!video || !sceneList.length || sending) return
     setSending(true)
-    const handoff = { referenceId:video.id, scenes:sceneList, context:notes, messaging, discoverability, metadata, mechanisms:creative?.mechanisms ?? [], provenance:anatomy?.provenance }
+    const handoff = { referenceId:video.id, scenes:sceneList, context:notes, messaging, messaging_report:semantic, discoverability, metadata, mechanisms:creative?.mechanisms ?? [], provenance:anatomy?.provenance }
     try {
       const {data} = await referenceVideosApi.createHandoff(video.id,handoff)
       navigate(`/reconstructor/assets?scene=${sceneList[0].number}&reference=${video.id}&handoff=${data.id}`)
