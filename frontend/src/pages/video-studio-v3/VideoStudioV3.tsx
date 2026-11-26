@@ -213,6 +213,18 @@ export default function VideoStudioV3() {
     const referenceId = Number(params.get('reference'))
     const handoffId = Number(params.get('handoff'))
     try {
+     const blueprint = JSON.parse(sessionStorage.getItem('sg-reconstructor-editor-blueprint') || 'null')
+     if (blueprint?.version === 1 && blueprint.referenceId === referenceId && blueprint.handoffId === handoffId && Array.isArray(blueprint.scenes)) {
+      let cursor=0
+      const scenes=blueprint.scenes.map((item: {number:number;plannedDuration:number;role:string;story:string;start:number;end:number})=>{
+       const duration=Number(item.plannedDuration)
+       if(!Number.isFinite(duration)||duration<=0)throw Error('Invalid reconstruction duration')
+       const start=cursor;cursor+=duration
+       return {...item,sourceStart:item.start,sourceEnd:item.end,start,end:cursor}
+      })
+      if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',scenes,blueprint:{...blueprint,scenes}},window.location.origin)
+      return
+     }
      const {data} = await referenceVideosApi.handoff(referenceId,handoffId)
      if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',scenes:data.scenes},window.location.origin)
     } catch {
