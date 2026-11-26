@@ -115,6 +115,9 @@ TRANSITION_MAP = {
     "whip_pan": "wiperight",
     "fade_to_black": "fadeblack",
     "zoom_punch": "zoomin",
+    "wipe": "wipeleft",
+    "slide": "slideleft",
+    "push": "slideleft",
 }
 
 
