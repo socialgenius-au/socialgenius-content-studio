@@ -165,3 +165,9 @@ A later frontend revision `c2fec1f` reached SUCCESS on the same URL. The full-du
 - Added a metered, evidence-linked marketing analysis using saved speech or the preferred multilingual alternative, OCR, object detections, sampled video frames, scene timing and user context.
 - Findings use validated evidence identifiers and source timestamps. Missing support stays unavailable. English translations are labelled as machine interpretations and preserve the stored transcription.
 - Saved reports reopen by analysis version. The approved seven-tab screen displays inferred findings and scene purposes, and new Reconstructor handoffs include the saved report.
+
+### Technical Intelligence V3
+
+- Added shot-level technical interpretations from sampled reference frames, OCR candidates, global motion and transition measurements. Report evidence carries original timestamps and separates measured frame metrics from qualitative interpretations.
+- Added saved reports, scene grouping, timestamp seeking and Reconstructor handoff. Existing Messaging Intelligence processing remains in place.
+- Local checks include sampled colour metrics, evidence validation and a frontend build. Acceptance on References 4 and 5, scene-level synthesis, and music and sound-effects classification remain open.

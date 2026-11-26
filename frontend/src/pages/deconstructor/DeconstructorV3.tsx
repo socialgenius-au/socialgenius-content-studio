@@ -5,6 +5,7 @@ import { assetsApi, referenceVideosApi, uploadApi, videoExportApi } from '../../
 import type { ReferenceVideo } from '../../types'
 import { errorMessage, useDeconstructor } from './useDeconstructor'
 import { evidenceSummary, hookSummary, typeLabel } from './intelligence'
+import { TechnicalShotEvidence, type TechnicalReport } from './technicalReport'
 import './DeconstructorV3.css'
 
 const root = '/deconstructor-v3'
@@ -230,6 +231,33 @@ export default function DeconstructorV3() {
   const interpretMessaging = async (targetId: number) => {
     const {data} = await referenceVideosApi.runMessagingIntelligence(targetId, notes)
     setSavedMessaging({id:targetId, report:data})
+  }
+  const [savedTechnical, setSavedTechnical] = useState<{id: number; report: TechnicalReport | null} | null>(null)
+  const [technicalRun, setTechnicalRun] = useState<number | null>(null)
+  const technicalReport = savedTechnical?.id === id ? savedTechnical?.report : null
+  useEffect(() => {
+    if (!id || mode !== 'Technical Intelligence') return
+    let live = true
+    referenceVideosApi.technicalIntelligence(id).then(({data}) => {
+      if (live) setSavedTechnical({id, report: data})
+    }).catch(error => { if (live && error?.response?.status !== 409) setMessage(errorMessage(error, 'Could not load saved technical analysis.')) })
+    return () => { live = false }
+  }, [id, mode])
+  const runTechnical = async () => {
+    if (!id || technicalRun !== null) return
+    setTechnicalRun(id)
+    try {
+      let current = (await referenceVideosApi.get(id)).data as ReferenceVideo
+      if (!current.shots.some(shot => shot.frames.length)) current = (await referenceVideosApi.analyzeFrames(id)).data
+      if (!current.shots.some(shot => shot.global_motion_evidence)) current = (await referenceVideosApi.analyzeGlobalMotion(id)).data
+      if (current.shots.length > 1 && !current.transition_evidence?.length) current = (await referenceVideosApi.analyzeTransitionEvidence(id)).data
+      const {data} = await referenceVideosApi.runTechnicalIntelligence(id)
+      setReference(previous => previous?.id === id ? current : previous)
+      setSavedTechnical({id, report: data})
+      setMessage('Technical evidence and interpretations saved.')
+    } catch (error) {
+      setMessage(errorMessage(error, 'Technical analysis could not be saved.'))
+    } finally { setTechnicalRun(null) }
   }
   const video = reference?.id === id ? reference : null
   useEffect(() => {
@@ -652,7 +680,23 @@ export default function DeconstructorV3() {
           </div>
           {waveformPeaks ? <div className="dc3-waveform"><span>Audio waveform</span><svg role="img" aria-label="Audio peaks measured from the reference" viewBox="0 0 180 36" preserveAspectRatio="none">{waveformPeaks.map((peak,index) => <line key={index} x1={index} x2={index} y1={18-peak*17} y2={18+peak*17} />)}<line className="dc3-cursor" x1={playhead/(duration||1)*180} x2={playhead/(duration||1)*180} y1={0} y2={36} /></svg></div> : <button type="button" disabled={!details?.audio.present || waveformLoading} onClick={() => void loadWaveform()}>{waveformLoading ? 'Decoding audio…' : 'Load audio waveform'}</button>}
         </Card></div>
-        <div className="dc3-stack">{row('Video Properties',metadata)}{row('Shot Breakdown',[
+        <div className="dc3-stack">{row('Video Properties',metadata)}
+        <Card title="Technical findings">
+          <button type="button" disabled={!shots.length || technicalRun !== null} onClick={() => void runTechnical()}>{technicalRun !== null ? 'Analysing shots…' : 'Run Technical Intelligence'}</button>
+          <button type="button" disabled={!sceneList.length || sending} onClick={() => void send()}>Send to Reconstructor</button>
+          {technicalReport?.limitations.length ? <details><summary>Evidence limitations</summary><ul>{technicalReport.limitations.map(note => <li key={note}>{note}</li>)}</ul></details> : null}
+          {technicalReport?.shots.map(shot => <details key={shot.number} open={shot.number === activeShot?.order || undefined}>
+            <summary>Shot {shot.number} · {spanLabel(shot.start, shot.end)}</summary>
+            <button type="button" onClick={() => updateTime(shot.start)}>Seek to shot</button>
+            <TechnicalShotEvidence shot={shot} seek={updateTime} />
+          </details>)}
+          {technicalReport?.scenes.map(scene => <details key={scene.number}>
+            <summary>Scene {scene.number} · {spanLabel(scene.start, scene.end)}</summary>
+            <button type="button" onClick={() => updateTime(scene.start)}>Seek to scene</button>
+            {technicalReport.shots.filter(shot => scene.shots.includes(shot.number)).map(shot =>
+              <details key={shot.number}><summary>Shot {shot.number}</summary><TechnicalShotEvidence shot={shot} seek={updateTime} /></details>)}
+          </details>)}
+        </Card>{row('Shot Breakdown',[
           result('Time range',activeShot?spanLabel(activeShot.start_time,activeShot.end_time):null,'Detected'),
           result('Shot evidence',activeShot?.evidence_summary,'Detected'),
           result('Framing',activeShotReading?.framing,'Inferred'),
@@ -664,7 +708,7 @@ export default function DeconstructorV3() {
           result('Measured picture motion',activeShot?.global_motion_evidence ? `${activeShot.global_motion_evidence.frame_pair_count} frame pairs sampled at ${activeShot.global_motion_evidence.sampling_fps} fps` : null,'Detected'),
           result('Silence intervals in reference',video?.audio_structure?.audio_stream_present ? video.audio_structure.silence_count : null,'Detected'),
           result('Audio waveform',waveformPeaks?'Measured from decoded audio':null,'Detected'),
-          ...['Camera angles','Camera movement','Lighting','Colour characteristics','Animations','Music identification','Sound effects'].map(label => result(label,null,'Unavailable')),
+          result('Background music and sound effects',null,'Unavailable'),
         ])}</div>
       </div>}
       {mode === 'Discoverability' && <div className="dc3-grid">{preview}<div className="dc3-stack">{row('Source and Discoverability Evidence', discoverability)}{video && <ExternalResearch key={video.id} referenceId={video.id} onReports={reports => setSavedReports({id:video.id,reports})} />}<Card title="Evidence Classification"><p>Extracted facts come from the source file or supplied context. Detected findings come from the analysis engines. Interpretations are labelled Inferred. Externally verified findings are labelled Researched. Detected terms and questions describe the source content. Search ranking, generative answer visibility and local demand require independent evidence.</p></Card></div></div>}

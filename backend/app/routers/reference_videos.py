@@ -1130,6 +1130,79 @@ async def run_messaging_intelligence(
     return payload
 
 
+TECHNICAL_CATEGORY = "technical_intelligence_v1"
+
+
+async def _saved_technical(db: AsyncSession, analysis_id: int) -> dict | None:
+    annotation = await db.scalar(select(AnalysisAnnotation).where(
+        AnalysisAnnotation.video_analysis_id == analysis_id,
+        AnalysisAnnotation.category == TECHNICAL_CATEGORY,
+    ).order_by(AnalysisAnnotation.id.desc()).limit(1))
+    return annotation.details if annotation else None
+
+
+@router.get("/{reference_video_id}/technical-intelligence")
+async def get_technical_intelligence(
+    reference_video_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    _, analysis_id = await _messaging_reference(db, reference_video_id, user.id)
+    return await _saved_technical(db, analysis_id)
+
+
+@router.post("/{reference_video_id}/technical-intelligence")
+async def run_technical_intelligence(
+    reference_video_id: int, db: AsyncSession = Depends(get_db), user: User = Depends(current_user),
+):
+    from app.services.ai_metering import AiCostControlError
+    from app.services.technical_intelligence import fingerprint, interpret_shots, prepare_shots
+
+    reference, analysis_id = await _messaging_reference(db, reference_video_id, user.id)
+    asset = await db.get(Asset, reference.asset_id)
+    if asset is None:
+        raise HTTPException(404, "Reference media not found.")
+    data = (await _to_response(db, reference, asset, video_analysis_id=analysis_id)).model_dump(mode="json")
+    if not data["shots"]:
+        raise HTTPException(409, "Detect shots and extract frames first.")
+    try:
+        anatomy = await get_content_anatomy(db, user, reference_video_id, video_analysis_id=analysis_id)
+        sections = anatomy["sections"]
+    except ContentAnatomyNotReady:
+        sections = []
+    scenes = [{
+        "number": section["number"], "start": section["start_time"], "end": section["end_time"],
+        "shots": [shot["order"] for shot in data["shots"]
+                  if shot["start_time"] < section["end_time"] and shot["end_time"] > section["start_time"]],
+    } for section in sections]
+    cached = await _saved_technical(db, analysis_id)
+    try:
+        async with asyncio.timeout(105):
+            shots, images, limitations = await prepare_shots(data["shots"], data["transition_evidence"])
+            digest = fingerprint(shots, scenes)
+            if cached and cached.get("fingerprint") == digest:
+                return cached
+            if not any(shot["sources"] for shot in shots):
+                raise HTTPException(409, "No sampled frames or technical measurements are available.")
+            with ai_scope(reference_video_id=reference_video_id, user_id=user.id,
+                          video_analysis_id=analysis_id, reasoner="technical_intelligence"):
+                async for _ in interpret_shots(shots, images):
+                    pass
+    except AiCostControlError as error:
+        raise HTTPException(503, str(error)) from error
+    except TimeoutError as error:
+        raise HTTPException(504, "Technical analysis exceeded its time limit.") from error
+    except HTTPException:
+        raise
+    except Exception as error:
+        logging.getLogger(__name__).warning("Technical analysis failed: %s", type(error).__name__)
+        raise HTTPException(502, "The provider could not produce a valid technical report.") from error
+    payload = {"shots": shots, "scenes": scenes, "fingerprint": digest, "limitations": limitations}
+    db.add(AnalysisAnnotation(video_analysis_id=analysis_id, category=TECHNICAL_CATEGORY,
+                              start_time=0, end_time=max(shot["end"] for shot in shots),
+                              details=payload, certainty="INFERRED", source="anthropic"))
+    await db.commit()
+    return payload
+
+
 class HandoffScene(BaseModel):
     number: int
     start: float = Field(ge=0, allow_inf_nan=False)
@@ -1168,6 +1241,7 @@ async def create_reconstruction_handoff(
     ).order_by(VideoAnalysis.created_at.desc(), VideoAnalysis.id.desc()).limit(1))
     if latest_analysis_id is not None:
         payload["messaging_report"] = await _saved_messaging(db, latest_analysis_id)
+        payload["technical_report"] = await _saved_technical(db, latest_analysis_id)
     if len(json.dumps(payload).encode()) > 512_000:
         raise HTTPException(413, "The reconstruction handoff exceeds the supported size.")
     handoff = ReferenceReconstructionHandoff(reference_video_id=reference_video_id, payload=payload)
