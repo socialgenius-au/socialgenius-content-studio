@@ -122,7 +122,9 @@ def parse_report(payload: dict) -> MessagingReport:
     return MessagingReport(**groups)
 
 
-async def interpret(evidence: list[dict], context: dict, images: list[dict]) -> dict:
+async def interpret(
+    evidence: list[dict], context: dict, images: list[dict], *, scene_followup: bool = False,
+) -> dict:
     content = [{"type": "text", "text": json.dumps({"context": context, "evidence": evidence}, ensure_ascii=False)}]
     for image in images:
         content.extend([
@@ -150,6 +152,10 @@ async def interpret(evidence: list[dict], context: dict, images: list[dict]) -> 
             "speech segment into English, preserving mixed-language meaning and product names. Omit unintelligible segments. "
             "Use overlapping alternative speech readings to resolve mixed-language words. Translate the original timestamped segment. "
             "If supported, return a refined reading in the spoken languages separately. Never replace the source or fill gaps with guessed words."
+        ) + (
+            " This follow-up is only for missing scene purposes. Return an empty findings list and an empty translations list. "
+            "For each supplied scene use only sources whose timestamps overlap that scene. Omit any scene without support."
+            if scene_followup else ""
         ),
         messages=[{"role": "user", "content": content}],
         tools=[{"name": "report_messaging", "description": "Submit evidence-grounded marketing findings and English translations.",
@@ -161,7 +167,7 @@ async def interpret(evidence: list[dict], context: dict, images: list[dict]) -> 
     for block in response.content:
         if block.type == "tool_use" and block.name == "report_messaging":
             report = validated_report(parse_report(block.input), evidence)
-            if any(report.values()):
+            if scene_followup or any(report.values()):
                 return report
             raise ValueError("No valid evidence-linked findings or translations")
     raise ValueError("No structured messaging report returned")

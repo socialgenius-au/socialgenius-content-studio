@@ -1083,7 +1083,7 @@ async def run_messaging_intelligence(
         raise HTTPException(409, "Run speech, OCR or visual analysis to gather evidence first.")
     from hashlib import sha256
     notes = context.model_dump()
-    fingerprint = sha256(json.dumps([3, notes, evidence], sort_keys=True).encode()).hexdigest()
+    fingerprint = sha256(json.dumps([4, notes, evidence], sort_keys=True).encode()).hexdigest()
     cached = await _saved_messaging(db, analysis_id)
     if cached and cached.get("fingerprint") == fingerprint:
         return cached
@@ -1091,6 +1091,22 @@ async def run_messaging_intelligence(
         async with asyncio.timeout(100):
             with ai_scope(reference_video_id=reference_video_id, user_id=user.id, video_analysis_id=analysis_id, reasoner="messaging_intelligence"):
                 report = await interpret(evidence, notes, images)
+                covered = {item["scene"]["id"] for item in report["scenes"]}
+                missing = [item for item in evidence if item["kind"] == "scene" and item["id"] not in covered]
+                if missing:
+                    followup_evidence = [*missing, *(item for item in evidence if item["kind"] != "scene" and any(
+                        scene["start"] <= item["end"] and item["start"] < scene["end"] for scene in missing
+                    ))]
+                    frame_ids = {item["id"] for item in followup_evidence if item["kind"] == "frame"}
+                    try:
+                        followup = await interpret(followup_evidence, notes, [
+                            image for image in images if f"frame-{image['frame_id']}" in frame_ids
+                        ], scene_followup=True)
+                        report["scenes"].extend(followup["scenes"])
+                        report["scenes"].sort(key=lambda item: item["scene"]["start"])
+                    except Exception as error:
+                        logging.getLogger(__name__).warning("Messaging scene follow-up failed: %s", type(error).__name__)
+
     except AiCostControlError as error:
         raise HTTPException(503, str(error)) from error
     except TimeoutError as error:
@@ -1098,6 +1114,12 @@ async def run_messaging_intelligence(
     except Exception as error:
         logging.getLogger(__name__).warning("Messaging provider failed: %s", type(error).__name__)
         raise HTTPException(502, "The provider could not produce a valid messaging report.") from error
+    if cached and cached.get("fingerprint") == sha256(json.dumps([3, notes, evidence], sort_keys=True).encode()).hexdigest():
+        current_sources = {item["id"]: item for item in evidence}
+        for topic, finding in cached.get("findings", {}).items():
+            support = finding.get("evidence", [])
+            if support and all(current_sources.get(item["id"]) == item for item in support):
+                report["findings"].setdefault(topic, finding)
     payload = {**report, "fingerprint": fingerprint, "analysis_id": analysis_id, "limitations": visual_limitations}
     db.add(AnalysisAnnotation(video_analysis_id=analysis_id, category=MESSAGING_CATEGORY,
                               start_time=0, end_time=max(item["end"] for item in evidence),
