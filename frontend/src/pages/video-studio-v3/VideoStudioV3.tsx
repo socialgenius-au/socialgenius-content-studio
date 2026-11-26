@@ -118,7 +118,7 @@ export default function VideoStudioV3() {
        const seconds = fade(props.transitionDuration)
        track.push({...item,transition:seconds>0?(transitions[String(props.transition)]||'cut'):'cut',transition_duration:seconds,muted,speed:1,contrast:effect(props.contrast),saturation:effect(props.saturation),fit_mode:props.fitMode==='fill'?'fill':'fit',crop_x:percent(props.cropX,50),crop_y:percent(props.cropY,50)})
       } else if (clip.kind === 'image') {
-       overlays.push({ ...item,x:percent(props.imageX,0),y:percent(props.imageY,0),width:percent(props.imageWidth,100,1),height:percent(props.imageHeight,100,1),opacity:Math.max(0,Math.min(1,Number(clip.opacity ?? 1))),muted:true })
+       overlays.push({ ...item,animation:['Fade','Slide','Zoom'].includes(String(props.transition))?String(props.transition):'None',animation_duration:fade(props.transitionDuration),x:percent(props.imageX,0),y:percent(props.imageY,0),width:percent(props.imageWidth,100,1),height:percent(props.imageHeight,100,1),opacity:Math.max(0,Math.min(1,Number(clip.opacity ?? 1))),muted:true })
       } else {
        audio.push({...item,fade_in:fade(props.fadeIn),fade_out:fade(props.fadeOut)})
       }
