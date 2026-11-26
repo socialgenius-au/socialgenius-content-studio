@@ -38,8 +38,8 @@ type MessagingSource = {id:string; kind:string; start:number; end:number; text:s
 type MessagingFinding = {summary:string; confidence:string; evidence:MessagingSource[]}
 type MessagingReport = {
   findings: Record<string, MessagingFinding>
-  scenes: (MessagingFinding & {scene:MessagingSource})[]
-  translations: {source:MessagingSource; english:string; confidence:string}[]
+  scenes: (MessagingFinding & {scene:MessagingSource; messaging?:string; emotional_trigger?:string; narrative_contribution?:string})[]
+  translations: {source:MessagingSource; english:string; confidence:string; refined_reading?:string|null}[]
 }
 type TimelineItem = { key: string; start: number; end: number; text: string }
 
@@ -321,10 +321,18 @@ export default function DeconstructorV3() {
     if (evidence === 'Extracted' || evidence === 'Detected') return [label,value,evidence]
     return result(label, null, 'Unavailable')
   })
+  const renderMessagingEvidence = (finding: MessagingFinding) => (
+    <div><div>{finding.summary}</div><small>{finding.confidence} evidence strength</small>
+      <details><summary>Supporting evidence ({finding.evidence.length})</summary>
+        {finding.evidence.map(source => <p key={source.id}>
+          <button type="button" onClick={() => updateTime(source.start)}>{spanLabel(source.start, source.end)}</button> {source.kind}: {source.text}
+        </p>)}
+      </details>
+    </div>
+  )
   const displayMessaging = messaging.map(([label,value,evidence]): Finding => {
     const finding = semantic?.findings[label]
-    if (!finding) return [label,value,evidence]
-    return [label, <div><div>{finding.summary}</div><small>{finding.confidence} evidence strength</small><details><summary>Supporting evidence ({finding.evidence.length})</summary>{finding.evidence.map(source => <p key={source.id}><button type="button" onClick={() => updateTime(source.start)}>{spanLabel(source.start, source.end)}</button> {source.kind}: {source.text}</p>)}</details></div>, evidence]
+    return [label, finding ? renderMessagingEvidence(finding) : value, evidence]
   })
   const discoverability: Finding[] = [
     result('Published URL', video?.original_url, 'Extracted'),
@@ -610,13 +618,22 @@ export default function DeconstructorV3() {
           {!!semantic?.translations.length && <details><summary>English translation · machine interpreted</summary>
             {semantic.translations.map(item => <p key={item.source.id}>
               <strong>{spanLabel(item.source.start,item.source.end)}</strong> {item.english} · {item.confidence} evidence strength
+              <br /><span dir="auto">Original · {item.source.text}</span>
+              {item.refined_reading && <><br /><span dir="auto">Refined machine reading · {item.refined_reading}</span></>}
             </p>)}
           </details>}
         </Card>
         <div className="dc3-grid">{preview}{row('Core Message',displayMessaging.filter(([label]) => ['Core message','Recognised speech (machine reading)','Target audience','Emotional triggers','Storytelling','Call to action'].includes(label)))}</div>
         <div className="dc3-actions">{(['Strategy','Hook','Problem','Solution','Storytelling','Persuasion','Audience'] as const).map(tab => <button className={tab === messageTab ? 'chosen' : ''} type="button" key={tab} onClick={() => setMessageTab(tab)}>{tab}</button>)}<button type="button" disabled={!sceneList.length || !video || sending} onClick={() => void send()}>Send to Reconstructor <ArrowRight /></button></div>
-        <div className="dc3-grid">{row(`${messageTab} Evidence`,displayMessaging.filter(([label]) => ({Strategy:['Business objective','Strategy and positioning','Problem','Solution','Benefits'],Hook:['Hook'],Problem:['Problem','Customer pain points'],Solution:['Solution','Benefits','Value proposition'],Storytelling:['Storytelling','Core message','Call to action'],Persuasion:['Persuasion mechanisms','Emotional triggers','Trust signals'],Audience:['Target audience']}[messageTab].includes(label))))}<Card title="Messaging Structure & Evidence">{!!semantic?.scenes.length && <Findings rows={semantic.scenes.map(item =>
-          result(`Marketing purpose · ${spanLabel(item.scene.start,item.scene.end)}`,marketingText(item),'Inferred'))} />}<button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>
+        <div className="dc3-grid">{row(`${messageTab} Evidence`,displayMessaging.filter(([label]) => ({Strategy:['Business objective','Strategy and positioning','Problem','Solution','Benefits'],Hook:['Hook'],Problem:['Problem','Customer pain points'],Solution:['Solution','Benefits','Value proposition'],Storytelling:['Storytelling','Core message','Call to action'],Persuasion:['Persuasion mechanisms','Emotional triggers','Trust signals'],Audience:['Target audience']}[messageTab].includes(label))))}<Card title="Messaging Structure & Evidence">{semantic && <Findings rows={sceneList.map(scene => {
+          const purpose = semantic.scenes.find(item => item.scene.id === `scene-${scene.number}`)
+          const label = `Marketing purpose · ${spanLabel(scene.start,scene.end)}`
+          return purpose ? [label, <>{renderMessagingEvidence(purpose)}
+            {purpose.messaging && <p>Message · {purpose.messaging}</p>}
+            {purpose.emotional_trigger && <p>Emotional trigger · {purpose.emotional_trigger}</p>}
+            {purpose.narrative_contribution && <p>Narrative contribution · {purpose.narrative_contribution}</p>}
+          </>, 'Inferred'] : result(label,null,'Unavailable')
+        })} />}<button type="button" onClick={() => setTabular(!tabular)}>{tabular ? 'Timeline view' : 'Table view'}</button>{tabular ? <Findings rows={sceneList.map(scene => result(`${scene.role} ${scene.number} · ${spanLabel(scene.start,scene.end)}`,scene.story,'Detected'))} /> : <div className="dc3-story">{sceneList.map((scene,index) => <button key={scene.number} type="button" onClick={() => seek(scene.start,index)}><strong>{scene.role} {scene.number}</strong><small>{spanLabel(scene.start,scene.end)}</small><span>{scene.story || 'Evidence unavailable'}</span></button>)}</div>}</Card></div>
       </>}
       {mode === 'Technical Intelligence' && <div className="dc3-technical">
         <Card title="Scenes">{scenes}</Card>

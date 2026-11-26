@@ -97,7 +97,6 @@ from app.deps import current_user
 from app.models.analysis_annotation import AnalysisAnnotation
 from app.models.asset import Asset
 from app.models.reference_video import ReferenceVideo
-from app.models.scene import Scene
 from app.models.shot import Shot
 from app.models.shot_frame import ShotFrame
 from app.models.speech_segment import SpeechSegment
@@ -1043,17 +1042,30 @@ async def run_messaging_intelligence(
     original = [item.model_dump(mode="json") for item in reference_data.speech_segments]
     readings = build_alternatives_view(original, await load_alternative_rows(db, analysis_id))
     preferred = next((item for item in readings["alternatives"] if item["run_id"] == readings["preferred_run_id"]), None)
-    spoken = preferred["segments"] if preferred else original
     evidence = [
         {"id": f"speech-{item['id']}", "kind": "speech", "start": item["start_time"], "end": item["end_time"],
-         "text": item["text"][:750], "language": preferred["detected_language"] if preferred else item.get("language"),
-         "reading": preferred["model"] if preferred else "original"}
-        for item in spoken[:48] if item["text"].strip()
+         "text": item["text"][:750], "language": item.get("language"), "reading": "original",
+         "alternative_readings": [
+             {"text": alternate["text"][:400], "start": alternate["start_time"], "end": alternate["end_time"],
+              "language": reading.get("detected_language")}
+             for reading in ([preferred] if preferred else readings["alternatives"][:2])
+             for alternate in reading["segments"]
+             if alternate["start_time"] < item["end_time"] and alternate["end_time"] > item["start_time"]
+         ][:4]}
+        for item in original[:48] if item["text"].strip()
     ]
-    scenes = (await db.scalars(select(Scene).where(Scene.video_analysis_id == analysis_id).order_by(Scene.start_time).limit(30))).all()
-    for number, scene in enumerate(scenes or reference_data.shots[:30], 1):
-        evidence.append({"id": f"scene-{number}", "kind": "scene", "start": scene.start_time,
-                         "end": scene.end_time, "text": f"Section {number}"})
+    try:
+        anatomy = await get_content_anatomy(db, user, reference_video_id, video_analysis_id=analysis_id)
+        sections = anatomy["sections"]
+    except ContentAnatomyNotReady:
+        sections = []
+    if not sections:
+        sections = [{"number": number, "start_time": shot.start_time, "end_time": shot.end_time}
+                    for number, shot in enumerate(reference_data.shots, 1)]
+    for section in sections[:30]:
+        number = section["number"]
+        evidence.append({"id": f"scene-{number}", "kind": "scene", "start": section["start_time"],
+                         "end": section["end_time"], "text": f"Section {number}"})
     for shot in reference_data.shots[:30]:
         for text in shot.text_elements[:5]:
             if any(char.isalpha() for char in text.text):
@@ -1071,7 +1083,7 @@ async def run_messaging_intelligence(
         raise HTTPException(409, "Run speech, OCR or visual analysis to gather evidence first.")
     from hashlib import sha256
     notes = context.model_dump()
-    fingerprint = sha256(json.dumps([2, notes, evidence], sort_keys=True).encode()).hexdigest()
+    fingerprint = sha256(json.dumps([3, notes, evidence], sort_keys=True).encode()).hexdigest()
     cached = await _saved_messaging(db, analysis_id)
     if cached and cached.get("fingerprint") == fingerprint:
         return cached

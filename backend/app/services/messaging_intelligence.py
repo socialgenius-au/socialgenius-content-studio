@@ -24,15 +24,21 @@ class Finding(Interpretation):
 
 class ScenePurpose(Interpretation):
     scene_id: str
+    messaging: str | None = Field(default=None, max_length=350)
+    emotional_trigger: str | None = Field(default=None, max_length=350)
+    narrative_contribution: str | None = Field(default=None, max_length=350)
 
 
 class Translation(BaseModel):
     speech_id: str
+    refined_reading: str | None = Field(default=None, max_length=750)
     english: str = Field(min_length=1, max_length=750)
     confidence: Literal["low", "medium", "high"]
 
 
 class MessagingReport(BaseModel):
+    business_objective: Interpretation | None = None
+    strategy_and_positioning: Interpretation | None = None
     findings: list[Finding] = Field(max_length=15)
     scenes: list[ScenePurpose] = Field(max_length=30)
     translations: list[Translation] = Field(max_length=48)
@@ -54,6 +60,12 @@ def validated_report(report: MessagingReport, evidence: list[dict]) -> dict:
         linked = link(item)
         if linked:
             findings.setdefault(item.topic, linked)
+    for topic, item in (
+        ("Business objective", report.business_objective),
+        ("Strategy and positioning", report.strategy_and_positioning),
+    ):
+        if item and (linked := link(item)):
+            findings[topic] = linked
     scenes = {}
     for item in report.scenes:
         scene = sources.get(item.scene_id)
@@ -61,12 +73,14 @@ def validated_report(report: MessagingReport, evidence: list[dict]) -> dict:
         if scene and scene["kind"] == "scene" and linked and all(
             scene["start"] <= row["end"] and row["start"] < scene["end"] for row in linked["evidence"]
         ):
-            scenes.setdefault(item.scene_id, {**linked, "scene": scene})
+            scenes.setdefault(item.scene_id, {**linked, "scene": scene, **item.model_dump(include={
+                "messaging", "emotional_trigger", "narrative_contribution",
+            }, exclude_none=True)})
     translations = {}
     for item in report.translations:
         speech = sources.get(item.speech_id)
         if speech and speech["kind"] == "speech":
-            translations.setdefault(item.speech_id, {"english": item.english, "confidence": item.confidence, "source": speech})
+            translations.setdefault(item.speech_id, {"english": item.english, "confidence": item.confidence, "source": speech, "refined_reading": item.refined_reading})
     return {"findings": findings, "scenes": list(scenes.values()), "translations": list(translations.values())}
 
 
@@ -99,6 +113,12 @@ def parse_report(payload: dict) -> MessagingReport:
                 groups[key].append(model.model_validate(item))
             except ValidationError:
                 continue
+    for key in ("business_objective", "strategy_and_positioning"):
+        if payload.get(key) is not None:
+            try:
+                groups[key] = Interpretation.model_validate(payload[key])
+            except ValidationError:
+                continue
     return MessagingReport(**groups)
 
 
@@ -118,12 +138,18 @@ async def interpret(evidence: list[dict], context: dict, images: list[dict]) -> 
             "Use speech, OCR, observed visual labels and scene timings together where available. Visual labels may be noisy. "
             "Treat user context as guidance, not proof. Distinguish stated benefits from inferred positioning. "
             "Name the hook type and explain why it works. Only report a CTA when an action is requested. "
-            "Evaluate every topic listed in the tool schema and include all supported topics. "
+            "Begin with the dedicated business_objective and strategy_and_positioning slots. "
+            "Infer the likely commercial outcome from the offer, product reveal, branding and explicit action (e.g. enquiries or sales); "
+            "do not assert that campaign performance or internal intent is known. For strategy, explain how the creative sells, "
+            "what it differentiates, the position it claims, and the customer value proposition. Fill these slots only with evidence. "
+            "Evaluate every other topic listed in the tool schema and include all supported topics. "
             "Use the exact scene ID for each scene. Use short summaries and at most four evidence IDs per item. "
             "Omit unsupported topics. Confidence is qualitative evidence strength, not a probability. "
-            "For each supported scene give its marketing purpose with overlapping evidence IDs. Translate each intelligible "
+            "For each supported scene give its marketing purpose, distinct message, emotional trigger when observable, "
+            "and contribution to the narrative, with overlapping evidence IDs. Translate each intelligible "
             "speech segment into English, preserving mixed-language meaning and product names. Omit unintelligible segments. "
-            "Treat machine transcriptions as approximate and never fill gaps with guessed words."
+            "Use overlapping alternative speech readings to resolve mixed-language words. Translate the original timestamped segment. "
+            "If supported, return a refined reading in the spoken languages separately. Never replace the source or fill gaps with guessed words."
         ),
         messages=[{"role": "user", "content": content}],
         tools=[{"name": "report_messaging", "description": "Submit evidence-grounded marketing findings and English translations.",

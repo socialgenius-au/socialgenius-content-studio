@@ -35,3 +35,23 @@ def test_parse_report_preserves_valid_siblings_of_a_malformed_finding():
         {"topic": "Solution", "summary": "Invalid", "evidence_ids": [], "confidence": "certain"},
     ]})
     assert [item.topic for item in report.findings] == ["Core message"]
+
+
+def test_dedicated_strategy_slots_and_scene_details_keep_original_timestamps():
+    speech = dict(id="speech-1", kind="speech", start=1, end=2, text="Original transcription")
+    scene = dict(id="scene-1", kind="scene", start=0.25, end=2.5, text="Section 1")
+    support = dict(summary="A supported conclusion", confidence="medium", evidence_ids=["speech-1"])
+    report = parse_report({
+        "business_objective": support,
+        "strategy_and_positioning": {**support, "evidence_ids": ["fabricated"]},
+        "scenes": [{**support, "scene_id": "scene-1", "messaging": "Convenience",
+                    "emotional_trigger": "Relief", "narrative_contribution": "Resolves the problem"}],
+        "translations": [{"speech_id": "speech-1", "english": "Ready today", "confidence": "medium",
+                          "refined_reading": "Aaj ready"}],
+    })
+    result = validated_report(report, [speech, scene])
+    assert list(result["findings"]) == ["Business objective"]
+    assert result["scenes"][0]["scene"] == scene
+    assert result["scenes"][0]["narrative_contribution"] == "Resolves the problem"
+    assert result["translations"][0]["source"] == speech
+    assert result["translations"][0]["refined_reading"] == "Aaj ready"
