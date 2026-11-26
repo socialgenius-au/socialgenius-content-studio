@@ -1083,7 +1083,7 @@ async def run_messaging_intelligence(
         raise HTTPException(409, "Run speech, OCR or visual analysis to gather evidence first.")
     from hashlib import sha256
     notes = context.model_dump()
-    fingerprint = sha256(json.dumps([4, notes, evidence], sort_keys=True).encode()).hexdigest()
+    fingerprint = sha256(json.dumps([5, notes, evidence], sort_keys=True).encode()).hexdigest()
     cached = await _saved_messaging(db, analysis_id)
     if cached and cached.get("fingerprint") == fingerprint:
         return cached
@@ -1114,7 +1114,9 @@ async def run_messaging_intelligence(
     except Exception as error:
         logging.getLogger(__name__).warning("Messaging provider failed: %s", type(error).__name__)
         raise HTTPException(502, "The provider could not produce a valid messaging report.") from error
-    if cached and cached.get("fingerprint") == sha256(json.dumps([3, notes, evidence], sort_keys=True).encode()).hexdigest():
+    if cached and cached.get("fingerprint") in {
+        sha256(json.dumps([version, notes, evidence], sort_keys=True).encode()).hexdigest() for version in (3, 4)
+    }:
         current_sources = {item["id"]: item for item in evidence}
         for topic, finding in cached.get("findings", {}).items():
             support = finding.get("evidence", [])

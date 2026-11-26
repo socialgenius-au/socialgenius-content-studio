@@ -69,10 +69,14 @@ def validated_report(report: MessagingReport, evidence: list[dict]) -> dict:
     scenes = {}
     for item in report.scenes:
         scene = sources.get(item.scene_id)
-        linked = link(item)
-        if scene and scene["kind"] == "scene" and linked and all(
-            scene["start"] <= row["end"] and row["start"] < scene["end"] for row in linked["evidence"]
-        ):
+        if not scene or scene["kind"] != "scene":
+            continue
+        overlapping = [
+            key for key in item.evidence_ids if key in sources and sources[key]["kind"] != "scene"
+            and scene["start"] <= sources[key]["end"] and sources[key]["start"] < scene["end"]
+        ]
+        if overlapping:
+            linked = link(item.model_copy(update={"evidence_ids": overlapping}))
             scenes.setdefault(item.scene_id, {**linked, "scene": scene, **item.model_dump(include={
                 "messaging", "emotional_trigger", "narrative_contribution",
             }, exclude_none=True)})
