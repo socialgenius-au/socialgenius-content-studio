@@ -1581,6 +1581,19 @@ function enqueueMediaAppend(asset,lane){
  task.then(()=>{if(appendQueues.get(lane)===task)appendQueues.delete(lane)});
 }
 
+/* Only the Reconstructor Create Video action requests automatic handoff.
+   Ordinary editor links, cloud-open and existing drafts remain unchanged. */
+if(authenticatedEditor){
+ const sourceParams=new URLSearchParams(parent.location.search);
+ if(sourceParams.get('fromReconstructor')==='1'&&sourceParams.has('reference')&&sourceParams.has('handoff')){
+  queueMicrotask(()=>{
+   if(clips.every(clip=>!clip.dataset.asset&&(!clip.dataset.label||clip.dataset.label==='Empty'))){
+    importReview.click();
+   }else status.textContent='A project is already open; use Import analysed scenes manually.';
+  });
+ }
+}
+
 /* Explicit demo loading avoids replacing any existing user's saved project. */
 if(authenticatedEditor){
  const demo=document.createElement('button');
