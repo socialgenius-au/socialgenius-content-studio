@@ -54,3 +54,6 @@
 .raf-variation-card{background:#fff;box-shadow:0 2px 6px #3210500a}
 .raf-variation-card img,.raf-variation-card video{width:150px;height:90px;object-fit:cover}
 @media(max-width:850px){.raf-ai-layout{grid-template-columns:1fr}.raf-ai-step-1 .raf-ai-reference,.raf-ai-step-1 .raf-ai-direction{grid-column:1;grid-row:auto}.raf-main{padding:8px}.raf-header{min-height:56px}}
+
+/* Compact AI approval workspace, preserve native video aspect ratio. */
+.raf-workspace-nav nav a,.raf-workspace-nav nav button{display:flex;align-items:center;gap:9px;text-align:left}.raf-workspace-nav nav svg{flex-shrink:0}.raf-screen-heading{padding:7px 12px;margin-bottom:8px}.raf-screen-heading h2{margin:3px 0;font-size:17px}.raf-ai-step-0 .raf-preview-media video{width:100%;height:clamp(180px,30vh,300px)!important;max-height:300px;object-fit:contain;background:#21142e}.raf-ai-step-0 .raf-ai-reference video{max-height:300px;object-fit:contain}.raf-ai-step-0 .raf-ai-direction textarea{min-height:32px;padding:5px}.raf-ai-step-0 .raf-ai-direction label{margin:4px 0}.raf-ai-step-0 .raf-panel{margin-bottom:4px}.raf-ai-step-0 .raf-ai-reference img{max-height:64px;object-fit:cover}.raf-suggest{padding:10px!important;margin:8px 0!important}
