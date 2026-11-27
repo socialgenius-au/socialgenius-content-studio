@@ -202,7 +202,7 @@ async def generate_creative_tool(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    allowed = {"hook_generation", "script_generation", "caption_generation", "thumbnail_ideas"}
+    allowed = {"hook_generation", "script_generation", "caption_generation", "thumbnail_ideas", "reconstruction_direction"}
     if body.task not in allowed:
         raise HTTPException(status_code=422, detail="Unsupported creative tool")
     if not body.instruction.strip():
