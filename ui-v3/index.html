@@ -1592,8 +1592,9 @@ if(authenticatedEditor){
   if(event.source!==parent||event.origin!==parent.location.origin||!demoLoading)return;
   const item=event.data;
   if(item?.type==='sg-v3-radiant-media'&&item.blob instanceof Blob){
-   const asset=registerServerMedia({id:item.id,name:item.name,kind:'video'},item.blob);
+   const asset=registerServerMedia({id:item.id,name:item.name,kind:item.kind==='image'?'image':'video'},item.blob);
    addMediaCard(asset);
+   if(asset.kind==='image')return;
    const start=demoCursor,duration=4;
    insertClip({asset:asset.id,duration,trim:0},start,laneRows.find(l=>trackKind(l)==='video'),false);
    const scene=document.createElement('button');scene.className='scene';scene.dataset.start=String(start);scene.dataset.end=String(start+duration);
