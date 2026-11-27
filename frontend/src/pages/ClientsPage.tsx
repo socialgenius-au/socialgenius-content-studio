@@ -1,3 +1,4 @@
+import { ShowcaseMedia } from './StudioShowcase'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, UserPlus, Users } from 'lucide-react'
@@ -46,9 +47,9 @@ export default function ClientsPage() {
   )
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="sg-portfolio-page flex flex-col gap-5">
       <PageHeader
-        title="Clients"
+        title="Client Portfolio"
         description="Every client workspace Social Genius manages."
         actions={
           <Button size="sm" className="gap-1.5 bg-sg-forest text-sg-ivory hover:bg-sg-forest/90" onClick={() => navigate('/clients/new')}>
@@ -68,9 +69,10 @@ export default function ClientsPage() {
           {filtered.map(c => (
             <Card
               key={c.id}
-              className="cursor-pointer transition-colors hover:border-primary/50"
+              className="sg-portfolio-visual cursor-pointer overflow-hidden transition-colors hover:border-primary/50"
               onClick={() => navigate(`/clients/${c.id}/overview`)}
             >
+              <ShowcaseMedia asset={/property|real estate/i.test(c.industry)?'property':/health|beauty|fitness|wellness/i.test(c.industry)?'wellness':/retail|product|packaging/i.test(c.industry)?'product':'workspace'} label="Illustrative industry photography" />
               <CardHeader className="flex-row items-center gap-2.5 space-y-0">
                 <div
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white"
