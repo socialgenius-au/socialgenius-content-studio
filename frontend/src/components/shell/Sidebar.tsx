@@ -69,7 +69,7 @@ export function Sidebar({ narrow = false, open = false, onClose }: SidebarProps 
         )}
       >
         <div className="flex min-h-[94px] shrink-0 items-center gap-3 border-b border-[#eee4f5] px-4 py-3 dark:border-white/15">
-          <div aria-hidden="true" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#68359b] to-[#40205f] text-sm font-extrabold tracking-tight text-[#f8d77b] shadow-sm">SG</div>
+          <img src="/social-genius-official-logo.svg" alt="Social Genius" className="h-11 w-11 shrink-0 object-contain" />
           {!compact && <div className="min-w-0 flex flex-col leading-tight"><span className="text-[15px] font-bold tracking-tight text-[#3d2354] dark:text-white">Social Genius</span><span className="mt-1 text-[11px] font-medium text-[#7950a3] dark:text-amber-300">Content Studio</span><span className="mt-1 text-[10px] text-[#8c7a9d] dark:text-purple-200">The Positioning People</span></div>}
           {narrow && <button type="button" onClick={onClose} aria-label="Close navigation" className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-[#563a71] hover:bg-purple-50 dark:text-white dark:hover:bg-white/10"><X className="h-4 w-4" /></button>}
         </div>
