@@ -350,3 +350,41 @@
 @media(min-width:1280px) { .sg-carousel-gold[data-testid=carousel-editor] { height:calc(100dvh - 3rem); } }
 .sg-carousel-gold .sg-carousel-wordmark { display:inline-flex; align-items:center; gap:8px; color:#e8bd67; font-weight:700; font-size:14px; }
 .sg-carousel-gold .sg-carousel-wordmark img { width:32px; height:32px; object-fit:contain; }
+
+
+/* Shared creator inspector controls: explicit colours avoid inherited light theme
+   utilities. Scope to property panels, never the canvas or artwork. */
+.sg-new-post.sg-creator-gold .sg-post-properties,
+.sg-carousel-gold [aria-label="Editor panels"] {
+  color-scheme: dark;
+}
+.sg-new-post.sg-creator-gold .sg-post-properties :is(input:not([type=range]):not([type=checkbox]):not([type=radio]), select, textarea),
+.sg-carousel-gold [aria-label="Editor panels"] :is(input:not([type=range]):not([type=checkbox]):not([type=radio]), select, textarea) {
+  background-color: #29251e;
+  color: #f5e9d2;
+  border-color: #806538;
+}
+.sg-new-post.sg-creator-gold .sg-post-properties :is(input,textarea)::placeholder,
+.sg-carousel-gold [aria-label="Editor panels"] :is(input,textarea)::placeholder {
+  color: #cfbea2;
+  opacity: 1;
+}
+.sg-new-post.sg-creator-gold .sg-post-properties select option,
+.sg-carousel-gold [aria-label="Editor panels"] select option {
+  background-color: #29251e;
+  color: #f5e9d2;
+}
+.sg-new-post.sg-creator-gold .sg-post-properties button.bg-background:not([aria-pressed=true]):not(.bg-primary),
+.sg-carousel-gold [aria-label="Editor panels"] button.bg-background:not([aria-pressed=true]):not(.bg-primary) {
+  background-color: #29251e;
+  border-color: #806538;
+}
+.sg-new-post.sg-creator-gold .sg-post-properties .text-muted-foreground,
+.sg-carousel-gold [aria-label="Editor panels"] .text-muted-foreground {
+  color: #cfbea2;
+}
+.sg-new-post.sg-creator-gold .sg-post-properties :is(input,select,textarea):focus-visible,
+.sg-carousel-gold [aria-label="Editor panels"] :is(input,select,textarea):focus-visible {
+  outline: 2px solid #e8bd67;
+  outline-offset: 1px;
+}
