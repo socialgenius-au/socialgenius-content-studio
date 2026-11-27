@@ -23,6 +23,27 @@ export default function VideoStudioV3() {
   const receive = async (event: MessageEvent) => {
    if (event.source !== frame.current?.contentWindow || event.origin !== window.location.origin) return
    const target = frame.current?.contentWindow
+
+   if (event.data?.type === 'sg-v3-radiant-demo') {
+    const sources = [
+     {id:8131889,name:'Serum application'},
+     {id:6810360,name:'Radiant skin cream'},
+     {id:6750889,name:'Spa skincare ritual'},
+     {id:6940609,name:'Facial mask treatment'},
+    ]
+    for (const source of sources) {
+     try {
+      const {data: imported} = await referenceVideosApi.importPublished('https://www.pexels.com/video/'+source.id+'/')
+      const ref = imported.reference ?? imported
+      const assetId = Number(ref.asset_id ?? imported.asset_id)
+      if (!Number.isSafeInteger(assetId) || assetId <= 0) throw Error('Missing imported asset')
+      const {data:blob} = await assetsApi.download(assetId)
+      if (!disposed) target?.postMessage({type:'sg-v3-radiant-media',id:assetId,name:source.name,blob},window.location.origin)
+     } catch { if (!disposed) target?.postMessage({type:'sg-v3-radiant-error',name:source.name},window.location.origin) }
+    }
+    if (!disposed) target?.postMessage({type:'sg-v3-radiant-done'},window.location.origin)
+    return
+   }
    if (event.data?.type === 'sg-v3-presets') {
     target?.postMessage({type:'sg-v3-preset-list',presets:videoScenePresets},window.location.origin)
     return
