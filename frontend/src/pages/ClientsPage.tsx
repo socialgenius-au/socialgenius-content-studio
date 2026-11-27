@@ -19,7 +19,7 @@ const industryPhotos = [
   { match: /grocery|supermarket|produce/i, url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=900&q=85', alt: 'Fresh produce and grocery shelves' },
   { match: /packaging/i, url: 'https://images.pexels.com/photos/4393669/pexels-photo-4393669.jpeg?auto=compress&cs=tinysrgb&w=900', alt: 'Packaging industry sample photograph' },
 ]
-function PortfolioPhoto({ industry }: { industry: string }) {
+export function PortfolioPhoto({ industry }: { industry: string }) {
   const photo = industryPhotos.find(item => item.match.test(industry))
   return photo ? <img className="sg-portfolio-photo" src={photo.url} alt={photo.alt} loading="lazy" /> : <ShowcaseMedia asset={/property|real estate/i.test(industry)?'property':/health|beauty|fitness|wellness/i.test(industry)?'wellness':'workspace'} label="Illustrative industry photography" />
 }
