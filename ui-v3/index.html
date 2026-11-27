@@ -368,12 +368,19 @@ importReview.onclick=()=>{
 };
 window.addEventListener('message',event=>{
  if(!authenticatedEditor||event.source!==parent||event.origin!==parent.location.origin||event.data?.type!=='sg-v3-analysis-result')return;
- if(event.data.error){status.textContent='Could not load the saved handoff';return}
+ if(event.data.error){status.textContent=event.data.message||'Could not load the saved handoff';return}
  if(event.data.blueprint){
   const plan=event.data.blueprint;
   const scenes=event.data.scenes;
   if(!Array.isArray(scenes)||!scenes.length)return;
-  if(!confirm('Import reconstruction storyboard and append its available replacement media to the video timeline? Existing clips are preserved.'))return;
+  const isEmpty=clips.every(clip=>!clip.dataset.asset&&!clip.dataset.label?.trim()?.replace(/^Empty$/,''));
+  if(!isEmpty&&!confirm('Append reconstruction scenes after the existing timeline? The existing clips will be preserved.'))return;
+  if(isEmpty){
+   // Imported scene metadata is not a media assignment; do not retain the demo's 30-second placeholders.
+   for(const clip of clips){
+    if(!clip.classList.contains('empty-slot')&&!clip.dataset.asset)clip.classList.add('empty-slot');
+   }
+  }
   for(const v of event.data.media||[]){
    if(!(v.blob instanceof Blob)||!['image','video','audio'].includes(v.kind))continue;
    const id='server-'+v.id;
@@ -439,8 +446,8 @@ window.addEventListener('message',event=>{
    addAudio('Scene '+scene.number,start,duration);
   }
   addAudio('Entire video',offset,Math.max(0,...scenes.map(x=>Number(x.end)||0)));
-  commitEdit();
-  status.textContent=placed+' video scenes, '+textCount+' text clips and '+audioCount+' audio clips imported; '+missing+' scenes need footage; '+skipped+' unavailable or overlapping clips skipped. Preview effects imported where supported; export effects require verification.';
+  fitTimeline=true;zoomFactor=1;commitEdit();
+  status.textContent=placed+' video scenes, '+textCount+' text clips and '+audioCount+' audio clips imported; '+missing+' scenes need footage; '+skipped+' unavailable or overlapping clips skipped.'+(event.data.importWarnings?.length?' '+event.data.importWarnings.join('; '):'')+' Preview effects imported where supported; export effects require verification.';
   return;
  }
  importAnalysedScenes(event.data.scenes);
