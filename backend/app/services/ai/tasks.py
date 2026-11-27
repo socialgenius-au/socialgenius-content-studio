@@ -44,6 +44,12 @@ no "Here is your prompt:" preamble."""
 
 TASK_CONFIGS: dict[str, TaskConfig] = {
     "prompt_generation": TaskConfig(system_prompt=PROMPT_GENERATION_SYSTEM, max_tokens=1024),
+    "reconstruction_direction": TaskConfig(system_prompt=(
+        "You are a video reconstruction strategist. Return exactly one complete JSON object "
+        "with the requested keys and concise nonempty string values. No markdown or prose outside JSON. "
+        "Use supplied evidence, distinguish assumptions, and never invent business facts. "
+        "Keep each value under 80 words and prioritize completing every requested key."
+    ), max_tokens=4096),
     "hook_generation": TaskConfig(system_prompt=(
         "Generate three original short-video hooks for the target business. For each provide "
         "spoken/on-screen words, a specific first shot, and the mechanism used. "
