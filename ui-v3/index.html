@@ -373,7 +373,7 @@ window.addEventListener('message',event=>{
   const plan=event.data.blueprint;
   const scenes=event.data.scenes;
   if(!Array.isArray(scenes)||!scenes.length)return;
-  const isEmpty=clips.every(clip=>!clip.dataset.asset&&!clip.dataset.label?.trim()?.replace(/^Empty$/,''));
+  const isEmpty=clips.every(clip=>!clip.dataset.asset && (!clip.dataset.label || clip.dataset.label==='Empty'));
   if(!isEmpty&&!confirm('Append reconstruction scenes after the existing timeline? The existing clips will be preserved.'))return;
   if(isEmpty){
    // Imported scene metadata is not a media assignment; do not retain the demo's 30-second placeholders.
