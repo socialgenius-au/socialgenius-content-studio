@@ -38,9 +38,30 @@ export default function VideoStudioV3() {
       const assetId = Number(ref.asset_id ?? imported.asset_id)
       if (!Number.isSafeInteger(assetId) || assetId <= 0) throw Error('Missing imported asset')
       const {data:blob} = await assetsApi.download(assetId)
-      if (!disposed) target?.postMessage({type:'sg-v3-radiant-media',id:assetId,name:source.name,blob},window.location.origin)
+      if (!disposed) target?.postMessage({type:'sg-v3-radiant-media',id:assetId,name:source.name,kind:'video',blob},window.location.origin)
+      const video = document.createElement('video')
+      const url = URL.createObjectURL(blob)
+      try {
+       video.muted = true; video.preload = 'auto'; video.src = url
+       await new Promise<void>((resolve,reject)=>{
+        const timer = window.setTimeout(()=>reject(Error('Still decode timeout')),12000)
+        video.onloadeddata=()=>{clearTimeout(timer);resolve()}
+        video.onerror=()=>{clearTimeout(timer);reject(Error('Still decode failed'))}
+       })
+       const canvas = document.createElement('canvas')
+       canvas.width = video.videoWidth; canvas.height = video.videoHeight
+       const ctx = canvas.getContext('2d')
+       if (!ctx || !canvas.width || !canvas.height) throw Error('Invalid still')
+       ctx.drawImage(video,0,0)
+       const still = await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/jpeg',0.92))
+       if (!still) throw Error('Still unavailable')
+       const name = source.name+' — campaign still.jpg'
+       const {data: uploaded} = await uploadApi.upload(new File([still],name,{type:'image/jpeg'}))
+       if (!disposed) target?.postMessage({type:'sg-v3-radiant-media',id:uploaded.id,name,kind:'image',blob:still},window.location.origin)
+      } finally {video.removeAttribute('src');video.load();URL.revokeObjectURL(url)}
      } catch { if (!disposed) target?.postMessage({type:'sg-v3-radiant-error',name:source.name},window.location.origin) }
     }
+    // Extract real stills from successfully imported footage, then persist them through the existing upload API.
     if (!disposed) target?.postMessage({type:'sg-v3-radiant-done'},window.location.origin)
     return
    }
