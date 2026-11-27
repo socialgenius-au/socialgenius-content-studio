@@ -104,3 +104,235 @@
 .sg-new-post-template-form input, .sg-post-project-name input { padding: 8px 11px; border: 1px solid #cec3de; border-radius: 8px; background: white; }
 .sg-new-post-projects button { display: flex; align-items: center; gap: 7px; }
 .sg-new-post-projects button small { margin-left: auto; }
+
+
+/* Social Genius premium creator chrome (Post V2 and Carousel only).
+   This stylesheet deliberately does not style slide artwork, thumbnail content,
+   brand-kit colour values, stage-canvas content or exported designs. */
+.sg-creator-gold {
+  --sg-editor-bg: #0b0b0b;
+  --sg-editor-surface: #181510;
+  --sg-editor-raised: #211b13;
+  --sg-editor-gold: #e8bd67;
+  --sg-editor-border: #71562f;
+  --sg-editor-foreground: #f5e9d2;
+  --sg-editor-muted: #cfbea2;
+  color: var(--sg-editor-foreground);
+}
+.sg-new-post.sg-creator-gold {
+  background: #0b0b0b;
+}
+.sg-new-post.sg-creator-gold .sg-new-post-header {
+  background: linear-gradient(115deg,#0b0b0b,#21190f 70%,#0b0b0b);
+  border-bottom: 1px solid var(--sg-editor-border);
+  color: var(--sg-editor-foreground);
+}
+.sg-new-post.sg-creator-gold .sg-new-post-header button {
+  border-color: var(--sg-editor-border);
+  color: var(--sg-editor-foreground);
+}
+.sg-new-post.sg-creator-gold .sg-new-post-header button:hover:not(:disabled) {
+  background-color: #3a2d17;
+}
+.sg-new-post.sg-creator-gold .sg-new-post-header .sg-new-post-export,
+.sg-new-post.sg-creator-gold .sg-post-avatar {
+  background: linear-gradient(110deg,#f6d68b,#be8b36);
+  color: #18120a;
+  border-color: #e8bd67;
+}
+.sg-new-post.sg-creator-gold .sg-post-header-menu > button {
+  border-color: #c69b4f;
+}
+.sg-new-post.sg-creator-gold .sg-post-mode-options,
+.sg-new-post.sg-creator-gold .sg-post-dialog {
+  background: #201b14;
+  border-color: #71562f;
+  color: #f5e9d2;
+}
+.sg-new-post.sg-creator-gold .sg-post-mode-options button,
+.sg-new-post.sg-creator-gold .sg-post-mode-options a:hover,
+.sg-new-post.sg-creator-gold .sg-new-post-projects button {
+  background: #332817;
+  color: #f5e9d2;
+}
+.sg-new-post.sg-creator-gold .sg-post-dialog-primary {
+  background: #e8bd67;
+  color: #18120a;
+}
+.sg-new-post.sg-creator-gold .sg-new-post-status {
+  color: #cfbea2;
+}
+.sg-new-post.sg-creator-gold .sg-new-post-main {
+  background: #0b0b0b;
+}
+/* Post Creator workbench: frame only, not the design inside the canvas */
+.sg-new-post.sg-creator-gold .sg-post-workspace {
+  color: #f5e9d2;
+}
+.sg-new-post.sg-creator-gold .sg-post-rail,
+.sg-new-post.sg-creator-gold .sg-post-library {
+  background: linear-gradient(150deg,#15120e,#21190f);
+  color: #f5e9d2;
+  border-color: #71562f;
+}
+.sg-new-post.sg-creator-gold .sg-post-rail button:hover,
+.sg-new-post.sg-creator-gold .sg-post-filters button:hover {
+  background: #3b2d18;
+}
+.sg-new-post.sg-creator-gold .sg-post-rail button[aria-pressed=true],
+.sg-new-post.sg-creator-gold .sg-post-filters button[aria-pressed=true] {
+  background: linear-gradient(120deg,#f3d68c,#b98b3c);
+  color: #18120a;
+}
+.sg-new-post.sg-creator-gold .sg-post-library-tabs {
+  background: #292117;
+}
+.sg-new-post.sg-creator-gold .sg-post-library-tabs button[aria-pressed=true],
+.sg-new-post.sg-creator-gold .sg-post-property-tabs button[aria-pressed=true],
+.sg-new-post.sg-creator-gold .sg-post-fit button[aria-pressed=true] {
+  background: #d6aa58;
+  border-color: #e8bd67;
+  color: #18120a;
+  box-shadow: none;
+}
+.sg-new-post.sg-creator-gold .sg-post-search,
+.sg-new-post.sg-creator-gold .sg-post-library-content,
+.sg-new-post.sg-creator-gold .sg-post-toolbar,
+.sg-new-post.sg-creator-gold .sg-post-bg-menu,
+.sg-new-post.sg-creator-gold .sg-post-footer,
+.sg-new-post.sg-creator-gold .sg-post-notes,
+.sg-new-post.sg-creator-gold .sg-post-property-tabs,
+.sg-new-post.sg-creator-gold .sg-post-properties {
+  background: #1b1813;
+  color: #f5e9d2;
+  border-color: #71562f;
+}
+.sg-new-post.sg-creator-gold .sg-post-search input,
+.sg-new-post.sg-creator-gold .sg-post-field input,
+.sg-new-post.sg-creator-gold .sg-post-field select,
+.sg-new-post.sg-creator-gold .sg-post-notes textarea,
+.sg-new-post.sg-creator-gold .sg-post-number-grid input {
+  color: #f5e9d2;
+  background: #14120f;
+  border-color: #71562f;
+}
+.sg-new-post.sg-creator-gold .sg-post-search input::placeholder {
+  color: #b9a98d;
+}
+.sg-new-post.sg-creator-gold .sg-post-centre,
+.sg-new-post.sg-creator-gold .sg-post-stage {
+  background: #25221d;
+}
+.sg-new-post.sg-creator-gold .sg-post-toolbar button:hover,
+.sg-new-post.sg-creator-gold .sg-post-toolbar .sg-post-position {
+  background: #48361d;
+  color: #f3cf87;
+}
+.sg-new-post.sg-creator-gold .sg-post-properties {
+  background: linear-gradient(135deg,#211b13,#14120e);
+}
+.sg-new-post.sg-creator-gold .sg-post-image-actions > button,
+.sg-new-post.sg-creator-gold .sg-post-image-thumb,
+.sg-new-post.sg-creator-gold .sg-post-fit button,
+.sg-new-post.sg-creator-gold .sg-post-property-actions button,
+.sg-new-post.sg-creator-gold .sg-post-image-zoom output,
+.sg-new-post.sg-creator-gold .sg-post-page,
+.sg-new-post.sg-creator-gold .sg-post-add,
+.sg-new-post.sg-creator-gold .sg-post-page-nav {
+  background: #292219;
+  color: #f5e9d2;
+  border-color: #71562f;
+}
+.sg-new-post.sg-creator-gold .sg-post-pan > div {
+  background: #30271c;
+}
+.sg-new-post.sg-creator-gold .sg-post-page[aria-current=page] {
+  outline-color: #e8bd67;
+}
+.sg-new-post.sg-creator-gold .sg-post-stage :is([data-testid=selection],[data-testid=selection-other],[data-testid^=resize-handle],[data-testid=rotate-handle]) {
+  border-color: #e8bd67;
+}
+.sg-new-post.sg-creator-gold .sg-post-workspace input[type=range] {
+  accent-color: #e8bd67;
+}
+.sg-new-post.sg-creator-gold .sg-post-workspace :is(button,a,input,summary):focus-visible {
+  outline-color: #e8bd67;
+}
+/* Carousel Creator: scoped tokens for editor chrome. Do not alter StageCanvas/SlideView. */
+.sg-carousel-gold {
+  --background: 36 19% 8%;
+  --foreground: 38 49% 91%;
+  --card: 36 17% 12%;
+  --card-foreground: 38 49% 91%;
+  --popover: 36 17% 12%;
+  --popover-foreground: 38 49% 91%;
+  --primary: 38 76% 67%;
+  --primary-foreground: 36 28% 8%;
+  --secondary: 36 15% 17%;
+  --secondary-foreground: 38 49% 91%;
+  --muted: 36 13% 16%;
+  --muted-foreground: 37 21% 73%;
+  --accent: 36 45% 26%;
+  --accent-foreground: 40 75% 89%;
+  --border: 37 35% 32%;
+  --input: 37 35% 32%;
+  --ring: 38 76% 67%;
+  background: #0b0b0b;
+  color: #f5e9d2;
+}
+.sg-carousel-gold [data-testid=editor-header],
+.sg-carousel-gold [aria-label="Unified Carousel Creator start"] {
+  background: linear-gradient(110deg,#0c0b0a,#251b11);
+  border-color: #71562f;
+  color: #f5e9d2;
+}
+.sg-carousel-gold select,
+.sg-carousel-gold [data-testid=editor-header] input,
+.sg-carousel-gold [aria-label="AI Assistant"] textarea {
+  background: #17130e;
+  border-color: #71562f;
+  color: #f5e9d2;
+}
+.sg-carousel-gold [data-testid=editor-header] button,
+.sg-carousel-gold [aria-label="AI Assistant"] button,
+.sg-carousel-gold [aria-label="Unified Carousel Creator start"] button {
+  border-color: #71562f;
+}
+.sg-carousel-gold [data-testid=editor-header] button:hover,
+.sg-carousel-gold [aria-label="AI Assistant"] button:hover {
+  filter: brightness(1.13);
+}
+.sg-carousel-gold [data-testid=editor-header] button.bg-purple-600,
+.sg-carousel-gold [aria-label="AI Assistant"] button.bg-purple-700 {
+  background: linear-gradient(110deg,#eecb80,#b98836);
+  color: #17110b;
+}
+.sg-carousel-gold [aria-label="AI Assistant"] {
+  background: #1d1811;
+  border-color: #71562f;
+  color: #f5e9d2;
+}
+.sg-carousel-gold [aria-label="AI Assistant"] p,
+.sg-carousel-gold [aria-label="Unified Carousel Creator start"] p {
+  color: #d4c3a3;
+}
+.sg-carousel-gold [aria-label="Editor panels"] {
+  background: #1b1813;
+  border-color: #71562f;
+  color: #f5e9d2;
+}
+.sg-carousel-gold [aria-label="Panels"] {
+  background: #292218;
+}
+.sg-carousel-gold [aria-label="Panels"] button[aria-selected=true] {
+  background: #dbb36c;
+  color: #18120a;
+}
+.sg-carousel-gold [aria-label="Panels"] button {
+  border-color: #71562f;
+}
+.sg-carousel-gold button:focus-visible,
+.sg-carousel-gold input:focus-visible,
+.sg-carousel-gold select:focus-visible {
+  outline-color: #e8bd67;
+}
