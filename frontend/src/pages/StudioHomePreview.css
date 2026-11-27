@@ -104,3 +104,30 @@
  .sg-public-hero,.sg-dashboard-body{grid-template-columns:1fr}
  .sg-kpi-grid,.sg-public-creation{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* November approved black-and-gold visual system; scoped to studio home and role dashboards. */
+.sg-home{--purple:#d9a744;--deep:#101010;background:#090909;color:#f5f1e8;color-scheme:dark}
+.sg-home .sg-side{background:linear-gradient(160deg,#151515,#080808 75%);border-right:1px solid #6e5936}
+.sg-home .sg-brand strong{font-family:Georgia,serif;color:#efc568;letter-spacing:0}
+.sg-home .sg-nav-link svg,.sg-home .sg-section-heading svg{color:#efbd57}
+.sg-home .sg-nav-link:hover,.sg-home .sg-nav-link.sg-active,.sg-home .sg-role-tabs [aria-current]{background:linear-gradient(110deg,#ffe09a,#c18a30);color:#100d08}
+.sg-home .sg-nav-link.sg-active svg{color:#100d08}
+.sg-home .sg-top,.sg-home .sg-search,.sg-home .sg-client-switch,.sg-home .sg-ai-pill,.sg-home .sg-heading-actions button,.sg-home .sg-filters button{background:#171717;color:#f5e9d3;border-color:#685638}
+.sg-home .sg-search input,.sg-home .sg-client-switch select{color:#f5f1e8}
+.sg-home .sg-hero{background:radial-gradient(ellipse at 85% 15%,#60421c 0%,transparent 55%),linear-gradient(115deg,#17130c,#090909);border:1px solid #80663b}
+.sg-home .sg-hero h1{font-family:Georgia,serif;color:#f6e6c6}
+.sg-home .sg-home-panel,.sg-home .sg-showcase-card,.sg-home .sg-client-card,.sg-home .sg-create-card,.sg-home .sg-recent{background:linear-gradient(145deg,#211e18,#101010 70%);border:1px solid #79613c;color:#f5f1e8;box-shadow:inset 0 1px 0 #e6c67a18}
+.sg-home .sg-home-panel h2,.sg-home .sg-section-heading h2{color:#f5e6cb}
+.sg-home .sg-showcase-card p,.sg-home .sg-showcase-card small,.sg-home .sg-client-card-head small,.sg-home .sg-real-data-note,.sg-home .sg-progress-label,.sg-home .sg-work-list small,.sg-home .sg-kpi-grid p{color:#c8c1b4}
+.sg-home .sg-section-heading>a,.sg-home .sg-showcase-card a,.sg-home .sg-create-visual a,.sg-home .sg-create-card svg,.sg-home .sg-kpi-grid strong,.sg-home .sg-progress-label b{color:#f1c66d}
+.sg-home .sg-heading-actions .sg-primary,.sg-home .sg-filters button.selected,.sg-home .sg-showcase-cta{background:linear-gradient(120deg,#ffe09a,#c58b2c);color:#171008}
+.sg-home .sg-progress-track{background:#3b3832}.sg-home .sg-progress-track span{background:linear-gradient(90deg,#b77a22,#ffe09a)}
+.sg-home .sg-quick-action,.sg-home .sg-continue-actions a,.sg-home .sg-role-tabs a{color:#f2d79d;border-color:#6d5734;background:#1b1812}
+.sg-home .sg-quick-action small{color:#bdb5a6}.sg-home .sg-quick-action>span,.sg-home .sg-collapse,.sg-home .sg-avatar{background:#4c3719;color:#ffda87}
+.sg-home .sg-quick-action:hover,.sg-home .sg-continue-actions a:hover{background:#342719}
+.sg-home .sg-work-list li{border-color:#51442f}.sg-home .sg-work-list li>span{background:#45351b;color:#ffe0a0}
+.sg-home .sg-project-tag{border-color:#79613c}
+.sg-home .sg-showcase-media{background:#181510}
+.sg-role-dashboard .sg-content{width:100%;max-width:1650px}
+.sg-role-dashboard .sg-kpi-grid .sg-home-panel{border-bottom:2px solid #b68a40}
+.sg-home a:focus-visible,.sg-home button:focus-visible,.sg-home input:focus-visible,.sg-home select:focus-visible{outline:2px solid #ffd77e;outline-offset:3px}
