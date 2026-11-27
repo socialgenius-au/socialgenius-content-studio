@@ -115,7 +115,7 @@ function Editor({ server, onCreate, onOpen }: { server: CarouselServer; onCreate
     setDialog(null)
   }
 
-  return <div className="sg-new-post">
+  return <div className="sg-new-post sg-creator-gold">
     <header className="sg-new-post-header">
       <Wordmark/>
       <a className="sg-new-post-studio" href="/dashboard"><Play size={23}/> Content Studio</a>
