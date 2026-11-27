@@ -1,4 +1,5 @@
 import '../../components/editor/resizableEditor.css'
+import '../post-creator-v2/NewPostCreatorScreen.css'
 import { useResizableEditorPanels } from '../../components/editor/useResizableEditorPanels'
 import { createCarouselDocument } from '../../lib/carousel/document'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
@@ -149,7 +150,7 @@ function Editor({ opened, server, buffer, brandStore, templateStore, libraryStor
   )
 
   return (
-    <div className="flex flex-col gap-3 xl:h-[calc(100dvh-7rem)] xl:min-h-[480px]" data-testid="carousel-editor" data-document-id={state.doc.id}>
+    <div className="sg-carousel-gold flex flex-col gap-3 xl:h-[calc(100dvh-7rem)] xl:min-h-[480px]" data-testid="carousel-editor" data-document-id={state.doc.id}>
       <header className="flex flex-wrap items-center gap-2 rounded-xl border border-purple-900/20 bg-gradient-to-r from-[#241034] via-[#3b1659] to-[#241034] p-3 text-white" data-testid="editor-header">
         <span className="mr-2 text-sm font-bold text-amber-300">Social Genius · Content Studio</span>
         <label className="sr-only" htmlFor="sg-creator-mode">Creator mode</label>
@@ -378,7 +379,7 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
     )
   }
   return (
-    <div className="space-y-3">
+    <div className="sg-carousel-gold space-y-3">
       <section className="rounded-2xl border border-purple-900/20 bg-gradient-to-r from-[#241034] to-[#4c176d] p-5 text-white" aria-label="Unified Carousel Creator start">
         <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-amber-300">Social Genius · Content Studio</p><h1 className="mt-1 text-2xl font-bold">Create a carousel</h1><p className="mt-1 text-sm text-purple-100">One editable workspace for templates, designs, slides and export.</p></div><select aria-label="Creator mode" value="carousel" onChange={e=>{if(e.target.value==='post')window.location.assign('/post-creator-v2')}} className="rounded-lg border border-purple-300 bg-[#321548] px-4 py-2 text-white"><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select></div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
