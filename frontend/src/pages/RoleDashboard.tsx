@@ -1,3 +1,4 @@
+import { Home, Users, FolderOpen, Target, Calendar, BarChart3, CheckCircle, Sparkles, Settings, Bell, Search, Layers, Megaphone } from "lucide-react"
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { ShowcaseMedia } from './StudioShowcase'
@@ -46,19 +47,19 @@ export default function RoleDashboard() {
     ? requested : isDashboardRole(accountRole) ? accountRole : 'staff'
   const screen = dashboards[role]
   return <div className="sg-home sg-role-dashboard">
-    <main className="sg-content">
+    <aside className="sg-dashboard-side"><Link to="/home" className="sg-brand"><img className="sg-brand-logo" src="/social-genius-official-logo.svg" alt="Social Genius"/><strong>SOCIAL GENIUS</strong><small>The Positioning People</small></Link><nav aria-label="Dashboard navigation">{[{label:'Home',url:'/home',icon:Home},{label:'Dashboard',url:'/dashboard',icon:BarChart3},{label:'Clients',url:'/clients',icon:Users},{label:'My Projects',url:'/planner',icon:FolderOpen},{label:'Creation',url:'/create-brief',icon:Sparkles},{label:'Campaigns',url:'/dashboard-classic',icon:Megaphone},{label:'Assets',url:'/assets',icon:Layers},{label:'Settings',url:'/settings',icon:Settings}].filter(item=>role!=='client'||!['Clients','Settings'].includes(item.label)).map(item=><Link key={item.label} className={'sg-nav-link '+(item.label==='Dashboard'?'sg-active':'')} to={item.url}><item.icon size={19}/>{item.label}</Link>)}</nav></aside><main className="sg-content">
       <header className="sg-top sg-public-top">
-        <Link to="/home" className="sg-brand"><img className="sg-brand-logo" src="/social-genius-official-logo.svg" alt="" /><strong>Content Studio</strong></Link>
-        <Link className="sg-showcase-cta" to="/home">Studio Home</Link>
+        <div><h1 className="sg-dashboard-title">{roleLabels[role]} Dashboard</h1><small>{screen.subtitle}</small></div>
+        <div className="sg-dashboard-top-actions"><Search size={19}/><Bell size={19}/><Link className="sg-showcase-cta" to="/home">Studio Home</Link></div>
       </header>
       <section className="sg-hero sg-dashboard-hero">
         <div className="sg-hero-copy"><p>{roleLabels[role]} workspace · Sample data</p><h1>{screen.title}</h1><p>{screen.subtitle}</p></div>
-      </section>
+      <div className="sg-dashboard-quick">{[{label:'New project',url:'/planner',icon:FolderOpen},{label:'Create content',url:'/create-brief',icon:Sparkles},{label:'Campaigns',url:'/dashboard-classic',icon:Target},{label:'Templates',url:'/templates',icon:Calendar}].map(item=><Link key={item.label} to={item.url}><item.icon size={25}/>{item.label}</Link>)}</div></section>
       {accountRole === 'admin' && <nav className="sg-role-tabs" aria-label="Preview sample dashboards">
         {(Object.keys(roleLabels) as DashboardRole[]).map(item => <Link key={item} to={item==='admin'?'/dashboard':`/dashboard?preview=${item}`} aria-current={role===item?'page':undefined}>{roleLabels[item]}</Link>)}
       </nav>}
       <section className="sg-kpi-grid" aria-label="Sample dashboard metrics">
-        {screen.metrics.map(([label,value])=><article className="sg-home-panel" key={label}><p>{label}</p><strong>{value}</strong></article>)}
+        {screen.metrics.map(([label,value])=><article className="sg-home-panel" key={label}><p>{label}</p><strong>{value}</strong><div className="sg-kpi-decoration" aria-hidden="true">{[18,32,24,44,38,56,48,65].map((h,i)=><i key={i} style={{height:h+"%"}}/>)}</div></article>)}
       </section>
       <section className="sg-dashboard-body">
         <article className="sg-home-panel"><h2>{screen.section}</h2><ul className="sg-work-list">
@@ -66,6 +67,7 @@ export default function RoleDashboard() {
         </ul></article>
         <article className="sg-showcase-card"><ShowcaseMedia asset="workspace" video label="Sample Social Genius campaign preview" /><div><small>Social Genius</small><h2>Positioning campaign</h2><p>Sample creative preview</p></div></article>
       </section>
+      <section className="sg-dashboard-extra"><article className="sg-home-panel"><h2>{role==='staff'?'Recent content':'Recent projects'}</h2><div className="sg-dashboard-media-grid">{['product','property','editorial'].map((asset,i)=><Link key={asset} to="/planner" className="sg-showcase-card"><ShowcaseMedia asset={asset} label="Illustrative project artwork"/><div><strong>{['Product campaign','Property series','Brand stories'][i]}</strong><small>Sample preview</small></div></Link>)}</div></article><article className="sg-home-panel"><h2>{role==='staff'?'My workflow':'Delivery overview'}</h2><div className="sg-dashboard-flow">{['Brief','Create','Review','Publish'].map((step,i)=><div key={step}><CheckCircle size={24}/><span>{i+1}. {step}</span></div>)}</div><p className="sg-real-data-note">Illustrative workflow · live metrics not connected</p></article></section>
     </main>
   </div>
 }
