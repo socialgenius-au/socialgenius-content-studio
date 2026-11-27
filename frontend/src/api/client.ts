@@ -104,7 +104,7 @@ export const generateApi = {
   // Provider-neutral creative generation. No call bypasses the backend spending kill switch.
   image: (prompt: string) => api.post("/generate/image", { prompt }, { responseType: "blob" }),
   creativeTool: (body: {
-    task: 'hook_generation' | 'script_generation' | 'caption_generation' | 'thumbnail_ideas'
+    task: 'hook_generation' | 'script_generation' | 'caption_generation' | 'thumbnail_ideas' | 'reconstruction_direction'
     instruction: string
     brand_id?: number
     context?: Record<string, unknown>
