@@ -55,6 +55,10 @@ class AnthropicProvider(AIProvider):
             raise AIProviderError(f"Could not reach Anthropic Claude: {exc}") from exc
 
         text = "\n".join(block.text for block in message.content if block.type == "text").strip()
+        if not text:
+            raise AIProviderError("Anthropic returned no text. No generated content was applied.")
+        if getattr(message, "stop_reason", None) == "max_tokens":
+            raise AIProviderError("Anthropic reached the output token limit before completing the response. No incomplete content was applied.")
         usage = getattr(message, "usage", None)
         return AIResult(
             text=text,
