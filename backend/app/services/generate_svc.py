@@ -161,7 +161,7 @@ async def generate_creative_tool(
     task: str, instruction: str, brand_context: dict | None, project_context: dict
 ) -> ai_service.AIResult:
     """Provider-neutral creative tools. The provider enforces the spending kill switch."""
-    allowed = {"hook_generation", "script_generation", "caption_generation", "thumbnail_ideas"}
+    allowed = {"hook_generation", "script_generation", "caption_generation", "thumbnail_ideas", "reconstruction_direction"}
     if task not in allowed:
         raise ValueError("Unsupported creative tool")
     if not instruction.strip():
