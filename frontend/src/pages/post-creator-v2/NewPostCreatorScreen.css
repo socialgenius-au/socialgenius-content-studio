@@ -388,3 +388,18 @@
   outline: 2px solid #e8bd67;
   outline-offset: 1px;
 }
+
+
+/* High-contrast hover feedback for creator editing controls only. */
+.sg-new-post.sg-creator-gold .sg-post-properties button:not(:disabled):not([aria-pressed=true]):hover,
+.sg-carousel-gold [aria-label="Editor panels"] button:not(:disabled):not([aria-pressed=true]):not([aria-selected=true]):hover {
+  background-color: #59401e;
+  color: #ffdc85;
+  border-color: #d6aa58;
+}
+.sg-new-post.sg-creator-gold .sg-post-properties button:is(.text-destructive,[aria-label="Delete element"],[data-testid="el-delete"]):not(:disabled):hover,
+.sg-carousel-gold [aria-label="Editor panels"] button:is(.text-destructive,[aria-label="Delete element"],[data-testid="el-delete"]):not(:disabled):hover {
+  background-color: #991b1b;
+  color: #ffffff;
+  border-color: #ef4444;
+}
