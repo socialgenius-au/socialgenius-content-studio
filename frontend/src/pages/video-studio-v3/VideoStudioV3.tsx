@@ -268,40 +268,44 @@ export default function VideoStudioV3() {
     const referenceId = Number(params.get('reference'))
     const handoffId = Number(params.get('handoff'))
     try {
-     const blueprint = JSON.parse(sessionStorage.getItem('sg-reconstructor-editor-blueprint') || 'null')
-     if (blueprint?.version === 1 && blueprint.referenceId === referenceId && blueprint.handoffId === handoffId && Array.isArray(blueprint.scenes)) {
-      let cursor=0
-      const scenes=blueprint.scenes.map((item: {number:number;plannedDuration:number;role:string;story:string;start:number;end:number})=>{
-       const duration=Number(item.plannedDuration)
-       if(!Number.isFinite(duration)||duration<=0)throw Error('Invalid reconstruction duration')
-       const start=cursor;cursor+=duration
-       return {...item,sourceStart:item.start,sourceEnd:item.end,start,end:cursor}
-      })
-      const media = []
-      for (const item of (Array.isArray(blueprint.assets)?blueprint.assets:[]).slice(0,60)) {
-       if (!Number.isSafeInteger(item.assetId)||item.assetId<=0) continue
-       try {
-        const {data:blob}=await assetsApi.download(item.assetId)
-        media.push({id:item.assetId,name:String(item.title||'Asset'),kind:item.type==='images'?'image':item.type==='videos'?'video':'audio',blob})
-       } catch { /* Missing media is reported by timeline importer. */ }
-      }
-      let sourceAssetId: number | null = null
+     if (!Number.isSafeInteger(referenceId) || referenceId <= 0 || !Number.isSafeInteger(handoffId) || handoffId <= 0) throw Error('Invalid handoff reference')
+     const {data:savedHandoff} = await referenceVideosApi.handoff(referenceId,handoffId)
+     const cached = JSON.parse(sessionStorage.getItem('sg-reconstructor-editor-blueprint') || 'null')
+     const matches = cached?.version === 1 && cached.referenceId === referenceId && cached.handoffId === handoffId && Array.isArray(cached.scenes)
+     const sourceScenes = matches ? cached.scenes : savedHandoff.scenes
+     if (!Array.isArray(sourceScenes) || !sourceScenes.length) throw Error('Handoff contains no scenes')
+     const blueprint = matches ? cached : {version:1,referenceId,handoffId,direction:{},replacement:{},assets:[],scenes:sourceScenes}
+     let cursor = 0
+     const scenes = sourceScenes.map((item: {number:number;plannedDuration?:number;role:string;story:string;start:number;end:number}) => {
+      const sourceStart = Number(item.start), sourceEnd = Number(item.end)
+      const duration = matches ? Number(item.plannedDuration ?? sourceEnd-sourceStart) : sourceEnd-sourceStart
+      if (![sourceStart,sourceEnd,duration].every(Number.isFinite) || sourceStart < 0 || sourceEnd <= sourceStart || duration <= 0) throw Error('Invalid reconstruction scene timing')
+      const start = cursor; cursor += duration
+      return {...item,sourceStart,sourceEnd,start,end:cursor}
+     })
+     const media: Array<{id:number;name:string;kind:string;blob:Blob}> = []
+     const failures: string[] = []
+     for (const item of (Array.isArray(blueprint.assets)?blueprint.assets:[]).slice(0,60)) {
+      const id = Number(item.assetId)
+      if (!Number.isSafeInteger(id) || id <= 0) continue
       try {
-       const {data:reference}=await referenceVideosApi.get(referenceId)
-       const id=Number(reference.asset_id)
-       if(Number.isSafeInteger(id)&&id>0){
-        const {data:blob}=await assetsApi.download(id)
-        media.push({id,name:'Original reference footage',kind:'video',blob})
-        sourceAssetId=id
-       }
-      } catch { /* Source unavailable; importer reports missing footage. */ }
-      if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',scenes,blueprint:{...blueprint,scenes,sourceAssetId},media},window.location.origin)
-      return
+       const {data:blob} = await assetsApi.download(id)
+       media.push({id,name:String(item.title||'Asset'),kind:item.type==='images'?'image':item.type==='videos'?'video':'audio',blob})
+      } catch { failures.push('Asset '+id+' could not be downloaded') }
      }
-     const {data} = await referenceVideosApi.handoff(referenceId,handoffId)
-     if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',scenes:data.scenes},window.location.origin)
-    } catch {
-     if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',error:true},window.location.origin)
+     let sourceAssetId: number | null = null
+     try {
+      const {data:reference} = await referenceVideosApi.get(referenceId)
+      const id = Number(reference.asset_id)
+      if (!Number.isSafeInteger(id) || id <= 0) throw Error('Reference has no media')
+      const {data:blob} = await assetsApi.download(id)
+      if (!(blob instanceof Blob)) throw Error('Reference media is not a file')
+      sourceAssetId = id
+      if (!media.some(item=>item.id===id)) media.push({id,name:'Original reference footage',kind:'video',blob})
+     } catch { failures.push('Original reference footage is unavailable') }
+     if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',scenes,blueprint:{...blueprint,scenes,sourceAssetId},media,importWarnings:failures},window.location.origin)
+    } catch(error) {
+     if (!disposed) target?.postMessage({type:'sg-v3-analysis-result',error:true,message:error instanceof Error?error.message:'Unable to load reconstruction handoff'},window.location.origin)
     }
     return
    }
