@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # (app/services/claude.py, generate_svc.generate_content/chat_reply), which this refactor
     # deliberately does not move onto this new layer.
     AI_TEXT_PROVIDER: str = "anthropic"
-    AI_TEXT_MODEL: str = "claude-sonnet-4-20250514"
+    AI_TEXT_MODEL: str = _DEFAULT_ANTHROPIC_REASONER_MODEL
     # Only the currently-selected AI_TEXT_PROVIDER's key needs to actually be set — the other
     # two stay "" (falsy) until/unless that provider is selected, exactly like ANTHROPIC_API_KEY
     # already worked before this provider-neutral layer existed.
