@@ -1,3 +1,4 @@
+import { postBrandMark } from '../post-creator-v2/illustratedTemplates'
 import '../../components/editor/resizableEditor.css'
 import '../post-creator-v2/NewPostCreatorScreen.css'
 import { useResizableEditorPanels } from '../../components/editor/useResizableEditorPanels'
@@ -152,7 +153,7 @@ function Editor({ opened, server, buffer, brandStore, templateStore, libraryStor
   return (
     <div className="sg-carousel-gold flex flex-col gap-3 xl:h-[calc(100dvh-7rem)] xl:min-h-[480px]" data-testid="carousel-editor" data-document-id={state.doc.id}>
       <header className="flex flex-wrap items-center gap-2 rounded-xl border border-purple-900/20 bg-gradient-to-r from-[#241034] via-[#3b1659] to-[#241034] p-3 text-white" data-testid="editor-header">
-        <span className="mr-2 text-sm font-bold text-amber-300">Social Genius · Content Studio</span>
+        <span className="sg-carousel-wordmark mr-2"><img src={postBrandMark} alt="" />Social Genius · Content Studio</span>
         <label className="sr-only" htmlFor="sg-creator-mode">Creator mode</label>
         <select id="sg-creator-mode" aria-label="Creator mode" value="carousel" onChange={e => { if(e.target.value === 'post' && window.confirm('Switch to Post Creator? Your carousel remains saved separately.')) window.location.assign('/post-creator-v2') }} className="h-9 rounded-md border border-purple-400 bg-[#321548] px-3 text-sm font-semibold text-white"><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select>
         <button type="button" className="h-9 rounded-md bg-purple-600 px-3 text-sm font-semibold text-white hover:bg-purple-500" onClick={()=>setAssistantOpen(v=>!v)} aria-expanded={assistantOpen}>✦ AI Assistant</button>
@@ -381,7 +382,7 @@ export default function CarouselCreatorPage({ server: serverProp, storage: stora
   return (
     <div className="sg-carousel-gold space-y-3">
       <section className="rounded-2xl border border-purple-900/20 bg-gradient-to-r from-[#241034] to-[#4c176d] p-5 text-white" aria-label="Unified Carousel Creator start">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-widest text-amber-300">Social Genius · Content Studio</p><h1 className="mt-1 text-2xl font-bold">Create a carousel</h1><p className="mt-1 text-sm text-purple-100">One editable workspace for templates, designs, slides and export.</p></div><select aria-label="Creator mode" value="carousel" onChange={e=>{if(e.target.value==='post')window.location.assign('/post-creator-v2')}} className="rounded-lg border border-purple-300 bg-[#321548] px-4 py-2 text-white"><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="sg-carousel-wordmark"><img src={postBrandMark} alt="" />Social Genius · Content Studio</div><h1 className="mt-1 text-2xl font-bold">Create a carousel</h1><p className="mt-1 text-sm text-purple-100">One editable workspace for templates, designs, slides and export.</p></div><select aria-label="Creator mode" value="carousel" onChange={e=>{if(e.target.value==='post')window.location.assign('/post-creator-v2')}} className="rounded-lg border border-purple-300 bg-[#321548] px-4 py-2 text-white"><option value="post">Post Creator</option><option value="carousel">Carousel Creator</option></select></div>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <button type="button" onClick={()=>void create(createCarouselDocument({title:'Untitled carousel',themeId:'forest'}), 'forest')} disabled={busy} className="rounded-xl bg-amber-400 p-4 text-left font-bold text-slate-950 hover:bg-amber-300 disabled:opacity-50">＋ New blank carousel <span className="mt-1 block text-xs font-normal">Open the editable slide canvas</span></button>
           <button type="button" onClick={()=>setShowClassicStart(true)} className="rounded-xl border border-purple-300 bg-purple-900/40 p-4 text-left font-semibold">Browse my templates <span className="mt-1 block text-xs font-normal">Reuse an existing editable design</span></button>
