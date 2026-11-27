@@ -45,7 +45,7 @@ export function TopBar({ showMenuButton = false, onOpenMenu }: TopBarProps = {})
   const ThemeIcon = mode === 'auto' ? Monitor : resolvedTheme === 'dark' ? Moon : Sun
 
   return (
-    <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-2 border-b border-[#eee3f6] bg-gradient-to-r from-white via-[#fcfaff] to-[#f5effb] px-3 py-2 shadow-[0_2px_16px_rgba(77,33,115,0.05)] sm:gap-3 sm:px-4 dark:border-purple-900 dark:from-[#2b153e] dark:via-[#231032] dark:to-[#321847]">
+    <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-2 border-b border-[#604b29] bg-[#17140f] px-3 py-2 shadow-[0_2px_16px_rgba(77,33,115,0.05)] sm:gap-3 sm:px-4">
       {showMenuButton && (
         <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={onOpenMenu} aria-label="Open navigation">
           <Menu className="h-5 w-5" />
@@ -66,13 +66,13 @@ export function TopBar({ showMenuButton = false, onOpenMenu }: TopBarProps = {})
 
         <div className="relative hidden sm:block">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects, templates, assets…" className="h-9 w-40 rounded-full border-purple-200 bg-white/85 pl-8 lg:w-64 dark:border-purple-700 dark:bg-purple-950/50" />
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects, templates, assets…" className="h-9 w-40 rounded-full border-[#806332] bg-[#14120f] pl-8 text-[#f5e8ce] lg:w-64" />
         </div>
 
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon" className="relative h-8 w-8 shrink-0">
-              <Bell className="h-4 w-4" />
+              <Bell className="h-4 w-4 text-[#f3cc78]" />
               <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-destructive-foreground">
                 {MOCK_NOTIFICATIONS.length}
               </span>
@@ -92,10 +92,10 @@ export function TopBar({ showMenuButton = false, onOpenMenu }: TopBarProps = {})
         </Popover>
 
         <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={cycleTheme} title={`Theme: ${mode}`}>
-          <ThemeIcon className="h-4 w-4" />
+          <ThemeIcon className="h-4 w-4 text-[#f3cc78]" />
         </Button>
 
-        <Button size="sm" className="h-9 shrink-0 gap-1.5 rounded-xl bg-[#6b3aa0] text-white shadow-sm hover:bg-[#8246a9]" onClick={openCompanion}>
+        <Button size="sm" className="h-9 shrink-0 gap-1.5 rounded-xl bg-gradient-to-r from-[#f8d98c] to-[#bf8d38] text-[#17120a] shadow-sm hover:brightness-110" onClick={openCompanion}>
           <Sparkles className="h-3.5 w-3.5" />
           <span className="hidden lg:inline">AI Companion</span>
         </Button>
@@ -104,7 +104,7 @@ export function TopBar({ showMenuButton = false, onOpenMenu }: TopBarProps = {})
           <DropdownMenuTrigger asChild>
             <button className="shrink-0">
               <Avatar className="h-8 w-8">
-                <AvatarFallback>{(user?.username ?? 'U').slice(0, 2).toUpperCase()}</AvatarFallback>
+                <AvatarFallback className="bg-[#e5bb68] text-[#17120a]">{(user?.username ?? 'U').slice(0, 2).toUpperCase()}</AvatarFallback>
               </Avatar>
             </button>
           </DropdownMenuTrigger>
