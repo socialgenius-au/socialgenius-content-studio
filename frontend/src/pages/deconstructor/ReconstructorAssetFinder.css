@@ -27,3 +27,30 @@
 @media(max-width:1000px){.raf-marketer-steps{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:850px){.raf-marketer-layout,.raf-marketer-step-3 .raf-marketer-layout,.raf-marketer-step-5 .raf-marketer-layout,.raf-marketer-step-10 .raf-marketer-layout,.raf-marketer-step-11 .raf-marketer-layout{grid-template-columns:1fr}.raf-screen-heading{flex-wrap:wrap}}@media(max-width:480px){.raf-marketer-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 .raf-waveform{background:#f5edff;border:1px solid #e1cef6;border-radius:8px;padding:8px;margin:8px 0}.raf-waveform small{color:#654580}.raf-variation-card{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid #e1cef6;border-radius:10px;padding:10px;margin:8px 0}.raf-variation-card img,.raf-variation-card video{width:110px;height:74px;object-fit:contain;background:#21142e}.raf-transition-sample{display:flex;position:relative;height:42px;overflow:hidden;gap:2px;margin-bottom:6px}.raf-transition-sample i{flex:1;background:#ab83e0;border-radius:4px}.raf-transition-sample i:last-child{background:#e8bd68}.raf-transition-dissolve i:last-child{opacity:.65;transform:translateX(-20%)}.raf-transition-fade i:first-child{opacity:.35}.raf-transition-wipe i:last-child{clip-path:polygon(35% 0,100% 0,100% 100%,0 100%)}.raf-transition-slide i:last-child{transform:translateX(20%)}.raf-transition-zoom i:last-child{transform:scale(.65)}.raf-transition-push i:first-child{transform:translateX(-20%)}
+
+/* Approved workspace visual hierarchy: compact chrome, media-first panels. */
+.raf-page{--raf-nav:164px;background:#f4effb}
+.raf-workspace-nav{box-sizing:border-box;padding:16px 9px;background:linear-gradient(165deg,#39115e,#211039)}
+.raf-workspace-nav nav a,.raf-workspace-nav nav button{font-size:13px;padding:10px 9px}
+.raf-header,.raf-screen-heading{background:radial-gradient(ellipse at 100% 125%,#f9d678 0%,#b77a32 8%,transparent 28%),linear-gradient(110deg,#321050,#7321b4 70%,#43136d);color:#fff}
+.raf-screen-heading{border-radius:9px;padding:12px 16px;border-bottom:2px solid #e8b84e}
+.raf-screen-heading h2,.raf-screen-heading small{color:white}
+.raf-screen-heading>span{background:#ffffff20;color:white}
+.raf-main{padding:12px 16px 60px}
+.raf-panel{padding:12px;border-radius:10px;margin-bottom:8px}
+.raf-panel h1{font-size:23px;margin:8px 0}.raf-panel h2{font-size:17px}
+.raf-panel label{margin:7px 0;font-size:12px}
+.raf-panel textarea{min-height:42px;padding:7px}
+.raf-panel select,.raf-panel input:not([type=checkbox]):not([type=radio]){padding:7px}
+.raf-workspace-tools{padding:6px;gap:5px;top:0;bottom:auto}
+.raf-workspace-tools button{font-size:12px;padding:7px 9px}
+.raf-marketer-steps button{min-height:38px;padding:6px 8px}
+.raf-marketer-visual,.raf-marketer-inspector{padding:10px;background:#fdfbff}
+.raf-marketer-visual video{max-height:440px}
+.raf-ai-layout{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+.raf-ai-step-1 .raf-ai-reference{grid-column:1;grid-row:1}.raf-ai-step-1 .raf-ai-direction{grid-column:2;grid-row:1}
+.raf-panel details{border:1px solid #e4d4f6;border-radius:8px;padding:8px;margin:8px 0;background:#faf6ff}
+.raf-panel summary{cursor:pointer;color:#59248a;font-size:13px;font-weight:600}
+.raf-variation-card{background:#fff;box-shadow:0 2px 6px #3210500a}
+.raf-variation-card img,.raf-variation-card video{width:150px;height:90px;object-fit:cover}
+@media(max-width:850px){.raf-ai-layout{grid-template-columns:1fr}.raf-ai-step-1 .raf-ai-reference,.raf-ai-step-1 .raf-ai-direction{grid-column:1;grid-row:auto}.raf-main{padding:8px}.raf-header{min-height:56px}}
