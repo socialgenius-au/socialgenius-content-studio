@@ -1,3 +1,4 @@
+import { VirtualAssetPicker } from '../../../components/VirtualAssetLibrary'
 import { useEffect, useRef, useState } from 'react'
 import { Loader2, Upload } from 'lucide-react'
 import { assetsApi, uploadApi } from '../../../api/client'
@@ -57,6 +58,11 @@ export default function ImagePicker({ onPick, onPickMany }: { onPick: (img: Pick
 
   return (
     <div className="space-y-2" data-testid="image-picker">
+      <VirtualAssetPicker kind="image" onMedia={asset => {
+        const item = { assetId: asset.id, url: storedUrlFor(asset), name: asset.original_filename }
+        if (multi) toggle(item)
+        else onPick(item)
+      }} />
       <input ref={input} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple={multi} className="hidden" onChange={e => upload(e.target.files ?? undefined)} data-testid="image-file-input" />
       <button type="button" disabled={busy} onClick={() => input.current?.click()} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-dashed border-border text-sm font-medium hover:bg-muted disabled:opacity-60">
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} {multi ? 'Upload pictures' : 'Upload a picture'}

@@ -1,0 +1,25 @@
+.sg-stock { min-height: 100%; color: #fff6e0; background: #14120f; padding: clamp(12px, 4vw, 36px); color-scheme: dark; }
+.sg-stock header, .sg-stock nav, .sg-stock-controls, .sg-stock-actions { display: flex; flex-wrap: wrap; align-items: end; gap: .65rem; }
+.sg-stock header { align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+.sg-stock h1 { font-size: clamp(1.45rem, 4vw, 2.6rem); color: #ffda81; margin: 0; }
+.sg-stock button, .sg-stock-launch, .sg-stock input, .sg-stock select { padding: .45rem .7rem; border: 1px solid #a3884f; border-radius: .4rem; background: #241e14; color: #ffe3a3; }
+.sg-stock button, .sg-stock-launch { cursor: pointer; }
+.sg-stock button[aria-pressed="true"], .sg-stock button:hover:not(:disabled), .sg-stock-launch:hover { background: #694917; color: #fff9e9; }
+.sg-stock button:disabled { opacity: .55; cursor: default; }
+.sg-stock-controls { margin-top: 1rem; }
+.sg-stock-controls label { display: grid; gap: .3rem; }
+.sg-stock-query { flex: 1 1 14rem; }
+.sg-stock-rights { display: block; margin-top: 1rem; }
+.sg-stock [role="status"] { min-height: 1.25rem; margin: .75rem 0; }
+.sg-stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 1rem; margin-bottom: 1rem; }
+.sg-stock-card { overflow: hidden; border: 1px solid #674e28; border-radius: .65rem; background: #211a13; }
+.sg-stock-preview { display: grid; place-items: center; aspect-ratio: 16/10; background: #0d0b08; }
+.sg-stock-preview img, .sg-stock-preview video { width: 100%; height: 100%; object-fit: contain; min-height: 0; }
+.sg-stock-details { padding: .75rem; overflow-wrap: anywhere; }
+.sg-stock-details h3 { font-weight: 650; }
+.sg-stock-details p, .sg-stock-details a { font-size: .86rem; color: #ead9b3; }
+.sg-stock-details a { text-decoration: underline; }
+.sg-stock-actions { margin-top: .75rem; font-size: .85rem; }
+.sg-stock-dialog { width: min(1050px, calc(100vw - 24px)); max-height: 92dvh; margin: auto; border: 1px solid #9a7436; border-radius: .75rem; color: #fff6e0; background: #14120f; }
+.sg-stock-dialog::backdrop { background: #000b; }
+.sg-stock-progress { display: flex; flex-wrap: wrap; gap: .5rem; list-style: none; margin: 1rem 0; padding: 0; }

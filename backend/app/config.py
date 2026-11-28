@@ -169,6 +169,7 @@ class Settings(BaseSettings):
     APIFY_API_TOKEN: str = ""
 
     PIXABAY_API_KEY: str = ""
+    UNSPLASH_ACCESS_KEY: str = ""
 
     # ── Production infrastructure ─────────────────────────────────────────────
     SENTRY_DSN: str = ""

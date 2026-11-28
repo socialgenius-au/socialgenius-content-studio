@@ -795,11 +795,30 @@ async def ingest_reference_video(
     if rv is not None:
         return await _to_response(db, rv, asset)
 
-    rv = ReferenceVideo(user_id=user.id, asset_id=asset.id, source="upload")
+    from app.models.virtual_assets import VirtualAsset, VirtualProjectMedia
+
+    stock = await db.scalar(select(VirtualAsset).join(
+        VirtualProjectMedia, VirtualProjectMedia.asset_key == VirtualAsset.key,
+    ).where(VirtualProjectMedia.asset_id == asset.id, VirtualProjectMedia.user_id == user.id))
+    if stock:
+        rv = ReferenceVideo(user_id=user.id, asset_id=asset.id, source="url",
+                            original_url=stock.details["source"], rights_status="licensed")
+    else:
+        rv = ReferenceVideo(user_id=user.id, asset_id=asset.id, source="upload")
     db.add(rv)
     await db.flush()  # assigns rv.id for the FK below, inside the same still-open transaction
 
     db.add(VideoAnalysis(reference_video_id=rv.id))  # status defaults to "pending"
+    if stock:
+        db.add(ReferencePublication(reference_video_id=rv.id, evidence={
+            "provider": stock.details["provider"].title(),
+            "provider_video_id": stock.key.rsplit(":", 1)[-1],
+            "creator": stock.details.get("creator"),
+            "provider_duration_seconds": stock.details.get("duration"),
+            "title": stock.details.get("title"),
+            "licence": stock.details["licence"],
+            "licence_url": stock.details["licence_url"],
+        }))
     await db.commit()
     await db.refresh(rv)
 

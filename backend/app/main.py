@@ -22,6 +22,8 @@ from app.services.media_access import MediaAuthMiddleware
 from app.startup_security import CORS_ENV_VAR, build_allowed_origins, check_secret_key, plan_seed_users
 from app.routers import auth, auth_recovery, upload, plan, jobs, transcribe, process, publish, canva, scrape, pixabay, brands, generate, ws, assets, templates, video_studio_drafts, video_export, reference_videos, ai_usage, media, learning, carousels, brand_kits, carousel_templates, carousel_video, library_items
 
+from app.routers import virtual_assets
+
 # Import all models so Base.metadata is fully populated before create_all
 from app.models import (  # noqa: F401
     User, Brand, Job, Asset, Transcript, Template, VideoStudioDraft,
@@ -171,6 +173,7 @@ app.include_router(library_items.router, prefix="/library-items", tags=["library
 # Video Deconstructor — Stage 2 (Reference Video Ingestion) ONLY. See reference_videos.py's own
 # module docstring for exact scope.
 app.include_router(reference_videos.router, prefix="/reference-videos", tags=["reference-videos"])
+app.include_router(virtual_assets.router, prefix="/virtual-assets", tags=["virtual-assets"])
 app.include_router(ws.router,         prefix="/ws",         tags=["websocket"])
 
 

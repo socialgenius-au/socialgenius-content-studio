@@ -1,3 +1,4 @@
+import { VirtualAssetPicker } from '../../components/VirtualAssetLibrary'
 import { DiscoverabilityReport, type DiscoverabilityReportData } from './DiscoverabilityReport'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -734,6 +735,17 @@ export default function DeconstructorV3() {
             <button type="submit" disabled={busy || !rightsConfirmed || !publishedUrl.trim()}>Import published video</button>
             <small>For other platforms, upload a licensed video file.</small>
           </form> : <div className="dc3-drop" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); void importVideo(event.dataTransfer.files[0]) }}>
+            <VirtualAssetPicker kind="video" onMedia={async asset => {
+              setWorking(true)
+              setMessage('')
+              try {
+                const { data } = await referenceVideosApi.ingest(asset.id)
+                setContextByReference(previous => ({ ...previous, [data.id]: notes }))
+                setSourceScope('')
+                selectReference(data.id)
+                setReference((await referenceVideosApi.analyze(data.id)).data)
+              } finally { setWorking(false) }
+            }} />
             <UploadCloud /><button type="button" disabled={busy} onClick={() => file.current?.click()}>{busy ? 'Working…' : 'Browse or drop a video file'}</button><input ref={file} type="file" accept="video/*" hidden onChange={event => void importVideo(event.currentTarget.files?.[0])} />
           </div>}
           {preview}

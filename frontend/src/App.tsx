@@ -26,6 +26,7 @@ import { legacyStudioRedirectRoutes } from './routes/studioRedirects'
 const GuestHome = lazy(() => import('./pages/StudioShowcase').then(module => ({ default: module.GuestHome })))
 const RoleDashboard = lazy(() => import('./pages/RoleDashboard'))
 const StudioHomePreview = lazy(() => import('./pages/StudioHomePreview'))
+const VirtualAssetLibrary = lazy(() => import('./components/VirtualAssetLibrary'))
 const ContentBriefPage = lazy(() => import('./pages/ContentBriefPage'))
 const ContentWorkflowPages = lazy(() => import('./pages/ContentWorkflowPages'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
@@ -147,6 +148,7 @@ function AppRoutes() {
       <Route path="/deconstructor-v3/:referenceVideoId?" element={<RequireAuth><Suspense fallback={<PageFallback />}><DeconstructorV3 /></Suspense></RequireAuth>} />
       <Route path="/reconstructor/assets" element={<RequireAuth><Suspense fallback={<PageFallback />}><ReconstructorAssetFinder /></Suspense></RequireAuth>} />
       <Route path="/create/:stage" element={<RequireAuth><Suspense fallback={<PageFallback />}><ContentWorkflowPages /></Suspense></RequireAuth>} />
+      <Route path="/virtual-asset-library" element={<RequireAuth><Suspense fallback={<PageFallback />}><VirtualAssetLibrary /></Suspense></RequireAuth>} />
       <Route path="/create-brief" element={<RequireAuth><Suspense fallback={<PageFallback />}><ContentBriefPage /></Suspense></RequireAuth>} />
 
       {/* The creative home and role dashboards have independent entry points. */}
@@ -274,7 +276,7 @@ function AppRoutes() {
         element={
           <RequireAuth>
             <Layout>
-              <MediaLibraryHub />
+              <a href="/virtual-asset-library">Universal Asset Library</a><MediaLibraryHub />
             </Layout>
           </RequireAuth>
         }

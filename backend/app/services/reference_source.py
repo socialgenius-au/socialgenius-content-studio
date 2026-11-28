@@ -22,30 +22,39 @@ def _https_from(url: str, hosts: set[str]) -> bool:
         return False
 
 
+async def pexels_json(path: str, params=None) -> dict:
+    if not settings.PEXELS_API_KEY:
+        raise SourceUnavailable("Pexels needs an authorised PEXELS_API_KEY on this environment.")
+    async with httpx.AsyncClient(follow_redirects=False, timeout=20, trust_env=False) as client:
+        response = await client.get(
+            f"https://api.pexels.com{path}",
+            headers={"Authorization": settings.PEXELS_API_KEY}, params=params,
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+def pexels_video_rendition(item: dict) -> dict:
+    files = [
+        entry for entry in item.get("video_files", [])
+        if entry.get("file_type") == "video/mp4"
+        and _https_from(entry.get("link") or "", _MEDIA_HOSTS)
+    ]
+    if not files:
+        raise SourceUnavailable("Pexels did not supply a supported MP4 rendition.")
+    return min(files, key=lambda entry: abs((entry.get("width") or 0) - 960))
+
+
 async def download_published_video(url: str, destination) -> tuple[str, int, dict]:
     if not _https_from(url, {"pexels.com", "www.pexels.com"}):
         raise SourceUnavailable("Use a published Pexels video URL or upload your licensed video file.")
     match = re.fullmatch(r"/video/(?:[a-zA-Z0-9-]*-)?([1-9][0-9]{0,14})/?", urlsplit(url).path)
     if not match:
         raise SourceUnavailable("Use the Pexels video page URL.")
-    if not settings.PEXELS_API_KEY:
-        raise SourceUnavailable("Pexels import needs an authorised PEXELS_API_KEY on this environment.")
     video_id = match.group(1)
+    item = await pexels_json(f"/v1/videos/videos/{video_id}")
+    rendition = pexels_video_rendition(item)
     async with httpx.AsyncClient(follow_redirects=False, timeout=20, trust_env=False) as client:
-        response = await client.get(
-            f"https://api.pexels.com/v1/videos/videos/{video_id}",
-            headers={"Authorization": settings.PEXELS_API_KEY},
-        )
-        response.raise_for_status()
-        item = response.json()
-        files = [
-            entry for entry in item.get("video_files", [])
-            if entry.get("file_type") == "video/mp4"
-            and _https_from(entry.get("link") or "", _MEDIA_HOSTS)
-        ]
-        if not files:
-            raise SourceUnavailable("Pexels did not supply a supported MP4 rendition.")
-        rendition = min(files, key=lambda entry: abs((entry.get("width") or 0) - 960))
         max_size = min(settings.MAX_UPLOAD_SIZE_MB, 100) * 1024 * 1024
         size = 0
         async with client.stream("GET", rendition["link"]) as media:

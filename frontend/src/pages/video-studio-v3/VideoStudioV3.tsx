@@ -1,3 +1,4 @@
+import { VirtualAssetPicker } from '../../components/VirtualAssetLibrary'
 import { videoScenePresets } from '../../components/videoTemplatePresets'
 import { useEffect, useRef } from 'react'
 import { referenceVideosApi, assetsApi, brandKitsApi, generateApi, videoStudioDraftsApi, videoExportApi, uploadApi } from '../../api/client'
@@ -327,5 +328,13 @@ export default function VideoStudioV3() {
   window.addEventListener('message',receive)
   return () => { disposed = true; window.removeEventListener('message',receive) }
  },[])
- return <iframe ref={frame} title="Video Studio V3" allowFullScreen srcDoc={editorHtml} style={{border:0,width:'100%',height:'100dvh',display:'block'}} />
+ return <div>
+  <VirtualAssetPicker onMedia={async asset => {
+   const { data: file } = await assetsApi.download(asset.id)
+   frame.current?.contentWindow?.postMessage({
+    type: 'sg-v3-upload-result', asset: { id: asset.id, name: asset.original_filename, kind: asset.file_type }, file,
+   }, window.location.origin)
+  }} />
+  <iframe ref={frame} title="Video Studio V3" allowFullScreen srcDoc={editorHtml} style={{border:0,width:'100%',height:'calc(100dvh - 38px)',display:'block'}} />
+ </div>
 }
