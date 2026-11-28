@@ -60,8 +60,16 @@ def normalize(provider: str, kind: str, item: dict) -> dict:
     user = user if isinstance(user, dict) else {"name": user}
     creator, creator_url, tracking = user.get("name"), None, None
     width, height = item.get("width"), item.get("height")
-    title = item.get("alt") or item.get("alt_description") or item.get("description") or item.get("tags") or ""
-    tags = item.get("tags", "")
+    title = item.get("alt") or item.get("alt_description") or item.get("description") or ""
+    raw_tags = item.get("tags")
+    if isinstance(raw_tags, str):
+        tags = raw_tags
+    elif isinstance(raw_tags, list):
+        labels = [tag.get("title") or tag.get("name") or tag.get("slug")
+                  if isinstance(tag, dict) else tag for tag in raw_tags]
+        tags = ", ".join(label.replace("-", " ") for label in labels if isinstance(label, str))
+    else:
+        tags = ""
     poster = None
     if provider == "pexels":
         source = item["url"]
@@ -92,6 +100,8 @@ def normalize(provider: str, kind: str, item: dict) -> dict:
         tags = ""
     if not all(_https_from(url, HOSTS[provider]) for url in (preview, media)):
         raise ValueError("Unsupported asset host")
+    if not isinstance(title, str) or not title.strip():
+        title = tags
     if not title:
         title = urlsplit(source).path.rstrip("/").rsplit("/", 1)[-1].replace("-", " ")
     key = f"{provider}:{kind}:{item['id']}"
